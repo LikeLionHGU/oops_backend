@@ -1,4 +1,4 @@
-# VideoGuard — 영상 논란 탐지 서비스
+# OOPS — 영상 논란 탐지 서비스
 
 영상을 올리면 **몇 분 몇 초에 어떤 논란거리가 있는지** 타임라인으로 돌려줍니다.
 
@@ -10,9 +10,9 @@
 ## 구성
 
 ```
-videoguard/
-├── videoguard-backend/    Spring Boot 4 · Java 17    (8080)
-├── videoguard-analysis/   FastAPI · Python 3.11      (8000)
+oops/
+├── oops-backend/    Spring Boot 4 · Java 17    (8080)
+├── oops-analysis/   FastAPI · Python 3.11      (8000)
 └── docs/                  인수인계 문서
 ```
 
@@ -26,7 +26,7 @@ videoguard/
 ### 1. 분석 서버
 
 ```powershell
-cd videoguard-analysis
+cd oops-analysis
 copy .env.example .env      # OPENAI_API_KEY 채우기
 .\run.ps1 -Setup
 ```
@@ -40,7 +40,7 @@ winget install -e --id Python.Python.3.11
 
 ### 2. 백엔드
 
-IntelliJ 에서 `videoguard-backend` 를 열고 `VideoguardApplication` 실행.
+IntelliJ 에서 `oops-backend` 를 열고 `OopsApplication` 실행.
 **Run → Edit Configurations → Environment variables** 에 키 등록이 필요합니다.
 
 ```
@@ -52,7 +52,7 @@ DB는 설치할 필요가 없습니다. H2 파일 모드라 켜면 알아서 만
 ### 3. 확인
 
 ```powershell
-cd videoguard-backend
+cd oops-backend
 .\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4"
 ```
 
@@ -114,8 +114,8 @@ LLM은 학습 시점 이후 뉴스를 모르므로, 최근 기사를 검색해�
 | [docs/API명세-구현-대조표.md](docs/API명세-구현-대조표.md) | 프론트엔드 |
 | [docs/사용중인-프롬프트-전문.md](docs/사용중인-프롬프트-전문.md) | 탐지 품질 담당 |
 | [docs/프로젝트-현황-정리.md](docs/프로젝트-현황-정리.md) | 비개발자 · 발표 준비 |
-| [videoguard-backend/README.md](videoguard-backend/README.md) | 백엔드 상세 |
-| [videoguard-analysis/README.md](videoguard-analysis/README.md) | 분석 서버 상세 |
+| [oops-backend/README.md](oops-backend/README.md) | 백엔드 상세 |
+| [oops-analysis/README.md](oops-analysis/README.md) | 분석 서버 상세 |
 
 인수인계 문서의 **"알아둘 함정들"** 장은 꼭 읽어주세요.
 Spring Boot 4의 Jackson 3 전환, Java HttpClient의 HTTP/2 문제 등
