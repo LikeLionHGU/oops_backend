@@ -1,0 +1,9 @@
+# 절대 커밋하면 안 되는 것
+.env
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+workdir/
+.idea/

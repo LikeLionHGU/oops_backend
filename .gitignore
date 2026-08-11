@@ -1,0 +1,34 @@
+# ===== 절대 커밋 금지 =====
+.env
+*.env
+!.env.example
+application-secret.yml
+
+# ===== 빌드 산출물 =====
+build/
+.gradle/
+bin/
+out/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# ===== 파이썬 =====
+.venv/
+venv/
+__pycache__/
+*.pyc
+workdir/
+
+# ===== 런타임 데이터 =====
+data/          # H2 DB 파일
+uploads/       # 업로드 영상, OCR 프레임
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db

@@ -1,0 +1,6 @@
+# 화면 자막 OCR 용. 용량이 크고 파이썬 버전을 탄다 (3.10~3.11 권장).
+# 이게 실패해도 STT 기반 분석은 정상 동작한다.
+paddleocr==2.9.1
+paddlepaddle==2.6.2
+opencv-python-headless==4.10.0.84
+numpy<2

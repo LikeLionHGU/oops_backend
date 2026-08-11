@@ -1,0 +1,8 @@
+# STT(Whisper)까지만 돌리는 최소 구성. 설치가 빠르고 실패할 일이 거의 없다.
+# OCR 은 나중에 requirements-ocr.txt 로 추가한다.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+openai==1.59.6
+yt-dlp==2025.1.15

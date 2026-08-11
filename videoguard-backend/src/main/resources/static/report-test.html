@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Timeline Report 확인</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif;
+         max-width: 1000px; margin: 28px auto; padding: 0 20px; line-height: 1.6; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 20px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+  input[type=number] { padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px;
+                       font-size: 14px; width: 80px; }
+  button { padding: 8px 16px; border: 0; border-radius: 6px; font-size: 14px;
+           cursor: pointer; background: #2563eb; color: #fff; }
+  button.ghost { background: #6b7280; }
+  video { width: 100%; max-height: 420px; background: #000; border-radius: 8px; }
+  .checks { font-size: 13px; margin: 14px 0 22px; padding: 12px 16px;
+            border: 1px solid #ddd; border-radius: 8px; }
+  .checks div { margin: 3px 0; }
+  .pass { color: #16a34a; } .fail { color: #dc2626; } .wait { color: #999; }
+  .summary { display: flex; gap: 8px; margin: 16px 0; }
+  .chip { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .high { background: #fee2e2; color: #991b1b; }
+  .medium { background: #fef3c7; color: #92400e; }
+  .low { background: #e5e7eb; color: #374151; }
+  .card { display: flex; gap: 14px; border: 1px solid #ddd; border-radius: 10px;
+          padding: 14px; margin-bottom: 12px; cursor: pointer; }
+  .card:hover { border-color: #2563eb; }
+  .card img { width: 150px; height: 90px; object-fit: cover; border-radius: 6px;
+              background: #eee; flex-shrink: 0; }
+  .noimg { width: 150px; height: 90px; border-radius: 6px; background: #f3f4f6;
+           display: flex; align-items: center; justify-content: center;
+           color: #9ca3af; font-size: 12px; flex-shrink: 0; }
+  .head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .time { font-weight: 700; font-size: 15px; color: #2563eb; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #eef2ff; color: #3730a3; }
+  .body { font-size: 13.5px; }
+  .body .label { color: #888; margin-right: 4px; }
+  .reason { color: #555; margin-top: 5px; font-size: 13px; }
+  #err { color: #dc2626; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>Timeline Report 확인</h1>
+<div class="sub">
+  영상 재생(구간 이동)과 화면 캡처 이미지가 제대로 나오는지 확인하는 페이지입니다.
+  프론트 구현 참고용으로 써도 됩니다.
+</div>
+
+<div class="row">
+  <label>videoId</label>
+  <input type="number" id="videoId" value="1">
+  <button id="load">불러오기</button>
+  <button id="reload" class="ghost">영상만 다시 로드</button>
+</div>
+
+<div id="err"></div>
+
+<div class="checks">
+  <strong style="font-size:13px">검증 항목</strong>
+  <div id="c-report" class="wait">· 리포트 조회 — 대기</div>
+  <div id="c-stream" class="wait">· 영상 재생(/stream) — 대기</div>
+  <div id="c-seek"   class="wait">· 구간 이동(HTTP Range) — 대기</div>
+  <div id="c-frame"  class="wait">· 캡처 이미지(/frames) — 대기</div>
+</div>
+
+<video id="player" controls preload="metadata"></video>
+
+<div class="summary" id="summary"></div>
+<div id="events"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const player = $('player');
+let seekTested = false;
+
+function mark(id, ok, text) {
+  const el = $(id);
+  el.className = ok ? 'pass' : 'fail';
+  el.textContent = (ok ? '· ' : '· ') + text;
+}
+
+function fmt(ms) {
+  const s = Math.floor(ms / 1000);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
+$('load').addEventListener('click', load);
+$('reload').addEventListener('click', () => {
+  const id = $('videoId').value;
+  player.src = `/api/v1/videos/${id}/stream?t=` + Date.now();
+  player.load();
+});
+
+async function load() {
+  const id = $('videoId').value;
+  $('err').textContent = '';
+  $('events').innerHTML = '';
+  $('summary').innerHTML = '';
+  seekTested = false;
+
+  // 1) 리포트
+  let report;
+  try {
+    const res = await fetch(`/api/v1/videos/${id}/report`);
+    const body = await res.json();
+    if (!body.success) {
+      mark('c-report', false, `리포트 조회 실패 — ${body.message} [${body.error?.code}]`);
+      $('err').textContent = body.message;
+      return;
+    }
+    report = body.data;
+    mark('c-report', true, `리포트 조회 성공 — 논란 ${report.events.length}건`);
+  } catch (e) {
+    mark('c-report', false, '리포트 조회 실패 — 서버 응답 없음');
+    return;
+  }
+
+  // 2) 영상
+  player.src = `/api/v1/videos/${id}/stream`;
+  player.load();
+
+  // 3) 요약
+  const s = report.summary;
+  $('summary').innerHTML =
+    `<span class="chip high">높음 ${s.high}</span>` +
+    `<span class="chip medium">중간 ${s.medium}</span>` +
+    `<span class="chip low">낮음 ${s.low}</span>`;
+
+  // 4) 카드
+  let frameCount = 0;
+  report.events.forEach((e, i) => {
+    if (e.frameUrl) frameCount++;
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.onclick = () => {
+      player.currentTime = e.startMs / 1000;
+      player.play();
+      if (!seekTested) {
+        seekTested = true;
+        setTimeout(() => {
+          const moved = Math.abs(player.currentTime - e.startMs / 1000) < 2;
+          mark('c-seek', moved,
+            moved ? `구간 이동 성공 — ${fmt(e.startMs)} 로 점프` : '구간 이동 실패');
+        }, 700);
+      }
+    };
+
+    const thumb = e.frameUrl
+      ? `<img src="${e.frameUrl}" alt="화면 캡처"
+             onload="mark('c-frame', true, '캡처 이미지 표시 성공')"
+             onerror="mark('c-frame', false, '캡처 이미지 로드 실패')">`
+      : `<div class="noimg">캡처 없음</div>`;
+
+    let detail;
+    if (e.type === 'SPEECH') {
+      detail = `<div><span class="label">발언</span>${e.text ?? ''}</div>
+                <div><span class="label">유형</span>${(e.riskTypes ?? []).join(', ')}</div>`;
+    } else {
+      // 화면 자막만 있는 건은 대응하는 발언이 없다. 빈 줄을 만들지 않는다.
+      detail = e.speechText
+        ? `<div><span class="label">발언</span>${e.speechText}</div>
+           <div><span class="label">자막</span>${e.captionText ?? ''}</div>`
+        : `<div><span class="label">자막</span>${e.captionText ?? ''}</div>`;
+    }
+
+    card.innerHTML = `
+      ${thumb}
+      <div style="flex:1">
+        <div class="head">
+          <span class="time">${fmt(e.startMs)}</span>
+          <span class="tag">${e.type === 'SPEECH' ? '발언' : '화면'}</span>
+          <span class="chip ${e.severity.toLowerCase()}">${e.severity}</span>
+          <span style="color:#999;font-size:12px">#${i + 1}</span>
+        </div>
+        <div class="body">${detail}</div>
+        <div class="reason">${e.reason ?? ''}</div>
+      </div>`;
+    $('events').appendChild(card);
+  });
+
+  if (frameCount === 0) {
+    mark('c-frame', false, '캡처 이미지 없음 — OCR 결과가 없었을 수 있습니다');
+  }
+  if (report.events.length === 0) {
+    $('events').innerHTML = '<p style="color:#888">탐지된 논란 요소가 없습니다.</p>';
+    mark('c-seek', false, '구간 이동 — 확인할 카드가 없습니다');
+  }
+}
+
+player.addEventListener('loadedmetadata', () => {
+  mark('c-stream', true, `영상 재생 준비 완료 — 길이 ${fmt(player.duration * 1000)}`);
+});
+player.addEventListener('error', () => {
+  mark('c-stream', false, '영상 로드 실패 — 업로드한 영상만 재생됩니다 (유튜브 링크는 불가)');
+});
+</script>
+
+</body>
+</html>

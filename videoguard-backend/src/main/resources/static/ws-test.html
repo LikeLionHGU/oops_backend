@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>WebSocket 진행률 테스트</title>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif;
+         max-width: 860px; margin: 32px auto; padding: 0 20px; line-height: 1.6; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 24px; }
+  fieldset { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  legend { font-size: 13px; font-weight: 600; padding: 0 6px; }
+  label { font-size: 13px; margin-right: 12px; }
+  input[type=text], input[type=number] { padding: 6px 8px; border: 1px solid #bbb;
+         border-radius: 6px; font-size: 14px; }
+  button { padding: 8px 16px; border: 0; border-radius: 6px; font-size: 14px;
+           cursor: pointer; background: #2563eb; color: #fff; margin-right: 6px; }
+  button.secondary { background: #6b7280; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  #status { display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-size: 12px; font-weight: 600; }
+  .off { background: #fee2e2; color: #991b1b; }
+  .on  { background: #dcfce7; color: #166534; }
+  .bar { height: 22px; background: #e5e7eb; border-radius: 6px; overflow: hidden; margin: 10px 0 4px; }
+  .fill { height: 100%; width: 0; background: #2563eb; transition: width .3s; }
+  .meta { font-size: 13px; color: #555; }
+  pre { background: #111; color: #d1fae5; padding: 14px; border-radius: 8px;
+        font-size: 12px; height: 300px; overflow-y: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<h1>WebSocket 진행률 테스트</h1>
+<div class="sub">
+  이 페이지를 열어두고 다른 창에서 영상을 업로드하면, 진행률이 실시간으로 찍혀야 합니다.
+</div>
+
+<fieldset>
+  <legend>연결</legend>
+  <label>videoId <input type="number" id="videoId" value="1" style="width:70px"></label>
+  <label>
+    <input type="radio" name="mode" value="native" checked> 네이티브 WebSocket
+  </label>
+  <label>
+    <input type="radio" name="mode" value="sockjs"> SockJS
+  </label>
+  <div style="margin-top:12px">
+    <button id="connect">연결</button>
+    <button id="disconnect" class="secondary" disabled>끊기</button>
+    <span id="status" class="off">끊김</span>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>분석 실행</legend>
+  <div class="meta" style="margin-bottom:10px">
+    이미 업로드된 영상을 다시 분석시킵니다. 업로드 타이밍을 맞출 필요 없이
+    연결해 둔 상태에서 눌러 보면 됩니다.
+  </div>
+  <button id="retry" class="secondary">이 영상 재분석 시작</button>
+  <button id="checkStatus" class="secondary">현재 상태 조회</button>
+</fieldset>
+
+<fieldset>
+  <legend>진행 상황</legend>
+  <div class="bar"><div class="fill" id="fill"></div></div>
+  <div class="meta">
+    <span id="pct">0%</span> ·
+    <span id="stage">-</span> ·
+    <span id="msg">대기 중</span>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>수신 로그</legend>
+  <pre id="log">연결 버튼을 누르세요.
+</pre>
+</fieldset>
+
+<script>
+let client = null;
+let subscription = null;
+
+const $ = (id) => document.getElementById(id);
+
+function log(text) {
+  const time = new Date().toLocaleTimeString('ko-KR');
+  $('log').textContent += `[${time}] ${text}\n`;
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+function setConnected(connected) {
+  $('status').textContent = connected ? '연결됨' : '끊김';
+  $('status').className = connected ? 'on' : 'off';
+  $('connect').disabled = connected;
+  $('disconnect').disabled = !connected;
+}
+
+function render(payload) {
+  const pct = payload.progress ?? 0;
+  $('fill').style.width = pct + '%';
+  $('pct').textContent = pct + '%';
+  $('stage').textContent = payload.stage ?? '-';
+  $('msg').textContent = payload.message ?? '';
+  if (payload.status === 'FAILED') {
+    $('fill').style.background = '#dc2626';
+  } else if (payload.status === 'COMPLETED') {
+    $('fill').style.background = '#16a34a';
+  } else {
+    $('fill').style.background = '#2563eb';
+  }
+}
+
+$('connect').addEventListener('click', () => {
+  const videoId = $('videoId').value;
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const topic = `/topic/videos/${videoId}/progress`;
+
+  const config = {
+    reconnectDelay: 3000,
+    debug: (str) => { if (str.startsWith('<<<') || str.startsWith('>>>')) return; },
+    onConnect: () => {
+      setConnected(true);
+      log(`연결 성공 (${mode})`);
+      subscription = client.subscribe(topic, (message) => {
+        const payload = JSON.parse(message.body);
+        log(`수신  ${payload.progress}%  ${payload.stage}  ${payload.message}`);
+        render(payload);
+      });
+      log(`구독 시작: ${topic}`);
+    },
+    onStompError: (frame) => log('STOMP 오류: ' + frame.headers['message']),
+    onWebSocketError: (e) => log('WebSocket 오류: 서버가 켜져 있는지 확인하세요.'),
+    onWebSocketClose: () => { setConnected(false); log('연결이 닫혔습니다.'); }
+  };
+
+  if (mode === 'sockjs') {
+    config.webSocketFactory = () => new SockJS('/ws');
+  } else {
+    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+    config.brokerURL = `${scheme}://${location.host}/ws`;
+  }
+
+  client = new StompJs.Client(config);
+  log(`연결 시도... (${mode})`);
+  client.activate();
+});
+
+$('retry').addEventListener('click', async () => {
+  const videoId = $('videoId').value;
+  log(`재분석 요청... videoId=${videoId}`);
+  try {
+    const res = await fetch(`/api/v1/videos/${videoId}/analysis/retry`, { method: 'POST' });
+    const body = await res.json();
+    if (body.success) {
+      log(`접수됨: jobId=${body.data.jobId} (HTTP ${res.status})`);
+    } else {
+      log(`거절됨: ${body.message} [${body.error?.code}]`);
+    }
+  } catch (e) {
+    log('요청 실패: ' + e.message);
+  }
+});
+
+$('checkStatus').addEventListener('click', async () => {
+  const videoId = $('videoId').value;
+  try {
+    const res = await fetch(`/api/v1/videos/${videoId}/status`);
+    const body = await res.json();
+    if (body.success) {
+      log(`폴링  ${body.data.progress}%  ${body.data.stage}  ${body.data.message}`);
+      render(body.data);
+    } else {
+      log(`조회 실패: ${body.message} [${body.error?.code}]`);
+    }
+  } catch (e) {
+    log('요청 실패: ' + e.message);
+  }
+});
+
+$('disconnect').addEventListener('click', () => {
+  if (subscription) subscription.unsubscribe();
+  if (client) client.deactivate();
+  setConnected(false);
+  log('직접 끊었습니다.');
+});
+</script>
+
+</body>
+</html>

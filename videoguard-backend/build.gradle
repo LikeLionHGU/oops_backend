@@ -1,0 +1,44 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.0.5'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+description = 'videoguard-backend'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    runtimeOnly 'com.h2database:h2'          // local 프로파일용
+    runtimeOnly 'com.mysql:mysql-connector-j' // dev/prod 프로파일용
+
+    // API 문서 (Swagger UI). springdoc 3.x 가 Spring Boot 4 를 지원한다.
+    // 기동 시 Jackson 관련 오류가 나면 이 줄을 주석 처리하면 된다.
+    // 문서만 빠지고 나머지 기능은 그대로 동작한다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

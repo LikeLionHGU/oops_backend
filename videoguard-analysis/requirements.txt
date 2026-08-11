@@ -1,0 +1,3 @@
+# 전체 설치용. 단계별로 하려면 requirements-core.txt 부터 설치하세요.
+-r requirements-core.txt
+-r requirements-ocr.txt
