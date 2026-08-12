@@ -30,6 +30,16 @@ public class OpenAiClient {
     private static final int MAX_ATTEMPTS = 4;
 
     /**
+     * 재시도 대기 상한.
+     *
+     * OpenAI 가 Retry-After 로 수십 분을 요구하는 경우가 있다.
+     * 이건 분당 한도가 아니라 일일 한도(RPD)를 다 썼다는 뜻이다.
+     * 그만큼 기다리는 건 멈춘 것과 같으므로, 상한을 넘으면 즉시 포기하고
+     * 부분 결과라도 돌려준다.
+     */
+    private static final long MAX_WAIT_MS = 30_000;
+
+    /**
      * 요청 사이 최소 간격.
      * 분석기 5개가 각자 여러 번 호출하므로 한꺼번에 몰리면 한도에 걸린다.
      * 계정 등급이 낮으면 분당 허용량이 매우 적다.
@@ -146,18 +156,33 @@ public class OpenAiClient {
                 // 429 = 요청 한도 초과. 잠시 기다렸다 다시 시도한다.
                 // 여기서 그냥 포기하면 분석기가 빈손으로 돌아가고,
                 // 사용자에게는 '논란 없음' 으로 보인다. 실제로는 물어보지도 못한 것이다.
-                if (status == 429 && attempt < MAX_ATTEMPTS) {
+                if (status == 429) {
                     long waitMs = waitMillis(e, attempt);
-                    log.warn("[openai] 요청 한도 초과. {}ms 후 재시도 ({}/{})",
-                            waitMs, attempt, MAX_ATTEMPTS);
-                    sleep(waitMs);
-                    continue;
+
+                    // 수십 분을 기다리라는 것은 일일 한도를 다 썼다는 뜻이다.
+                    // 기다려봐야 의미가 없으므로 바로 포기한다.
+                    if (waitMs > MAX_WAIT_MS) {
+                        log.error("[openai] 일일 요청 한도를 소진한 것으로 보입니다. "
+                                + "다시 시도하려면 약 {}분을 기다려야 합니다. "
+                                + "분석 결과가 비어 있을 수 있습니다. "
+                                + "https://platform.openai.com/settings/organization/limits 확인",
+                                waitMs / 60000);
+                        return Optional.empty();
+                    }
+
+                    if (attempt < MAX_ATTEMPTS) {
+                        log.warn("[openai] 요청 한도 초과. {}초 후 재시도 ({}/{})",
+                                waitMs / 1000, attempt, MAX_ATTEMPTS);
+                        sleep(waitMs);
+                        continue;
+                    }
+
+                    log.error("[openai] 요청 한도 초과로 포기했습니다. "
+                            + "분석 결과가 비어 있을 수 있습니다.");
+                    return Optional.empty();
                 }
 
-                if (status == 429) {
-                    log.error("[openai] 요청 한도 초과로 포기했습니다. "
-                            + "분석 결과가 비어 있을 수 있습니다. 계정의 rate limit 을 확인하세요.");
-                } else {
+                {
                     log.warn("[openai] 호출 실패 HTTP {} : {}", status,
                             abbreviate(e.getResponseBodyAsString()));
                 }

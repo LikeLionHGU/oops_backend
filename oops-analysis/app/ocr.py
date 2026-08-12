@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -68,8 +69,10 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     보관 경로를 함께 돌려준다. Spring 이 이 이미지를 프론트에 서빙한다.
     전체 프레임을 다 남기면 용량이 커지므로 필요한 것만 남긴다.
     """
+    started = time.time()
     engine = _engine()
     frames = extract_frames(video, interval_sec)
+    extracted_at = time.time()
 
     keep_dir = Path(frame_dir) if frame_dir else None
     if keep_dir:
@@ -120,5 +123,9 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
         })
         previous_text = merged
 
-    log.info("[ocr] frames=%d items=%d", len(frames), len(items))
+    now = time.time()
+    log.info("[ocr] frames=%d items=%d | 프레임추출 %.1f초, 인식 %.1f초 (프레임당 %.2f초)",
+             len(frames), len(items),
+             extracted_at - started, now - extracted_at,
+             (now - extracted_at) / max(1, len(frames)))
     return {"items": items}

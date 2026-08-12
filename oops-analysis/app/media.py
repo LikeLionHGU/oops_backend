@@ -128,7 +128,8 @@ def extract_frames(video: PreparedVideo, interval_sec: float) -> list[tuple[int,
     cmd = [
         "ffmpeg", "-y", "-i", str(video.path),
         # 자막 글자가 작으면 OCR 이 깨진다. 원본이 작아도 업스케일해서 인식률을 올린다.
-        "-vf", f"fps=1/{interval_sec},scale=1920:-2:flags=lanczos",
+        # 1920 은 인식률이 좋지만 느리다. 1600 이 속도와 정확도의 타협점이다.
+        "-vf", f"fps=1/{interval_sec},scale=1600:-2:flags=lanczos",
         "-q:v", "2",
         str(frame_dir / "frame_%05d.jpg"),
     ]

@@ -19,7 +19,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 분석 전체 흐름을 조립하는 곳.
@@ -66,27 +68,38 @@ public class AnalysisPipeline {
             return;
         }
 
+        // 단계별 소요 시간을 재서 마지막에 한 줄로 보여준다.
+        // 어디가 느린지 짐작하지 않고 숫자로 확인하기 위해서다.
+        Map<String, Long> elapsed = new LinkedHashMap<>();
+        long pipelineStart = System.currentTimeMillis();
+
         try {
             video.updateStatus(AnalysisStatus.PROCESSING);
 
             // 1. 음성 → 타임스탬프 대본
             progressService.update(jobId, AnalysisStage.STT, 15);
+            long mark = System.currentTimeMillis();
             List<TranscriptSegment> transcript = transcriptService.extractAndSave(video);
+            elapsed.put("STT", System.currentTimeMillis() - mark);
             if (transcript.isEmpty()) {
                 log.warn("[pipeline] 대본이 비었습니다. videoId={}", videoId);
             }
 
             // 2. 화면 → OCR 자막 (OCR 이 없으면 빈 리스트로 진행)
             progressService.update(jobId, AnalysisStage.OCR, 35);
+            mark = System.currentTimeMillis();
             List<ScreenText> screenTexts = screenTextService.extractAndSave(video);
+            elapsed.put("OCR", System.currentTimeMillis() - mark);
 
             // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
             // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
             ContentGenre genre = video.getGenre();
             if (genre == null) {
                 progressService.update(jobId, AnalysisStage.TEXT_RISK, 42, "영상 유형 판별 중");
+                mark = System.currentTimeMillis();
                 genre = genreDetector.detect(transcript, screenTexts);
                 video.assignGenre(genre);
+                elapsed.put("유형판별", System.currentTimeMillis() - mark);
             }
             log.info("[pipeline] videoId={} 유형={}", videoId, genre);
 
@@ -109,9 +122,13 @@ public class AnalysisPipeline {
                     continue;
                 }
                 try {
+                    long analyzerStart = System.currentTimeMillis();
                     List<RiskFinding> produced = analyzer.analyze(context);
+                    long took = System.currentTimeMillis() - analyzerStart;
+                    elapsed.put(analyzer.key(), took);
                     candidates.addAll(produced);
-                    log.info("[pipeline] 분석기별 결과 {} → {}건", analyzer.key(), produced.size());
+                    log.info("[pipeline] 분석기별 결과 {} → {}건 ({}초)",
+                            analyzer.key(), produced.size(), took / 1000);
                 } catch (Exception e) {
                     // 분석기 하나가 죽어도 나머지 결과는 살린다
                     log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);
@@ -137,14 +154,27 @@ public class AnalysisPipeline {
 
             video.updateStatus(AnalysisStatus.COMPLETED);
             progressService.complete(jobId);
-            log.info("[pipeline] 완료 videoId={} score={} events={}",
-                    videoId, riskScore, findings.size());
+
+            long total = System.currentTimeMillis() - pipelineStart;
+            log.info("[pipeline] 완료 videoId={} score={} events={} 총 {}초",
+                    videoId, riskScore, findings.size(), total / 1000);
+            log.info("[pipeline] 소요 내역 — {}", formatElapsed(elapsed, total));
 
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             video.updateStatus(AnalysisStatus.FAILED);
             progressService.fail(jobId, "ANALYSIS_FAILED", e.getMessage());
         }
+    }
+
+    /** 어디에 시간을 썼는지 비중과 함께 한 줄로 정리한다. */
+    private String formatElapsed(Map<String, Long> elapsed, long total) {
+        if (total <= 0) return "측정 없음";
+        return elapsed.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .map(e -> "%s %d초(%d%%)".formatted(
+                        e.getKey(), e.getValue() / 1000, e.getValue() * 100 / total))
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     /** 분석기 종류에 맞는 진행 단계를 고른다. 프론트가 단계 라벨을 그리는 데 쓴다. */

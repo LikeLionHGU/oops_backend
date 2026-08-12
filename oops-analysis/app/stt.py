@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 import subprocess
 from pathlib import Path
 
@@ -42,6 +43,7 @@ def transcribe(video: PreparedVideo) -> dict:
     from openai import OpenAI
 
     # 조직/프로젝트를 지정하면 그쪽 크레딧에서 차감된다. 비어 있으면 기본 조직.
+    started = time.time()
     client = OpenAI(
         api_key=settings.openai_api_key,
         organization=settings.openai_org_id or None,
@@ -74,5 +76,6 @@ def transcribe(video: PreparedVideo) -> dict:
                 "text": text,
             })
 
-    log.info("[stt] segments=%d language=%s", len(segments), language)
+    log.info("[stt] segments=%d language=%s | 소요 %.1f초", len(segments), language,
+             time.time() - started)
     return {"language": language or "ko", "segments": segments}

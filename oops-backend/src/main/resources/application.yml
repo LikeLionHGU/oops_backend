@@ -41,7 +41,11 @@ oops:
   analysis-server:
     base-url: ${ANALYSIS_SERVER_URL:http://localhost:8000}
     timeout: 10m                     # STT/OCR 은 오래 걸린다
-    ocr-interval-sec: 2.0            # 몇 초 간격으로 프레임을 뽑아 OCR 할지
+    # 몇 초 간격으로 프레임을 뽑아 OCR 할지.
+    # 이 값이 분석 시간을 가장 크게 좌우한다.
+    # 2초로 두면 2분 영상에 60장을 인식해야 해서 2분 넘게 걸린다.
+    # 자막은 보통 몇 초씩 유지되므로 4초 간격으로도 대부분 잡힌다.
+    ocr-interval-sec: 4.0
 
   openai:
     api-key: ${OPENAI_API_KEY:}      # 비어 있으면 LLM 분석기는 자동으로 스킵된다
