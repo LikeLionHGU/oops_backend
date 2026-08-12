@@ -50,10 +50,16 @@ AnalysisRetryResponse  videoId, jobId, status
 ### Timeline Event (§6)
 
 ```
-공통      id, startMs, endMs, type, severity, reason, frameUrl
+공통      id, startMs, endMs, type, severity, reason, frameUrl, occurrences
 SPEECH    text, riskTypes[]
-CAPTION   speechText, captionText
+CAPTION   captionText  (speechText 는 현재 비어 있음)
 ```
+
+> **CAPTION 의 `speechText` 는 항상 비어 있습니다.**
+> 발언과 자막을 대조하던 분석기를 껐기 때문입니다.
+> 자막이 발언과 다른 건 원래 정상이고(예능 자막, 요약 자막),
+> OCR 오인식까지 겹쳐 오탐이 대부분이었습니다.
+> 지금은 발언과 화면을 각각 독립적으로 분석합니다.
 
 해당 타입에 없는 필드는 JSON에서 아예 빠집니다.
 `events`는 **우선순위 내림차순**으로 정렬돼 나갑니다.
@@ -75,7 +81,26 @@ CAPTION   speechText, captionText
 분석이 실패했을 때 프론트가 원인별로 다른 안내를 띄울 수 있게 넣었습니다.
 명세에는 없지만 추가 필드라 기존 처리에는 영향이 없습니다.
 
-### 3-3. 에러 코드 `INVALID_REQUEST` 추가
+### 3-3. `TimelineEventDto` 에 `occurrences` 추가
+
+같은 논란이 영상에서 몇 번 반복됐는지 알려줍니다.
+영상 내내 떠 있는 고정 자막처럼 여러 번 잡히는 건은 한 건으로 병합하고,
+`startMs`~`endMs` 가 그 전체 구간을 뜻하게 했습니다.
+
+`1` 이면 한 번만 등장한 것이라 무시해도 됩니다. 명세에 없는 추가 필드입니다.
+
+### 3-4. 업로드에 `genre` 추가 (선택)
+
+영상 유형을 지정하면 그에 맞는 분석기가 돌아갑니다.
+
+```
+ECONOMY_POLICY / INVESTMENT_FINANCE / INTERVIEW_PODCAST / GENERAL
+```
+
+**선택 필드입니다.** 안 보내면 대본을 보고 자동으로 판별하므로
+기존 요청은 그대로 동작합니다. 나중에 UI 에 유형 선택을 넣으면 정확도가 올라갑니다.
+
+### 3-5. 에러 코드 `INVALID_REQUEST` 추가
 
 필수 값 누락이나 잘못된 파라미터에 쓰는 400 코드입니다.
 명세 §1-6 목록에는 없었지만 유효성 검사 실패를 표현할 코드가 필요했습니다.
