@@ -67,6 +67,7 @@ oops:
       - speech-risk       # 발언 리스크 LLM 판정 (조롱/비하/일반화/민감주제)
       - screen-text       # 화면 자막 키워드 검사 (LLM 불필요)
       - screen-text-risk  # 화면 자막 LLM 판정 (민감 주제 등)
+      - fact-check        # 사실 검증 (경제·정책·투자 영상에서만 실행)
       - timeliness        # 시의성 검토 (뉴스 검색 + LLM). 키 없이도 동작
 
       # 발언과 화면 자막은 각각 독립적으로 분석한다.

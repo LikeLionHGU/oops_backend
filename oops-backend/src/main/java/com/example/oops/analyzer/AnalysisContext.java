@@ -1,5 +1,6 @@
 package com.example.oops.analyzer;
 
+import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.ScreenText;
 import com.example.oops.domain.TranscriptSegment;
 import com.example.oops.domain.Video;
@@ -12,6 +13,7 @@ import java.util.List;
  */
 public record AnalysisContext(
         Video video,
+        ContentGenre genre,                   // 영상 유형. 분석기가 자기를 돌릴지 판단하는 데 쓴다
         List<TranscriptSegment> transcript,   // 음성 → STT 대본
         List<ScreenText> screenTexts          // 화면 → OCR 텍스트
         // TODO: List<YoutubeComment> comments
@@ -22,5 +24,9 @@ public record AnalysisContext(
 
     public boolean hasScreenText() {
         return screenTexts != null && !screenTexts.isEmpty();
+    }
+
+    public ContentGenre genreOrGeneral() {
+        return genre == null ? ContentGenre.GENERAL : genre;
     }
 }

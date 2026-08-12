@@ -18,6 +18,9 @@ public enum RiskCategory {
     SEXUAL("선정적 내용"),
     VIOLENCE("폭력적 내용"),
     MISINFORMATION("사실관계 논란"),
+    FACT_ERROR("사실과 다름"),              // 기사와 대조해 틀린 것으로 확인됨
+    UNVERIFIED_CLAIM("확인되지 않은 주장"),  // 근거를 찾을 수 없음
+    OVERCONFIDENT_FORECAST("단정적 전망"),   // 투자·경제에서 결과를 확언
     PRIVACY("개인정보 노출"),
     ADVERTISING("광고/협찬 미표기"),
 

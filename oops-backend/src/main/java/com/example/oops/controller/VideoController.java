@@ -34,6 +34,9 @@ public class VideoController {
 
                     - 지원 형식: mp4, mov, avi
                     - 최대 크기: 500MB
+                    - `genre` (선택): 영상 유형을 지정하면 그에 맞는 분석기가 돌아간다.
+                      `ECONOMY_POLICY`, `INVESTMENT_FINANCE`, `INTERVIEW_PODCAST`, `GENERAL`
+                      비워두면 대본을 보고 자동으로 판별한다.
                     - 응답의 `jobId` 는 이번 분석 실행의 식별자다. 재시도하면 새로 발급된다.
                     - `streamUrl` 로 영상을 재생할 수 있다.
 
@@ -42,9 +45,10 @@ public class VideoController {
                     """)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<VideoUploadResponse>> upload(
-            @RequestPart("file") MultipartFile file) {
+            @RequestPart("file") MultipartFile file,
+            @RequestPart(value = "genre", required = false) String genre) {
 
-        Video video = videoService.createFromUpload(file);
+        Video video = videoService.createFromUpload(file, genre);
         AnalysisJob job = analysisService.startAnalysis(video.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)

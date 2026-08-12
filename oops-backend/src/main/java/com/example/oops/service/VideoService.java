@@ -2,6 +2,7 @@ package com.example.oops.service;
 
 import com.example.oops.common.BusinessException;
 import com.example.oops.common.ErrorCode;
+import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.SourceType;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.VideoRegisterRequest;
@@ -25,13 +26,14 @@ public class VideoService {
      * videoId 를 먼저 발급받아야 저장 경로를 videos/{id}/ 로 만들 수 있어서 두 단계로 저장한다.
      */
     @Transactional
-    public Video createFromUpload(MultipartFile file) {
+    public Video createFromUpload(MultipartFile file, String genre) {
         storageService.validateVideoFile(file);
 
         Video video = videoRepository.save(Video.builder()
                 .sourceType(SourceType.UPLOAD)
                 .filename(file.getOriginalFilename())
                 .title(file.getOriginalFilename())
+                .genre(ContentGenre.fromOrDefault(genre, null))   // null 이면 자동 판별
                 .build());
 
         video.assignStorageKey(storageService.storeVideo(video.getId(), file));
@@ -46,6 +48,7 @@ public class VideoService {
                 .sourceUrl(request.url())
                 .title(request.title())
                 .channelName(request.channelName())
+                .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
     }
 

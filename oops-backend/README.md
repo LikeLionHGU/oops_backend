@@ -171,6 +171,7 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 | `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 룰 탐지 | CAPTION |
 | `screen-text-risk` | `ScreenTextRiskAnalyzer` | OpenAI | 화면 자막 LLM 판정 (OCR 깨짐 보정 포함) | CAPTION |
 | `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언 vs 자막 대조 — **기본 비활성** | CAPTION |
+| `fact-check` | `FactCheckAnalyzer` | OpenAI | **주장이 사실인지** (경제·투자 영상만) | SPEECH |
 | `timeliness` | `TimelinessAnalyzer` | OpenAI | **지금 시점에 다뤄도 되는 주제인지** | SPEECH/CAPTION |
 | `comment` | `CommentAnalyzer` | — | **미구현** (스텁) | — |
 | `pose` | `PoseAnalyzer` | — | **미구현** (스텁) | — |
@@ -189,6 +190,46 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 지금은 **발언과 화면을 각각 독립적으로 분석**하고,
 같은 시간대에 같은 유형이 잡히면 병합 단계에서 한 건으로 합친다.
 양쪽에서 확인된 건은 근거가 강하므로 점수를 올린다.
+
+### 영상 유형별로 다르게 본다
+
+경제 해설물은 **틀린 숫자 하나**가 곧 논란이 되고,
+인터뷰는 **발언이 공개 시점의 이슈와 맞물릴 때** 논란이 된다.
+같은 잣대로 보면 둘 다 놓친다.
+
+그래서 분석 전에 영상 유형을 정하고, 유형에 맞는 분석기만 돌린다.
+
+| 유형 | 무엇을 중점적으로 보나 |
+|---|---|
+| `ECONOMY_POLICY` | 사실 검증. 수치·정책·인과 주장을 기사와 대조 |
+| `INVESTMENT_FINANCE` | 사실 검증 + 단정적 전망 |
+| `INTERVIEW_PODCAST` | 시의성. 발언과 인물을 최근 이슈와 대조 (주제를 8개까지 확대) |
+| `GENERAL` | 공통 분석만 |
+
+유형은 업로드할 때 `genre` 로 지정할 수 있고, 비워두면 대본을 보고 자동 판별한다
+(`GenreDetector`). 애매하면 `GENERAL` 로 떨어지므로 억지 분류는 하지 않는다.
+
+### 사실 검증 (`FactCheckAnalyzer`)
+
+경제·정책·투자 영상에서만 돌아간다. 브이로그에 팩트체크는 의미가 없다.
+
+LLM 은 통계를 정확히 외우지 못하고 학습 시점 이후 수치는 아예 모른다.
+그래서 검색을 끼워 세 단계로 나눴다.
+
+1. 대본에서 **검증 가능한 주장**만 뽑는다 (의견·전망은 제외)
+2. 각 주장을 뉴스에서 찾아본다
+3. 기사와 대조해 판정한다
+
+판정 결과는 네 가지다.
+
+| 카테고리 | 뜻 |
+|---|---|
+| `FACT_ERROR` | 기사와 명백히 어긋남 |
+| `MISINFORMATION` | 틀리진 않았지만 맥락을 빼 오해를 부름 |
+| `UNVERIFIED_CLAIM` | 근거를 찾을 수 없음 |
+| `OVERCONFIDENT_FORECAST` | 불확실한 미래를 확정처럼 말함 |
+
+확인된 주장(`OK`)은 보고하지 않는다. 문제가 있는 것만 올린다.
 
 ### 시의성 검토 (`TimelinessAnalyzer`)
 

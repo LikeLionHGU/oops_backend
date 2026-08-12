@@ -6,6 +6,7 @@ import com.example.oops.config.AsyncConfig;
 import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
+import com.example.oops.genre.GenreDetector;
 import com.example.oops.repository.AnalysisReportRepository;
 import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
@@ -41,6 +42,7 @@ public class AnalysisPipeline {
     private final TranscriptService transcriptService;
     private final ScreenTextService screenTextService;
     private final FindingFusionService fusionService;
+    private final GenreDetector genreDetector;
     private final ReportBuilder reportBuilder;
     private final JobProgressService progressService;
     private final VideoRepository videoRepository;
@@ -78,7 +80,17 @@ public class AnalysisPipeline {
             progressService.update(jobId, AnalysisStage.OCR, 35);
             List<ScreenText> screenTexts = screenTextService.extractAndSave(video);
 
-            AnalysisContext context = new AnalysisContext(video, transcript, screenTexts);
+            // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
+            // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
+            ContentGenre genre = video.getGenre();
+            if (genre == null) {
+                progressService.update(jobId, AnalysisStage.TEXT_RISK, 42, "영상 유형 판별 중");
+                genre = genreDetector.detect(transcript, screenTexts);
+                video.assignGenre(genre);
+            }
+            log.info("[pipeline] videoId={} 유형={}", videoId, genre);
+
+            AnalysisContext context = new AnalysisContext(video, genre, transcript, screenTexts);
 
             // 3. 분석기 실행 → 논란 후보 수집
             findingRepository.deleteByVideoId(videoId);
@@ -138,6 +150,7 @@ public class AnalysisPipeline {
         return switch (analyzer.key()) {
             case "screen-text", "screen-text-risk" -> AnalysisStage.OCR;
             case "caption-mismatch", "timeliness" -> AnalysisStage.MULTIMODAL;
+            case "fact-check" -> AnalysisStage.TEXT_RISK;
             case "pose" -> AnalysisStage.SCENE_DETECTION;
             default -> AnalysisStage.TEXT_RISK;
         };

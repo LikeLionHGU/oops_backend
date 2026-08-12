@@ -48,9 +48,18 @@ public class Video extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private AnalysisStatus status;
 
+    /**
+     * 영상 유형. 업로드 시 지정하지 않으면 분석 중에 자동으로 판별한다.
+     * 유형에 따라 실행되는 분석기가 달라진다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private ContentGenre genre;
+
     @Builder
     private Video(SourceType sourceType, String filename, String sourceUrl,
-                  String storageKey, String title, String channelName, Integer durationSec) {
+                  String storageKey, String title, String channelName,
+                  Integer durationSec, ContentGenre genre) {
         this.sourceType = sourceType;
         this.filename = filename;
         this.sourceUrl = sourceUrl;
@@ -58,7 +67,16 @@ public class Video extends BaseTimeEntity {
         this.title = title;
         this.channelName = channelName;
         this.durationSec = durationSec;
+        this.genre = genre;
         this.status = AnalysisStatus.PENDING;
+    }
+
+    public void assignGenre(ContentGenre genre) {
+        this.genre = genre;
+    }
+
+    public ContentGenre genreOrGeneral() {
+        return genre == null ? ContentGenre.GENERAL : genre;
     }
 
     public void updateStatus(AnalysisStatus status) {

@@ -37,8 +37,12 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TimelinessAnalyzer implements ContentAnalyzer {
 
-    /** 비용과 시간을 아끼려고 주제 수를 제한한다. */
+    /**
+     * 비용과 시간을 아끼려고 주제 수를 제한한다.
+     * 인터뷰·팟캐스트는 발언이 곧 논란거리라 조금 더 넓게 본다.
+     */
     private static final int MAX_TOPICS = 5;
+    private static final int MAX_TOPICS_INTERVIEW = 8;
     private static final int NEWS_PER_TOPIC = 8;
 
     /**
@@ -60,6 +64,7 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
             - 사회적으로 논쟁 중인 이슈 (젠더, 노동, 부동산, 세금, 교육 등)
             - 특정 기업, 브랜드, 유명인의 실명
             - 종교, 역사, 국제 분쟁
+            - 화자가 언급한 특정 인물의 이름과, 그 인물에 대한 평가·언급
 
             뽑지 말아야 하는 것:
             - 일상 대화, 인사말, 감탄사
@@ -103,6 +108,9 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
             - 최근 기사에서 여론이 갈리거나 갈등이 보도되고 있다
             - 피해자나 유족이 있는 사건이라 가볍게 다루면 문제가 된다
             - 선거법, 광고법 등 법적 제약이 걸릴 수 있는 시기다
+            - 언급된 인물이 최근 구설에 올라 있어, 우호적으로 언급하는 것만으로도
+              시청자 반응이 갈릴 수 있다
+            - 과거에는 평범했던 발언인데 최근 사건 때문에 다르게 읽히게 됐다
 
             논란 가능성이 낮은 경우:
             - 오래전에 마무리된 사안이고 최근 기사가 없다
@@ -169,7 +177,10 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
         log.info("[timeliness] 뉴스 소스={} 기준일={}", newsClient.providerName(), today);
 
-        for (Topic topic : topics.stream().limit(MAX_TOPICS).toList()) {
+        int limit = context.genreOrGeneral().needsTimelinessFocus()
+                ? MAX_TOPICS_INTERVIEW : MAX_TOPICS;
+
+        for (Topic topic : topics.stream().limit(limit).toList()) {
             String keyword = topic.keyword() == null ? "" : topic.keyword().trim();
             if (keyword.length() < 3 || TOO_GENERIC.contains(keyword)) {
                 log.info("[timeliness] '{}' 는 너무 포괄적이라 건너뜁니다", keyword);
@@ -185,7 +196,7 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
             }
 
             // 3단계 — 오늘 기준으로 위험한지 판정
-            Judgement judgement = judge(today, topic, news);
+            Judgement judgement = judge(today, context.genreOrGeneral(), topic, news);
             if (judgement == null || !Boolean.TRUE.equals(judgement.risky())) {
                 continue;
             }
@@ -313,9 +324,12 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
         return result == null || result.topics() == null ? List.of() : result.topics();
     }
 
-    private Judgement judge(String today, Topic topic, List<NewsSearchClient.NewsItem> news) {
+    private Judgement judge(String today, ContentGenre genre, Topic topic,
+                           List<NewsSearchClient.NewsItem> news) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append("오늘 날짜: ").append(today).append("\n\n");
+        prompt.append("오늘 날짜: ").append(today).append("\n");
+        prompt.append("영상 유형: ").append(genre.getLabel())
+              .append(" — ").append(genre.getNote()).append("\n\n");
         prompt.append("영상에 등장한 주제: ").append(topic.keyword()).append("\n");
         if (topic.context() != null) {
             prompt.append("영상에서의 맥락: ").append(topic.context()).append("\n");

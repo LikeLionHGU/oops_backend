@@ -67,6 +67,10 @@ public class FindingFusionService {
         MERGE_GROUP.put(RiskCategory.MOCKERY, "PUTDOWN");
         MERGE_GROUP.put(RiskCategory.BELITTLEMENT, "PUTDOWN");
 
+        MERGE_GROUP.put(RiskCategory.FACT_ERROR, "FACT");
+        MERGE_GROUP.put(RiskCategory.MISINFORMATION, "FACT");
+        MERGE_GROUP.put(RiskCategory.UNVERIFIED_CLAIM, "FACT");
+
         MERGE_GROUP.put(RiskCategory.HATE_SPEECH, "HATE");
         MERGE_GROUP.put(RiskCategory.DISCRIMINATION, "HATE");
     }
@@ -87,7 +91,10 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.BELITTLEMENT, 80);
         CATEGORY_WEIGHT.put(RiskCategory.MOCKERY, 78);
         CATEGORY_WEIGHT.put(RiskCategory.SENSITIVE_TOPIC, 75);
+        CATEGORY_WEIGHT.put(RiskCategory.FACT_ERROR, 96);
         CATEGORY_WEIGHT.put(RiskCategory.MISINFORMATION, 72);
+        CATEGORY_WEIGHT.put(RiskCategory.UNVERIFIED_CLAIM, 68);
+        CATEGORY_WEIGHT.put(RiskCategory.OVERCONFIDENT_FORECAST, 66);
         CATEGORY_WEIGHT.put(RiskCategory.CAPTION_MISMATCH, 70);
         CATEGORY_WEIGHT.put(RiskCategory.GENERALIZATION, 65);
         CATEGORY_WEIGHT.put(RiskCategory.VIOLENCE, 60);
