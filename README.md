@@ -127,6 +127,38 @@ LLM은 통계를 정확히 외우지 못하므로 여기서도 검색을 끼웠�
 
 ---
 
+## API 한눈에
+
+Base URL `/api/v1` · 문서는 `/swagger-ui.html`
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/videos` | 영상 업로드 (multipart). **업로드 즉시 분석 시작** |
+| POST | `/videos` | 유튜브 URL 등록 (JSON `{url}`) |
+| GET | `/videos/{id}/status` | 진행률 폴링 |
+| GET | `/videos/{id}/report` | Timeline Report |
+| POST | `/videos/{id}/analysis/retry` | 재분석 |
+| GET | `/videos/{id}/stream` | 영상 재생 (HTTP Range) |
+| GET | `/videos/{id}/frames/{frameId}` | 화면 캡처 이미지 |
+| GET | `/videos` | 목록 (관리용) |
+| DELETE | `/videos/{id}` | 영상·결과·파일 삭제 |
+
+WebSocket `/ws` → `/topic/videos/{videoId}/progress` 구독
+
+`/report` 응답에는 논란 목록(`events`)과 함께
+영상 유형(`genre`)과 유튜브 광고 적합성(`adSuitability`)이 들어갑니다.
+
+## 데이터 관리
+
+- **DB**: H2 파일 모드. 별도 설치가 필요 없고 재시작해도 남습니다
+- **스키마**: 엔티티에서 자동 생성 (`ddl-auto: update`)
+- **삭제**: `DELETE /videos/{id}` 가 DB 행과 디스크 파일을 함께 지웁니다
+- **자동 정리**: `oops.storage.retention-days` 를 켜면 매일 새벽 4시에
+  그만큼 지난 영상을 정리합니다. 로컬 기본값은 꺼짐(0), 배포 서버는 7 권장
+
+> 영상 하나에 원본 수십 MB 와 프레임 이미지가 쌓입니다.
+> 배포할 때 자동 정리를 켜지 않으면 디스크가 조용히 찹니다.
+
 ## 상태
 
 | 항목 | 상태 |
@@ -142,7 +174,10 @@ LLM은 통계를 정확히 외우지 못하므로 여기서도 검색을 끼웠�
 | 사실 검증 (경제·투자) | 완료 |
 | 노란 딱지 예측 | 완료 |
 | 시의성 검토 | 완료 |
+| 영상 삭제 · 저장소 자동 정리 | 완료 |
 | **배포** | **미착수** — 현재 로컬 전용 |
+| DB 마이그레이션 도구 | 미도입 — 배포 전 Flyway 권장 |
+| MySQL 전환 | 설정만 있음, 미검증 |
 | 유튜브 댓글 분석 | 미구현 (스텁만) |
 | 포즈 · 제스처 판별 | 미구현 (스텁만) |
 
@@ -172,3 +207,13 @@ Spring Boot 4의 Jackson 3 전환, Java HttpClient의 HTTP/2 문제 등
 
 **비용이 발생합니다.** 영상 1분당 약 100원(Whisper + LLM)입니다.
 개발 중에는 1~2분짜리 짧은 영상을 쓰세요.
+
+**OpenAI 요청 한도에 걸리면 결과가 조용히 비어 나옵니다.**
+분석기가 여러 번 호출하므로 영상 하나에 수십 건이 나갑니다.
+계정 등급이 낮으면 금방 막힙니다. 결과가 갑자기 비면
+콘솔에서 `rate_limit_exceeded` 부터 찾아보세요.
+프롬프트 문제로 착각하기 쉽습니다.
+
+**분석 시간의 대부분은 OCR 입니다.**
+`oops.analysis-server.ocr-interval-sec` 로 조절합니다.
+파이프라인이 끝나면 콘솔에 단계별 소요 시간이 한 줄로 찍힙니다.
