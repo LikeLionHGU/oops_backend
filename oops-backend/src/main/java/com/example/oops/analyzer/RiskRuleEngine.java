@@ -89,7 +89,8 @@ public class RiskRuleEngine {
             case HATE_SPEECH, DISCRIMINATION -> 0.85;
             case VIOLENCE, PRIVACY -> 0.75;
             case PROFANITY, SEXUAL -> 0.55;
-            case GENERALIZATION -> 0.4;
+            // 룰만으로는 일반화인지 단순 관찰인지 구분할 수 없다. 약한 신호로만 남긴다.
+            case GENERALIZATION -> 0.3;
             // 민감 주제는 그 자체로 잘못이 아니라 "검토 필요" 신호다. 낮게 잡는다.
             case SENSITIVE_TOPIC -> 0.35;
             default -> 0.35;
