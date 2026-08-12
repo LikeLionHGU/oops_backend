@@ -109,7 +109,9 @@ public class AnalysisPipeline {
                     continue;
                 }
                 try {
-                    candidates.addAll(analyzer.analyze(context));
+                    List<RiskFinding> produced = analyzer.analyze(context);
+                    candidates.addAll(produced);
+                    log.info("[pipeline] 분석기별 결과 {} → {}건", analyzer.key(), produced.size());
                 } catch (Exception e) {
                     // 분석기 하나가 죽어도 나머지 결과는 살린다
                     log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);

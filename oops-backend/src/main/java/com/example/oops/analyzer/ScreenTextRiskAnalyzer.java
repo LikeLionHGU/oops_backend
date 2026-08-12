@@ -64,7 +64,9 @@ public class ScreenTextRiskAnalyzer implements ContentAnalyzer {
             - 사실 전달, 상황 설명, 진행 안내 자막은 논란이 아니다.
             - 단, 특정 대상(가게, 제품, 인물)에 대한 부정적 평가는
               감상 형태여도 당사자가 반발할 수 있으므로 잡는다.
-            - 문제가 없으면 빈 배열을 반환한다. 억지로 찾아내지 않는다.
+            - score 는 확신도다. 애매하면 0.3~0.5 로 낮게 주되 빼지는 마라.
+              놓치는 것이 잘못 올리는 것보다 나쁘다.
+            - 명백히 아무 문제 없는 자막까지 올리지는 마라.
 
             반드시 이 JSON 형식으로만 답한다:
             {"findings":[{"index":0,"category":"SENSITIVE_TOPIC","score":0.7,"reason":"한 문장 설명","reading":"깨진 글자를 복원한 원래 문구"}]}

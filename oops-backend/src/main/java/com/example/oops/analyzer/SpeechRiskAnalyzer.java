@@ -25,8 +25,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SpeechRiskAnalyzer implements ContentAnalyzer {
 
-    /** 한 번에 LLM 에 넣는 대본 줄 수 */
-    private static final int WINDOW_SIZE = 25;
+    /**
+     * 한 번에 LLM 에 넣는 대본 줄 수.
+     * 한 번에 너무 많이 주면 모델이 눈에 띄는 몇 개만 보고 나머지를 흘린다.
+     * 창을 줄이면 호출 수가 늘지만 놓치는 게 줄어든다.
+     */
+    private static final int WINDOW_SIZE = 15;
     /** 창 사이에 겹치는 줄 수. 경계에서 문맥이 끊기는 걸 막는다. */
     private static final int OVERLAP = 3;
 
@@ -57,8 +61,16 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
             판정 원칙:
             - 문맥을 보고 판단한다. 자기 자신을 낮추는 농담이나 친밀한 관계의 장난은 제외한다.
             - 인용이나 비판을 위해 언급한 표현은 화자의 발언으로 보지 않는다.
-            - 애매하면 낮은 점수를 준다. 확실한 것만 0.7 이상을 준다.
-            - 문제가 없으면 빈 배열을 반환한다. 억지로 찾아내지 않는다.
+            - score 는 확신도다. 확실하면 0.7 이상, 애매하면 0.3~0.5 로 준다.
+              **애매하다고 빼지 마라.** 낮은 점수로라도 올려서 검수자가 판단하게 한다.
+              놓치는 것이 잘못 올리는 것보다 나쁘다.
+            - 다만 명백히 아무 문제 없는 일상 대화까지 올리지는 마라.
+
+            반드시 잡아야 하는 예시:
+            - "너무 특색이 없어가지고"      → BELITTLEMENT (특정 가게에 대한 부정적 평가)
+            - "저기는 진짜 별로예요"        → BELITTLEMENT (대상이 특정되는 혹평)
+            - "그 사람 좀 이상하지 않아요?"  → MOCKERY (인물에 대한 부정적 언급)
+            - "몸에 안 좋은 거 먹지 마세요"  → BELITTLEMENT (특정 업종에 대한 부정적 규정)
 
             다음은 논란이 아니다. 잡지 마라.
             - 사실 관찰, 통계나 경향 서술 ("요즘은 ~하는 추세다")
