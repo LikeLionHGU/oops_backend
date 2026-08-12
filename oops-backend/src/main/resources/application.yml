@@ -67,7 +67,14 @@ oops:
       - speech-risk       # 발언 리스크 LLM 판정 (조롱/비하/일반화/민감주제)
       - screen-text       # 화면 자막 키워드 검사 (LLM 불필요)
       - screen-text-risk  # 화면 자막 LLM 판정 (민감 주제 등)
-      - caption-mismatch  # 자막 vs 발언 비교
       - timeliness        # 시의성 검토 (뉴스 검색 + LLM). 키 없이도 동작
+
+      # 발언과 화면 자막은 각각 독립적으로 분석한다.
+      # 둘을 대조해 "자막이 발언을 왜곡했다" 고 잡던 caption-mismatch 는 껐다.
+      # 예능 자막·요약 자막은 원래 발언과 다른 게 정상이고,
+      # OCR 이 글자를 틀리게 읽으면 그것까지 왜곡으로 잡혀 오탐이 대부분이었다.
+      # OCR 정확도가 올라가면 다시 켜볼 수 있다.
+      # - caption-mismatch
+
       # - comment         # 미구현
       # - pose            # 미구현

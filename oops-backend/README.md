@@ -148,13 +148,25 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 | `speech-risk` | `SpeechRiskAnalyzer` | OpenAI | 조롱·비하·일반화·민감주제 문맥 판정 | SPEECH |
 | `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 룰 탐지 | CAPTION |
 | `screen-text-risk` | `ScreenTextRiskAnalyzer` | OpenAI | 화면 자막 LLM 판정 (OCR 깨짐 보정 포함) | CAPTION |
-| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언 vs 화면 자막 대조 | CAPTION |
+| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언 vs 자막 대조 — **기본 비활성** | CAPTION |
 | `timeliness` | `TimelinessAnalyzer` | OpenAI | **지금 시점에 다뤄도 되는 주제인지** | SPEECH/CAPTION |
 | `comment` | `CommentAnalyzer` | — | **미구현** (스텁) | — |
 | `pose` | `PoseAnalyzer` | — | **미구현** (스텁) | — |
 
 발언과 화면을 각각 **룰 + LLM 두 겹**으로 본다.
 룰은 키가 없어도 도는 안전망이고, 열거할 수 없는 유형은 LLM이 맡는다.
+
+### 왜 발언과 자막을 대조하지 않나
+
+`caption-mismatch` 는 만들었지만 껐다.
+
+자막이 발언과 다른 것은 원래 정상이다. 예능 자막, 요약 자막, 효과음 표기는
+발언을 그대로 옮기지 않는다. 여기에 OCR 오인식까지 겹쳐서
+("부모를 놀라게 울우 아이의 종이로가려진") 오탐이 대부분이었다.
+
+지금은 **발언과 화면을 각각 독립적으로 분석**하고,
+같은 시간대에 같은 유형이 잡히면 병합 단계에서 한 건으로 합친다.
+양쪽에서 확인된 건은 근거가 강하므로 점수를 올린다.
 
 ### 시의성 검토 (`TimelinessAnalyzer`)
 
