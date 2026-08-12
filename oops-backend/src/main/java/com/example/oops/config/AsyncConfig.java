@@ -18,8 +18,10 @@ public class AsyncConfig {
     @Bean(name = ANALYSIS_EXECUTOR)
     public Executor analysisExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
+        // 영상 하나만 분석해도 LLM 호출이 수십 번 나간다.
+        // 동시 분석을 늘리면 OpenAI 요청 한도에 먼저 걸린다.
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("analysis-");
         executor.initialize();

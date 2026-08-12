@@ -7,10 +7,15 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * OpenAI Chat Completions 호출.
@@ -20,6 +25,23 @@ import java.util.Optional;
 @Slf4j
 @Component
 public class OpenAiClient {
+
+    /** 429 를 만났을 때 재시도 횟수 */
+    private static final int MAX_ATTEMPTS = 4;
+
+    /**
+     * 요청 사이 최소 간격.
+     * 분석기 5개가 각자 여러 번 호출하므로 한꺼번에 몰리면 한도에 걸린다.
+     * 계정 등급이 낮으면 분당 허용량이 매우 적다.
+     */
+    private static final long MIN_INTERVAL_MS = 250;
+
+    /** "try again in 6s" 같은 안내에서 대기 시간을 뽑아낸다. */
+    private static final Pattern RETRY_HINT =
+            Pattern.compile("try again in ([0-9.]+)(ms|s)", Pattern.CASE_INSENSITIVE);
+
+    /** 여러 분석 스레드가 공유한다. 마지막 호출 시각. */
+    private static final AtomicLong lastCallAt = new AtomicLong(0);
 
     private final RestClient restClient;
     private final OpenAiProperties properties;
@@ -60,31 +82,106 @@ public class OpenAiClient {
                 )
         );
 
-        try {
-            ChatCompletionResponse response = restClient.post()
-                    .uri("/chat/completions")
-                    .body(body)
-                    .retrieve()
-                    .body(ChatCompletionResponse.class);
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            throttle();
+            try {
+                ChatCompletionResponse response = restClient.post()
+                        .uri("/chat/completions")
+                        .body(body)
+                        .retrieve()
+                        .body(ChatCompletionResponse.class);
 
-            String content = Optional.ofNullable(response)
-                    .map(ChatCompletionResponse::choices)
-                    .filter(choices -> !choices.isEmpty())
-                    .map(choices -> choices.get(0).message().content())
-                    .orElse(null);
+                String content = Optional.ofNullable(response)
+                        .map(ChatCompletionResponse::choices)
+                        .filter(choices -> !choices.isEmpty())
+                        .map(choices -> choices.get(0).message().content())
+                        .orElse(null);
 
-            if (content == null || content.isBlank()) {
+                if (content == null || content.isBlank()) {
+                    return Optional.empty();
+                }
+                return Optional.of(jsonMapper.readValue(content, type));
+
+            } catch (RestClientResponseException e) {
+                int status = e.getStatusCode().value();
+
+                // 429 = 요청 한도 초과. 잠시 기다렸다 다시 시도한다.
+                // 여기서 그냥 포기하면 분석기가 빈손으로 돌아가고,
+                // 사용자에게는 '논란 없음' 으로 보인다. 실제로는 물어보지도 못한 것이다.
+                if (status == 429 && attempt < MAX_ATTEMPTS) {
+                    long waitMs = waitMillis(e, attempt);
+                    log.warn("[openai] 요청 한도 초과. {}ms 후 재시도 ({}/{})",
+                            waitMs, attempt, MAX_ATTEMPTS);
+                    sleep(waitMs);
+                    continue;
+                }
+
+                if (status == 429) {
+                    log.error("[openai] 요청 한도 초과로 포기했습니다. "
+                            + "분석 결과가 비어 있을 수 있습니다. 계정의 rate limit 을 확인하세요.");
+                } else {
+                    log.warn("[openai] 호출 실패 HTTP {} : {}", status,
+                            abbreviate(e.getResponseBodyAsString()));
+                }
+                return Optional.empty();
+
+            } catch (RestClientException e) {
+                log.warn("[openai] 호출 실패: {}", e.getMessage());
+                return Optional.empty();
+            } catch (Exception e) {
+                log.warn("[openai] 응답 파싱 실패: {}", e.getMessage());
                 return Optional.empty();
             }
-            return Optional.of(jsonMapper.readValue(content, type));
-
-        } catch (RestClientException e) {
-            log.warn("[openai] 호출 실패: {}", e.getMessage());
-            return Optional.empty();
-        } catch (Exception e) {
-            log.warn("[openai] 응답 파싱 실패: {}", e.getMessage());
-            return Optional.empty();
         }
+        return Optional.empty();
+    }
+
+    /** 요청이 한꺼번에 몰리지 않게 최소 간격을 둔다. */
+    private void throttle() {
+        long gap = System.currentTimeMillis() - lastCallAt.get();
+        if (gap < MIN_INTERVAL_MS) {
+            sleep(MIN_INTERVAL_MS - gap);
+        }
+        lastCallAt.set(System.currentTimeMillis());
+    }
+
+    /**
+     * 얼마나 기다릴지 정한다.
+     * OpenAI 가 Retry-After 헤더나 "try again in 6s" 안내를 주면 그걸 따르고,
+     * 없으면 시도할수록 간격을 늘린다.
+     */
+    private long waitMillis(RestClientResponseException e, int attempt) {
+        String retryAfter = e.getResponseHeaders() == null
+                ? null : e.getResponseHeaders().getFirst("Retry-After");
+        if (retryAfter != null) {
+            try {
+                return Math.max(1000L, (long) (Double.parseDouble(retryAfter.trim()) * 1000));
+            } catch (NumberFormatException ignored) {
+                // 헤더가 날짜 형식일 수도 있다. 아래 기본값을 쓴다.
+            }
+        }
+
+        Matcher m = RETRY_HINT.matcher(e.getResponseBodyAsString());
+        if (m.find()) {
+            double value = Double.parseDouble(m.group(1));
+            long ms = "ms".equalsIgnoreCase(m.group(2)) ? (long) value : (long) (value * 1000);
+            return Math.max(1000L, ms + 500);   // 안내값보다 살짝 더 기다린다
+        }
+
+        return Duration.ofSeconds(2L * attempt * attempt).toMillis();   // 2s, 8s, 18s
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private String abbreviate(String text) {
+        if (text == null) return "";
+        return text.length() <= 300 ? text : text.substring(0, 300) + "...";
     }
 
     record ChatCompletionResponse(List<Choice> choices) {

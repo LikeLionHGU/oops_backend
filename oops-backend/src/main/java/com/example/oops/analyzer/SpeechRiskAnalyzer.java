@@ -28,9 +28,10 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
     /**
      * 한 번에 LLM 에 넣는 대본 줄 수.
      * 한 번에 너무 많이 주면 모델이 눈에 띄는 몇 개만 보고 나머지를 흘린다.
-     * 창을 줄이면 호출 수가 늘지만 놓치는 게 줄어든다.
+     * 반대로 너무 잘게 쪼개면 호출이 늘어 OpenAI 요청 한도에 걸린다.
+     * 20줄이 그 사이의 타협점이다.
      */
-    private static final int WINDOW_SIZE = 15;
+    private static final int WINDOW_SIZE = 20;
     /** 창 사이에 겹치는 줄 수. 경계에서 문맥이 끊기는 걸 막는다. */
     private static final int OVERLAP = 3;
 
