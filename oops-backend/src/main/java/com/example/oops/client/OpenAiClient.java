@@ -43,6 +43,10 @@ public class OpenAiClient {
     /** 여러 분석 스레드가 공유한다. 마지막 호출 시각. */
     private static final AtomicLong lastCallAt = new AtomicLong(0);
 
+    /** 계정의 실제 한도를 한 번만 찍는다. 매 호출마다 찍으면 로그가 지저분해진다. */
+    private static final java.util.concurrent.atomic.AtomicBoolean limitLogged =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private final RestClient restClient;
     private final OpenAiProperties properties;
 
@@ -66,6 +70,37 @@ public class OpenAiClient {
         return properties.isConfigured();
     }
 
+    /**
+     * 어느 계정으로 호출하는지 시작할 때 한 번 남긴다.
+     *
+     * 크레딧을 특정 조직에서 받았는데 개인 계정 키로 호출하면
+     * 크레딧은 안 쓰이고 한도만 낮은 상태가 된다. 그걸 바로 알아채기 위한 로그다.
+     */
+    @jakarta.annotation.PostConstruct
+    void logAccount() {
+        if (!isEnabled()) {
+            log.warn("[openai] API 키가 없습니다. LLM 분석기 전체가 스킵됩니다.");
+            return;
+        }
+        String key = properties.apiKey();
+        String masked = key.length() > 12
+                ? key.substring(0, 8) + "..." + key.substring(key.length() - 4) : "***";
+
+        log.info("[openai] 키={} 조직={} 프로젝트={} 모델={}",
+                masked,
+                properties.hasOrganization() ? properties.organization() : "(계정 기본값)",
+                properties.hasProject() ? properties.project() : "(키에 포함된 값)",
+                properties.modelOrDefault());
+
+        if (key.startsWith("sk-proj-")) {
+            log.info("[openai] 프로젝트 키입니다. 키에 조직·프로젝트가 이미 포함돼 있습니다.");
+        } else {
+            log.warn("[openai] 프로젝트 키(sk-proj-)가 아닙니다. "
+                    + "크레딧이 있는 조직이 아니라 계정 기본 조직으로 과금될 수 있습니다. "
+                    + "그 경우 OPENAI_ORG_ID 를 지정하세요.");
+        }
+    }
+
     public <T> Optional<T> completeAsJson(String systemPrompt, String userPrompt, Class<T> type) {
         if (!isEnabled()) {
             log.debug("[openai] API 키가 없어 LLM 판정을 건너뜁니다.");
@@ -85,11 +120,14 @@ public class OpenAiClient {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             throttle();
             try {
-                ChatCompletionResponse response = restClient.post()
+                var entity = restClient.post()
                         .uri("/chat/completions")
                         .body(body)
                         .retrieve()
-                        .body(ChatCompletionResponse.class);
+                        .toEntity(ChatCompletionResponse.class);
+
+                logRateLimitOnce(entity.getHeaders());
+                ChatCompletionResponse response = entity.getBody();
 
                 String content = Optional.ofNullable(response)
                         .map(ChatCompletionResponse::choices)
@@ -134,6 +172,39 @@ public class OpenAiClient {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * OpenAI 가 응답 헤더로 알려주는 실제 한도를 기록한다.
+     *
+     * 크레딧이 남아 있어도 요청 한도는 별개다.
+     * 한도는 계정 등급(usage tier)이 정하고, 등급은 누적 결제액으로 올라간다.
+     * 여기 찍히는 숫자가 우리 계정의 진짜 상한이다.
+     */
+    private void logRateLimitOnce(org.springframework.http.HttpHeaders headers) {
+        if (headers == null || !limitLogged.compareAndSet(false, true)) {
+            return;
+        }
+        String requestsPerMin = headers.getFirst("x-ratelimit-limit-requests");
+        String tokensPerMin = headers.getFirst("x-ratelimit-limit-tokens");
+
+        if (requestsPerMin == null && tokensPerMin == null) {
+            log.info("[openai] 한도 헤더를 받지 못했습니다.");
+            return;
+        }
+        log.info("[openai] 계정 한도 — 분당 요청 {}건 / 분당 토큰 {} (모델 {})",
+                requestsPerMin, tokensPerMin, properties.modelOrDefault());
+
+        try {
+            if (requestsPerMin != null && Integer.parseInt(requestsPerMin) < 60) {
+                log.warn("[openai] 분당 요청 한도가 낮습니다({}). "
+                        + "영상 하나에 수십 번 호출하므로 분석이 자주 끊길 수 있습니다. "
+                        + "https://platform.openai.com/settings/organization/limits 에서 등급을 확인하세요.",
+                        requestsPerMin);
+            }
+        } catch (NumberFormatException ignored) {
+            // 헤더 형식이 예상과 다르면 넘어간다
+        }
     }
 
     /** 요청이 한꺼번에 몰리지 않게 최소 간격을 둔다. */
