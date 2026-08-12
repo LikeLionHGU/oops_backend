@@ -5,6 +5,7 @@ import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.*;
 import com.example.oops.service.AnalysisService;
+import com.example.oops.service.VideoDeletionService;
 import com.example.oops.service.VideoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,6 +28,7 @@ public class VideoController {
 
     private final VideoService videoService;
     private final AnalysisService analysisService;
+    private final VideoDeletionService videoDeletionService;
 
     @Operation(summary = "영상 업로드",
             description = """
@@ -114,6 +116,27 @@ public class VideoController {
     public ResponseEntity<ApiResponse<AnalysisRetryResponse>> retry(@PathVariable Long videoId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.ok("분석 재시작 요청이 접수되었습니다.", analysisService.retry(videoId)));
+    }
+
+    @Operation(summary = "영상 목록",
+            description = "최근 등록순 100건. 관리·디버깅용이며 프론트 화면에는 쓰지 않아도 된다.")
+    @GetMapping
+    public ApiResponse<List<VideoSummaryResponse>> list() {
+        return ApiResponse.ok("영상 목록 조회 성공", videoService.findRecent());
+    }
+
+    @Operation(summary = "영상 삭제",
+            description = """
+                    영상과 분석 결과, 디스크에 저장된 원본·프레임 이미지를 모두 지운다.
+                    되돌릴 수 없다.
+
+                    분석이 진행 중이면 `ANALYSIS_IN_PROGRESS`(409) 가 온다.
+                    백그라운드 작업이 사라진 데이터를 건드리는 것을 막기 위해서다.
+                    """)
+    @DeleteMapping("/{videoId}")
+    public ApiResponse<Void> delete(@PathVariable Long videoId) {
+        videoDeletionService.delete(videoId);
+        return ApiResponse.ok("영상 삭제 성공");
     }
 
     @Operation(summary = "[디버깅] STT 대본 원문",

@@ -162,6 +162,8 @@ Python 서버는 `127.0.0.1`에만 바인딩해 외부에서 접근할 수 없�
 | POST | `/api/v1/videos` (JSON `{url}`) | 유튜브 링크 등록. 나중에 댓글 분석에 원본 URL이 필요합니다 |
 | GET | `/api/v1/videos/{id}/transcript` | 음성 인식 결과 원문 (디버깅) |
 | GET | `/api/v1/videos/{id}/screen-texts` | 화면 자막 인식 결과 원문 (디버깅) |
+| GET | `/api/v1/videos` | 영상 목록 (최근 100건, 관리용) |
+| DELETE | `/api/v1/videos/{id}` | 영상·결과·파일 삭제 |
 
 앞의 둘은 프론트가 안 써도 됩니다. 분석 결과가 이상할 때 원인을 찾는 용도입니다.
 

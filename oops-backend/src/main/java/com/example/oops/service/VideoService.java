@@ -6,6 +6,9 @@ import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.SourceType;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.VideoRegisterRequest;
+import com.example.oops.dto.VideoSummaryResponse;
+
+import java.util.List;
 import com.example.oops.repository.VideoRepository;
 import com.example.oops.storage.StorageService;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +53,16 @@ public class VideoService {
                 .channelName(request.channelName())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
+    }
+
+    /** 최근 등록순 목록. 관리·디버깅용이라 페이징 없이 최근 100건만 준다. */
+    public List<VideoSummaryResponse> findRecent() {
+        return videoRepository.findAll(
+                        org.springframework.data.domain.PageRequest.of(0, 100,
+                                org.springframework.data.domain.Sort.by(
+                                        org.springframework.data.domain.Sort.Direction.DESC, "id")))
+                .map(VideoSummaryResponse::from)
+                .getContent();
     }
 
     public Video getEntity(Long videoId) {

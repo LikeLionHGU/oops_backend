@@ -14,4 +14,6 @@ public interface AnalysisJobRepository extends JpaRepository<AnalysisJob, Long> 
     Optional<AnalysisJob> findByJobKey(String jobKey);
 
     boolean existsByVideoIdAndStatusIn(Long videoId, List<AnalysisStatus> statuses);
+
+    void deleteByVideoId(Long videoId);
 }

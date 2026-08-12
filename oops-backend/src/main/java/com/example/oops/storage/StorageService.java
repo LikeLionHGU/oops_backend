@@ -85,6 +85,47 @@ public class StorageService {
                 .toString().replace('\\', '/');
     }
 
+    /** 영상 하나에 딸린 파일을 전부 지운다. 원본과 프레임 모두. */
+    public void deleteVideoFiles(Long videoId) {
+        deleteDirectory(resolve("videos/%d".formatted(videoId)));
+        deleteDirectory(frameDir(videoId));
+    }
+
+    /** 저장소가 지금 몇 바이트를 쓰고 있는지 */
+    public long usedBytes() {
+        Path root = root();
+        if (!Files.isDirectory(root)) return 0;
+        try (var paths = Files.walk(root)) {
+            return paths.filter(Files::isRegularFile).mapToLong(p -> {
+                try {
+                    return Files.size(p);
+                } catch (IOException e) {
+                    return 0;
+                }
+            }).sum();
+        } catch (IOException e) {
+            log.warn("저장소 용량 계산 실패", e);
+            return 0;
+        }
+    }
+
+    private void deleteDirectory(Path dir) {
+        if (!Files.isDirectory(dir)) return;
+        try (var paths = Files.walk(dir)) {
+            // 깊은 것부터 지워야 디렉터리가 비워진 뒤 삭제된다
+            paths.sorted((a, b) -> b.getNameCount() - a.getNameCount())
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException ignored) {
+                            // 한둘 못 지워도 나머지는 계속 진행한다
+                        }
+                    });
+        } catch (IOException e) {
+            log.warn("파일 정리 실패 {}", dir, e);
+        }
+    }
+
     public void deleteFrames(Long videoId) {
         Path dir = frameDir(videoId);
         if (!Files.isDirectory(dir)) return;

@@ -35,6 +35,11 @@ oops:
   storage:
     location: ./uploads              # 업로드 파일 저장 위치
 
+    # 며칠 지난 영상을 자동으로 지울지. 매일 새벽 4시에 정리한다.
+    # 0 이면 정리하지 않는다. 로컬 개발에서는 테스트 영상이 사라지면 곤란하므로 꺼 둔다.
+    # 배포 서버에서는 7 정도로 켜는 것을 권한다. 안 그러면 디스크가 조용히 찬다.
+    retention-days: 0
+
   # 분석 서버(oops-analysis) 없이 파이프라인만 돌려볼 때 true
   use-dummy-transcript: false
 
