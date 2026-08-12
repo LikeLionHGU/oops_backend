@@ -5,4 +5,8 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
 openai==1.59.6
-yt-dlp==2025.1.15
+# yt-dlp 는 버전을 고정하지 않는다.
+# 유튜브가 수시로 내부 구조를 바꾸기 때문에, 고정해두면 몇 달 안에 다운로드가 깨진다.
+# 유튜브 분석이 안 되면 먼저 이것부터 최신으로 올려볼 것:
+#   pip install --upgrade yt-dlp
+yt-dlp

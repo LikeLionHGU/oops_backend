@@ -77,10 +77,20 @@ def prepare(video_url: str | None, file_path: str | None) -> PreparedVideo:
         "quiet": True,
         "no_warnings": True,
         "merge_output_format": "mp4",
+        # 유튜브가 봇으로 보고 막는 경우가 있어 클라이언트를 바꿔 시도한다
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "retries": 3,
     }
-    with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(video_url, download=True)
-        downloaded = Path(ydl.prepare_filename(info))
+    try:
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            downloaded = Path(ydl.prepare_filename(info))
+    except Exception as e:
+        # 유튜브 차단, 연령 제한, 비공개 영상 등. 원인을 그대로 올려보내야 진단이 된다.
+        raise MediaError(
+            f"영상을 받아오지 못했습니다: {e}\n"
+            "yt-dlp 가 오래됐을 수 있습니다. pip install --upgrade yt-dlp 로 올려보세요."
+        ) from e
 
     if not downloaded.exists():
         candidates = list(workdir.glob("source.*"))

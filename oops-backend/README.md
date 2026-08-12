@@ -127,6 +127,28 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 `type`이 discriminator이고, 해당 타입에 없는 필드는 JSON에서 아예 빠진다
 (`default-property-inclusion: non_null`).
 
+## 유튜브 링크 분석
+
+```powershell
+.\scripts\smoke-test.ps1 -Url "https://www.youtube.com/watch?v=..."
+```
+
+또는 `POST /api/v1/videos` 에 `{"url": "..."}` 를 JSON 으로 보낸다.
+응답 형태는 파일 업로드와 같다.
+
+**주의할 점**
+
+- `GET /stream` 이 동작하지 않는다. 로컬에 파일이 남지 않기 때문이다.
+  프론트에서는 유튜브 임베드를 쓰거나 파일 업로드를 안내한다.
+- yt-dlp 가 오래되면 유튜브가 막는다. 다운로드 실패 시 먼저 이것부터 시도할 것.
+  ```powershell
+  cd ..\oops-analysis
+  .\.venv\Scripts\activate
+  pip install --upgrade yt-dlp
+  ```
+- 연령 제한·비공개·지역 제한 영상은 받을 수 없다.
+- 분석 서버가 영상을 임시 폴더에 받았다가 끝나면 지운다. 디스크 여유가 필요하다.
+
 ## 분석 흐름
 
 | stage | progress | 하는 일 |
