@@ -23,6 +23,13 @@ public record TimelineEventDto(
         String reason,
         String frameUrl,
 
+        /**
+         * 같은 논란이 영상에서 몇 번 등장했는지. 1 이면 한 번만 나온 것.
+         * 2 이상이면 startMs~endMs 가 그 전체 구간을 뜻한다.
+         * (명세에는 없는 추가 필드다. 안 써도 무방하다)
+         */
+        int occurrences,
+
         // SPEECH 전용
         String text,
         List<String> riskTypes,
@@ -42,6 +49,7 @@ public record TimelineEventDto(
                 f.getSeverity(),
                 f.getReason(),
                 frameUrl(f),
+                f.getMergedCount(),
                 caption ? null : f.getText(),
                 caption ? null : List.of(f.getCategory().name()),
                 caption ? f.getSpeechText() : null,

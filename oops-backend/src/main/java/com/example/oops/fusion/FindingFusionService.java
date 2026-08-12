@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +35,15 @@ public class FindingFusionService {
 
     /** 이 시간(ms) 안에 있으면 같은 장면으로 본다 */
     private static final long MERGE_WINDOW_MS = 3000;
+
+    /**
+     * 시간이 떨어져 있어도 내용이 이만큼 같으면 같은 논란으로 본다.
+     *
+     * 영상 내내 떠 있는 고정 자막은 OCR 이 프레임마다 다시 읽어서
+     * 같은 문구가 6초 간격으로 5번, 10번 잡힌다.
+     * 시간만 보고 묶으면 똑같은 카드가 그만큼 쌓인다.
+     */
+    private static final double SAME_ISSUE_THRESHOLD = 0.7;
 
     /** 교차 검증됐을 때 점수를 몇 배로 올릴지 */
     private static final double CROSS_MODAL_BOOST = 1.25;
@@ -101,6 +111,9 @@ public class FindingFusionService {
             RiskFinding representative = cluster.pickRepresentative();
             boolean crossModal = cluster.isCrossModal();
 
+            // 여러 번 등장했다면 카드 하나로 합치고 구간을 처음~끝으로 넓힌다
+            representative.expandRange(cluster.minStartMs(), cluster.maxEndMs());
+
             if (crossModal) {
                 representative.boostScore(representative.getScore() * CROSS_MODAL_BOOST);
                 representative.appendReason("(발언과 화면 양쪽에서 확인됨)");
@@ -118,10 +131,11 @@ public class FindingFusionService {
 
         result.sort(FindingOrder.byPriority());
 
-        log.info("[fusion] 후보 {}건 → 최종 {}건 (교차검증 {}건, 병합으로 제거 {}건)",
+        long repeated = result.stream().filter(f -> f.getMergedCount() > 1).count();
+        log.info("[fusion] 후보 {}건 → 최종 {}건 (교차검증 {}건, 반복 병합 {}건, 제거 {}건)",
                 candidates.size(), result.size(),
                 result.stream().filter(RiskFinding::isCrossModal).count(),
-                candidates.size() - result.size());
+                repeated, candidates.size() - result.size());
         return result;
     }
 
@@ -174,11 +188,17 @@ public class FindingFusionService {
 
             if (!groupOf(first.getCategory()).equals(groupOf(candidate.getCategory()))) return false;
 
-            // 구간이 겹치거나 아주 가까이 붙어 있으면 같은 장면으로 본다
+            // 1) 구간이 겹치거나 아주 가까이 붙어 있으면 같은 장면
             long gap = Math.max(
-                    candidate.getStartMs() - first.getEndMs(),
-                    first.getStartMs() - candidate.getEndMs());
-            return gap <= MERGE_WINDOW_MS;
+                    candidate.getStartMs() - maxEndMs(),
+                    minStartMs() - candidate.getEndMs());
+            if (gap <= MERGE_WINDOW_MS) return true;
+
+            // 2) 시간이 떨어져 있어도 내용이 사실상 같으면 같은 논란
+            //    (영상 내내 떠 있는 고정 자막이 프레임마다 다시 잡히는 경우)
+            return members.stream()
+                    .anyMatch(m -> similarity(m.primaryText(), candidate.primaryText())
+                            >= SAME_ISSUE_THRESHOLD);
         }
 
         void add(RiskFinding finding) {
@@ -187,6 +207,35 @@ public class FindingFusionService {
 
         int size() {
             return members.size();
+        }
+
+        long minStartMs() {
+            return members.stream().mapToLong(RiskFinding::getStartMs).min().orElse(0);
+        }
+
+        long maxEndMs() {
+            return members.stream().mapToLong(RiskFinding::getEndMs).max().orElse(0);
+        }
+
+        /** 조사·기호를 뺀 뒤 겹치는 글자 비율. OCR 오인식이 섞여도 견딜 수 있게 글자 단위로 본다. */
+        private double similarity(String a, String b) {
+            if (a == null || b == null) return 0;
+            String x = a.replaceAll("[^가-힣a-zA-Z0-9]", "");
+            String y = b.replaceAll("[^가-힣a-zA-Z0-9]", "");
+            if (x.isEmpty() || y.isEmpty()) return 0;
+
+            Map<Character, Integer> counts = new HashMap<>();
+            for (char c : x.toCharArray()) counts.merge(c, 1, Integer::sum);
+
+            int common = 0;
+            for (char c : y.toCharArray()) {
+                Integer left = counts.get(c);
+                if (left != null && left > 0) {
+                    counts.put(c, left - 1);
+                    common++;
+                }
+            }
+            return (double) common / Math.min(x.length(), y.length());
         }
 
         /** 확신도가 가장 높은 건을 대표로 삼는다. 같으면 설명이 구체적인 쪽. */

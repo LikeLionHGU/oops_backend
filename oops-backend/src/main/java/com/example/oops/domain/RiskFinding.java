@@ -124,10 +124,24 @@ public class RiskFinding extends BaseTimeEntity {
         this.reason = merged.length() > 1000 ? merged.substring(0, 1000) : merged;
     }
 
+    /**
+     * 같은 논란이 여러 번 등장할 때 구간을 넓힌다.
+     * 영상 내내 떠 있는 고정 자막 같은 경우, 카드 하나로 "00:06 ~ 00:32" 처럼 보여주기 위해서다.
+     */
+    public void expandRange(long startMs, long endMs) {
+        this.startMs = Math.min(this.startMs, startMs);
+        this.endMs = Math.max(this.endMs, endMs);
+    }
+
     public void attachFrame(VideoFrame frame) {
         if (this.frame == null) {
             this.frame = frame;
         }
+    }
+
+    /** 이 건의 핵심 텍스트. 중복 판단에 쓴다. */
+    public String primaryText() {
+        return eventType == TimelineEventType.CAPTION ? captionText : text;
     }
 
     /** 근거 원문. 병합 시 대표 선정과 로그에 쓴다. */

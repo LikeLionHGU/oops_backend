@@ -185,9 +185,13 @@ if ($events.Count -eq 0) {
         $rank++
         $color = switch ($e.severity) { "HIGH" { "Red" } "MEDIUM" { "Yellow" } default { "Gray" } }
         $ts = [TimeSpan]::FromMilliseconds($e.startMs).ToString("mm\:ss")
+        if (($e.endMs - $e.startMs) -gt 4000) {
+            $ts += " ~ " + [TimeSpan]::FromMilliseconds($e.endMs).ToString("mm\:ss")
+        }
+        $rep = if ($e.occurrences -gt 1) { " ({0}회 반복)" -f $e.occurrences } else { "" }
 
         Write-Host ""
-        Write-Host ("  #{0}  {1}  [{2}]  {3}" -f $rank, $ts, $e.type, $e.severity) -ForegroundColor $color
+        Write-Host ("  #{0}  {1}  [{2}]  {3}{4}" -f $rank, $ts, $e.type, $e.severity, $rep) -ForegroundColor $color
         if ($e.type -eq "SPEECH") {
             Write-Host ("      발언: {0}" -f $e.text)
             Write-Host ("      유형: {0}" -f ($e.riskTypes -join ", "))

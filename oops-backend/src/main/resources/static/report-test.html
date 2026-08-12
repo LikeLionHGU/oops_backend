@@ -172,7 +172,9 @@ async function load() {
       ${thumb}
       <div style="flex:1">
         <div class="head">
-          <span class="time">${fmt(e.startMs)}</span>
+          <span class="time">${e.endMs - e.startMs > 4000
+              ? fmt(e.startMs) + ' ~ ' + fmt(e.endMs) : fmt(e.startMs)}</span>
+          ${e.occurrences > 1 ? `<span class="tag">${e.occurrences}회 반복</span>` : ''}
           <span class="tag">${e.type === 'SPEECH' ? '발언' : '화면'}</span>
           <span class="chip ${e.severity.toLowerCase()}">${e.severity}</span>
           <span style="color:#999;font-size:12px">#${i + 1}</span>
