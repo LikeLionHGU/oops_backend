@@ -66,11 +66,29 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
               놓치는 것이 잘못 올리는 것보다 나쁘다.
             - 다만 명백히 아무 문제 없는 일상 대화까지 올리지는 마라.
 
+            판단 절차 (반드시 이 순서로):
+            1. 이 말이 향하는 대상이 누구/무엇인지 먼저 정한다.
+            2. 그 대상을 실제로 깎아내리는지 본다.
+            3. 대상이 없거나, 대상이 화자 자신이거나, 관용 표현이면 잡지 않는다.
+
+            고유명사가 나왔다고 그 대상을 비판한 것이 아니다.
+            한국어에는 브랜드나 이름을 빌려 쓰는 관용 표현이 많다.
+            이런 경우 대상은 그 브랜드가 아니라 대화 상대이거나 아예 없다.
+
+            잡지 말아야 하는 예시:
+            - "롯데리아 같은 소리 하고 있어"   → 관용 표현. 대상은 대화 상대이지 롯데리아가 아니다.
+            - "무슨 소리야 그게"              → 대상 없음
+            - "제가 좀 못해서요"              → 대상이 화자 자신
+            - "이 김치찌개 좀 짜네요"          → 특정 업체가 아닌 개별 음식에 대한 단순 감상
+
             반드시 잡아야 하는 예시:
-            - "너무 특색이 없어가지고"      → BELITTLEMENT (특정 가게에 대한 부정적 평가)
-            - "저기는 진짜 별로예요"        → BELITTLEMENT (대상이 특정되는 혹평)
-            - "그 사람 좀 이상하지 않아요?"  → MOCKERY (인물에 대한 부정적 언급)
-            - "몸에 안 좋은 거 먹지 마세요"  → BELITTLEMENT (특정 업종에 대한 부정적 규정)
+            - "너무 특색이 없어가지고"      → BELITTLEMENT (대상: 소개 중인 가게/메뉴)
+            - "저기는 진짜 별로예요"        → BELITTLEMENT (대상: 특정 장소)
+            - "그 사람 좀 이상하지 않아요?"  → MOCKERY (대상: 특정 인물)
+            - "몸에 안 좋은 패스트푸드"      → BELITTLEMENT (대상: 특정 업종)
+
+            대본을 훑을 때 눈에 띄는 것 몇 개만 고르지 마라.
+            모든 줄을 하나씩 검토하고, 해당하는 줄은 전부 올려라.
 
             다음은 논란이 아니다. 잡지 마라.
             - 사실 관찰, 통계나 경향 서술 ("요즘은 ~하는 추세다")
@@ -89,9 +107,11 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
             판단이 서지 않으면 낮은 점수로라도 올려라. 놓치는 것보다는 낫다.
 
             반드시 이 JSON 형식으로만 답한다:
-            {"findings":[{"index":0,"category":"MOCKERY","score":0.8,"reason":"왜 논란이 될 수 있는지 한 문장"}]}
+            {"findings":[{"index":0,"target":"이 발언이 향하는 대상","category":"MOCKERY","score":0.8,"reason":"왜 논란이 될 수 있는지 한 문장"}]}
 
             index 는 입력으로 준 대본 줄의 번호다. score 는 0.0~1.0 확신도다.
+            target 은 그 발언이 실제로 깎아내리는 대상이다. 빈칸으로 두지 마라.
+            대상을 한 단어로 못 적겠으면 애초에 논란이 아니다. 그 줄은 빼라.
             reason 은 한국어로 쓴다.
             """;
 
@@ -158,6 +178,15 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
             TranscriptSegment segment = window.get(localIndex);
             double score = item.score() == null ? 0.5 : Math.max(0.0, Math.min(1.0, item.score()));
 
+            // 대상을 못 적었다면 모델이 근거 없이 올린 것이다. 버린다.
+            if (item.target() == null || item.target().isBlank()) {
+                continue;
+            }
+
+            String reason = "(대상: %s) %s".formatted(
+                    item.target(),
+                    item.reason() == null ? "논란이 될 수 있습니다." : item.reason());
+
             findings.add(RiskFinding.builder()
                     .video(context.video())
                     .eventType(TimelineEventType.SPEECH)
@@ -167,7 +196,7 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
                     .startMs(segment.getStartMs())
                     .endMs(segment.getEndMs())
                     .text(segment.getText())
-                    .reason(item.reason())
+                    .reason(reason)
                     .build());
         }
         return findings;
@@ -204,5 +233,5 @@ public class SpeechRiskAnalyzer implements ContentAnalyzer {
     // ----- LLM 응답 매핑 -----
     record LlmResult(List<LlmFinding> findings) {}
 
-    record LlmFinding(Integer index, String category, Double score, String reason) {}
+    record LlmFinding(Integer index, String target, String category, Double score, String reason) {}
 }
