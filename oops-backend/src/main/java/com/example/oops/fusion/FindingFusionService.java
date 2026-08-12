@@ -67,6 +67,9 @@ public class FindingFusionService {
         MERGE_GROUP.put(RiskCategory.MOCKERY, "PUTDOWN");
         MERGE_GROUP.put(RiskCategory.BELITTLEMENT, "PUTDOWN");
 
+        MERGE_GROUP.put(RiskCategory.AD_DEMONETIZED, "AD");
+        MERGE_GROUP.put(RiskCategory.AD_LIMITED, "AD");
+
         MERGE_GROUP.put(RiskCategory.FACT_ERROR, "FACT");
         MERGE_GROUP.put(RiskCategory.MISINFORMATION, "FACT");
         MERGE_GROUP.put(RiskCategory.UNVERIFIED_CLAIM, "FACT");
@@ -84,6 +87,10 @@ public class FindingFusionService {
     private static final Map<RiskCategory, Integer> CATEGORY_WEIGHT = new EnumMap<>(RiskCategory.class);
 
     static {
+        // 수익과 직결되므로 가장 위에 보여준다
+        CATEGORY_WEIGHT.put(RiskCategory.AD_DEMONETIZED, 120);
+        CATEGORY_WEIGHT.put(RiskCategory.AD_LIMITED, 110);
+
         CATEGORY_WEIGHT.put(RiskCategory.HATE_SPEECH, 100);
         CATEGORY_WEIGHT.put(RiskCategory.DISCRIMINATION, 95);
         CATEGORY_WEIGHT.put(RiskCategory.PRIVACY, 90);

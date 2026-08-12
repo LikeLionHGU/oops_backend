@@ -24,6 +24,10 @@ public enum RiskCategory {
     PRIVACY("개인정보 노출"),
     ADVERTISING("광고/협찬 미표기"),
 
+    // 유튜브 수익화 (광고주 친화 가이드라인)
+    AD_DEMONETIZED("광고 수익 없음"),
+    AD_LIMITED("광고 제한 (노란 딱지)"),
+
     // 화면(OCR) 관련
     CAPTION_MISMATCH("자막과 발언 불일치"),
     SCREEN_TEXT("화면 자막 문제"),

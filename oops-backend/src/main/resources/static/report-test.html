@@ -125,7 +125,12 @@ async function load() {
 
   // 3) 요약
   const s = report.summary;
+  const adColor = { DEMONETIZED: 'high', LIMITED: 'medium', MONETIZED: 'low' };
+  const adLabel = { DEMONETIZED: '광고 수익 없음', LIMITED: '노란 딱지 위험', MONETIZED: '광고 정상' };
   $('summary').innerHTML =
+    `<span class="chip ${adColor[report.adSuitability] ?? 'low'}">` +
+    `${adLabel[report.adSuitability] ?? report.adSuitability}</span>` +
+    `<span class="chip low">${report.genre ?? ''}</span>` +
     `<span class="chip high">높음 ${s.high}</span>` +
     `<span class="chip medium">중간 ${s.medium}</span>` +
     `<span class="chip low">낮음 ${s.low}</span>`;

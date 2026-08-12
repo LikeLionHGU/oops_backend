@@ -94,13 +94,34 @@ public class AnalysisService {
                 .sorted(FindingOrder.byPriority())
                 .toList();
 
+        AdSuitability adSuitability = predictAdSuitability(findings);
+
         return new AnalysisReportResponse(
                 video.getId(),
                 job.getJobKey(),
                 job.getStatus(),
+                video.genreOrGeneral(),
+                adSuitability,
+                adSuitability.getNote(),
                 RiskSummary.of(findings),
                 findings.stream().map(TimelineEventDto::from).toList()
         );
+    }
+
+    /**
+     * 영상 전체의 광고 적합성.
+     * 유튜브도 가장 심한 구간을 기준으로 등급을 매기므로 최악값을 따른다.
+     */
+    private AdSuitability predictAdSuitability(List<RiskFinding> findings) {
+        AdSuitability worst = AdSuitability.MONETIZED;
+        for (RiskFinding f : findings) {
+            if (f.getCategory() == RiskCategory.AD_DEMONETIZED) {
+                worst = worst.worse(AdSuitability.DEMONETIZED);
+            } else if (f.getCategory() == RiskCategory.AD_LIMITED) {
+                worst = worst.worse(AdSuitability.LIMITED);
+            }
+        }
+        return worst;
     }
 
     /** STT 대본 원문 (디버깅·대본 패널용) */

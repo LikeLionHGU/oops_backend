@@ -100,7 +100,25 @@ ECONOMY_POLICY / INVESTMENT_FINANCE / INTERVIEW_PODCAST / GENERAL
 **선택 필드입니다.** 안 보내면 대본을 보고 자동으로 판별하므로
 기존 요청은 그대로 동작합니다. 나중에 UI 에 유형 선택을 넣으면 정확도가 올라갑니다.
 
-### 3-5. 에러 코드 `INVALID_REQUEST` 추가
+### 3-5. `/report` 에 `adSuitability`, `genre` 추가
+
+```json
+{
+  "genre": "INTERVIEW_PODCAST",
+  "adSuitability": "LIMITED",
+  "adSuitabilityNote": "광고가 일부만 붙거나 단가가 크게 떨어집니다.",
+  "summary": { "high": 2, "medium": 3, "low": 5 },
+  "events": [ ... ]
+}
+```
+
+`adSuitability` 는 유튜브 노란 딱지 예측입니다.
+`MONETIZED` / `LIMITED` / `DEMONETIZED` 세 값이며, 가장 심한 구간을 기준으로 합니다.
+구간별 문제는 `events` 안에 `AD_LIMITED`, `AD_DEMONETIZED` 카테고리로 들어갑니다.
+
+둘 다 명세에 없는 추가 필드라 안 써도 무방합니다.
+
+### 3-6. 에러 코드 `INVALID_REQUEST` 추가
 
 필수 값 누락이나 잘못된 파라미터에 쓰는 400 코드입니다.
 명세 §1-6 목록에는 없었지만 유효성 검사 실패를 표현할 코드가 필요했습니다.

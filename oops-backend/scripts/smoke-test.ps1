@@ -162,6 +162,11 @@ if (-not $report) { Fail "리포트를 가져오지 못했습니다."; exit 1 }
 
 $events = @($report.events)
 Write-Host ""
+$adColor = switch ($report.adSuitability) {
+    "DEMONETIZED" { "Red" } "LIMITED" { "Yellow" } default { "Green" }
+}
+Write-Host ("  영상 유형: {0}" -f $report.genre)
+Write-Host ("  광고 적합성: {0} — {1}" -f $report.adSuitability, $report.adSuitabilityNote) -ForegroundColor $adColor
 Write-Host ("  심각도: HIGH {0} / MEDIUM {1} / LOW {2}" -f `
     $report.summary.high, $report.summary.medium, $report.summary.low) -ForegroundColor Magenta
 

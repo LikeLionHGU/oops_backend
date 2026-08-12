@@ -150,7 +150,7 @@ public class AnalysisPipeline {
         return switch (analyzer.key()) {
             case "screen-text", "screen-text-risk" -> AnalysisStage.OCR;
             case "caption-mismatch", "timeliness" -> AnalysisStage.MULTIMODAL;
-            case "fact-check" -> AnalysisStage.TEXT_RISK;
+            case "fact-check", "monetization" -> AnalysisStage.TEXT_RISK;
             case "pose" -> AnalysisStage.SCENE_DETECTION;
             default -> AnalysisStage.TEXT_RISK;
         };

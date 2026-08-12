@@ -171,6 +171,7 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 | `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 룰 탐지 | CAPTION |
 | `screen-text-risk` | `ScreenTextRiskAnalyzer` | OpenAI | 화면 자막 LLM 판정 (OCR 깨짐 보정 포함) | CAPTION |
 | `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언 vs 자막 대조 — **기본 비활성** | CAPTION |
+| `monetization` | `MonetizationRiskAnalyzer` | OpenAI | **노란 딱지가 붙을지** | SPEECH/CAPTION |
 | `fact-check` | `FactCheckAnalyzer` | OpenAI | **주장이 사실인지** (경제·투자 영상만) | SPEECH |
 | `timeliness` | `TimelinessAnalyzer` | OpenAI | **지금 시점에 다뤄도 되는 주제인지** | SPEECH/CAPTION |
 | `comment` | `CommentAnalyzer` | — | **미구현** (스텁) | — |
@@ -190,6 +191,45 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 지금은 **발언과 화면을 각각 독립적으로 분석**하고,
 같은 시간대에 같은 유형이 잡히면 병합 단계에서 한 건으로 합친다.
 양쪽에서 확인된 건은 근거가 강하므로 점수를 올린다.
+
+### 노란 딱지 예측 (`MonetizationRiskAnalyzer`)
+
+크리에이터에게는 논란보다 이쪽이 더 직접적인 손해다.
+올린 뒤에야 알게 되고, 그때는 초기 조회수가 이미 지나간 뒤다.
+
+[유튜브 광고주 친화적인 콘텐츠 가이드라인](https://support.google.com/youtube/answer/6162278)
+14개 주제를 기준으로 판정한다.
+
+```
+부적절한 언어 · 폭력 · 성인용 · 충격적 · 유해한 행위 · 증오/경멸
+약물 · 총기 · 논란의 소지 · 민감한 사건 · 부정 행위 조장
+아동 부적절 · 도발/비하 · 담배
+```
+
+등급은 셋이다.
+
+| 등급 | 뜻 |
+|---|---|
+| `MONETIZED` | 광고 정상 |
+| `LIMITED` | **노란 딱지.** 광고가 일부만 붙거나 단가가 떨어짐 |
+| `DEMONETIZED` | 광고가 아예 안 붙음 |
+
+`GET /report` 의 `adSuitability` 로 영상 전체 등급이 나가고,
+구간별 문제는 `events` 에 들어간다. 유튜브도 가장 심한 구간을 기준으로
+등급을 매기므로 전체 등급은 최악값을 따른다.
+
+프롬프트에 두 가지를 강조해 넣었다.
+
+- **맥락이 결정한다.** 유튜브는 같은 내용도 교육·뉴스·다큐 맥락이면 통과시킨다.
+  마약을 "설명" 하는 것과 "미화" 하는 것은 완전히 다르다.
+- **위치가 중요하다.** 초반 15초는 더 엄격하다. 입력에 `[초반]` 표시를 붙여 보낸다.
+
+각 건마다 `suggestion` 으로 조치 방법도 함께 준다 ("해당 단어를 묵음 처리하세요").
+
+> **한계**
+> 우리가 보는 것은 발언과 화면 글자뿐이다.
+> 유혈, 노출, 충격적인 장면 같은 시각 요소는 판단할 수 없다.
+> "안전하다" 는 보장이 아니라 "이 부분이 걸릴 수 있다" 는 경고로 쓴다.
 
 ### 영상 유형별로 다르게 본다
 
