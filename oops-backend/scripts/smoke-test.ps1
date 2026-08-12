@@ -73,8 +73,13 @@ if ($VideoId -eq 0) {
         Write-Host ("  업로드 중... ({0} MB)" -f [math]::Round($item.Length / 1MB, 1))
         $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)"
     } else {
-        $body = @{ url = $Url } | ConvertTo-Json -Compress
-        $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" -H "Content-Type: application/json" -d $body
+        # JSON 을 인라인으로 넘기면 PowerShell 이 큰따옴표를 벗겨서
+        # 서버가 {url:...} 을 받고 파싱에 실패한다. 임시 파일로 넘긴다.
+        $tmp = [IO.Path]::GetTempFileName()
+        @{ url = $Url } | ConvertTo-Json -Compress | Set-Content -Path $tmp -Encoding UTF8 -NoNewline
+        $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" `
+                        -H "Content-Type: application/json" -d "@$tmp"
+        Remove-Item $tmp -ErrorAction SilentlyContinue
     }
     if (-not $raw) { Fail "업로드 응답이 비었습니다."; exit 1 }
     try { $res = $raw | ConvertFrom-Json } catch { Fail "응답 해석 실패:"; Write-Host $raw; exit 1 }

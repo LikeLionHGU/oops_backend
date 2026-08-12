@@ -3,6 +3,7 @@ package com.example.oops.common;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -36,6 +37,17 @@ public class GlobalExceptionHandler {
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .collect(Collectors.joining(", "));
         return build(ErrorCode.INVALID_REQUEST, message, e, false);
+    }
+
+    /**
+     * 요청 본문이 JSON 으로 파싱되지 않는 경우.
+     * 클라이언트가 잘못 보낸 것이므로 400 이어야 한다.
+     * 처리하지 않으면 기본 핸들러에 걸려 500 으로 나가서, 서버 잘못처럼 보인다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnreadableBody(HttpMessageNotReadableException e) {
+        return build(ErrorCode.INVALID_REQUEST,
+                "요청 본문을 읽을 수 없습니다. JSON 형식을 확인하세요.", e, false);
     }
 
     @ExceptionHandler({MethodArgumentTypeMismatchException.class,
