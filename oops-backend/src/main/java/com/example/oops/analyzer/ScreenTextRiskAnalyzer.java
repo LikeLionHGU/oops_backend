@@ -42,7 +42,9 @@ public class ScreenTextRiskAnalyzer implements ContentAnalyzer {
             - SENSITIVE_TOPIC: 선거, 정치, 정당, 특정 정치인, 종교, 젠더, 지역 갈등, 역사 분쟁,
               재난, 사건사고 등 시청자에 따라 강한 반응이 나올 수 있는 주제
             - MOCKERY: 특정 인물, 집단, 직업을 비웃거나 놀리는 표현
-            - BELITTLEMENT: 상대의 능력, 외모, 배경을 깎아내리는 표현
+            - BELITTLEMENT: 특정 대상을 깎아내리는 표현.
+              사람뿐 아니라 가게, 브랜드, 제품, 작품, 지역도 대상이 된다.
+              근거를 든 비평은 낮은 점수, 근거 없는 비하는 높은 점수를 준다.
             - GENERALIZATION: 특정 집단 전체를 부정적으로 단정하는 표현
               단순한 경향 서술이나 사실 전달은 해당하지 않는다
             - HATE_SPEECH: 특정 집단을 향한 혐오 표현
@@ -60,6 +62,8 @@ public class ScreenTextRiskAnalyzer implements ContentAnalyzer {
               SENSITIVE_TOPIC 으로 표시한다. 다만 단순 정보 전달이면 점수를 낮게 준다.
             - 채널명, 구독, 좋아요, 알림설정, 재생시간 같은 UI 텍스트는 무시한다.
             - 사실 전달, 상황 설명, 진행 안내 자막은 논란이 아니다.
+            - 단, 특정 대상(가게, 제품, 인물)에 대한 부정적 평가는
+              감상 형태여도 당사자가 반발할 수 있으므로 잡는다.
             - 문제가 없으면 빈 배열을 반환한다. 억지로 찾아내지 않는다.
 
             반드시 이 JSON 형식으로만 답한다:
