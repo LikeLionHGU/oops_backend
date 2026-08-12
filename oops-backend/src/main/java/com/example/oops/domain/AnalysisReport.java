@@ -25,7 +25,9 @@ public class AnalysisReport extends BaseTimeEntity {
     private int riskScore;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private Severity overallSeverity;
 
     @Column(nullable = false)

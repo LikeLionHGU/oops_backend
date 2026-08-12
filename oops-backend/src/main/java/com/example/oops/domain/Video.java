@@ -17,7 +17,9 @@ public class Video extends BaseTimeEntity {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private SourceType sourceType;
 
     /** 원본 파일명 (업로드일 때) */
@@ -45,7 +47,9 @@ public class Video extends BaseTimeEntity {
     private Integer durationSec;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private AnalysisStatus status;
 
     /**
@@ -53,7 +57,9 @@ public class Video extends BaseTimeEntity {
      * 유형에 따라 실행되는 분석기가 달라진다.
      */
     @Enumerated(EnumType.STRING)
-    @Column(length = 30)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(columnDefinition = "varchar(40)")
     private ContentGenre genre;
 
     @Builder

@@ -26,19 +26,27 @@ public class RiskFinding extends BaseTimeEntity {
 
     /** 프론트 카드 분기 기준 */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private TimelineEventType eventType;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private RiskCategory category;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private Severity severity;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
+    // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private EvidenceSource source;
 
     /** 0.0 ~ 1.0 확신도 */
