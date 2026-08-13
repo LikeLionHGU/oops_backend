@@ -94,7 +94,7 @@ CAPTION   captionText  (speechText 는 현재 비어 있음)
 영상 유형을 지정하면 그에 맞는 분석기가 돌아갑니다.
 
 ```
-ECONOMY_POLICY / INVESTMENT_FINANCE / INTERVIEW_PODCAST / GENERAL
+TALK_PODCAST / GENERAL
 ```
 
 **선택 필드입니다.** 안 보내면 대본을 보고 자동으로 판별하므로
@@ -104,15 +104,15 @@ ECONOMY_POLICY / INVESTMENT_FINANCE / INTERVIEW_PODCAST / GENERAL
 
 ```json
 {
-  "genre": "INTERVIEW_PODCAST",
-  "adSuitability": "LIMITED",
-  "adSuitabilityNote": "광고가 일부만 붙거나 단가가 크게 떨어집니다.",
+  "genre": "TALK_PODCAST",
+  "adSuitability": "MONETIZED",
   "summary": { "high": 2, "medium": 3, "low": 5 },
   "events": [ ... ]
 }
 ```
 
 `adSuitability` 는 유튜브 노란 딱지 예측입니다.
+**현재 해당 분석기는 기본 비활성이라 항상 `MONETIZED` 로 나옵니다.**
 `MONETIZED` / `LIMITED` / `DEMONETIZED` 세 값이며, 가장 심한 구간을 기준으로 합니다.
 구간별 문제는 `events` 안에 `AD_LIMITED`, `AD_DEMONETIZED` 카테고리로 들어갑니다.
 
