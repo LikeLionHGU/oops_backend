@@ -24,6 +24,7 @@ import java.util.List;
 public class SubtitleAnalyzer implements ContentAnalyzer {
 
     private final RiskRuleEngine ruleEngine;
+    private final CommunitySlangRules slangRules;
 
     @Override
     public String key() {
@@ -45,6 +46,23 @@ public class SubtitleAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
 
         for (TranscriptSegment segment : context.transcript()) {
+            // 커뮤니티 표현은 사전으로 먼저 걸러 "확인해 볼 지점" 신호를 준다.
+            // 맥락 판단은 LLM 과 제작자가 한다.
+            for (CommunitySlangRules.Hit hit : slangRules.detect(segment.getText())) {
+                findings.add(RiskFinding.builder()
+                        .video(context.video())
+                        .eventType(TimelineEventType.SPEECH)
+                        .category(hit.category())
+                        .source(EvidenceSource.SUBTITLE)
+                        .score(hit.score())
+                        .startMs(segment.getStartMs())
+                        .endMs(segment.getEndMs())
+                        .text(segment.getText())
+                        .reason(hit.reason())
+                        .target(hit.target())
+                        .build());
+            }
+
             for (RiskRuleEngine.Hit hit : ruleEngine.detect(segment.getText())) {
                 findings.add(RiskFinding.builder()
                         .video(context.video())

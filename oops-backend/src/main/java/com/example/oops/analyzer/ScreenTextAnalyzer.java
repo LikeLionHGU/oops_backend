@@ -22,6 +22,7 @@ import java.util.List;
 public class ScreenTextAnalyzer implements ContentAnalyzer {
 
     private final RiskRuleEngine ruleEngine;
+    private final CommunitySlangRules slangRules;
 
     @Override
     public String key() {
@@ -43,6 +44,22 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
 
         for (ScreenText screenText : context.screenTexts()) {
+            for (CommunitySlangRules.Hit hit : slangRules.detect(screenText.getText())) {
+                findings.add(RiskFinding.builder()
+                        .video(context.video())
+                        .eventType(TimelineEventType.CAPTION)
+                        .category(hit.category())
+                        .source(EvidenceSource.VISION)
+                        .score(hit.score())
+                        .startMs(screenText.getStartMs())
+                        .endMs(screenText.getEndMs())
+                        .captionText(screenText.getText())
+                        .frame(screenText.getFrame())
+                        .reason("화면 자막: " + hit.reason())
+                        .target(hit.target())
+                        .build());
+            }
+
             for (RiskRuleEngine.Hit hit : ruleEngine.detect(screenText.getText())) {
                 findings.add(RiskFinding.builder()
                         .video(context.video())
