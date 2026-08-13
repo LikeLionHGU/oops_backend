@@ -3,6 +3,7 @@ package com.example.oops.fusion;
 import com.example.oops.domain.EvidenceSource;
 import com.example.oops.domain.RiskCategory;
 import com.example.oops.domain.RiskFinding;
+import com.example.oops.service.ReportBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -44,6 +45,15 @@ public class FindingFusionService {
      * 시간만 보고 묶으면 똑같은 카드가 그만큼 쌓인다.
      */
     private static final double SAME_ISSUE_THRESHOLD = 0.7;
+
+    /**
+     * 대상 이름이 이만큼 겹치면 같은 대상으로 본다.
+     *
+     * 같은 것을 두고 분석기마다 다른 유형으로 보고하는 일이 흔하다.
+     * "패스트푸드" 를 한쪽은 비하로, 다른 쪽은 일반화로 잡는 식이다.
+     * 사용자에게는 같은 지적이므로 카드 하나로 합친다.
+     */
+    private static final double SAME_TARGET_THRESHOLD = 0.5;
 
     /** 교차 검증됐을 때 점수를 몇 배로 올릴지 */
     private static final double CROSS_MODAL_BOOST = 1.25;
@@ -128,10 +138,13 @@ public class FindingFusionService {
 
             // 여러 번 등장했다면 카드 하나로 합치고 구간을 처음~끝으로 넓힌다
             representative.expandRange(cluster.minStartMs(), cluster.maxEndMs());
+            if (cluster.size() > 1) {
+                representative.recordOccurrences(cluster.occurrenceTimes());
+            }
 
             if (crossModal) {
                 representative.boostScore(representative.getScore() * CROSS_MODAL_BOOST);
-                representative.appendReason("(발언과 화면 양쪽에서 나타납니다)");
+                representative.appendReason("발언과 화면 양쪽에서 나타납니다.");
                 // 대표가 발언 쪽이라 프레임이 없으면, 같은 묶음의 화면 캡처를 붙여준다
                 cluster.anyFrame().ifPresent(representative::attachFrame);
             }
@@ -199,21 +212,38 @@ public class FindingFusionService {
 
         boolean accepts(RiskFinding candidate) {
             if (members.isEmpty()) return true;
-            RiskFinding first = members.get(0);
 
+            // 1) 같은 대상을 지적한 것이면 유형이 달라도 한 건이다.
+            //    "패스트푸드" 를 두고 한쪽은 BELITTLEMENT, 다른 쪽은 GENERALIZATION 으로
+            //    보고하는 일이 흔하다. 사용자에게는 같은 지적이다.
+            if (sharesTarget(candidate)) return true;
+
+            // 2) 문장이 사실상 같으면 한 건이다.
+            //    영상 내내 떠 있는 자막이 프레임마다 다시 잡히는 경우가 여기 해당한다.
+            if (members.stream().anyMatch(m ->
+                    similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD)) {
+                return true;
+            }
+
+            // 3) 같은 유형이고 시간이 붙어 있으면 같은 장면이다.
+            RiskFinding first = members.get(0);
             if (!groupOf(first.getCategory()).equals(groupOf(candidate.getCategory()))) return false;
 
-            // 1) 구간이 겹치거나 아주 가까이 붙어 있으면 같은 장면
             long gap = Math.max(
                     candidate.getStartMs() - maxEndMs(),
                     minStartMs() - candidate.getEndMs());
-            if (gap <= MERGE_WINDOW_MS) return true;
+            return gap <= MERGE_WINDOW_MS;
+        }
 
-            // 2) 시간이 떨어져 있어도 내용이 사실상 같으면 같은 논란
-            //    (영상 내내 떠 있는 고정 자막이 프레임마다 다시 잡히는 경우)
+        /** 대상 이름이 겹치는지. "할머니" 와 "할머니 맛" 은 같은 대상으로 본다. */
+        private boolean sharesTarget(RiskFinding candidate) {
+            String candidateTarget = candidate.getTarget();
+            if (candidateTarget == null || candidateTarget.isBlank()) return false;
+
             return members.stream()
-                    .anyMatch(m -> similarity(m.primaryText(), candidate.primaryText())
-                            >= SAME_ISSUE_THRESHOLD);
+                    .map(RiskFinding::getTarget)
+                    .filter(t -> t != null && !t.isBlank())
+                    .anyMatch(t -> similarity(t, candidateTarget) >= SAME_TARGET_THRESHOLD);
         }
 
         void add(RiskFinding finding) {
@@ -230,6 +260,25 @@ public class FindingFusionService {
 
         long maxEndMs() {
             return members.stream().mapToLong(RiskFinding::getEndMs).max().orElse(0);
+        }
+
+        /**
+         * 각각 몇 분 몇 초에 나왔는지.
+         * 구간만 보여주면 "00:26 ~ 00:59 사이 어딘가" 로 뭉뚱그려져서
+         * 제작자가 어디를 봐야 할지 알 수 없다.
+         */
+        String occurrenceTimes() {
+            List<String> times = members.stream()
+                    .mapToLong(RiskFinding::getStartMs)
+                    .distinct()
+                    .sorted()
+                    .mapToObj(ReportBuilder::formatTime)
+                    .toList();
+
+            if (times.size() <= 5) {
+                return String.join(", ", times);
+            }
+            return String.join(", ", times.subList(0, 5)) + " 외 " + (times.size() - 5) + "곳";
         }
 
         /** 조사·기호를 뺀 뒤 겹치는 글자 비율. OCR 오인식이 섞여도 견딜 수 있게 글자 단위로 본다. */

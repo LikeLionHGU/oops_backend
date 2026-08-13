@@ -75,6 +75,18 @@ public class RiskFinding extends BaseTimeEntity {
     @Column(length = 1000)
     private String reason;
 
+    /**
+     * 이 지적이 향하는 대상.
+     * 같은 대상에 대한 지적이면 유형이 달라도 한 건으로 묶는 데 쓴다.
+     * "패스트푸드", "할머니" 처럼 짧은 말이 들어온다.
+     */
+    @Column(length = 200)
+    private String target;
+
+    /** 여러 번 등장했을 때 각각의 시각. "00:26, 00:35, 00:44" 형태. */
+    @Column(length = 300)
+    private String occurrenceTimes;
+
     /** 카드에 띄울 화면 캡처. 없으면 null */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "frame_id")
@@ -96,7 +108,7 @@ public class RiskFinding extends BaseTimeEntity {
     private RiskFinding(Video video, TimelineEventType eventType, RiskCategory category,
                         EvidenceSource source, double score, long startMs, long endMs,
                         String text, String speechText, String captionText,
-                        String reason, VideoFrame frame) {
+                        String reason, String target, VideoFrame frame) {
         this.video = video;
         this.eventType = eventType == null ? TimelineEventType.SPEECH : eventType;
         this.category = category;
@@ -109,6 +121,7 @@ public class RiskFinding extends BaseTimeEntity {
         this.speechText = speechText;
         this.captionText = captionText;
         this.reason = reason;
+        this.target = target;
         this.frame = frame;
         this.priority = 0;
         this.crossModal = false;
@@ -139,6 +152,11 @@ public class RiskFinding extends BaseTimeEntity {
     public void expandRange(long startMs, long endMs) {
         this.startMs = Math.min(this.startMs, startMs);
         this.endMs = Math.max(this.endMs, endMs);
+    }
+
+    /** 병합 단계에서 등장 시각 목록을 채운다. */
+    public void recordOccurrences(String times) {
+        this.occurrenceTimes = times;
     }
 
     public void attachFrame(VideoFrame frame) {

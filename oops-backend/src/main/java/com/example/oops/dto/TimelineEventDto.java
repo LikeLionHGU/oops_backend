@@ -47,7 +47,7 @@ public record TimelineEventDto(
                 f.getEndMs(),
                 f.getEventType(),
                 f.getSeverity(),
-                f.getReason(),
+                buildReason(f),
                 frameUrl(f),
                 f.getMergedCount(),
                 caption ? null : f.getText(),
@@ -55,6 +55,18 @@ public record TimelineEventDto(
                 caption ? f.getSpeechText() : null,
                 caption ? f.getCaptionText() : null
         );
+    }
+
+    /**
+     * 여러 번 등장한 건은 어디어디에 나왔는지 함께 보여준다.
+     * 구간만 주면 "00:26 ~ 00:59 사이 어딘가" 로 뭉뚱그려져 찾기 어렵다.
+     */
+    private static String buildReason(RiskFinding f) {
+        String reason = f.getReason() == null ? "" : f.getReason();
+        if (f.getOccurrenceTimes() != null && !f.getOccurrenceTimes().isBlank()) {
+            reason = reason + " (등장: " + f.getOccurrenceTimes() + ")";
+        }
+        return reason;
     }
 
     private static String frameUrl(RiskFinding f) {

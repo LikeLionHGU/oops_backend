@@ -168,17 +168,53 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 
 | key | 클래스 | 필요한 키 | 하는 일 | 이벤트 타입 |
 |---|---|---|---|---|
-| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | **발언과 자막이 달라진 곳** | CAPTION |
 | `entity-check` | `EntityCheckAnalyzer` | OpenAI | **이름·날짜·수치 확인** | SPEECH |
 | `context-check` | `ContextCheckAnalyzer` | OpenAI | **언급된 주제의 최근 배경** | SPEECH/CAPTION |
 | `speech-review` | `SpeechReviewAnalyzer` | OpenAI | 발언 중 확인할 지점 | SPEECH |
 | `screen-text-review` | `ScreenTextReviewAnalyzer` | OpenAI | 화면 자막 중 확인할 지점 | CAPTION |
 | `subtitle` | `SubtitleAnalyzer` | 없음 | 대본 금지어·개인정보 (안전망) | SPEECH |
 | `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 금지어 (안전망) | CAPTION |
+| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언↔자막 비교 — **기본 비활성** | CAPTION |
 | `monetization` | `MonetizationRiskAnalyzer` | OpenAI | 노란딱지 예측 — **기본 비활성** | SPEECH/CAPTION |
 | `comment`, `pose` | — | — | **범위에서 제외** | — |
 
-위 셋이 P0 핵심입니다. 나머지는 보조입니다.
+`entity-check` 와 `context-check` 가 P0 핵심입니다.
+
+### 발언과 자막은 따로 봅니다
+
+`subtitle`, `speech-review`, `entity-check` 는 STT 대본만 봅니다.
+`screen-text`, `screen-text-review` 는 OCR 자막만 봅니다.
+서로 참조하지 않습니다.
+
+각자 찾은 것을 마지막 병합 단계에서 합칩니다.
+같은 지점이 양쪽에서 나오면 한 건으로 묶고 `crossModal` 로 표시합니다.
+
+### 발언↔자막 비교를 왜 껐나
+
+OCR 은 화면의 모든 글자를 읽습니다.
+편집 자막과 간판, 메뉴판, 채널 로고를 구분하지 못합니다.
+
+그래서 "발언은 '할머니의 살을 뜯는 거 같다' 인데 자막은 'POGUES' 다" 같은
+결과가 대부분이었습니다. 확인할 가치가 없습니다.
+
+자막이 발언과 다른 것 자체는 알릴 이유가 없고,
+**자막이나 발언의 내용에 확인할 것이 있을 때만** 알리는 것이 맞습니다.
+화면 텍스트에서 편집 자막만 골라낼 수 있게 되면 다시 켭니다.
+
+### 같은 지적은 한 번만
+
+같은 것을 두고 분석기마다 다른 유형으로 보고합니다.
+"패스트푸드" 를 한쪽은 비하로, 다른 쪽은 일반화로 잡는 식입니다.
+사용자에게는 같은 지적이므로 합칩니다.
+
+병합 조건은 셋입니다.
+
+1. **대상이 같으면** 유형이 달라도 한 건 (`target` 비교)
+2. 문장이 사실상 같으면 한 건 (고정 자막이 프레임마다 잡히는 경우)
+3. 같은 유형이고 시간이 3초 이내면 한 건
+
+병합된 건은 등장 시각을 함께 보여줍니다.
+`(등장: 00:26, 00:35, 00:44)` 처럼 나가므로 어디를 봐야 할지 바로 압니다.
 
 발언과 화면을 각각 **룰 + LLM 두 겹**으로 본다.
 룰은 키가 없어도 도는 안전망이고, 열거할 수 없는 유형은 LLM이 맡는다.

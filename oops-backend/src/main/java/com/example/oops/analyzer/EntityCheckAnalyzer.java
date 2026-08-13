@@ -179,6 +179,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                     .endMs(segment.getEndMs())
                     .text(segment.getText())
                     .reason(reason)
+                    .target(query)
                     .build());
 
             log.info("[fact-check] '{}' → {} (score={})", query, category, score);

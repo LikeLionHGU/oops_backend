@@ -63,10 +63,14 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
             - 사실 전달, 상황 설명, 진행 안내 자막
 
             reason 은 단정하지 말고, 무엇 때문에 다시 봐야 하는지를 사실로 적어라.
-            "부적절합니다" 가 아니라 "이 표현은 ~한 맥락이 있습니다. 확인해 보세요" 형태로.
+            "부적절합니다" 가 아니라 "이 표현은 ~한 맥락이 있습니다" 형태로 끝낸다.
+            "확인해 보세요" 같은 안내는 붙이지 마라. 화면에 한 번만 나간다.
 
             반드시 이 JSON 형식으로만 답한다:
-            {"findings":[{"index":0,"category":"UNFAMILIAR_CONTEXT","score":0.6,"reason":"왜 다시 확인해야 하는지 한 문장","reading":"깨진 글자를 복원한 원래 문구"}]}
+            {"findings":[{"index":0,"target":"이 자막이 향하는 대상","category":"UNFAMILIAR_CONTEXT","score":0.6,"reason":"왜 다시 확인해야 하는지 한 문장","reading":"깨진 글자를 복원한 원래 문구"}]}
+
+            target 은 한 단어에서 세 단어 이내로 짧게 적는다.
+            같은 대상에 대한 지적을 하나로 묶는 데 쓴다.
 
             index 는 자막 번호다. score 는 확인 우선순위다.
             애매하면 0.3~0.5 로 낮게 주되 빼지는 마라.
@@ -148,6 +152,7 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
                     .captionText(caption)
                     .frame(target.getFrame())
                     .reason(item.reason())
+                    .target(item.target())
                     .build());
         }
         return findings;
@@ -173,5 +178,6 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
 
     record LlmResult(List<LlmFinding> findings) {}
 
-    record LlmFinding(Integer index, String category, Double score, String reason, String reading) {}
+    record LlmFinding(Integer index, String target, String category, Double score,
+                      String reason, String reading) {}
 }

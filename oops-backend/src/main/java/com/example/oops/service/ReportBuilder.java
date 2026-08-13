@@ -56,6 +56,9 @@ public class ReportBuilder {
                 .formatted(formatTime(top.getStartMs()), top.getCategory().getLabel(),
                         truncate(top.evidence())));
 
+        // 안내는 여기 한 번만 넣는다. 항목마다 반복하면 읽기 어렵다.
+        summary.append("  ·  최종 수정 여부는 제작자가 판단하시면 됩니다.");
+
         return summary.length() > 2000 ? summary.substring(0, 2000) : summary.toString();
     }
 

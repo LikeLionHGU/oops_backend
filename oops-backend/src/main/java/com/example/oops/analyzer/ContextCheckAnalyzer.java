@@ -228,7 +228,7 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
 
     private RiskFinding build(AnalysisContext context, Line line, Topic topic,
                               Judgement judgement, double score) {
-        String reason = "(관련 이슈: %s) %s 최종 판단은 제작자가 하시면 됩니다.".formatted(
+        String reason = "(관련 이슈: %s) %s".formatted(
                 judgement.issue() == null ? topic.keyword() : judgement.issue(),
                 judgement.reason() == null ? "최근 보도가 이어지고 있는 주제입니다." : judgement.reason());
 
@@ -242,6 +242,7 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
                 .startMs(line.startMs())
                 .endMs(line.endMs())
                 .reason(reason)
+                .target(topic.keyword())
                 .frame(line.frame());
 
         if (line.type() == TimelineEventType.SPEECH) {

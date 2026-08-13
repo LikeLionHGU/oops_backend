@@ -179,7 +179,7 @@ public class CaptionMismatchAnalyzer implements ContentAnalyzer {
                     .speechText(pair.speech().getText())
                     .captionText(pair.caption().getText())
                     .frame(pair.caption().getFrame())
-                    .reason("(발언과 자막 차이) %s 최종 판단은 제작자가 하시면 됩니다.".formatted(
+                    .reason("(발언과 자막 차이) %s".formatted(
                             item.reason() == null
                                     ? "발언과 자막의 표현이 다릅니다." : item.reason()))
                     .build());

@@ -56,7 +56,10 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             유형:
             - UNFAMILIAR_CONTEXT: 특정 커뮤니티·역사·사건과 얽힌 표현.
               화자가 그 맥락을 모르고 썼을 수 있다. 가장 중요한 유형이다.
-            - BELITTLEMENT: 특정 대상(인물, 가게, 브랜드, 작품, 지역)을 깎아내리는 대목
+            - BELITTLEMENT: 특정 대상(인물, 가게, 브랜드, 음식, 작품, 지역)을 깎아내리는 대목.
+              음식점 리뷰에서 메뉴나 맛을 부정적으로 평가하는 대목이 여기 해당한다.
+              "너무 특색이 없어가지고", "돈이 아깝다", "별로예요" 같은 말이다.
+              당사자가 볼 수 있으므로 반드시 잡는다.
             - MOCKERY: 특정 인물이나 집단을 비웃는 대목
             - GENERALIZATION: 집단 전체를 단정하는 대목
             - SENSITIVE_TOPIC: 다루기 민감한 주제를 언급한 대목
@@ -82,10 +85,14 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             - 무엇 때문에 다시 봐야 하는지를 사실로 적어라.
             - 맥락이 있으면 그 맥락을 알려줘라.
 
+            reason 은 사실을 서술하는 한 문장으로 끝낸다.
+            "확인해 보세요", "다시 보세요" 같은 말은 붙이지 마라.
+            그 안내는 결과 화면에 한 번만 나가므로 매 항목마다 반복하면 지저분해진다.
+
             좋은 예:
-            - "특정 세대 전체를 하나로 묶는 표현입니다. 의도한 범위가 맞는지 확인해 보세요."
-            - "이 표현은 온라인 커뮤니티에서 다른 뜻으로 쓰인 사례가 있습니다. 배경을 확인해 보세요."
-            - "소개 중인 가게를 평가하는 대목입니다. 당사자가 볼 수 있는 점을 감안해 보세요."
+            - "특정 세대 전체를 하나로 묶는 표현입니다."
+            - "온라인 커뮤니티에서 다른 뜻으로 쓰인 사례가 있는 표현입니다."
+            - "소개 중인 가게의 메뉴를 평가하는 대목입니다. 당사자가 볼 수 있습니다."
 
             나쁜 예:
             - "부적절한 발언입니다"
@@ -98,7 +105,10 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             index 는 대본 줄 번호다.
             score 는 확인 우선순위다. 꼭 봐야 하면 0.7 이상, 참고용이면 0.3~0.5.
             애매하다고 빼지 마라. 낮은 점수로 올려서 제작자가 판단하게 한다.
-            target 을 한 단어로 못 적겠으면 그 줄은 빼라.
+            target 은 **한 단어에서 세 단어 이내**로 짧게 적어라.
+            문장을 그대로 옮기지 마라. "할머니의 살을 뜯는 거 같다" 가 아니라 "할머니" 로 적는다.
+            같은 대상에 대한 지적을 하나로 묶는 데 쓰기 때문이다.
+            target 을 짧게 못 적겠으면 그 줄은 빼라.
             눈에 띄는 몇 개만 고르지 말고 모든 줄을 검토해라.
             """;
 
@@ -170,13 +180,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
                 continue;
             }
 
-            String reason = "(대상: %s) %s".formatted(
-                    item.target(),
-                    item.reason() == null ? "확인이 필요한 대목입니다." : item.reason());
+            String reason = item.reason() == null ? "확인이 필요한 대목입니다." : item.reason();
 
             // 배경 설명이 있으면 붙인다. 제작자가 판단할 재료가 된다.
             if (item.context() != null && !item.context().isBlank()) {
-                reason = reason + " · 참고: " + item.context();
+                reason = reason + " 참고: " + item.context();
             }
 
             findings.add(RiskFinding.builder()
@@ -189,6 +197,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
                     .endMs(segment.getEndMs())
                     .text(segment.getText())
                     .reason(reason)
+                    .target(item.target())
                     .build());
         }
         return findings;
