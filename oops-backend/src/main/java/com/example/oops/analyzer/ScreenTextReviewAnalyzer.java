@@ -62,6 +62,13 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
             - 채널명, 구독, 좋아요, 알림설정 같은 UI 텍스트
             - 사실 전달, 상황 설명, 진행 안내 자막
 
+            reason 에 구체적인 내용이 없으면 그 항목은 아예 빼라.
+            아래 같은 말은 아무 정보가 없어서 제작자가 확인할 수가 없다. 쓰지 마라.
+            - "특정한 상황이나 맥락에서 사용될 수 있는 표현입니다"
+            - "문화적 맥락과 관련이 있을 수 있습니다"
+            - "민감한 주제를 다루고 있습니다"
+            무엇이 어떤 맥락인지 이름을 대지 못하겠으면 올리지 마라.
+
             reason 은 단정하지 말고, 무엇 때문에 다시 봐야 하는지를 사실로 적어라.
             "부적절합니다" 가 아니라 "이 표현은 ~한 맥락이 있습니다" 형태로 끝낸다.
             "확인해 보세요" 같은 안내는 붙이지 마라. 화면에 한 번만 나간다.
@@ -130,6 +137,10 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
         for (LlmFinding item : result.findings()) {
             int index = item.index() == null ? -1 : item.index();
             if (index < 0 || index >= window.size()) continue;
+
+            if (!VagueReasonFilter.isUseful(item.reason())) {
+                continue;
+            }
 
             ScreenText target = window.get(index);
             double score = item.score() == null ? 0.5 : Math.max(0.0, Math.min(1.0, item.score()));

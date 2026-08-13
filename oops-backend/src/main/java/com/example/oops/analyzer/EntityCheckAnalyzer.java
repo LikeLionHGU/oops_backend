@@ -59,6 +59,13 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             - 검증할 수 없는 개인 경험
             - 상식 수준의 일반론
             - 진행 멘트, 인사말
+            - **지금 있는 자리나 눈앞의 상황에 대한 말**
+              "여기 롯데리아 없나?", "이 가게 문 닫았네" 같은 것.
+              화자가 그 자리에서 보고 하는 말이라 기사로 확인할 수 없다.
+            - **채널이나 출연자 자신에 대한 정보**
+              구독자 수, 조회수, 채널 이력 같은 것.
+              기사에 나올 리 없고 나와도 시점이 다르다.
+            - 농담이나 과장이 분명한 수치 ("백만 번은 말했다")
 
             반드시 이 JSON 형식으로만 답한다:
             {"claims":[{"index":0,"claim":"확인할 내용을 한 문장으로","searchQuery":"검색어"}]}
@@ -81,9 +88,18 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             - OK: 기사와 부합한다. 보고하지 않는다.
 
             판정 원칙:
-            - 기사에 없다고 틀린 것은 아니다. 확신이 없으면 UNVERIFIED_CLAIM 을 쓴다.
+            - **기사가 다른 사안을 다루고 있으면 OK 를 반환해라.**
+              검색어가 같아도 내용이 무관하면 대조할 수 없다.
+              예: 영상에서 "여기 롯데리아 없나?" 라고 했는데
+              기사가 "롯데리아 싱가포르 2호점 오픈" 이면 서로 무관하다.
+              이런 경우 절대 FACT_ERROR 로 판정하지 마라.
+            - 기사에 없다고 틀린 것은 아니다.
+              뒷받침할 내용이 없으면서 영상에서 단정적으로 말했을 때만
+              UNVERIFIED_CLAIM 을 쓴다. 그냥 안 나온다고 쓰지 마라.
             - 기사끼리 엇갈리면 UNVERIFIED_CLAIM 이다.
             - 반올림이나 표현 차이는 넘어간다. 의미가 달라질 때만 잡는다.
+            - 애매하면 OK 를 골라라. 이 유형은 잘못 잡으면 신뢰를 크게 잃는다.
+              "틀렸다" 고 했는데 틀리지 않았으면 제작자가 도구 자체를 안 믿게 된다.
 
             반드시 이 JSON 형식으로만 답한다:
             {"verdict":"FACT_ERROR","score":0.85,"reason":"무엇이 어떻게 다른지 한 문장","correction":"기사에 나온 내용"}
@@ -165,8 +181,19 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             TranscriptSegment segment = transcript.get(claim.index());
             String reason = verdict.reason() == null
                     ? "확인이 필요한 내용입니다." : verdict.reason();
-            if (verdict.correction() != null && !verdict.correction().isBlank()) {
-                reason = reason + " · 기사 내용: " + verdict.correction();
+
+            // "기사에서 확인된 내용은 없습니다" 같은 응답은 아무 도움이 안 된다.
+            // 근거가 없으면 올리지 않는다.
+            String correction = verdict.correction();
+            boolean hasEvidence = correction != null && !correction.isBlank()
+                    && !correction.contains("없습니다") && !correction.contains("없음");
+
+            if (category == RiskCategory.UNVERIFIED_CLAIM && !hasEvidence) {
+                log.info("[entity-check] '{}' 근거가 없어 건너뜁니다", query);
+                continue;
+            }
+            if (hasEvidence) {
+                reason = reason + " · 기사 내용: " + correction;
             }
 
             findings.add(RiskFinding.builder()

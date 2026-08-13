@@ -119,6 +119,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             - "부적절한 발언입니다"
             - "논란이 될 가능성이 높습니다"
             - "삭제하는 것이 좋습니다"
+            - "특정 세대나 문화적 맥락에서 사용될 수 있는 표현입니다"  ← 아무 정보가 없다
+            - "특정한 상황에서 문제가 될 수 있습니다"                 ← 무엇이 문제인지 없다
+
+            무엇이 어떤 맥락인지 이름을 대지 못하겠으면 그 항목은 올리지 마라.
+            뭉뚱그린 문장은 제작자가 확인할 수가 없어서 없느니만 못하다.
 
             반드시 이 JSON 형식으로만 답한다:
             {"findings":[{"index":0,"target":"이 발언이 향하는 대상","category":"UNFAMILIAR_CONTEXT","score":0.6,"reason":"왜 다시 확인해야 하는지 한 문장","context":"관련된 배경이나 사례가 있으면 한 문장. 없으면 생략"}]}
@@ -206,6 +211,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             // 배경 설명이 있으면 붙인다. 제작자가 판단할 재료가 된다.
             if (item.context() != null && !item.context().isBlank()) {
                 reason = reason + " 참고: " + item.context();
+            }
+
+            // 알맹이 없는 사유는 버린다. 제작자가 확인할 수가 없다.
+            if (!VagueReasonFilter.isUseful(reason)) {
+                continue;
             }
 
             findings.add(RiskFinding.builder()
