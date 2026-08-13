@@ -35,14 +35,14 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class TimelinessAnalyzer implements ContentAnalyzer {
+public class ContextCheckAnalyzer implements ContentAnalyzer {
 
     /**
      * 비용과 시간을 아끼려고 주제 수를 제한한다.
      * 인터뷰·팟캐스트는 발언이 곧 논란거리라 조금 더 넓게 본다.
      */
     private static final int MAX_TOPICS = 5;
-    private static final int MAX_TOPICS_INTERVIEW = 8;
+    private static final int MAX_TOPICS_CONVERSATION = 8;
     private static final int NEWS_PER_TOPIC = 8;
 
     /**
@@ -97,31 +97,33 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
             """;
 
     private static final String JUDGE_PROMPT = """
-            너는 유튜브 영상 공개 전에 위험을 점검하는 검수자다.
-            영상에 등장한 주제와, 그 주제로 검색한 최신 뉴스 목록을 받는다.
+            너는 영상 공개 전에 확인할 지점을 짚어주는 검수 보조자다.
+            영상에 등장한 주제와, 그 주제로 검색한 최신 기사를 받는다.
 
-            판단할 것:
-            지금 이 시점에 이 주제를 영상에서 다루면 논란이 될 가능성이 있는가?
+            원칙: 위험한지 아닌지 판정하지 마라.
+            제작자가 이 주제를 다뤄도 되는지는 제작자가 정한다.
+            네가 할 일은 **제작자가 모를 수 있는 최근 상황을 알려주는 것**이다.
 
-            논란 가능성이 높은 경우:
-            - 해당 주제가 지금 진행 중인 사건이다 (선거 기간, 재판 진행 중, 수사 중)
+            알려줄 만한 경우:
+            - 그 주제가 지금 진행 중인 사건이다 (재판, 수사, 선거 기간 등)
             - 최근 기사에서 여론이 갈리거나 갈등이 보도되고 있다
-            - 피해자나 유족이 있는 사건이라 가볍게 다루면 문제가 된다
-            - 선거법, 광고법 등 법적 제약이 걸릴 수 있는 시기다
-            - 언급된 인물이 최근 구설에 올라 있어, 우호적으로 언급하는 것만으로도
-              시청자 반응이 갈릴 수 있다
-            - 과거에는 평범했던 발언인데 최근 사건 때문에 다르게 읽히게 됐다
+            - 피해자나 유족이 있는 사건이다
+            - 언급된 인물이 최근 구설에 올라 있다
+            - 과거에는 평범했던 표현인데 최근 사건 때문에 다르게 읽히게 됐다
 
-            논란 가능성이 낮은 경우:
+            알릴 필요 없는 경우:
             - 오래전에 마무리된 사안이고 최근 기사가 없다
             - 기사들이 단순 정보 전달이고 갈등 요소가 없다
             - 주제가 일반적이라 특정 사건과 무관하다
 
             반드시 이 JSON 형식으로만 답한다:
-            {"risky":true,"score":0.8,"reason":"왜 지금 위험한지 두 문장 이내","issue":"관련된 현재 이슈를 한 줄로"}
+            {"risky":true,"score":0.8,"reason":"제작자가 알아야 할 최근 상황을 두 문장 이내로","issue":"관련된 현재 이슈를 한 줄로"}
 
-            score 는 0.0~1.0 이다. 근거가 약하면 낮게 준다.
-            risky 가 false 면 나머지 필드는 비워도 된다. reason 은 한국어로 쓴다.
+            risky 는 "알릴 가치가 있는가" 라는 뜻이지 "위험하다" 는 판정이 아니다.
+            score 는 확인 우선순위다. 근거가 약하면 낮게 준다.
+            reason 은 사실을 전달하는 문장으로 쓴다.
+            "논란이 될 수 있습니다" 보다 "OO 사건과 관련해 최근 보도가 이어지고 있습니다" 가 낫다.
+            reason 은 한국어로 쓴다.
             """;
 
     private final OpenAiClient openAiClient;
@@ -131,12 +133,12 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
 
     @Override
     public String key() {
-        return "timeliness";
+        return "context-check";
     }
 
     @Override
     public String displayName() {
-        return "시의성 검토";
+        return "배경 확인";
     }
 
     @Override
@@ -177,8 +179,8 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
         log.info("[timeliness] 뉴스 소스={} 기준일={}", newsClient.providerName(), today);
 
-        int limit = context.genreOrGeneral().needsTimelinessFocus()
-                ? MAX_TOPICS_INTERVIEW : MAX_TOPICS;
+        int limit = context.genreOrGeneral().isConversational()
+                ? MAX_TOPICS_CONVERSATION : MAX_TOPICS;
 
         for (Topic topic : topics.stream().limit(limit).toList()) {
             String keyword = topic.keyword() == null ? "" : topic.keyword().trim();
@@ -226,9 +228,9 @@ public class TimelinessAnalyzer implements ContentAnalyzer {
 
     private RiskFinding build(AnalysisContext context, Line line, Topic topic,
                               Judgement judgement, double score) {
-        String reason = "[%s] %s".formatted(
+        String reason = "(관련 이슈: %s) %s 최종 판단은 제작자가 하시면 됩니다.".formatted(
                 judgement.issue() == null ? topic.keyword() : judgement.issue(),
-                judgement.reason() == null ? "지금 시점에 민감할 수 있는 주제입니다." : judgement.reason());
+                judgement.reason() == null ? "최근 보도가 이어지고 있는 주제입니다." : judgement.reason());
 
         RiskFinding.RiskFindingBuilder builder = RiskFinding.builder()
                 .video(context.video())

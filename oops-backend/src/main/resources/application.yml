@@ -71,21 +71,25 @@ oops:
 
   analysis:
     # 실행할 분석기와 순서. 여기 없는 분석기는 빈으로 떠 있어도 실행되지 않는다.
+    # 타깃은 편집을 위임하는 토크·인터뷰·팟캐스트 채널이다.
+    # 제작자가 이미 아는 장면을 다시 알려주는 것은 가치가 없다.
+    # 그들이 놓치기 쉬운 곳만 본다.
     enabled-analyzers:
-      - subtitle          # 대본 키워드/정규식 (LLM 불필요)
-      - speech-risk       # 발언 리스크 LLM 판정 (조롱/비하/일반화/민감주제)
-      - screen-text       # 화면 자막 키워드 검사 (LLM 불필요)
-      - screen-text-risk  # 화면 자막 LLM 판정 (민감 주제 등)
-      - monetization      # 노란딱지 예측 (유튜브 광고주 친화 가이드라인)
-      - fact-check        # 사실 검증 (경제·정책·투자 영상에서만 실행)
-      - timeliness        # 시의성 검토 (뉴스 검색 + LLM). 키 없이도 동작
+      - subtitle          # 대본 금지어·개인정보 (LLM 불필요, 안전망)
+      - speech-review     # 발언 중 확인할 지점 (낯선 맥락, 대상 평가)
+      - screen-text       # 화면 자막 금지어 (LLM 불필요)
+      - screen-text-review # 화면 자막 중 확인할 지점
+      - caption-mismatch  # 발언과 자막이 달라진 지점  ← P0 핵심
+      - entity-check      # 이름·날짜·수치 확인       ← P0 핵심
+      - context-check     # 언급된 주제의 최근 배경    ← P0 핵심
 
-      # 발언과 화면 자막은 각각 독립적으로 분석한다.
-      # 둘을 대조해 "자막이 발언을 왜곡했다" 고 잡던 caption-mismatch 는 껐다.
-      # 예능 자막·요약 자막은 원래 발언과 다른 게 정상이고,
-      # OCR 이 글자를 틀리게 읽으면 그것까지 왜곡으로 잡혀 오탐이 대부분이었다.
-      # OCR 정확도가 올라가면 다시 켜볼 수 있다.
-      # - caption-mismatch
-
-      # - comment         # 미구현
-      # - pose            # 미구현
+      # 아래는 방향이 달라 기본에서 뺐다. 필요하면 한 줄 주석만 풀면 된다.
+      #
+      # monetization : 노란딱지 예측. 광고 정책 문제라 지금 풀려는
+      #                편집·정확성 문제와 성격이 다르다. 나중에 별도 기능으로.
+      # comment      : 미구현. 공개 전에는 그 영상 댓글이 없다.
+      # pose         : 미구현. 장면 분석은 범위에서 뺐다.
+      #
+      # - monetization
+      # - comment
+      # - pose

@@ -62,6 +62,7 @@ public class FindingFusionService {
 
     static {
         MERGE_GROUP.put(RiskCategory.SENSITIVE_TOPIC, "SENSITIVE");
+        MERGE_GROUP.put(RiskCategory.UNFAMILIAR_CONTEXT, "SENSITIVE");
         MERGE_GROUP.put(RiskCategory.TIMING_SENSITIVE, "SENSITIVE");
 
         MERGE_GROUP.put(RiskCategory.MOCKERY, "PUTDOWN");
@@ -101,8 +102,8 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.FACT_ERROR, 96);
         CATEGORY_WEIGHT.put(RiskCategory.MISINFORMATION, 72);
         CATEGORY_WEIGHT.put(RiskCategory.UNVERIFIED_CLAIM, 68);
-        CATEGORY_WEIGHT.put(RiskCategory.OVERCONFIDENT_FORECAST, 66);
-        CATEGORY_WEIGHT.put(RiskCategory.CAPTION_MISMATCH, 70);
+        CATEGORY_WEIGHT.put(RiskCategory.UNFAMILIAR_CONTEXT, 85);
+        CATEGORY_WEIGHT.put(RiskCategory.CAPTION_MISMATCH, 82);
         CATEGORY_WEIGHT.put(RiskCategory.GENERALIZATION, 65);
         CATEGORY_WEIGHT.put(RiskCategory.VIOLENCE, 60);
         CATEGORY_WEIGHT.put(RiskCategory.SEXUAL, 55);
@@ -130,7 +131,7 @@ public class FindingFusionService {
 
             if (crossModal) {
                 representative.boostScore(representative.getScore() * CROSS_MODAL_BOOST);
-                representative.appendReason("(발언과 화면 양쪽에서 확인됨)");
+                representative.appendReason("(발언과 화면 양쪽에서 나타납니다)");
                 // 대표가 발언 쪽이라 프레임이 없으면, 같은 묶음의 화면 캡처를 붙여준다
                 cluster.anyFrame().ifPresent(representative::attachFrame);
             }

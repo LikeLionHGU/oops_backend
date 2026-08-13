@@ -1,17 +1,19 @@
 package com.example.oops.domain;
 
 /**
- * 영상 유형. 유형에 따라 어떤 분석기를 돌릴지가 달라진다.
+ * 영상 유형.
  *
- * 경제·정책 해설물은 틀린 숫자 하나가 논란이 되지만,
- * 인터뷰·팟캐스트는 발언이 지금 시점에 어떻게 읽히느냐가 문제가 된다.
- * 같은 잣대로 보면 둘 다 놓친다.
+ * 타깃은 편집을 위임하는 토크·인터뷰·팟캐스트 채널이다.
+ * 즉흥 발언이 많고, 다른 사람·회사·사건을 자주 언급하며,
+ * 편집자가 붙인 자막이 원래 발언과 달라질 수 있는 구조다.
+ *
+ * 경제 지표나 투자 판단을 다루는 영상은 대상에서 뺐다.
+ * 그쪽은 대본 기반이라 대본만 검토해도 대부분 해결되고,
+ * 우리가 영상 단위로 볼 이유가 약하다.
  */
 public enum ContentGenre {
 
-    ECONOMY_POLICY("경제·정책·데이터 해설", "수치와 인과 설명이 많아 사실 오류가 치명적"),
-    INVESTMENT_FINANCE("투자·주식·금융", "단정적 전망과 미표기 홍보가 문제가 됨"),
-    INTERVIEW_PODCAST("인터뷰·팟캐스트", "발언이 공개 시점의 이슈와 맞물려 논란이 됨"),
+    TALK_PODCAST("토크·인터뷰·팟캐스트", "즉흥 발언과 편집 자막에서 확인할 지점이 생긴다"),
     GENERAL("일반", "특정 유형으로 분류되지 않음");
 
     private final String label;
@@ -30,14 +32,9 @@ public enum ContentGenre {
         return note;
     }
 
-    /** 사실 검증이 중요한 유형인지 */
-    public boolean needsFactCheck() {
-        return this == ECONOMY_POLICY || this == INVESTMENT_FINANCE;
-    }
-
-    /** 발언의 시의성이 특히 중요한 유형인지 */
-    public boolean needsTimelinessFocus() {
-        return this == INTERVIEW_PODCAST;
+    /** 대화형 콘텐츠인지. 확인할 지점이 더 많으므로 넓게 훑는다. */
+    public boolean isConversational() {
+        return this == TALK_PODCAST;
     }
 
     public static ContentGenre fromOrDefault(String value, ContentGenre fallback) {

@@ -54,7 +54,7 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
                         .endMs(screenText.getEndMs())
                         .captionText(screenText.getText())
                         .frame(screenText.getFrame())
-                        .reason("화면 자막에서 " + hit.reason())
+                        .reason("화면 자막: " + hit.reason())
                         .build());
             }
         }

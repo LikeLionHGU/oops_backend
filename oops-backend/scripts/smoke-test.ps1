@@ -156,7 +156,7 @@ if ($sCount -eq 0) {
 }
 
 # ---------------------------------------------------------- 6. 리포트
-Section "6. Timeline Report"
+Section "6. 검수 리스트"
 $report = (Get-Json "$Backend/api/v1/videos/$VideoId/report").data
 if (-not $report) { Fail "리포트를 가져오지 못했습니다."; exit 1 }
 
@@ -167,12 +167,12 @@ $adColor = switch ($report.adSuitability) {
 }
 Write-Host ("  영상 유형: {0}" -f $report.genre)
 Write-Host ("  광고 적합성: {0} — {1}" -f $report.adSuitability, $report.adSuitabilityNote) -ForegroundColor $adColor
-Write-Host ("  심각도: HIGH {0} / MEDIUM {1} / LOW {2}" -f `
+Write-Host ("  우선확인 {0} / 확인권장 {1} / 참고 {2}" -f `
     $report.summary.high, $report.summary.medium, $report.summary.low) -ForegroundColor Magenta
 
 if ($events.Count -eq 0) {
     Write-Host ""
-    Write-Host "  탐지된 논란 요소가 없습니다." -ForegroundColor Yellow
+    Write-Host "  다시 확인할 지점을 찾지 못했습니다." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  가능한 원인:" -ForegroundColor DarkGray
     if ($tCount -eq 0) {
@@ -204,7 +204,7 @@ if ($events.Count -eq 0) {
             Write-Host ("      발언: {0}" -f $e.speechText)
             Write-Host ("      자막: {0}" -f $e.captionText)
         }
-        Write-Host ("      사유: {0}" -f $e.reason)
+        Write-Host ("      확인 이유: {0}" -f $e.reason)
         if ($e.frameUrl) { Write-Host ("      캡처: {0}{1}" -f $Backend, $e.frameUrl) -ForegroundColor DarkGray }
     }
 }

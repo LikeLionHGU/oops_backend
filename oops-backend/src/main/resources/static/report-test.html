@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Timeline Report 확인</title>
+<title>검수 리스트 확인</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif;
@@ -44,9 +44,9 @@
 </head>
 <body>
 
-<h1>Timeline Report 확인</h1>
+<h1>공개 전 검수 리스트</h1>
 <div class="sub">
-  영상 재생(구간 이동)과 화면 캡처 이미지가 제대로 나오는지 확인하는 페이지입니다.
+  다시 확인할 지점을 시간순으로 보여줍니다. 최종 판단은 제작자가 합니다.
   프론트 구현 참고용으로 써도 됩니다.
 </div>
 
@@ -61,7 +61,7 @@
 
 <div class="checks">
   <strong style="font-size:13px">검증 항목</strong>
-  <div id="c-report" class="wait">· 리포트 조회 — 대기</div>
+  <div id="c-report" class="wait">· 검수 리스트 조회 — 대기</div>
   <div id="c-stream" class="wait">· 영상 재생(/stream) — 대기</div>
   <div id="c-seek"   class="wait">· 구간 이동(HTTP Range) — 대기</div>
   <div id="c-frame"  class="wait">· 캡처 이미지(/frames) — 대기</div>
@@ -113,7 +113,7 @@ async function load() {
       return;
     }
     report = body.data;
-    mark('c-report', true, `리포트 조회 성공 — 논란 ${report.events.length}건`);
+    mark('c-report', true, `조회 성공 — 확인할 지점 ${report.events.length}곳`);
   } catch (e) {
     mark('c-report', false, '리포트 조회 실패 — 서버 응답 없음');
     return;
@@ -131,9 +131,9 @@ async function load() {
     `<span class="chip ${adColor[report.adSuitability] ?? 'low'}">` +
     `${adLabel[report.adSuitability] ?? report.adSuitability}</span>` +
     `<span class="chip low">${report.genre ?? ''}</span>` +
-    `<span class="chip high">높음 ${s.high}</span>` +
-    `<span class="chip medium">중간 ${s.medium}</span>` +
-    `<span class="chip low">낮음 ${s.low}</span>`;
+    `<span class="chip high">우선 확인 ${s.high}</span>` +
+    `<span class="chip medium">확인 권장 ${s.medium}</span>` +
+    `<span class="chip low">참고 ${s.low}</span>`;
 
   // 4) 카드
   let frameCount = 0;
@@ -194,7 +194,7 @@ async function load() {
     mark('c-frame', false, '캡처 이미지 없음 — OCR 결과가 없었을 수 있습니다');
   }
   if (report.events.length === 0) {
-    $('events').innerHTML = '<p style="color:#888">탐지된 논란 요소가 없습니다.</p>';
+    $('events').innerHTML = '<p style="color:#888">다시 확인할 지점을 찾지 못했습니다.</p>';
     mark('c-seek', false, '구간 이동 — 확인할 카드가 없습니다');
   }
 }

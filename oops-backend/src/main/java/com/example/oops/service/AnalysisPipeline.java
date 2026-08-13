@@ -180,9 +180,9 @@ public class AnalysisPipeline {
     /** 분석기 종류에 맞는 진행 단계를 고른다. 프론트가 단계 라벨을 그리는 데 쓴다. */
     private AnalysisStage stageOf(ContentAnalyzer analyzer) {
         return switch (analyzer.key()) {
-            case "screen-text", "screen-text-risk" -> AnalysisStage.OCR;
-            case "caption-mismatch", "timeliness" -> AnalysisStage.MULTIMODAL;
-            case "fact-check", "monetization" -> AnalysisStage.TEXT_RISK;
+            case "screen-text", "screen-text-review" -> AnalysisStage.OCR;
+            case "caption-mismatch", "context-check" -> AnalysisStage.MULTIMODAL;
+            case "entity-check", "monetization" -> AnalysisStage.TEXT_RISK;
             case "pose" -> AnalysisStage.SCENE_DETECTION;
             default -> AnalysisStage.TEXT_RISK;
         };

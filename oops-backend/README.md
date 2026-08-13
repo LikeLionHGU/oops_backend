@@ -168,110 +168,53 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 
 | key | 클래스 | 필요한 키 | 하는 일 | 이벤트 타입 |
 |---|---|---|---|---|
-| `subtitle` | `SubtitleAnalyzer` | 없음 | 대본 욕설·혐오·개인정보 룰 탐지 | SPEECH |
-| `speech-risk` | `SpeechRiskAnalyzer` | OpenAI | 조롱·비하·일반화·민감주제 문맥 판정 | SPEECH |
-| `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 룰 탐지 | CAPTION |
-| `screen-text-risk` | `ScreenTextRiskAnalyzer` | OpenAI | 화면 자막 LLM 판정 (OCR 깨짐 보정 포함) | CAPTION |
-| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언 vs 자막 대조 — **기본 비활성** | CAPTION |
-| `monetization` | `MonetizationRiskAnalyzer` | OpenAI | **노란 딱지가 붙을지** | SPEECH/CAPTION |
-| `fact-check` | `FactCheckAnalyzer` | OpenAI | **주장이 사실인지** (경제·투자 영상만) | SPEECH |
-| `timeliness` | `TimelinessAnalyzer` | OpenAI | **지금 시점에 다뤄도 되는 주제인지** | SPEECH/CAPTION |
-| `comment` | `CommentAnalyzer` | — | **미구현** (스텁) | — |
-| `pose` | `PoseAnalyzer` | — | **미구현** (스텁) | — |
+| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | **발언과 자막이 달라진 곳** | CAPTION |
+| `entity-check` | `EntityCheckAnalyzer` | OpenAI | **이름·날짜·수치 확인** | SPEECH |
+| `context-check` | `ContextCheckAnalyzer` | OpenAI | **언급된 주제의 최근 배경** | SPEECH/CAPTION |
+| `speech-review` | `SpeechReviewAnalyzer` | OpenAI | 발언 중 확인할 지점 | SPEECH |
+| `screen-text-review` | `ScreenTextReviewAnalyzer` | OpenAI | 화면 자막 중 확인할 지점 | CAPTION |
+| `subtitle` | `SubtitleAnalyzer` | 없음 | 대본 금지어·개인정보 (안전망) | SPEECH |
+| `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 금지어 (안전망) | CAPTION |
+| `monetization` | `MonetizationRiskAnalyzer` | OpenAI | 노란딱지 예측 — **기본 비활성** | SPEECH/CAPTION |
+| `comment`, `pose` | — | — | **범위에서 제외** | — |
+
+위 셋이 P0 핵심입니다. 나머지는 보조입니다.
 
 발언과 화면을 각각 **룰 + LLM 두 겹**으로 본다.
 룰은 키가 없어도 도는 안전망이고, 열거할 수 없는 유형은 LLM이 맡는다.
 
-### 왜 발언과 자막을 대조하지 않나
+### 판정하지 않는다
 
-`caption-mismatch` 는 만들었지만 껐다.
+모든 프롬프트에 같은 원칙을 넣었다.
 
-자막이 발언과 다른 것은 원래 정상이다. 예능 자막, 요약 자막, 효과음 표기는
-발언을 그대로 옮기지 않는다. 여기에 OCR 오인식까지 겹쳐서
-("부모를 놀라게 울우 아이의 종이로가려진") 오탐이 대부분이었다.
+제작자는 영상을 수십 번 봤고, 알면서 넣은 장면도 있다.
+"이 발언은 부적절합니다", "논란 가능성 85%" 같은 출력은
+제작자의 가치판단과 충돌하고 "나도 알아, 그래서 넣은 건데" 로 끝난다.
 
-지금은 **발언과 화면을 각각 독립적으로 분석**하고,
-같은 시간대에 같은 유형이 잡히면 병합 단계에서 한 건으로 합친다.
-양쪽에서 확인된 건은 근거가 강하므로 점수를 올린다.
-
-### 노란 딱지 예측 (`MonetizationRiskAnalyzer`)
-
-크리에이터에게는 논란보다 이쪽이 더 직접적인 손해다.
-올린 뒤에야 알게 되고, 그때는 초기 조회수가 이미 지나간 뒤다.
-
-[유튜브 광고주 친화적인 콘텐츠 가이드라인](https://support.google.com/youtube/answer/6162278)
-14개 주제를 기준으로 판정한다.
+그래서 출력을 이렇게 바꿨다.
 
 ```
-부적절한 언어 · 폭력 · 성인용 · 충격적 · 유해한 행위 · 증오/경멸
-약물 · 총기 · 논란의 소지 · 민감한 사건 · 부정 행위 조장
-아동 부적절 · 도발/비하 · 담배
+전: 논란 위험 85% — 이 표현은 문제가 있습니다
+후: 확인 필요 — 특정 세대를 하나로 묶는 표현입니다.
+    의도한 범위가 맞는지 확인해 보세요. 최종 판단은 제작자가 하시면 됩니다.
 ```
 
-등급은 셋이다.
+### 노란 딱지 예측 (기본 비활성)
 
-| 등급 | 뜻 |
-|---|---|
-| `MONETIZED` | 광고 정상 |
-| `LIMITED` | **노란 딱지.** 광고가 일부만 붙거나 단가가 떨어짐 |
-| `DEMONETIZED` | 광고가 아예 안 붙음 |
+유튜브 광고주 친화 가이드라인 14개 주제로 판정하는 기능이 구현돼 있지만
+`enabled-analyzers` 에서 빼 두었다.
 
-`GET /report` 의 `adSuitability` 로 영상 전체 등급이 나가고,
-구간별 문제는 `events` 에 들어간다. 유튜브도 가장 심한 구간을 기준으로
-등급을 매기므로 전체 등급은 최악값을 따른다.
+광고 정책 문제라서 지금 풀려는 편집·정확성 문제와 성격이 다르다.
+별도 기능으로 분리하는 것이 맞다고 보고 보류했다.
+필요하면 yml 에서 주석 한 줄만 풀면 된다.
 
-프롬프트에 두 가지를 강조해 넣었다.
+### 영상 유형
 
-- **맥락이 결정한다.** 유튜브는 같은 내용도 교육·뉴스·다큐 맥락이면 통과시킨다.
-  마약을 "설명" 하는 것과 "미화" 하는 것은 완전히 다르다.
-- **위치가 중요하다.** 초반 15초는 더 엄격하다. 입력에 `[초반]` 표시를 붙여 보낸다.
+`TALK_PODCAST` 와 `GENERAL` 두 가지다.
+토크·인터뷰일 때 배경 확인 범위를 넓게(주제 8개까지) 잡는다.
 
-각 건마다 `suggestion` 으로 조치 방법도 함께 준다 ("해당 단어를 묵음 처리하세요").
-
-> **한계**
-> 우리가 보는 것은 발언과 화면 글자뿐이다.
-> 유혈, 노출, 충격적인 장면 같은 시각 요소는 판단할 수 없다.
-> "안전하다" 는 보장이 아니라 "이 부분이 걸릴 수 있다" 는 경고로 쓴다.
-
-### 영상 유형별로 다르게 본다
-
-경제 해설물은 **틀린 숫자 하나**가 곧 논란이 되고,
-인터뷰는 **발언이 공개 시점의 이슈와 맞물릴 때** 논란이 된다.
-같은 잣대로 보면 둘 다 놓친다.
-
-그래서 분석 전에 영상 유형을 정하고, 유형에 맞는 분석기만 돌린다.
-
-| 유형 | 무엇을 중점적으로 보나 |
-|---|---|
-| `ECONOMY_POLICY` | 사실 검증. 수치·정책·인과 주장을 기사와 대조 |
-| `INVESTMENT_FINANCE` | 사실 검증 + 단정적 전망 |
-| `INTERVIEW_PODCAST` | 시의성. 발언과 인물을 최근 이슈와 대조 (주제를 8개까지 확대) |
-| `GENERAL` | 공통 분석만 |
-
-유형은 업로드할 때 `genre` 로 지정할 수 있고, 비워두면 대본을 보고 자동 판별한다
-(`GenreDetector`). 애매하면 `GENERAL` 로 떨어지므로 억지 분류는 하지 않는다.
-
-### 사실 검증 (`FactCheckAnalyzer`)
-
-경제·정책·투자 영상에서만 돌아간다. 브이로그에 팩트체크는 의미가 없다.
-
-LLM 은 통계를 정확히 외우지 못하고 학습 시점 이후 수치는 아예 모른다.
-그래서 검색을 끼워 세 단계로 나눴다.
-
-1. 대본에서 **검증 가능한 주장**만 뽑는다 (의견·전망은 제외)
-2. 각 주장을 뉴스에서 찾아본다
-3. 기사와 대조해 판정한다
-
-판정 결과는 네 가지다.
-
-| 카테고리 | 뜻 |
-|---|---|
-| `FACT_ERROR` | 기사와 명백히 어긋남 |
-| `MISINFORMATION` | 틀리진 않았지만 맥락을 빼 오해를 부름 |
-| `UNVERIFIED_CLAIM` | 근거를 찾을 수 없음 |
-| `OVERCONFIDENT_FORECAST` | 불확실한 미래를 확정처럼 말함 |
-
-확인된 주장(`OK`)은 보고하지 않는다. 문제가 있는 것만 올린다.
+경제·정책·투자 유형은 뺐다. 대본 기반이라 대본만 검토해도 대부분 해결되고,
+영상 단위로 볼 이유가 약했다.
 
 ### 시의성 검토 (`TimelinessAnalyzer`)
 

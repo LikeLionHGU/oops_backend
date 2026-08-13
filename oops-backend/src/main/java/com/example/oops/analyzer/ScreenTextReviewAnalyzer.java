@@ -24,75 +24,65 @@ import java.util.Map;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class ScreenTextRiskAnalyzer implements ContentAnalyzer {
+public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
 
     private static final int WINDOW_SIZE = 20;
     private static final int OVERLAP = 2;
 
     private static final String SYSTEM_PROMPT = """
-            너는 유튜브 영상이 공개된 뒤 논란이 될 만한 부분을 미리 찾아주는 검수자다.
-            영상 화면에 박혀 있던 텍스트(편집 자막, 자막 효과, 화면 문구)를 OCR 로 읽은 결과를 받는다.
+            너는 영상 공개 전에 제작팀이 다시 확인할 지점을 짚어주는 검수 보조자다.
+            화면에 박혀 있던 편집 자막을 OCR 로 읽은 결과를 받는다.
 
-            중요: 이 텍스트는 OCR 인식 결과라 글자가 자주 깨져 있다.
-            예를 들어 "재선거"가 "재선커", "재신거", "쿄공운 재선거" 처럼 나올 수 있다.
-            글자가 조금 깨져 있어도 원래 무슨 말이었는지 추론해서 판단해라.
-            다만 도저히 의미를 알 수 없을 정도로 깨진 것은 무시한다.
+            원칙: 판정하지 않는다. 확인할 지점과 이유만 알려준다.
 
-            판정할 카테고리:
-            - SENSITIVE_TOPIC: 선거, 정치, 정당, 특정 정치인, 종교, 젠더, 지역 갈등, 역사 분쟁,
-              재난, 사건사고 등 시청자에 따라 강한 반응이 나올 수 있는 주제
-            - MOCKERY: 특정 인물, 집단, 직업을 비웃거나 놀리는 표현
-            - BELITTLEMENT: 특정 대상을 깎아내리는 표현.
-              사람뿐 아니라 가게, 브랜드, 제품, 작품, 지역도 대상이 된다.
-              근거를 든 비평은 낮은 점수, 근거 없는 비하는 높은 점수를 준다.
-            - GENERALIZATION: 특정 집단 전체를 부정적으로 단정하는 표현
-              단순한 경향 서술이나 사실 전달은 해당하지 않는다
-            - HATE_SPEECH: 특정 집단을 향한 혐오 표현
-            - DISCRIMINATION: 성별, 인종, 장애, 나이에 따른 차별적 표현
+            편집 자막은 편집자가 넣은 것이라 화자의 의도와 다를 수 있다.
+            그래서 화자 본인이 최종본을 볼 때 놓치기 쉽다. 여기가 사각지대다.
+
+            중요: 이 텍스트는 OCR 결과라 글자가 자주 깨져 있다.
+            "재선거" 가 "재선커", "재신거" 처럼 나올 수 있다.
+            조금 깨져 있어도 원래 무슨 말이었는지 추론해서 판단하고,
+            도저히 알 수 없을 정도로 깨진 것은 무시해라.
+
+            유형:
+            - UNFAMILIAR_CONTEXT: 특정 커뮤니티·역사·사건과 얽힌 표현
+            - BELITTLEMENT: 특정 대상을 깎아내리는 표현
+            - MOCKERY: 특정 인물이나 집단을 비웃는 표현
+            - GENERALIZATION: 집단 전체를 단정하는 표현
+            - SENSITIVE_TOPIC: 다루기 민감한 주제
+            - DISCRIMINATION: 성별·인종·장애·나이와 얽힌 표현
+            - PRIVACY: 타인의 이름, 연락처, 소속이 드러남
             - PROFANITY: 욕설, 비속어
-            - SEXUAL: 선정적 표현
-            - VIOLENCE: 폭력적 표현
-            - MISINFORMATION: 사실로 단정했지만 근거가 불확실한 주장
-            - PRIVACY: 타인의 이름, 연락처, 소속 등 신상 노출
-            - ADVERTISING: 광고나 협찬을 숨기는 표현
 
-            판정 절차 (반드시 이 순서로):
-            1. 이 자막이 향하는 대상이 누구/무엇인지 먼저 정한다.
-            2. 그 대상을 실제로 깎아내리거나 문제 삼는지 본다.
-            3. 대상이 없거나 관용 표현이면 잡지 않는다.
-               고유명사가 나왔다고 그 대상을 비판한 것이 아니다.
-               ("롯데리아 같은 소리" 는 롯데리아 비판이 아니라 관용 표현이다)
+            판정 절차:
+            1. 이 자막이 향하는 대상을 먼저 정한다.
+            2. 대상이 없거나 관용 표현이면 넘어간다.
+            3. 남는 것에 대해 왜 다시 봐야 하는지 적는다.
 
-            판정 원칙:
-            - 편집 자막은 제작자가 의도적으로 넣은 것이므로, 발언보다 책임 소재가 명확하다.
-            - 정치·선거 관련 표현은 그 자체로 중립적이어도, 영상 공개 시점에 따라 논란이 될 수 있으므로
-              SENSITIVE_TOPIC 으로 표시한다. 다만 단순 정보 전달이면 점수를 낮게 준다.
-            - 채널명, 구독, 좋아요, 알림설정, 재생시간 같은 UI 텍스트는 무시한다.
-            - 사실 전달, 상황 설명, 진행 안내 자막은 논란이 아니다.
-            - 단, 특정 대상(가게, 제품, 인물)에 대한 부정적 평가는
-              감상 형태여도 당사자가 반발할 수 있으므로 잡는다.
-            - score 는 확신도다. 애매하면 0.3~0.5 로 낮게 주되 빼지는 마라.
-              놓치는 것이 잘못 올리는 것보다 나쁘다.
-            - 명백히 아무 문제 없는 자막까지 올리지는 마라.
+            넘어가야 할 것:
+            - 채널명, 구독, 좋아요, 알림설정 같은 UI 텍스트
+            - 사실 전달, 상황 설명, 진행 안내 자막
+
+            reason 은 단정하지 말고, 무엇 때문에 다시 봐야 하는지를 사실로 적어라.
+            "부적절합니다" 가 아니라 "이 표현은 ~한 맥락이 있습니다. 확인해 보세요" 형태로.
 
             반드시 이 JSON 형식으로만 답한다:
-            {"findings":[{"index":0,"category":"SENSITIVE_TOPIC","score":0.7,"reason":"한 문장 설명","reading":"깨진 글자를 복원한 원래 문구"}]}
+            {"findings":[{"index":0,"category":"UNFAMILIAR_CONTEXT","score":0.6,"reason":"왜 다시 확인해야 하는지 한 문장","reading":"깨진 글자를 복원한 원래 문구"}]}
 
-            index 는 입력으로 준 자막의 번호다. score 는 0.0~1.0 확신도다.
-            reading 은 OCR 이 깨졌을 때 네가 추론한 원문이고, 깨지지 않았으면 생략해도 된다.
-            reason 은 한국어로 쓴다.
+            index 는 자막 번호다. score 는 확인 우선순위다.
+            애매하면 0.3~0.5 로 낮게 주되 빼지는 마라.
+            reading 은 OCR 이 깨졌을 때만 적는다.
             """;
 
     private final OpenAiClient openAiClient;
 
     @Override
     public String key() {
-        return "screen-text-risk";
+        return "screen-text-review";
     }
 
     @Override
     public String displayName() {
-        return "화면 자막 리스크 분석";
+        return "화면 자막 검토";
     }
 
     @Override

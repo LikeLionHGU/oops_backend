@@ -14,7 +14,7 @@ public record VideoRegisterRequest(
 
         /**
          * 영상 유형 (선택).
-         * ECONOMY_POLICY / INVESTMENT_FINANCE / INTERVIEW_PODCAST / GENERAL
+         * TALK_PODCAST / GENERAL
          * 비워두면 분석 중에 대본을 보고 자동으로 판별한다.
          */
         String genre

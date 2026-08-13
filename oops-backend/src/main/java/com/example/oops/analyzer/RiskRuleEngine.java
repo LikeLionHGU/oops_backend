@@ -66,7 +66,8 @@ public class RiskRuleEngine {
                 .ifPresent(word -> hits.add(new Hit(
                         category,
                         scoreOf(category),
-                        "'" + word + "' 표현이 " + category.getLabel() + "으로 해석될 수 있습니다."
+                        "'" + word + "' 표현이 있습니다. " + category.getLabel()
+                                + " 관점에서 확인해 보세요."
                 ))));
 
         for (PrivacyRule rule : PRIVACY_RULES) {
@@ -75,7 +76,8 @@ public class RiskRuleEngine {
                 hits.add(new Hit(
                         RiskCategory.PRIVACY,
                         0.85,
-                        rule.label() + "로 보이는 값(" + matcher.group() + ")이 노출됩니다."
+                        rule.label() + "로 보이는 값(" + matcher.group() + ")이 나옵니다. "
+                                + "공개해도 되는 정보인지 확인해 보세요."
                 ));
                 break; // 한 문장에서 개인정보는 한 건만 보고한다
             }

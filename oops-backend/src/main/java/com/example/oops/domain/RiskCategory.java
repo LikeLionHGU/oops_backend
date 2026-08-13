@@ -11,16 +11,16 @@ public enum RiskCategory {
     BELITTLEMENT("비하"),
     GENERALIZATION("과도한 일반화"),
     SENSITIVE_TOPIC("민감 주제"),
-    TIMING_SENSITIVE("시의성 논란"),   // 지금 시점에 다루기 곤란한 이슈
+    UNFAMILIAR_CONTEXT("배경 확인 필요"),   // 특정 커뮤니티·역사 맥락이 있는 표현
+    TIMING_SENSITIVE("시점 확인 필요"),   // 최근 이슈와 맞물릴 수 있는 주제
     HATE_SPEECH("혐오 표현"),
     DISCRIMINATION("차별적 발언"),
     PROFANITY("욕설/비속어"),
     SEXUAL("선정적 내용"),
     VIOLENCE("폭력적 내용"),
     MISINFORMATION("사실관계 논란"),
-    FACT_ERROR("사실과 다름"),              // 기사와 대조해 틀린 것으로 확인됨
-    UNVERIFIED_CLAIM("확인되지 않은 주장"),  // 근거를 찾을 수 없음
-    OVERCONFIDENT_FORECAST("단정적 전망"),   // 투자·경제에서 결과를 확언
+    FACT_ERROR("사실과 다름"),              // 기사와 대조해 어긋나는 것으로 확인됨
+    UNVERIFIED_CLAIM("근거 확인 필요"),      // 뒷받침할 자료를 찾지 못함
     PRIVACY("개인정보 노출"),
     ADVERTISING("광고/협찬 미표기"),
 

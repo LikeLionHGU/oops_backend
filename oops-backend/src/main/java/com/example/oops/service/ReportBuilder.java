@@ -26,7 +26,7 @@ public class ReportBuilder {
 
     public String buildSummary(List<RiskFinding> findings) {
         if (findings.isEmpty()) {
-            return "탐지된 논란 요소가 없습니다.";
+            return "다시 확인할 지점을 찾지 못했습니다.";
         }
 
         Map<RiskCategory, Long> byCategory = findings.stream()
@@ -45,14 +45,14 @@ public class ReportBuilder {
         RiskFinding top = findings.get(0);
 
         StringBuilder summary = new StringBuilder(
-                "총 %d건의 논란 요소를 발견했습니다 (%s). 위험도 높음 %d건."
+                "다시 확인할 지점 %d곳을 찾았습니다 (%s). 우선 확인 %d곳."
                         .formatted(findings.size(), breakdown, highCount));
 
         if (crossModalCount > 0) {
-            summary.append(" 발언과 화면 양쪽에서 확인된 건 %d건.".formatted(crossModalCount));
+            summary.append(" 발언과 화면 양쪽에서 나타난 것 %d곳.".formatted(crossModalCount));
         }
 
-        summary.append(" 가장 먼저 확인할 부분: %s의 %s — \"%s\""
+        summary.append(" 먼저 볼 곳: %s의 %s — \"%s\""
                 .formatted(formatTime(top.getStartMs()), top.getCategory().getLabel(),
                         truncate(top.evidence())));
 
