@@ -110,6 +110,8 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     """
     started = time.time()
     engine = _engine()
+
+    interval_sec = _adjust_interval(video.duration_sec, interval_sec)
     frames = extract_frames(video, interval_sec)
     extracted_at = time.time()
 
@@ -181,6 +183,32 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
              extracted_at - started, now - extracted_at,
              (now - extracted_at) / max(1, len(frames)))
     return {"items": items}
+
+
+def _adjust_interval(duration_sec: float, requested: float) -> float:
+    """
+    영상이 길면 프레임 간격을 자동으로 늘린다.
+
+    간격을 고정하면 프레임 수가 영상 길이에 비례해 늘어난다.
+    4초 간격이면 60분 영상에 900장이고, 인식에만 7분 넘게 걸린다.
+    분석 시간의 대부분이 여기서 나온다.
+
+    자막은 보통 몇 초씩 유지되므로 간격이 벌어져도 대부분 잡힌다.
+    놓치는 것보다 아예 끝나지 않는 게 더 나쁘다.
+    """
+    limit = get_settings().max_ocr_frames
+    if duration_sec <= 0 or limit <= 0:
+        return requested
+
+    needed = duration_sec / max(1.0, requested)
+    if needed <= limit:
+        return requested
+
+    adjusted = duration_sec / limit
+    log.info("[ocr] 영상이 길어 프레임 간격을 %.1f초 → %.1f초 로 조정합니다 "
+             "(%.0f분, 약 %d장)",
+             requested, adjusted, duration_sec / 60, limit)
+    return adjusted
 
 
 def _normalize(text: str) -> str:

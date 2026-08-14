@@ -77,4 +77,8 @@ def run_ocr(request: MediaRequest) -> dict:
 def _guard_duration(duration_sec: float) -> None:
     limit = get_settings().max_duration_sec
     if duration_sec > limit:
-        raise MediaError(f"영상이 너무 깁니다 ({int(duration_sec)}초). 최대 {limit}초까지 지원합니다.")
+        raise MediaError(
+            "영상이 너무 깁니다 (%d분). 최대 %d분까지 지원합니다. "
+            "더 긴 영상을 다루려면 .env 의 MAX_DURATION_SEC 을 올리세요."
+            % (duration_sec / 60, limit / 60)
+        )
