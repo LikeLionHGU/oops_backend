@@ -24,6 +24,13 @@ import java.util.Optional;
 @Component
 public class AnalysisServerClient {
 
+    /** {"detail":"..."} 에서 메시지만 뽑는다. */
+    private static final java.util.regex.Pattern DETAIL_PATTERN =
+            java.util.regex.Pattern.compile("\"detail\"\\s*:\\s*\"([^\"]+)\"");
+
+    /** 분석은 스레드마다 하나씩 돌므로 스레드별로 들고 있으면 충분하다. */
+    private static final ThreadLocal<String> lastFailure = new ThreadLocal<>();
+
     private final RestClient restClient;
     private final AnalysisServerProperties properties;
     private final StorageService storageService;
@@ -52,11 +59,38 @@ public class AnalysisServerClient {
                     .body(toRequest(video, null, null))
                     .retrieve()
                     .body(TranscribeResponse.class);
+            lastFailure.remove();
             return Optional.ofNullable(response);
         } catch (RestClientException e) {
-            log.warn("[analysis-server] STT 실패 videoId={} : {}", video.getId(), describe(e));
+            String detail = describe(e);
+            lastFailure.set(extractDetail(e));
+            log.warn("[analysis-server] STT 실패 videoId={} : {}", video.getId(), detail);
             return Optional.empty();
         }
+    }
+
+    /**
+     * 마지막 호출이 왜 실패했는지.
+     *
+     * 실패를 조용히 삼키면 "분석했는데 아무것도 없다" 와
+     * "분석을 못 했다" 가 구분되지 않는다.
+     * 사용자에게는 전혀 다른 이야기이므로 사유를 전달할 수 있어야 한다.
+     */
+    public Optional<String> lastFailureDetail() {
+        return Optional.ofNullable(lastFailure.get());
+    }
+
+    /** 분석 서버가 준 detail 만 뽑아낸다. 사용자에게 그대로 보여줄 문장이다. */
+    private String extractDetail(RestClientException e) {
+        if (!(e instanceof RestClientResponseException re)) {
+            return "분석 서버에 연결하지 못했습니다.";
+        }
+        String body = re.getResponseBodyAsString();
+        var matcher = DETAIL_PATTERN.matcher(body);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "분석 서버 오류 (HTTP " + re.getStatusCode().value() + ")";
     }
 
     public Optional<OcrResponse> ocr(Video video) {
@@ -70,6 +104,7 @@ public class AnalysisServerClient {
             return Optional.ofNullable(response);
         } catch (RestClientException e) {
             // 503 = OCR 미설치. 이 경우는 정상 시나리오다.
+            lastFailure.set(extractDetail(e));
             log.warn("[analysis-server] OCR 건너뜀 videoId={} : {}", video.getId(), describe(e));
             return Optional.empty();
         }

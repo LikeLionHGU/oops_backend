@@ -2,6 +2,7 @@ package com.example.oops.service;
 
 import com.example.oops.analyzer.AnalysisContext;
 import com.example.oops.analyzer.ContentAnalyzer;
+import com.example.oops.client.AnalysisServerClient;
 import com.example.oops.config.AsyncConfig;
 import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.*;
@@ -45,6 +46,7 @@ public class AnalysisPipeline {
     private final ScreenTextService screenTextService;
     private final FindingFusionService fusionService;
     private final GenreDetector genreDetector;
+    private final AnalysisServerClient analysisServerClient;
     private final ReportBuilder reportBuilder;
     private final JobProgressService progressService;
     private final VideoRepository videoRepository;
@@ -102,6 +104,22 @@ public class AnalysisPipeline {
                 elapsed.put("유형판별", System.currentTimeMillis() - mark);
             }
             log.info("[pipeline] videoId={} 유형={}", videoId, genre);
+
+            // 발언도 자막도 못 뽑았으면 분석을 한 게 아니다.
+            //
+            // 여기서 그냥 진행하면 모든 분석기가 스킵되고
+            // '완료 · 확인할 지점 0곳' 으로 끝난다.
+            // 사용자에게는 "검수했는데 문제없다" 로 읽히지만 실제로는
+            // 아무것도 보지 못한 것이다. 이건 거짓말이다.
+            if (transcript.isEmpty() && screenTexts.isEmpty()) {
+                String detail = analysisServerClient.lastFailureDetail()
+                        .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.");
+                log.error("[pipeline] videoId={} 분석 불가: {}", videoId, detail);
+
+                video.updateStatus(AnalysisStatus.FAILED);
+                progressService.fail(jobId, "ANALYSIS_FAILED", detail);
+                return;
+            }
 
             AnalysisContext context = new AnalysisContext(video, genre, transcript, screenTexts);
 

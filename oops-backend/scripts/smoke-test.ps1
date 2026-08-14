@@ -114,7 +114,10 @@ if ($VideoId -eq 0) {
 
     if ($status.status -ne "COMPLETED") {
         Fail "분석 실패: $($status.message)"
-        Hint "IntelliJ 콘솔에서 [pipeline] 로그를 확인하세요."
+        Write-Host ""
+        Hint "위 메시지가 실패 사유입니다."
+        Hint "'영상이 너무 깁니다' 라면 oops-analysis/.env 의 MAX_DURATION_SEC 을 올리세요."
+        Hint "그 외에는 IntelliJ 콘솔의 [pipeline] / [analysis-server] 로그를 확인하세요."
         exit 1
     }
     Ok "분석 완료 (소요 $elapsed 초)"
