@@ -114,6 +114,13 @@ public class AnalysisPipeline {
             if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
                 record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
                         analysisServerClient.lastFailureDetail().orElse(null));
+            } else if (screenTexts.isEmpty()) {
+                // 돌긴 돌았는데 한 글자도 못 찾았다.
+                // 자막 없는 영상이면 정상이지만, 자막이 있는데 못 읽은 것일 수도 있다.
+                // 그 둘을 우리가 구분할 방법이 없으므로 사용자에게 그대로 알린다.
+                // 그냥 '완료' 로만 두면 "화면은 확인했다" 로 읽힌다.
+                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS,
+                        "화면에서 글자를 찾지 못했습니다. 영상에 자막이 있다면 인식에 실패한 것일 수 있습니다.");
             } else {
                 record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS, null);
             }

@@ -180,9 +180,21 @@ function renderCoverage(list) {
     $('coverage').innerHTML = '';
     return;
   }
-  $('coverage').innerHTML = '분석 수행 현황 &nbsp; ' + list.map(c =>
-    `<span class="${COV_CLASS[c.status] ?? ''}">${COV_LABEL[c.analyzer] ?? c.analyzer} ${COV_MARK[c.status] ?? c.status}</span>`
+
+  const row = list.map(c =>
+    `<span class="${COV_CLASS[c.status] ?? ''}" title="${esc(c.message ?? '')}">` +
+    `${COV_LABEL[c.analyzer] ?? c.analyzer} ${COV_MARK[c.status] ?? c.status}</span>`
   ).join('');
+
+  // 완료인데 할 말이 있는 경우가 있다.
+  // 예: OCR 이 돌긴 했는데 한 글자도 못 찾음 — 자막 없는 영상이면 정상이지만
+  //     자막이 있는데 못 읽은 것일 수도 있다. 우리는 그 둘을 구분 못 한다.
+  const notes = list
+    .filter(c => c.status === 'SUCCESS' && c.message)
+    .map(c => `<div style="color:#92400e;margin-top:4px">· ${esc(c.message)}</div>`)
+    .join('');
+
+  $('coverage').innerHTML = '분석 수행 현황 &nbsp; ' + row + notes;
 }
 
 function esc(s) {

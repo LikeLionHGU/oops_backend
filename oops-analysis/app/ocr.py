@@ -36,6 +36,11 @@ WATERMARK_SIMILARITY = 0.45
 # 유사도 비교에 쓸 최대 표본 수. 프레임이 많아도 계산이 폭증하지 않게 한다.
 WATERMARK_SAMPLE = 30
 
+# 짧은 영상에서 최소한 이만큼은 뽑는다. 2~3장으로는 자막을 놓치기 쉽다.
+MIN_FRAMES = 8
+# 아무리 짧아도 이보다 촘촘하게는 뜨지 않는다
+MIN_INTERVAL_SEC = 0.5
+
 
 class OcrUnavailable(RuntimeError):
     pass
@@ -199,6 +204,19 @@ def _adjust_interval(duration_sec: float, requested: float) -> float:
     limit = get_settings().max_ocr_frames
     if duration_sec <= 0 or limit <= 0:
         return requested
+
+    # 짧은 영상은 반대로 간격을 좁힌다.
+    #
+    # 8초짜리를 4초 간격으로 뜨면 2장뿐이다. 자막은 보통 2~3초마다 바뀌므로
+    # 대부분을 놓친다. 화면에 자막이 큼직하게 박혀 있는데 0건으로 끝나는 일이 생긴다.
+    # 짧은 영상은 어차피 프레임을 늘려도 비용이 얼마 안 든다.
+    if duration_sec < requested * MIN_FRAMES:
+        adjusted = max(MIN_INTERVAL_SEC, duration_sec / MIN_FRAMES)
+        if adjusted < requested:
+            log.info("[ocr] 영상이 짧아 프레임 간격을 %.1f초 → %.1f초 로 좁힙니다 "
+                     "(%.0f초, 약 %d장)",
+                     requested, adjusted, duration_sec, int(duration_sec / adjusted))
+            return adjusted
 
     needed = duration_sec / max(1.0, requested)
     if needed <= limit:
