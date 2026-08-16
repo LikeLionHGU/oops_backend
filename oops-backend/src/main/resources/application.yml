@@ -1,6 +1,11 @@
 spring:
   application:
     name: oops-backend
+  # API 키는 application-secret.yml 에 넣는다. 이 파일은 .gitignore 에 있어서 깃에 안 올라간다.
+  # optional: 이라서 파일이 없어도 서버는 그냥 뜬다 (LLM 분석기만 스킵된다).
+  # 환경변수 OPENAI_API_KEY 를 쓰던 방식도 그대로 동작한다.
+  config:
+    import: optional:classpath:application-secret.yml
   profiles:
     active: local
   servlet:
