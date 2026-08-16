@@ -333,9 +333,13 @@ GET /report      → 영원히 409 ANALYSIS_NOT_COMPLETED
 ## 3-14. 테스트
 
 ```
-oops-backend    ./gradlew test
+oops-backend    .\gradlew test
 oops-analysis   pip install -r requirements-dev.txt && pytest
 ```
+
+테스트는 **메모리 DB**(`test` 프로파일)를 씁니다. 서버를 켜둔 채 돌려도 됩니다.
+운영 설정은 H2 파일 모드라, 그대로 두면 서버가 파일을 잡고 있어서
+`DialectFactoryImpl` 에서 죽습니다. 개발 DB 를 테스트가 건드리지 않게 하려는 목적도 있습니다.
 
 붙여둔 건 **실제로 틀렸던 로직**입니다. 새로 만든 기능보다 이미 고친 것을 지킵니다.
 

@@ -1,0 +1,40 @@
+# 테스트 전용 설정.
+#
+# 운영 설정(application-local.yml)은 H2 를 파일 모드로 씁니다.
+#   jdbc:h2:file:./data/oops
+#
+# 그런데 서버를 켜둔 채 테스트를 돌리면 그 파일이 이미 잠겨 있어서
+# 접속이 안 되고, Hibernate 가 방언(dialect)조차 정하지 못하고 죽습니다.
+#
+#   org.hibernate.HibernateException at DialectFactoryImpl
+#
+# 그리고 테스트가 실제 개발 DB 를 건드리면 안 됩니다.
+# 테스트 도중 만든 영상이 목록에 남거나, 반대로 개발 데이터가 지워집니다.
+#
+# 그래서 테스트는 메모리 DB 를 따로 씁니다. 서버가 떠 있어도 상관없습니다.
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:oops-test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  h2:
+    console:
+      enabled: false
+
+oops:
+  storage:
+    # 테스트가 실제 업로드 폴더를 건드리지 않게 한다
+    location: ./build/test-uploads
+    retention-days: 0
+  use-dummy-transcript: true
+
+logging:
+  level:
+    com.example.oops: INFO
+    org.hibernate: WARN
