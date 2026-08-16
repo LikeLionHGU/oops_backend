@@ -262,15 +262,94 @@ GET /api/v1/videos/{id}/review-actions
 
 ---
 
-## 3-11. 아직 안 한 것
+## 3-11. 서버 재시작 복구 (명세 §18-3 P1-2)
+
+분석은 메모리 위 스레드에서 돕니다. 서버가 죽으면 스레드는 사라지는데
+DB 의 job 은 `PROCESSING` 인 채로 남습니다. 그러면 그 영상은:
+
+```
+GET /report      → 영원히 409 ANALYSIS_NOT_COMPLETED
+진행률           → 그 자리에서 멈춘 채 끝나지 않음
+재시도           → 409 ANALYSIS_IN_PROGRESS (이미 도는 줄 알고 막음)
+삭제             → 409 (같은 이유)
+```
+
+**손쓸 방법이 없어집니다.** 시연 중에 서버를 껐다 켜면 바로 겪습니다.
+
+이제 서버가 뜰 때 끊긴 job 을 찾아 `FAILED` 로 정리합니다.
+
+```
+[recovery] 서버 재시작으로 중단된 분석 2건을 정리했습니다.
+```
+
+`status: FAILED`, `errorCode: ANALYSIS_FAILED`,
+`message: "서버가 재시작되어 분석이 중단되었습니다. 다시 시도해 주세요."` 로 나가므로
+프론트는 재시도 버튼을 띄우면 됩니다.
+
+**이어서 돌리지는 않습니다.** 어디까지 했는지 모르는 상태로 재개하면
+중복 저장이나 반쯤 분석된 결과가 나옵니다.
+
+---
+
+## 3-12. 검수 품질 지표 `GET /api/v1/metrics` (명세 §18-4)
+
+```json
+{
+  "totalCandidates": 47,
+  "reviewedCandidates": 31,
+  "actions": { "CONFIRMED": 12, "EDITED": 9, "HOLD": 4, "NOT_USEFUL": 6 },
+  "acceptanceRate": 0.806,
+  "editingActionRate": 0.29,
+  "falsePositiveRate": 0.194,
+  "byCandidateType": [
+    { "candidateType": "FACT_ENTITY", "total": 12, "reviewed": 8,
+      "notUseful": 4, "falsePositiveRate": 0.5 }
+  ]
+}
+```
+
+`byCandidateType` 은 **오탐이 많은 순서**입니다. 어느 분석기를 먼저 손봐야 할지 여기서 드러납니다.
+
+아직 아무도 처리하지 않았으면 비율은 `null` 입니다.
+`0.0` 으로 주면 "측정했더니 0%" 로 읽히는데 실제로는 "아직 안 봤다" 입니다.
+
+팀 내부 확인용이라 프론트 화면에는 안 써도 됩니다.
+
+---
+
+## 3-13. 아직 안 한 것
 
 | 명세 | 상태 |
 |---|---|
-| `EVENT_NOT_FOUND` 외 신규 에러코드 실사용 | `MAX_VIDEO_DURATION_EXCEEDED` 는 사용, 나머지는 정의만 |
-| Candidate Acceptance 지표 집계 (§18-4) | 데이터는 쌓이지만 집계 API 는 없음 |
+| §11 callback 구조 전환 | MVP 는 직접 호출. 명세도 후속 전환안으로 분리 |
+| §17 `storageKey` 공유 저장소 | 분산 배포 시 필요. 지금은 서버 한 대 |
+| §19-6 실제 영상 기반 회귀 세트 | 단위 테스트만 있음. 영상 fixture 는 없음 |
 
 `CAPTION_CONSISTENCY`(발언↔자막 비교)는 명세 §18-1에서 MVP 제외로 확정돼
 지금처럼 분석기를 꺼둔 상태가 맞습니다.
+
+---
+
+## 3-14. 테스트
+
+```
+oops-backend    ./gradlew test
+oops-analysis   pip install -r requirements-dev.txt && pytest
+```
+
+붙여둔 건 **실제로 틀렸던 로직**입니다. 새로 만든 기능보다 이미 고친 것을 지킵니다.
+
+| 대상 | 왜 |
+|---|---|
+| `CandidateType` 매핑 | 카테고리를 추가하고 여기 안 넣으면 전부 발언 검토로 떨어짐 |
+| `AnalyzerStatus.worseOf` | 뒤집히면 "절반만 봤는데 다 봤다" 고 보고함 |
+| `CommunitySlangRules` | 못 잡으면 만든 이유가 없고, 과하면 사투리마다 경고 |
+| `VagueReasonFilter` | 오탐 잡으려다 진짜 탐지를 죽인 적이 있음 |
+| `FindingFusionService` | 같은 카드가 7장, 11장씩 쌓였던 문제 |
+| `ReviewReference` | 상한·중복·길이 초과 |
+| `ocr._find_watermarks` | **세 번 고쳐서 맞은 로직** — 로고와 자막 구분 |
+
+아직 없는 것: 컨트롤러 통합 테스트, 실제 영상 fixture 기반 품질 회귀(§19-6).
 
 ---
 

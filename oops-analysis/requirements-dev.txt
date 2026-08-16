@@ -1,0 +1,9 @@
+# 테스트용. 서버 실행에는 필요 없습니다.
+#
+#   pip install -r requirements-dev.txt
+#   pytest
+#
+# OCR 회귀 테스트는 PaddleOCR 없이도 돕니다.
+# 파싱된 결과만 넣어서 로직만 검증하기 때문입니다.
+-r requirements-core.txt
+pytest>=8.0
