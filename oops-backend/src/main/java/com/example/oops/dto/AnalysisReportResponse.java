@@ -24,5 +24,20 @@ public record AnalysisReportResponse(
         String adSuitabilityNote,
 
         RiskSummary summary,
-        List<TimelineEventDto> events
+        List<TimelineEventDto> events,
+
+        /**
+         * 분석 단계별 수행 결과. 명세 §19-5.
+         * SUCCESS / FAILED / SKIPPED / NOT_ENABLED
+         */
+        List<CoverageDto> coverage,
+
+        /**
+         * 그중 사용자에게 알려야 하는 것만 추린 것. 명세 §5-1.
+         *
+         * 비어 있으면 필드 자체가 빠진다.
+         * 값이 있으면 결과 위에 눈에 띄게 띄워야 한다 —
+         * "확인할 지점 0곳" 이 "검수했더니 괜찮다" 로 읽히면 안 된다.
+         */
+        List<AnalysisWarningDto> warnings
 ) {}

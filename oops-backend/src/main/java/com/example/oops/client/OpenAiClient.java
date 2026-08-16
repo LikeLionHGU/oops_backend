@@ -111,6 +111,39 @@ public class OpenAiClient {
         }
     }
 
+    /**
+     * 이 스레드에서 호출이 실패한 횟수와 마지막 사유.
+     *
+     * 호출이 실패해도 Optional.empty() 만 돌려주면 분석기는 빈손으로 끝나고,
+     * 사용자에게는 "확인할 지점 없음" 으로 보인다.
+     * "물어봤는데 없다" 와 "물어보지도 못했다" 는 전혀 다른 이야기다.
+     * 파이프라인이 이 값을 읽어 coverage 에 FAILED 로 기록한다.
+     *
+     * 분석은 스레드마다 하나씩 도므로 스레드별로 들고 있으면 충분하다.
+     */
+    private static final ThreadLocal<int[]> failureCount = ThreadLocal.withInitial(() -> new int[1]);
+    private static final ThreadLocal<String> failureReason = new ThreadLocal<>();
+
+    /** 분석기 하나를 돌리기 전에 호출한다. */
+    public void resetFailureTracking() {
+        failureCount.get()[0] = 0;
+        failureReason.remove();
+    }
+
+    public int failureCount() {
+        return failureCount.get()[0];
+    }
+
+    public Optional<String> failureReason() {
+        return Optional.ofNullable(failureReason.get());
+    }
+
+    private <T> Optional<T> fail(String reason) {
+        failureCount.get()[0]++;
+        failureReason.set(reason);
+        return Optional.empty();
+    }
+
     public <T> Optional<T> completeAsJson(String systemPrompt, String userPrompt, Class<T> type) {
         if (!isEnabled()) {
             log.debug("[openai] API 키가 없어 LLM 판정을 건너뜁니다.");
@@ -167,7 +200,7 @@ public class OpenAiClient {
                                 + "분석 결과가 비어 있을 수 있습니다. "
                                 + "https://platform.openai.com/settings/organization/limits 확인",
                                 waitMs / 60000);
-                        return Optional.empty();
+                        return fail("AI 요청 한도를 모두 써서 이 단계를 수행하지 못했습니다.");
                     }
 
                     if (attempt < MAX_ATTEMPTS) {
@@ -179,21 +212,21 @@ public class OpenAiClient {
 
                     log.error("[openai] 요청 한도 초과로 포기했습니다. "
                             + "분석 결과가 비어 있을 수 있습니다.");
-                    return Optional.empty();
+                    return fail("AI 요청 한도 초과로 이 단계를 수행하지 못했습니다.");
                 }
 
                 {
                     log.warn("[openai] 호출 실패 HTTP {} : {}", status,
                             abbreviate(e.getResponseBodyAsString()));
                 }
-                return Optional.empty();
+                return fail("AI 호출이 실패했습니다 (HTTP %d).".formatted(status));
 
             } catch (RestClientException e) {
                 log.warn("[openai] 호출 실패: {}", e.getMessage());
-                return Optional.empty();
+                return fail("AI 서버에 연결하지 못했습니다.");
             } catch (Exception e) {
                 log.warn("[openai] 응답 파싱 실패: {}", e.getMessage());
-                return Optional.empty();
+                return fail("AI 응답을 해석하지 못했습니다.");
             }
         }
         return Optional.empty();

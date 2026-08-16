@@ -33,6 +33,33 @@ def health() -> dict:
     }
 
 
+@app.post("/probe")
+def probe(request: MediaRequest) -> dict:
+    """길이만 재고 끝낸다.
+
+    업로드 직후에 90분을 넘는지 판정하려고 만들었다.
+    분석을 다 돌린 뒤에 "너무 깁니다" 라고 하면 이미 STT 비용이 나간 뒤다.
+    무거운 작업은 하지 않으므로 로컬 파일이면 1초 안에 끝난다.
+    """
+    video = None
+    try:
+        video = prepare(request.videoUrl, request.filePath)
+        return {
+            "durationSec": int(video.duration_sec),
+            "title": video.title,
+            "maxDurationSec": get_settings().max_duration_sec,
+            "withinLimit": video.duration_sec <= get_settings().max_duration_sec,
+        }
+    except MediaError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        log.exception("길이 확인 실패")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    finally:
+        if video and not request.filePath:
+            video.cleanup()
+
+
 @app.post("/transcribe")
 def transcribe(request: MediaRequest) -> dict:
     video = None

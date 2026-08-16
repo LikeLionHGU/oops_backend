@@ -34,6 +34,8 @@ public class VideoDeletionService {
     private final AnalysisReportRepository reportRepository;
     private final RiskFindingRepository findingRepository;
     private final ReviewReferenceRepository referenceRepository;
+    private final ReviewActionRepository actionRepository;
+    private final AnalysisCoverageRepository coverageRepository;
     private final ScreenTextRepository screenTextRepository;
     private final TranscriptSegmentRepository transcriptRepository;
     private final VideoFrameRepository videoFrameRepository;
@@ -61,7 +63,9 @@ public class VideoDeletionService {
 
     /** 참조 순서를 지켜 자식부터 지운다. */
     private void deleteChildren(Long videoId) {
+        actionRepository.deleteByVideoId(videoId);       // risk_finding 참조
         referenceRepository.deleteByVideoId(videoId);    // risk_finding 참조
+        coverageRepository.deleteByVideoId(videoId);
         findingRepository.deleteByVideoId(videoId);      // video_frame 참조
         screenTextRepository.deleteByVideoId(videoId);   // video_frame 참조
         videoFrameRepository.deleteByVideoId(videoId);

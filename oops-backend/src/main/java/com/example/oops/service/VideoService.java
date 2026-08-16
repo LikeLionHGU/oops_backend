@@ -1,5 +1,6 @@
 package com.example.oops.service;
 
+import com.example.oops.client.AnalysisServerClient;
 import com.example.oops.common.BusinessException;
 import com.example.oops.common.ErrorCode;
 import com.example.oops.domain.AnalysisJob;
@@ -31,6 +32,7 @@ public class VideoService {
     private final AnalysisJobRepository jobRepository;
     private final RiskFindingRepository findingRepository;
     private final StorageService storageService;
+    private final AnalysisServerClient analysisServerClient;
 
     /**
      * 파일 업로드. (API 명세 2-1)
@@ -48,6 +50,7 @@ public class VideoService {
                 .build());
 
         video.assignStorageKey(storageService.storeVideo(video.getId(), file));
+        enforceDurationLimit(video);
         return video;
     }
 
@@ -61,6 +64,31 @@ public class VideoService {
                 .channelName(request.channelName())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
+    }
+
+    /**
+     * 업로드 직후 영상 길이를 확인한다. (명세 §2-1)
+     *
+     * 예전에는 분석을 다 돌리다가 파이썬이 길이를 재고 실패로 끝냈다.
+     * 그러면 STT 비용이 이미 나간 뒤이고, 사용자는 몇 분 기다린 끝에 거절당한다.
+     * 여기서 미리 막고 저장한 파일도 지운다.
+     *
+     * 길이를 못 쟀으면 그냥 통과시킨다.
+     * 분석 서버가 잠깐 죽었다는 이유로 업로드를 막으면 더 나쁘다.
+     * 그 경우 분석 단계에서 다시 걸린다.
+     */
+    private void enforceDurationLimit(Video video) {
+        analysisServerClient.probe(video)
+                .filter(probe -> Boolean.FALSE.equals(probe.withinLimit()))
+                .ifPresent(probe -> {
+                    storageService.deleteVideoFiles(video.getId());
+                    videoRepository.delete(video);
+
+                    int minutes = probe.durationSec() == null ? 0 : probe.durationSec() / 60;
+                    int limit = probe.maxDurationSec() == null ? 0 : probe.maxDurationSec() / 60;
+                    throw new BusinessException(ErrorCode.MAX_VIDEO_DURATION_EXCEEDED,
+                            "영상이 %d분입니다. 최대 %d분까지 분석할 수 있습니다.".formatted(minutes, limit));
+                });
     }
 
     /**

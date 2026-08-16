@@ -1,6 +1,6 @@
 # API 명세 ↔ 구현 대조표
 
-> Creator Risk Manager v2.0 명세 기준 · 2026년 8월 11일
+> 명세 v3 기준 · 2026년 8월 16일
 
 **결론: 프론트엔드가 사용하는 모든 항목이 명세와 일치합니다.**
 차이가 나는 곳은 §11~13(백엔드 ↔ Python 내부 통신)뿐이고, 프론트에는 영향이 없습니다.
@@ -15,7 +15,7 @@
 | §1-3 성공 `{success, message, data}` | 동일 | 일치 |
 | §1-4 에러 `{success, message, error:{code, traceId}}` | 동일 | 일치 |
 | §1-5 HTTP 상태 코드 | 200/201/202/400/404/409/413/415/416/500/503 | 일치 |
-| §1-6 에러 코드 10종 | 전부 구현 + `INVALID_REQUEST` 추가 | 일치 (추가분 있음) |
+| §1-6 에러 코드 13종 | 전부 구현 | 일치 |
 | §1-7 시간 단위 ms 정수 | `startMs`, `endMs` 모두 `long` | 일치 |
 | §1-8 상태값 | `PENDING / PROCESSING / COMPLETED / FAILED` | 일치 |
 | §1-9 단계값 | `UPLOAD / STT / TEXT_RISK / SCENE_DETECTION / OCR / MULTIMODAL / FINALIZING / COMPLETED` | 일치 |
@@ -34,6 +34,8 @@
 | §7 영상 스트리밍 | GET | `/api/v1/videos/{id}/stream` | 일치 (Range 206) |
 | §8 프레임 이미지 | GET | `/api/v1/videos/{id}/frames/{frameId}` | 일치 |
 | §9-1 분석 재시도 | POST | `/api/v1/videos/{id}/analysis/retry` | 일치 (202) |
+| §3-2 검수 이력 | GET | `/api/v1/videos` | 일치 |
+| §9-2 검수 액션 저장 | POST | `/api/v1/videos/{id}/review-actions` | 일치 (200) |
 
 ### 응답 필드
 
@@ -41,9 +43,10 @@
 
 ```
 VideoUploadResponse    videoId, jobId, filename, status, streamUrl
-VideoStatusResponse    videoId, jobId, status, progress, stage, message
+VideoStatusResponse    videoId, jobId, status, progress, stage, message (+errorCode)
 ProgressMessage        videoId, jobId, status, progress, stage, message (+errorCode)
 AnalysisReportResponse videoId, jobId, status, summary{high,medium,low}, events[]
+                       (+coverage[], warnings[])
 AnalysisRetryResponse  videoId, jobId, status
 ```
 
@@ -174,18 +177,97 @@ TALK_PODCAST / GENERAL
 
 ---
 
-## 3-8. 명세 v3에서 아직 안 한 것
+## 3-8. `coverage[]` 와 `warnings[]` (명세 §5-1 · §19-5)
 
-프론트가 **지금 당장 못 쓰는** 항목입니다. 계약만 맞춘 상태가 아니라 아예 없습니다.
+**후보 0건과 분석 실패를 구분하기 위한 필드입니다.**
 
-| 명세 | 상태 | 영향 |
-|---|---|---|
-| `report.coverage[]` · `warnings[]` (§5-1, §19-5) | **없음** | 분석기 하나가 실패해도 "확인할 후보 없음"으로만 보입니다 |
-| `POST /videos/{id}/review-actions` (§9-2) | **없음** | 확인함·수정함·보류가 화면 상태로만 남습니다 |
-| 업로드 직후 90분 검증 (§2-1) | **없음** | 분석 중에 파이썬이 길이를 재고 실패로 끝냅니다 |
+```json
+"coverage": [
+  { "analyzer": "STT",               "status": "SUCCESS" },
+  { "analyzer": "OCR",               "status": "SUCCESS" },
+  { "analyzer": "SPEECH_REVIEW",     "status": "SUCCESS" },
+  { "analyzer": "SCREEN_TEXT_REVIEW","status": "SUCCESS" },
+  { "analyzer": "FACT_ENTITY",       "status": "FAILED",
+    "message": "AI 요청 한도 초과로 이 단계를 수행하지 못했습니다." },
+  { "analyzer": "CONTEXT_REFERENCE", "status": "SUCCESS" },
+  { "analyzer": "VISUAL",            "status": "NOT_ENABLED" }
+],
+"warnings": [
+  { "stage": "FACT_ENTITY",
+    "code": "FACT_ENTITY_UNAVAILABLE",
+    "message": "이름·수치 확인 — AI 요청 한도 초과로 이 단계를 수행하지 못했습니다." }
+]
+```
 
-앞의 둘은 명세도 P0로 잡아둔 항목입니다.
-`MAX_VIDEO_DURATION_EXCEEDED` 와 `EVENT_NOT_FOUND` 는 **에러 코드만 미리 넣어뒀고 아직 안 씁니다.**
+`status` 는 `SUCCESS` / `FAILED` / `SKIPPED` / `NOT_ENABLED` 입니다.
+후보가 0건이어도 끝까지 돌았으면 `SUCCESS` 입니다.
+
+`warnings[]` 는 그중 `FAILED` 와 `SKIPPED` 만 추린 것이고, **없으면 필드가 빠집니다.**
+
+**값이 있으면 결과 위에 눈에 띄게 띄워 주세요.**
+이게 없으면 "확인할 지점 0곳" 이 두 가지를 동시에 뜻하게 됩니다.
+
+```
+검수했더니 괜찮다
+검수를 못 했다
+```
+
+후자를 전자로 읽고 영상을 올리면 이 도구는 없느니만 못합니다.
+
+한 단계를 분석기 두 개가 나눠 맡는 경우 **나쁜 쪽**을 보고합니다.
+룰 기반은 성공했는데 AI 검토가 한도에 걸렸다면 `FAILED` 로 나갑니다.
+
+---
+
+## 3-9. 검수 액션 `POST /api/v1/videos/{id}/review-actions` (명세 §9-2)
+
+```json
+{ "eventId": 12, "action": "EDITED", "note": "자막 표현 수정" }
+```
+
+`action` 은 `CONFIRMED` / `EDITED` / `HOLD` / `NOT_USEFUL`.
+같은 `eventId` 를 다시 보내면 마지막 값으로 덮습니다.
+다른 영상의 후보를 보내면 `EVENT_NOT_FOUND`(404) 입니다.
+
+**새로고침 복구용으로 조회도 추가했습니다.** 명세에는 없지만
+저장만 하고 못 읽으면 저장하는 의미가 없습니다.
+
+```
+GET /api/v1/videos/{id}/review-actions
+```
+
+주의: **재분석하면 검수 액션이 지워집니다.** 후보 id 가 새로 발급되므로
+옛 액션은 엉뚱한 후보를 가리키게 됩니다.
+
+---
+
+## 3-10. 업로드 시 영상 길이 검증 (명세 §2-1)
+
+90분을 넘으면 `400 MAX_VIDEO_DURATION_EXCEEDED` 로 거절하고 저장한 파일도 지웁니다.
+
+```json
+{ "success": false,
+  "message": "영상이 120분입니다. 최대 90분까지 분석할 수 있습니다.",
+  "error": { "code": "MAX_VIDEO_DURATION_EXCEEDED", "traceId": "..." } }
+```
+
+파이썬 서버에 `POST /probe` 를 추가해 길이만 재고 옵니다. 1초 안에 끝납니다.
+
+두 가지 예외가 있습니다.
+
+- **분석 서버가 꺼져 있으면 그냥 통과시킵니다.** 길이를 못 쟀다는 이유로
+  업로드를 막으면 더 나쁩니다. 이 경우 분석 단계에서 다시 걸립니다
+- **유튜브 링크 등록은 검사하지 않습니다.** 길이를 재려면 영상을 통째로
+  받아야 해서 등록 응답이 몇 분씩 걸립니다. 분석 단계에서 걸립니다
+
+---
+
+## 3-11. 아직 안 한 것
+
+| 명세 | 상태 |
+|---|---|
+| `EVENT_NOT_FOUND` 외 신규 에러코드 실사용 | `MAX_VIDEO_DURATION_EXCEEDED` 는 사용, 나머지는 정의만 |
+| Candidate Acceptance 지표 집계 (§18-4) | 데이터는 쌓이지만 집계 API 는 없음 |
 
 `CAPTION_CONSISTENCY`(발언↔자막 비교)는 명세 §18-1에서 MVP 제외로 확정돼
 지금처럼 분석기를 꺼둔 상태가 맞습니다.

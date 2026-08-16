@@ -3,12 +3,15 @@ package com.example.oops.service;
 import com.example.oops.analyzer.AnalysisContext;
 import com.example.oops.analyzer.ContentAnalyzer;
 import com.example.oops.client.AnalysisServerClient;
+import com.example.oops.client.OpenAiClient;
 import com.example.oops.config.AsyncConfig;
 import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
 import com.example.oops.genre.GenreDetector;
+import com.example.oops.repository.AnalysisCoverageRepository;
 import com.example.oops.repository.AnalysisReportRepository;
+import com.example.oops.repository.ReviewActionRepository;
 import com.example.oops.repository.ReviewReferenceRepository;
 import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
@@ -52,6 +55,9 @@ public class AnalysisPipeline {
     private final JobProgressService progressService;
     private final VideoRepository videoRepository;
     private final RiskFindingRepository findingRepository;
+    private final AnalysisCoverageRepository coverageRepository;
+    private final ReviewActionRepository actionRepository;
+    private final OpenAiClient openAiClient;
     private final ReviewReferenceRepository referenceRepository;
     private final AnalysisReportRepository reportRepository;
 
@@ -85,8 +91,16 @@ public class AnalysisPipeline {
             long mark = System.currentTimeMillis();
             List<TranscriptSegment> transcript = transcriptService.extractAndSave(video);
             elapsed.put("STT", System.currentTimeMillis() - mark);
+
+            // 수행 여부를 기록한다. 0건과 실패는 다르다.
+            Map<CoverageStep, AnalysisCoverage> coverage = new LinkedHashMap<>();
             if (transcript.isEmpty()) {
                 log.warn("[pipeline] 대본이 비었습니다. videoId={}", videoId);
+                record(coverage, video, CoverageStep.STT, AnalyzerStatus.FAILED,
+                        analysisServerClient.lastFailureDetail()
+                                .orElse("음성을 글자로 옮기지 못했습니다."));
+            } else {
+                record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS, null);
             }
 
             // 2. 화면 → OCR 자막 (OCR 이 없으면 빈 리스트로 진행)
@@ -94,6 +108,17 @@ public class AnalysisPipeline {
             mark = System.currentTimeMillis();
             List<ScreenText> screenTexts = screenTextService.extractAndSave(video);
             elapsed.put("OCR", System.currentTimeMillis() - mark);
+
+            // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
+            // 분석 서버가 사유를 남겼을 때만 실패로 본다.
+            if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
+                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
+                        analysisServerClient.lastFailureDetail().orElse(null));
+            } else {
+                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS, null);
+            }
+            record(coverage, video, CoverageStep.VISUAL, AnalyzerStatus.NOT_ENABLED,
+                    "화면 자료 확인은 아직 제공하지 않습니다.");
 
             // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
             // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
@@ -127,6 +152,8 @@ public class AnalysisPipeline {
 
             // 3. 분석기 실행 → 논란 후보 수집
             // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
+            // 검수 액션도 지운다. 후보 id 가 새로 발급되므로 옛 액션은 엉뚱한 곳을 가리킨다.
+            actionRepository.deleteByVideoId(videoId);
             referenceRepository.deleteByVideoId(videoId);
             findingRepository.deleteByVideoId(videoId);
             List<ContentAnalyzer> active = activeAnalyzers();
@@ -139,23 +166,55 @@ public class AnalysisPipeline {
                         45 + (35 * index / Math.max(1, active.size())),
                         analyzer.displayName() + " 중");
 
+                CoverageStep step = CoverageStep.of(analyzer.key());
+
                 if (!analyzer.supports(context)) {
+                    String why = openAiClient.isEnabled()
+                            ? "이 영상에는 해당하지 않아 건너뛰었습니다."
+                            : "AI 키가 없어 이 단계를 수행하지 못했습니다.";
                     log.info("[pipeline] {} 스킵 (조건 불충족)", analyzer.key());
+                    record(coverage, video, step, AnalyzerStatus.SKIPPED, why);
                     continue;
                 }
                 try {
                     long analyzerStart = System.currentTimeMillis();
+                    openAiClient.resetFailureTracking();
+
                     List<RiskFinding> produced = analyzer.analyze(context);
+
                     long took = System.currentTimeMillis() - analyzerStart;
                     elapsed.put(analyzer.key(), took);
                     candidates.addAll(produced);
                     log.info("[pipeline] 분석기별 결과 {} → {}건 ({}초)",
                             analyzer.key(), produced.size(), took / 1000);
+
+                    // 예외 없이 끝나도 AI 호출이 전부 실패했을 수 있다.
+                    // 요청 한도에 걸리면 조용히 빈손으로 돌아오는데,
+                    // 그걸 성공으로 적으면 사용자는 '봤는데 없다' 로 읽는다.
+                    if (openAiClient.failureCount() > 0) {
+                        String why = openAiClient.failureReason()
+                                .orElse("AI 호출이 실패했습니다.");
+                        log.warn("[pipeline] {} AI 호출 {}건 실패 — {}",
+                                analyzer.key(), openAiClient.failureCount(), why);
+                        record(coverage, video, step, AnalyzerStatus.FAILED, why);
+                    } else {
+                        record(coverage, video, step, AnalyzerStatus.SUCCESS, null);
+                    }
                 } catch (Exception e) {
                     // 분석기 하나가 죽어도 나머지 결과는 살린다
                     log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);
+                    record(coverage, video, step, AnalyzerStatus.FAILED,
+                            "분석 중 오류가 발생했습니다.");
                 }
             }
+
+            // 켜지지 않은 단계도 보고 대상이다. 아무 말이 없으면 돌았다고 오해한다.
+            for (CoverageStep step : CoverageStep.values()) {
+                coverage.putIfAbsent(step, AnalysisCoverage.of(
+                        video, step, AnalyzerStatus.NOT_ENABLED, "현재 사용하지 않는 기능입니다."));
+            }
+            coverageRepository.deleteByVideoId(videoId);
+            coverageRepository.saveAll(coverage.values());
 
             // 4. 다중 후보 병합 + 우선순위
             progressService.update(jobId, AnalysisStage.MULTIMODAL, 85, "논란 후보 정리 중");
@@ -211,6 +270,29 @@ public class AnalysisPipeline {
     }
 
     /** application.yml 에 켜둔 분석기만, 설정 순서대로 실행한다. */
+    /**
+     * 단계별 수행 결과를 모은다.
+     *
+     * 한 단계를 여러 분석기가 나눠 맡으므로 나쁜 쪽을 남긴다.
+     * subtitle 은 성공했는데 speech-review 가 요청 한도로 죽었다면,
+     * 사용자에게는 "발언 검토를 못 했다" 고 알려야 한다.
+     */
+    private void record(Map<CoverageStep, AnalysisCoverage> coverage, Video video,
+                        CoverageStep step, AnalyzerStatus status, String message) {
+        if (step == null) {
+            return;   // 보고 대상이 아닌 분석기 (caption-mismatch 등)
+        }
+        AnalysisCoverage existing = coverage.get(step);
+        if (existing == null) {
+            coverage.put(step, AnalysisCoverage.of(video, step, status, message));
+            return;
+        }
+        AnalyzerStatus merged = status.worseOf(existing.getStatus());
+        if (merged != existing.getStatus()) {
+            coverage.put(step, AnalysisCoverage.of(video, step, merged, message));
+        }
+    }
+
     private List<ContentAnalyzer> activeAnalyzers() {
         List<String> enabled = properties.analysis().enabledAnalyzers();
         return enabled.stream()

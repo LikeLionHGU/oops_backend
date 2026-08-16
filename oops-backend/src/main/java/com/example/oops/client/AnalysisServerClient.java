@@ -52,6 +52,27 @@ public class AnalysisServerClient {
         }
     }
 
+    /**
+     * 길이만 재고 온다. 업로드 직후 90분 초과를 걸러내는 데 쓴다.
+     *
+     * 분석을 다 돌린 뒤에 "너무 깁니다" 라고 하면 이미 STT 비용이 나간 뒤다.
+     * 실패하면 empty 를 주고, 호출한 쪽은 그냥 통과시킨다.
+     * 길이를 못 쟀다는 이유로 업로드 자체를 막으면 더 나쁘다.
+     */
+    public Optional<ProbeResponse> probe(Video video) {
+        try {
+            ProbeResponse response = restClient.post()
+                    .uri("/probe")
+                    .body(toRequest(video, null, null))
+                    .retrieve()
+                    .body(ProbeResponse.class);
+            return Optional.ofNullable(response);
+        } catch (RestClientException e) {
+            log.warn("[analysis-server] 길이 확인 실패 videoId={} : {}", video.getId(), describe(e));
+            return Optional.empty();
+        }
+    }
+
     public Optional<TranscribeResponse> transcribe(Video video) {
         try {
             TranscribeResponse response = restClient.post()
@@ -127,6 +148,9 @@ public class AnalysisServerClient {
     }
 
     public record MediaRequest(String videoUrl, String filePath, Double intervalSec, String frameDir) {}
+
+    public record ProbeResponse(Integer durationSec, String title,
+                                Integer maxDurationSec, Boolean withinLimit) {}
 
     public record TranscribeResponse(String language, String title, Integer durationSec,
                                      List<Segment> segments) {

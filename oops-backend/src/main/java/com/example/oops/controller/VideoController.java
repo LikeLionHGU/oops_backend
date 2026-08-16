@@ -5,6 +5,7 @@ import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.*;
 import com.example.oops.service.AnalysisService;
+import com.example.oops.service.ReviewActionService;
 import com.example.oops.service.VideoDeletionService;
 import com.example.oops.service.VideoService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,6 +30,7 @@ public class VideoController {
     private final VideoService videoService;
     private final AnalysisService analysisService;
     private final VideoDeletionService videoDeletionService;
+    private final ReviewActionService reviewActionService;
 
     @Operation(summary = "영상 업로드",
             description = """
@@ -118,11 +120,48 @@ public class VideoController {
                 .body(ApiResponse.ok("분석 재시작 요청이 접수되었습니다.", analysisService.retry(videoId)));
     }
 
-    @Operation(summary = "영상 목록",
-            description = "최근 등록순 100건. 관리·디버깅용이며 프론트 화면에는 쓰지 않아도 된다.")
+    @Operation(summary = "검수 이력",
+            description = """
+                    업로드한 영상을 최신순으로 100건 준다. (명세 3-2)
+
+                    - `uploadedAt` 은 ISO-8601 **UTC** 문자열이다.
+                    - `progress` 는 현재 Job 의 진행률(0~100).
+                    - `eventCount` 는 리포트의 `events.length` 와 같은 기준.
+                    - `streamUrl` 은 원본이 서버에 없으면 `null`.
+                    """)
     @GetMapping
     public ApiResponse<List<VideoSummaryResponse>> list() {
         return ApiResponse.ok("영상 목록 조회 성공", videoService.findRecent());
+    }
+
+    @Operation(summary = "검수 액션 저장",
+            description = """
+                    제작자가 검토 후보를 어떻게 처리했는지 저장한다. (명세 9-2)
+
+                    - `eventId` 는 리포트의 `events[].id`.
+                    - `action`: `CONFIRMED` / `EDITED` / `HOLD` / `NOT_USEFUL`
+                    - 같은 후보를 다시 보내면 마지막 값으로 덮는다.
+
+                    다른 영상의 후보를 보내면 `EVENT_NOT_FOUND`(404) 가 온다.
+                    """)
+    @PostMapping("/{videoId}/review-actions")
+    public ApiResponse<ReviewActionResponse> saveReviewAction(
+            @PathVariable Long videoId,
+            @Valid @RequestBody ReviewActionRequest request) {
+
+        return ApiResponse.ok("검수 액션 저장 성공",
+                reviewActionService.save(videoId, request));
+    }
+
+    @Operation(summary = "검수 액션 목록",
+            description = """
+                    저장된 처리 내역. 새로고침 후 화면을 복구할 때 쓴다.
+
+                    명세에는 없지만, 저장만 하고 못 읽으면 저장하는 의미가 없어서 추가했다.
+                    """)
+    @GetMapping("/{videoId}/review-actions")
+    public ApiResponse<List<ReviewActionResponse>> reviewActions(@PathVariable Long videoId) {
+        return ApiResponse.ok("검수 액션 조회 성공", reviewActionService.findByVideo(videoId));
     }
 
     @Operation(summary = "영상 삭제",

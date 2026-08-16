@@ -27,6 +27,7 @@ public class AnalysisService {
     private final AnalysisServerClient analysisServerClient;
     private final AnalysisJobRepository jobRepository;
     private final RiskFindingRepository findingRepository;
+    private final AnalysisCoverageRepository coverageRepository;
     private final TranscriptSegmentRepository transcriptRepository;
     private final ScreenTextRepository screenTextRepository;
 
@@ -96,6 +97,12 @@ public class AnalysisService {
 
         AdSuitability adSuitability = predictAdSuitability(findings);
 
+        List<AnalysisCoverage> coverage = coverageRepository.findByVideoIdOrderByIdAsc(videoId);
+        List<AnalysisWarningDto> warnings = coverage.stream()
+                .filter(AnalysisCoverage::needsWarning)
+                .map(AnalysisWarningDto::from)
+                .toList();
+
         return new AnalysisReportResponse(
                 video.getId(),
                 job.getJobKey(),
@@ -104,7 +111,9 @@ public class AnalysisService {
                 adSuitability,
                 adSuitability.getNote(),
                 RiskSummary.of(findings),
-                findings.stream().map(TimelineEventDto::from).toList()
+                findings.stream().map(TimelineEventDto::from).toList(),
+                coverage.isEmpty() ? null : coverage.stream().map(CoverageDto::from).toList(),
+                warnings.isEmpty() ? null : warnings
         );
     }
 
