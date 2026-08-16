@@ -9,6 +9,7 @@ import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
 import com.example.oops.genre.GenreDetector;
 import com.example.oops.repository.AnalysisReportRepository;
+import com.example.oops.repository.ReviewReferenceRepository;
 import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
 import com.example.oops.screentext.ScreenTextService;
@@ -51,6 +52,7 @@ public class AnalysisPipeline {
     private final JobProgressService progressService;
     private final VideoRepository videoRepository;
     private final RiskFindingRepository findingRepository;
+    private final ReviewReferenceRepository referenceRepository;
     private final AnalysisReportRepository reportRepository;
 
     @Async(AsyncConfig.ANALYSIS_EXECUTOR)
@@ -124,6 +126,8 @@ public class AnalysisPipeline {
             AnalysisContext context = new AnalysisContext(video, genre, transcript, screenTexts);
 
             // 3. 분석기 실행 → 논란 후보 수집
+            // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
+            referenceRepository.deleteByVideoId(videoId);
             findingRepository.deleteByVideoId(videoId);
             List<ContentAnalyzer> active = activeAnalyzers();
             List<RiskFinding> candidates = new ArrayList<>();

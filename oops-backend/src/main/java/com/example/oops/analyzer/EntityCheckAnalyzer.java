@@ -102,10 +102,17 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               "틀렸다" 고 했는데 틀리지 않았으면 제작자가 도구 자체를 안 믿게 된다.
 
             반드시 이 JSON 형식으로만 답한다:
-            {"verdict":"FACT_ERROR","score":0.85,"reason":"무엇이 어떻게 다른지 한 문장","correction":"기사에 나온 내용"}
+            {"verdict":"FACT_ERROR","score":0.85,"reason":"무엇이 어떻게 다른지 한 문장","correction":"기사에 나온 내용","sources":[0,2]}
 
             reason 은 "틀렸습니다" 가 아니라 "영상에서는 A 라고 했는데 기사에는 B 로 나옵니다" 형태로 쓴다.
             correction 은 기사에서 확인된 내용을 적는다. 제작자가 판단할 재료다.
+
+            sources 는 **네 판단의 근거가 된 기사 번호**다.
+            제작자가 직접 열어서 확인할 자료이므로 반드시 채워라.
+            - 실제로 대조에 쓴 기사만 넣는다. 관련 없는 기사는 넣지 마라.
+            - 판단에 쓴 기사가 여럿이면 여러 개를 넣는다. 최대 3개.
+            - 뒷받침할 기사를 못 찾아 UNVERIFIED_CLAIM 으로 판정했다면 빈 배열로 둔다.
+
             한국어로 쓴다.
             """;
 
@@ -196,7 +203,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                 reason = reason + " · 기사 내용: " + correction;
             }
 
-            findings.add(RiskFinding.builder()
+            RiskFinding finding = RiskFinding.builder()
                     .video(context.video())
                     .eventType(TimelineEventType.SPEECH)
                     .category(category)
@@ -207,9 +214,15 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                     .text(segment.getText())
                     .reason(reason)
                     .target(query)
-                    .build());
+                    .build();
 
-            log.info("[fact-check] '{}' → {} (score={})", query, category, score);
+            // AI 가 대조에 쓴 기사를 그대로 남긴다.
+            // 무관한 기사와 비교한 오탐이라면 사용자가 링크를 열어보고 바로 판단할 수 있다.
+            finding.adoptReferences(NewsReferenceSupport.pick(news, verdict.sources()));
+            findings.add(finding);
+
+            log.info("[fact-check] '{}' → {} (score={}, 참고자료 {}건)",
+                    query, category, score, finding.getReferences().size());
         }
 
         log.info("[fact-check] videoId={} 주장={}개 findings={}",
@@ -234,13 +247,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         prompt.append("오늘 날짜: ").append(today).append("\n\n");
         prompt.append("영상에서 나온 주장: ").append(claim.claim()).append("\n\n");
         prompt.append("검색된 기사:\n");
-
-        for (NewsSearchClient.NewsItem item : news) {
-            prompt.append("- (%s) %s%n  %s%n".formatted(
-                    item.pubDate() == null ? "날짜미상" : item.pubDate(),
-                    item.title(),
-                    item.description()));
-        }
+        prompt.append(NewsReferenceSupport.format(news));
 
         return openAiClient.completeAsJson(VERIFY_PROMPT, prompt.toString(), Verdict.class)
                 .orElse(null);
@@ -250,5 +257,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
 
     record Claim(Integer index, String claim, String searchQuery) {}
 
-    record Verdict(String verdict, Double score, String reason, String correction) {}
+    /** sources 는 판단 근거가 된 기사 번호. 참고 자료로 저장한다. */
+    record Verdict(String verdict, Double score, String reason,
+                   String correction, List<Integer> sources) {}
 }

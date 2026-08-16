@@ -30,6 +30,15 @@ public record TimelineEventDto(
          */
         int occurrences,
 
+        /**
+         * AI 가 근거로 삼은 기사. 없으면 필드 자체가 나가지 않는다.
+         *
+         * 이게 없으면 사용자는 "기사에는 2020년으로 나옵니다" 라는 문장 하나만 받는다.
+         * 어느 기사인지 못 보면 결국 AI 말을 믿으라는 것과 같다.
+         * (명세에는 없는 추가 필드다)
+         */
+        List<ReviewReferenceDto> references,
+
         // SPEECH 전용
         String text,
         List<String> riskTypes,
@@ -50,11 +59,23 @@ public record TimelineEventDto(
                 buildReason(f),
                 frameUrl(f),
                 f.getMergedCount(),
+                references(f),
                 caption ? null : f.getText(),
                 caption ? null : List.of(f.getCategory().name()),
                 caption ? f.getSpeechText() : null,
                 caption ? f.getCaptionText() : null
         );
+    }
+
+    /**
+     * 참고 자료가 없으면 빈 배열 대신 null 을 준다.
+     * non_null 설정 덕분에 필드가 아예 빠지므로, 기존 프론트 코드가 영향받지 않는다.
+     */
+    private static List<ReviewReferenceDto> references(RiskFinding f) {
+        if (f.getReferences() == null || f.getReferences().isEmpty()) {
+            return null;
+        }
+        return f.getReferences().stream().map(ReviewReferenceDto::from).toList();
     }
 
     /**

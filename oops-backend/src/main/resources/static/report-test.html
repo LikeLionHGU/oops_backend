@@ -39,6 +39,12 @@
   .body { font-size: 13.5px; }
   .body .label { color: #888; margin-right: 4px; }
   .reason { color: #555; margin-top: 5px; font-size: 13px; }
+  .refs { margin-top: 9px; padding-top: 8px; border-top: 1px dashed #e2e2e2; }
+  .refs-title { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .refs a { display: block; font-size: 12.5px; color: #2563eb;
+            text-decoration: none; margin-bottom: 3px; }
+  .refs a:hover { text-decoration: underline; }
+  .refs .meta { color: #999; font-size: 11px; }
   #err { color: #dc2626; font-size: 14px; }
 </style>
 </head>
@@ -65,6 +71,7 @@
   <div id="c-stream" class="wait">· 영상 재생(/stream) — 대기</div>
   <div id="c-seek"   class="wait">· 구간 이동(HTTP Range) — 대기</div>
   <div id="c-frame"  class="wait">· 캡처 이미지(/frames) — 대기</div>
+  <div id="c-ref"    class="wait">· 참고 자료(references) — 대기</div>
 </div>
 
 <video id="player" controls preload="metadata"></video>
@@ -86,6 +93,34 @@ function mark(id, ok, text) {
 function fmt(ms) {
   const s = Math.floor(ms / 1000);
   return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/**
+ * AI 가 근거로 본 기사.
+ *
+ * 이게 보여야 사용자가 판단을 검증할 수 있다.
+ * 무관한 기사와 대조한 오탐이면 링크를 열어보고 바로 넘길 수 있다.
+ */
+function refs(list) {
+  if (!list || !list.length) return '';
+
+  const items = list.map(r => {
+    const meta = [r.publisher, r.publishedAt].filter(Boolean).join(' · ');
+    // 카드 클릭은 영상 구간 이동이라, 링크 클릭이 그걸 타지 않게 막는다
+    return `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"
+               onclick="event.stopPropagation()">${esc(r.title)}
+              ${meta ? `<span class="meta">${esc(meta)}</span>` : ''}</a>`;
+  }).join('');
+
+  return `<div class="refs">
+            <div class="refs-title">AI 가 확인한 자료 ${list.length}건 — 직접 열어서 확인하세요</div>
+            ${items}
+          </div>`;
 }
 
 $('load').addEventListener('click', load);
@@ -137,6 +172,7 @@ async function load() {
 
   // 4) 카드
   let frameCount = 0;
+  let refCount = 0;
   report.events.forEach((e, i) => {
     if (e.frameUrl) frameCount++;
 
@@ -154,6 +190,8 @@ async function load() {
         }, 700);
       }
     };
+
+    if (e.references && e.references.length) refCount += e.references.length;
 
     const thumb = e.frameUrl
       ? `<img src="${e.frameUrl}" alt="화면 캡처"
@@ -186,6 +224,7 @@ async function load() {
         </div>
         <div class="body">${detail}</div>
         <div class="reason">${e.reason ?? ''}</div>
+        ${refs(e.references)}
       </div>`;
     $('events').appendChild(card);
   });
@@ -193,6 +232,12 @@ async function load() {
   if (frameCount === 0) {
     mark('c-frame', false, '캡처 이미지 없음 — OCR 결과가 없었을 수 있습니다');
   }
+  // 참고 자료는 이름·수치 확인과 맥락 참고에서만 붙는다.
+  // 그 두 분석기가 아무것도 못 잡았으면 0건이 정상이다.
+  mark('c-ref', refCount > 0,
+       refCount > 0
+         ? `참고 자료 ${refCount}건 — 링크를 눌러 원문을 확인하세요`
+         : '참고 자료 없음 — 이름·수치 확인과 맥락 참고에서 잡힌 게 없으면 정상입니다');
   if (report.events.length === 0) {
     $('events').innerHTML = '<p style="color:#888">다시 확인할 지점을 찾지 못했습니다.</p>';
     mark('c-seek', false, '구간 이동 — 확인할 카드가 없습니다');

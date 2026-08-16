@@ -120,12 +120,20 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             - 주제가 일반적이라 특정 사건과 무관하다
 
             반드시 이 JSON 형식으로만 답한다:
-            {"risky":true,"score":0.8,"reason":"제작자가 알아야 할 최근 상황을 두 문장 이내로","issue":"관련된 현재 이슈를 한 줄로"}
+            {"risky":true,"score":0.8,"reason":"제작자가 알아야 할 최근 상황을 두 문장 이내로","issue":"관련된 현재 이슈를 한 줄로","sources":[1,3]}
 
             risky 는 "알릴 가치가 있는가" 라는 뜻이지 "위험하다" 는 판정이 아니다.
             score 는 확인 우선순위다. 근거가 약하면 낮게 준다.
             reason 은 사실을 전달하는 문장으로 쓴다.
             "논란이 될 수 있습니다" 보다 "OO 사건과 관련해 최근 보도가 이어지고 있습니다" 가 낫다.
+
+            sources 는 **네가 그렇게 판단한 근거 기사의 번호**다.
+            제작자가 직접 열어서 배경을 확인할 자료이므로 반드시 채워라.
+            - reason 에 쓴 내용이 실제로 담긴 기사만 넣는다.
+            - 최대 3개. 가장 잘 설명하는 기사를 앞에 둔다.
+            - 근거로 삼을 기사가 없으면 risky 를 false 로 둬라.
+              근거 없이 "알아두세요" 라고만 하는 것은 도움이 되지 않는다.
+
             reason 은 한국어로 쓴다.
             """;
 
@@ -217,11 +225,17 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             double score = judgement.score() == null
                     ? 0.6 : Math.max(0.0, Math.min(1.0, judgement.score()));
 
-            findings.add(build(context, line, topic, judgement, score));
-            log.info("[timeliness] '{}' 위험 판정 score={} 위치={}ms({}) issue={}",
+            RiskFinding finding = build(context, line, topic, judgement, score);
+
+            // 배경 설명만 주고 출처를 버리면 확인할 방법이 없다.
+            // AI 가 근거로 삼은 기사를 그대로 붙여준다.
+            finding.adoptReferences(NewsReferenceSupport.pick(news, judgement.sources()));
+            findings.add(finding);
+
+            log.info("[timeliness] '{}' 위험 판정 score={} 위치={}ms({}) issue={} 참고자료={}건",
                     keyword, score, line.startMs(),
                     line.type() == TimelineEventType.SPEECH ? "발언" : "화면",
-                    judgement.issue());
+                    judgement.issue(), finding.getReferences().size());
         }
 
         log.info("[timeliness] videoId={} 주제={}개 findings={}",
@@ -341,13 +355,7 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             prompt.append("영상에서의 맥락: ").append(topic.context()).append("\n");
         }
         prompt.append("\n최근 뉴스 (최신순):\n");
-
-        for (NewsSearchClient.NewsItem item : news) {
-            prompt.append("- (%s) %s%n  %s%n".formatted(
-                    item.pubDate() == null ? "날짜미상" : item.pubDate(),
-                    item.title(),
-                    item.description()));
-        }
+        prompt.append(NewsReferenceSupport.format(news));
 
         return openAiClient.completeAsJson(JUDGE_PROMPT, prompt.toString(), Judgement.class)
                 .orElse(null);
@@ -361,5 +369,7 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
 
     record Topic(Integer index, String keyword, String context) {}
 
-    record Judgement(Boolean risky, Double score, String reason, String issue) {}
+    /** sources 는 판단 근거가 된 기사 번호. 참고 자료로 저장한다. */
+    record Judgement(Boolean risky, Double score, String reason,
+                     String issue, List<Integer> sources) {}
 }

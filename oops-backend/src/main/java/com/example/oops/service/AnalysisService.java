@@ -90,7 +90,7 @@ public class AnalysisService {
                     "분석이 아직 완료되지 않았습니다. (현재 상태: %s)".formatted(job.getStatus()));
         }
 
-        List<RiskFinding> findings = findingRepository.findByVideoId(videoId).stream()
+        List<RiskFinding> findings = findingRepository.findByVideoIdWithReferences(videoId).stream()
                 .sorted(FindingOrder.byPriority())
                 .toList();
 

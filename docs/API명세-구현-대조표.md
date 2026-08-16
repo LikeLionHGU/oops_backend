@@ -50,7 +50,7 @@ AnalysisRetryResponse  videoId, jobId, status
 ### Timeline Event (§6)
 
 ```
-공통      id, startMs, endMs, type, severity, reason, frameUrl, occurrences
+공통      id, startMs, endMs, type, severity, reason, frameUrl, occurrences, references[]
 SPEECH    text, riskTypes[]
 CAPTION   captionText  (speechText 는 현재 비어 있음)
 ```
@@ -89,7 +89,35 @@ CAPTION   captionText  (speechText 는 현재 비어 있음)
 
 `1` 이면 한 번만 등장한 것이라 무시해도 됩니다. 명세에 없는 추가 필드입니다.
 
-### 3-4. 업로드에 `genre` 추가 (선택)
+### 3-4. `TimelineEventDto` 에 `references` 추가
+
+**AI 가 판단 근거로 실제로 본 기사입니다.** 프론트에서 링크로 걸어주세요.
+
+```json
+"references": [
+  {
+    "title": "OO그룹 창립 20주년...2020년 설립 후 성장세",
+    "publisher": "한국경제",
+    "url": "https://...",
+    "publishedAt": "Mon, 03 Aug 2026 09:12:00 GMT",
+    "snippet": "2020년 설립된 OO그룹은..."
+  }
+]
+```
+
+**없으면 필드 자체가 빠집니다.** 빈 배열이 아니라 `undefined` 로 오므로
+`event.references?.map(...)` 처럼 처리하면 됩니다.
+
+붙는 카드는 `이름·수치 확인`(FACT_ERROR / MISINFORMATION / UNVERIFIED_CLAIM)과
+`맥락 참고`(TIMING_SENSITIVE) 두 종류입니다. 나머지는 외부 검색을 하지 않아 근거가 없습니다.
+카드당 최대 4건입니다.
+
+이 필드가 필요한 이유는 이 도구가 **오탐을 낸다**는 전제 때문입니다.
+"기사에는 2020년으로 나옵니다" 라는 문장만 주면 사용자는 AI 말을 믿을 수밖에 없습니다.
+원문을 열어봐야 무관한 기사와 대조한 오탐인지 판단할 수 있습니다.
+가능하면 **눈에 띄게** 노출해 주세요.
+
+### 3-5. 업로드에 `genre` 추가 (선택)
 
 영상 유형을 지정하면 그에 맞는 분석기가 돌아갑니다.
 
@@ -100,7 +128,7 @@ TALK_PODCAST / GENERAL
 **선택 필드입니다.** 안 보내면 대본을 보고 자동으로 판별하므로
 기존 요청은 그대로 동작합니다. 나중에 UI 에 유형 선택을 넣으면 정확도가 올라갑니다.
 
-### 3-5. `/report` 에 `adSuitability`, `genre` 추가
+### 3-6. `/report` 에 `adSuitability`, `genre` 추가
 
 ```json
 {
@@ -118,7 +146,7 @@ TALK_PODCAST / GENERAL
 
 둘 다 명세에 없는 추가 필드라 안 써도 무방합니다.
 
-### 3-6. 에러 코드 `INVALID_REQUEST` 추가
+### 3-7. 에러 코드 `INVALID_REQUEST` 추가
 
 필수 값 누락이나 잘못된 파라미터에 쓰는 400 코드입니다.
 명세 §1-6 목록에는 없었지만 유효성 검사 실패를 표현할 코드가 필요했습니다.

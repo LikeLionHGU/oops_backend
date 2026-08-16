@@ -6,6 +6,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 탐지된 논란 1건. 발언이든 화면 자막이든 전부 이 테이블로 모인다.
  * 프론트에는 TimelineEvent 로 변환되어 나간다. (API 명세 6)
@@ -15,6 +18,9 @@ import lombok.NoArgsConstructor;
 @Table(name = "risk_finding", indexes = @Index(name = "idx_finding_video", columnList = "video_id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RiskFinding extends BaseTimeEntity {
+
+    /** 카드 하나에 붙일 참고 자료 상한. 많이 붙이면 아무도 안 본다. */
+    private static final int MAX_REFERENCES = 4;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -104,6 +110,17 @@ public class RiskFinding extends BaseTimeEntity {
     @Column(nullable = false)
     private int mergedCount;
 
+    /**
+     * AI 가 실제로 본 참고 자료. 사용자가 직접 확인할 수 있게 남긴다.
+     *
+     * 설명만 주고 근거를 버리면 결국 AI 말을 믿으라는 것과 같다.
+     * 특히 이 도구는 오탐이 나므로, 무관한 기사였다는 걸
+     * 사용자가 스스로 판단할 수 있어야 한다.
+     */
+    @OneToMany(mappedBy = "finding", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("displayOrder ASC")
+    private List<ReviewReference> references = new ArrayList<>();
+
     @Builder
     private RiskFinding(Video video, TimelineEventType eventType, RiskCategory category,
                         EvidenceSource source, double score, long startMs, long endMs,
@@ -157,6 +174,42 @@ public class RiskFinding extends BaseTimeEntity {
     /** 병합 단계에서 등장 시각 목록을 채운다. */
     public void recordOccurrences(String times) {
         this.occurrenceTimes = times;
+    }
+
+    /**
+     * 참고 자료를 붙인다.
+     *
+     * 카드 하나에 기사를 다 쏟아놓으면 오히려 안 보게 된다.
+     * 확인할 만큼만 남기고, 같은 기사는 한 번만 넣는다.
+     */
+    public void addReference(ReviewReference reference) {
+        if (reference == null || references.size() >= MAX_REFERENCES) {
+            return;
+        }
+        String key = reference.dedupeKey();
+        if (key.isBlank()) {
+            return;
+        }
+        boolean duplicate = references.stream()
+                .anyMatch(r -> key.equals(r.dedupeKey()));
+        if (duplicate) {
+            return;
+        }
+        reference.assignTo(this, references.size());
+        references.add(reference);
+    }
+
+    /**
+     * 병합으로 버려지는 후보가 들고 있던 참고 자료를 넘겨받는다.
+     *
+     * 같은 지적을 여러 분석기가 보고하면 대표 1건만 남기는데,
+     * 그때 버려지는 쪽의 근거까지 같이 사라지면 안 된다.
+     */
+    public void adoptReferences(List<ReviewReference> incoming) {
+        if (incoming == null) return;
+        for (ReviewReference reference : List.copyOf(incoming)) {
+            addReference(reference);
+        }
     }
 
     public void attachFrame(VideoFrame frame) {

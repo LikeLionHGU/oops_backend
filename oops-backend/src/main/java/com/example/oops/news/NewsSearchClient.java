@@ -23,5 +23,16 @@ public interface NewsSearchClient {
     /** 최신순으로 뉴스를 가져온다. 실패하면 빈 리스트. */
     List<NewsItem> searchRecent(String query, int display);
 
-    record NewsItem(String title, String description, String pubDate, String link) {}
+    /**
+     * 기사 1건.
+     *
+     * publisher 는 없을 수 있다. 구글 RSS 는 &lt;source&gt; 로 매체명을 주지만
+     * 네이버는 주지 않는다. 비어 있으면 링크 주소에서 뽑아 쓴다.
+     */
+    record NewsItem(String title, String description, String pubDate, String link, String publisher) {
+
+        public NewsItem(String title, String description, String pubDate, String link) {
+            this(title, description, pubDate, link, null);
+        }
+    }
 }

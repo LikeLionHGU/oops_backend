@@ -142,6 +142,10 @@ public class FindingFusionService {
                 representative.recordOccurrences(cluster.occurrenceTimes());
             }
 
+            // 버려지는 후보가 들고 있던 참고 자료를 대표에게 넘긴다.
+            // 근거를 들고 있던 쪽이 대표가 아닐 수 있어서, 그냥 두면 링크가 사라진다.
+            cluster.collectReferencesInto(representative);
+
             if (crossModal) {
                 representative.boostScore(representative.getScore() * CROSS_MODAL_BOOST);
                 representative.appendReason("발언과 화면 양쪽에서 나타납니다.");
@@ -309,6 +313,21 @@ public class FindingFusionService {
                             .comparingDouble(RiskFinding::getScore)
                             .thenComparingInt(f -> f.getReason() == null ? 0 : f.getReason().length()))
                     .orElse(members.get(0));
+        }
+
+        /**
+         * 묶음 안 다른 후보들의 참고 자료를 대표에게 모아준다.
+         *
+         * 예를 들어 "OO 사건" 을 은어 사전이 먼저 잡고 맥락 분석기가 기사와 함께 잡으면,
+         * 확신도가 높은 사전 쪽이 대표가 되면서 기사 링크가 통째로 날아간다.
+         * 사용자에게는 같은 카드이므로 근거는 합쳐서 보여준다.
+         */
+        void collectReferencesInto(RiskFinding representative) {
+            for (RiskFinding member : members) {
+                if (member != representative) {
+                    representative.adoptReferences(member.getReferences());
+                }
+            }
         }
 
         /** 발언(음성)과 화면 양쪽에서 잡혔는지 */

@@ -98,13 +98,29 @@ public class GoogleNewsRssSearchClient implements NewsSearchClient {
             String title = text(element, "title");
             if (title.isBlank()) continue;
 
+            // <source>조선일보</source> 로 매체명이 온다. 참고 자료 카드에 그대로 쓴다.
+            String publisher = text(element, "source");
+
             result.add(new NewsItem(
-                    title,
+                    stripPublisherSuffix(title, publisher),
                     stripHtml(text(element, "description")),
                     text(element, "pubDate"),
-                    text(element, "link")));
+                    text(element, "link"),
+                    publisher.isBlank() ? null : publisher));
         }
         return result;
+    }
+
+    /**
+     * 구글 RSS 제목은 "기사 제목 - 매체명" 형태다.
+     * 매체명을 따로 보여주므로 제목에서는 뗀다.
+     */
+    private String stripPublisherSuffix(String title, String publisher) {
+        if (publisher == null || publisher.isBlank()) return title;
+        String suffix = " - " + publisher;
+        return title.endsWith(suffix)
+                ? title.substring(0, title.length() - suffix.length()).trim()
+                : title;
     }
 
     private String text(Element parent, String tag) {
