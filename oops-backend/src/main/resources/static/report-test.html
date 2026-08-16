@@ -236,10 +236,12 @@ async function loadList(selectLatest) {
   };
 
   $('picker').innerHTML = videos.map(v => {
-    const name = v.title || v.filename || v.sourceUrl || '(이름 없음)';
-    const when = v.createdAt ? v.createdAt.replace('T', ' ').slice(5, 16) : '';
+    const name = v.filename || v.title || v.sourceUrl || '(이름 없음)';
+    // uploadedAt 은 ISO-8601 UTC 다. 목록에서는 월-일 시:분만 보면 충분하다.
+    const when = v.uploadedAt ? v.uploadedAt.replace('T', ' ').slice(5, 16) : '';
+    const found = v.eventCount > 0 ? ` · 확인 ${v.eventCount}곳` : '';
     return `<option value="${v.videoId}">
-              #${v.videoId} · ${esc(name).slice(0, 40)} · ${STATUS[v.status] ?? v.status} · ${when}
+              #${v.videoId} · ${esc(name).slice(0, 40)} · ${STATUS[v.status] ?? v.status}${found} · ${when}
             </option>`;
   }).join('');
 
