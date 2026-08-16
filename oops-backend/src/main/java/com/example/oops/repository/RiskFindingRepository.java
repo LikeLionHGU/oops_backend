@@ -18,5 +18,17 @@ public interface RiskFindingRepository extends JpaRepository<RiskFinding, Long> 
     @Query("select distinct f from RiskFinding f left join fetch f.references where f.video.id = :videoId")
     List<RiskFinding> findByVideoIdWithReferences(@Param("videoId") Long videoId);
 
+    /**
+     * 목록 화면의 eventCount 용. 영상별 검토 후보 개수를 한 번에 센다.
+     * 반환은 [videoId, count] 쌍이다.
+     */
+    @Query("""
+            select f.video.id, count(f)
+            from RiskFinding f
+            where f.video.id in :videoIds
+            group by f.video.id
+            """)
+    List<Object[]> countByVideoIds(@Param("videoIds") List<Long> videoIds);
+
     void deleteByVideoId(Long videoId);
 }

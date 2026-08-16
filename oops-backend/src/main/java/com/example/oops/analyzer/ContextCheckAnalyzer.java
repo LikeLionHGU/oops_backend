@@ -229,7 +229,8 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
 
             // 배경 설명만 주고 출처를 버리면 확인할 방법이 없다.
             // AI 가 근거로 삼은 기사를 그대로 붙여준다.
-            finding.adoptReferences(NewsReferenceSupport.pick(news, judgement.sources()));
+            finding.adoptReferences(
+                    NewsReferenceSupport.pick(news, judgement.sources(), judgement.issue()));
             findings.add(finding);
 
             log.info("[timeliness] '{}' 위험 판정 score={} 위치={}ms({}) issue={} 참고자료={}건",

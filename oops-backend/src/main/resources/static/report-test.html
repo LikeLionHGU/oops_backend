@@ -147,11 +147,12 @@ function refs(list) {
   if (!list || !list.length) return '';
 
   const items = list.map(r => {
-    const meta = [r.publisher, r.publishedAt].filter(Boolean).join(' · ');
+    const meta = [r.provider, r.publishedAt].filter(Boolean).join(' · ');
     // 카드 클릭은 영상 구간 이동이라, 링크 클릭이 그걸 타지 않게 막는다
     return `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"
                onclick="event.stopPropagation()">${esc(r.title)}
-              ${meta ? `<span class="meta">${esc(meta)}</span>` : ''}</a>`;
+              ${meta ? `<span class="meta">${esc(meta)}</span>` : ''}
+              ${r.relevantContext ? `<span class="meta">→ ${esc(r.relevantContext)}</span>` : ''}</a>`;
   }).join('');
 
   return `<div class="refs">

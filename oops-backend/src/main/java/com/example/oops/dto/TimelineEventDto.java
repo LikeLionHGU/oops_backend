@@ -1,5 +1,6 @@
 package com.example.oops.dto;
 
+import com.example.oops.domain.CandidateType;
 import com.example.oops.domain.RiskFinding;
 import com.example.oops.domain.Severity;
 import com.example.oops.domain.TimelineEventType;
@@ -22,6 +23,14 @@ public record TimelineEventDto(
         Severity severity,
         String reason,
         String frameUrl,
+
+        /**
+         * 왜 다시 확인해야 하는지의 분류. 명세 §6-1.
+         *
+         * type 이 "어디서 나온 말인가"(발언/화면)라면, 이건 "왜 확인하는가"다.
+         * 프론트는 이 값으로 카드 모양과 안내 문구를 정하면 된다.
+         */
+        CandidateType candidateType,
 
         /**
          * 같은 논란이 영상에서 몇 번 등장했는지. 1 이면 한 번만 나온 것.
@@ -58,6 +67,7 @@ public record TimelineEventDto(
                 f.getSeverity(),
                 buildReason(f),
                 frameUrl(f),
+                CandidateType.from(f.getCategory(), f.getEventType()),
                 f.getMergedCount(),
                 references(f),
                 caption ? null : f.getText(),

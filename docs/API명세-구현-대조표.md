@@ -50,10 +50,24 @@ AnalysisRetryResponse  videoId, jobId, status
 ### Timeline Event (§6)
 
 ```
-공통      id, startMs, endMs, type, severity, reason, frameUrl, occurrences, references[]
+공통      id, startMs, endMs, type, severity, reason, frameUrl,
+          candidateType, occurrences, references[]
 SPEECH    text, riskTypes[]
 CAPTION   captionText  (speechText 는 현재 비어 있음)
 ```
+
+`type` 은 **어디서 나온 말인가**(발언/화면), `candidateType` 은 **왜 확인하는가** 입니다.
+
+```
+SPEECH_REVIEW        발언에서 다시 볼 표현·주장·대상
+SCREEN_TEXT_REVIEW   화면 글자에서 다시 볼 표현·주장·대상
+FACT_ENTITY          인물·회사·날짜·숫자를 외부 자료와 대조
+CONTEXT_REFERENCE    지금 시점의 사건·배경 참고
+VISUAL_REFERENCE     예약값 — 현재 안 나옵니다
+CAPTION_CONSISTENCY  예약값 — 분석기가 꺼져 있어 안 나옵니다
+```
+
+`references[]` 가 붙는 건 `FACT_ENTITY` 와 `CONTEXT_REFERENCE` 뿐입니다.
 
 > **CAPTION 의 `speechText` 는 항상 비어 있습니다.**
 > 발언과 자막을 대조하던 분석기를 껐기 때문입니다.
@@ -76,10 +90,13 @@ CAPTION   captionText  (speechText 는 현재 비어 있음)
 `TimelineEventDto` 하나로 두고 해당 없는 필드를 `null`로 뒀습니다.
 **JSON 결과물은 명세와 완전히 동일**합니다.
 
-### 3-2. `ProgressMessage`에 `errorCode` 추가
+### 3-2. `errorCode` — STOMP·REST 양쪽에 있습니다
 
 분석이 실패했을 때 프론트가 원인별로 다른 안내를 띄울 수 있게 넣었습니다.
-명세에는 없지만 추가 필드라 기존 처리에는 영향이 없습니다.
+`ProgressMessage`(STOMP)와 `VideoStatusResponse`(REST) **둘 다** 같은 값을 줍니다.
+WebSocket이 끊겨 폴링으로 넘어가도 화면 분기가 달라지지 않습니다.
+
+성공 중에는 필드가 아예 빠집니다.
 
 ### 3-3. `TimelineEventDto` 에 `occurrences` 추가
 
@@ -97,13 +114,17 @@ CAPTION   captionText  (speechText 는 현재 비어 있음)
 "references": [
   {
     "title": "OO그룹 창립 20주년...2020년 설립 후 성장세",
-    "publisher": "한국경제",
+    "provider": "한국경제",
     "url": "https://...",
     "publishedAt": "Mon, 03 Aug 2026 09:12:00 GMT",
+    "relevantContext": "기사에는 2020년 설립으로 나옵니다",
     "snippet": "2020년 설립된 OO그룹은..."
   }
 ]
 ```
+
+`snippet` 은 기사에 있는 문장 그대로이고, `relevantContext` 는 **그래서 뭐가 확인됐는지** 입니다.
+링크를 열기 전에 볼 수 있게 카드에 같이 보여주면 좋습니다.
 
 **없으면 필드 자체가 빠집니다.** 빈 배열이 아니라 `undefined` 로 오므로
 `event.references?.map(...)` 처럼 처리하면 됩니다.
@@ -153,6 +174,24 @@ TALK_PODCAST / GENERAL
 
 ---
 
+## 3-8. 명세 v3에서 아직 안 한 것
+
+프론트가 **지금 당장 못 쓰는** 항목입니다. 계약만 맞춘 상태가 아니라 아예 없습니다.
+
+| 명세 | 상태 | 영향 |
+|---|---|---|
+| `report.coverage[]` · `warnings[]` (§5-1, §19-5) | **없음** | 분석기 하나가 실패해도 "확인할 후보 없음"으로만 보입니다 |
+| `POST /videos/{id}/review-actions` (§9-2) | **없음** | 확인함·수정함·보류가 화면 상태로만 남습니다 |
+| 업로드 직후 90분 검증 (§2-1) | **없음** | 분석 중에 파이썬이 길이를 재고 실패로 끝냅니다 |
+
+앞의 둘은 명세도 P0로 잡아둔 항목입니다.
+`MAX_VIDEO_DURATION_EXCEEDED` 와 `EVENT_NOT_FOUND` 는 **에러 코드만 미리 넣어뒀고 아직 안 씁니다.**
+
+`CAPTION_CONSISTENCY`(발언↔자막 비교)는 명세 §18-1에서 MVP 제외로 확정돼
+지금처럼 분석기를 꺼둔 상태가 맞습니다.
+
+---
+
 ## 4. 구현하지 않은 부분
 
 ### §11 Spring ↔ Python 내부 API
@@ -190,10 +229,28 @@ Python 서버는 `127.0.0.1`에만 바인딩해 외부에서 접근할 수 없�
 | POST | `/api/v1/videos` (JSON `{url}`) | 유튜브 링크 등록. 나중에 댓글 분석에 원본 URL이 필요합니다 |
 | GET | `/api/v1/videos/{id}/transcript` | 음성 인식 결과 원문 (디버깅) |
 | GET | `/api/v1/videos/{id}/screen-texts` | 화면 자막 인식 결과 원문 (디버깅) |
-| GET | `/api/v1/videos` | 영상 목록 (최근 100건, 관리용) |
 | DELETE | `/api/v1/videos/{id}` | 영상·결과·파일 삭제 |
 
 앞의 둘은 프론트가 안 써도 됩니다. 분석 결과가 이상할 때 원인을 찾는 용도입니다.
+
+### 검수 이력 `GET /api/v1/videos` (명세 §3-2)
+
+```json
+{
+  "videoId": 123,
+  "filename": "sample.mp4",
+  "uploadedAt": "2026-08-16T12:30:00Z",
+  "status": "COMPLETED",
+  "progress": 100,
+  "eventCount": 3,
+  "streamUrl": "/api/v1/videos/123/stream"
+}
+```
+
+- `uploadedAt` 은 **UTC** 입니다. 서버 로컬 시간대에 의존하지 않게 고정했습니다
+- `streamUrl` 은 원본이 서버에 없으면 `null` (유튜브 링크로 등록한 경우)
+- `filename` 이 없는 유튜브 항목은 제목이나 주소로 채웁니다. 빈칸으로 두지 않습니다
+- 관리용 확장 필드(`sourceType`, `sourceUrl`, `title`, `genre`)가 함께 나갑니다. 무시하면 됩니다
 
 유튜브 링크로 등록한 영상은 로컬에 파일이 없어 **`/stream`이 동작하지 않습니다.**
 그 경우 프론트에서 유튜브 임베드를 쓰거나, 파일 업로드만 사용하면 됩니다.

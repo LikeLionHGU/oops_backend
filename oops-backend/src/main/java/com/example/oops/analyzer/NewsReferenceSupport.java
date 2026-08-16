@@ -40,7 +40,8 @@ final class NewsReferenceSupport {
      * 지목하지 못했으면 검색 결과 앞쪽 몇 건을 대신 붙인다.
      * 근거가 약하다는 것과 근거를 안 보여주는 것은 다르다.
      */
-    static List<ReviewReference> pick(List<NewsSearchClient.NewsItem> news, List<Integer> indexes) {
+    static List<ReviewReference> pick(List<NewsSearchClient.NewsItem> news,
+                                      List<Integer> indexes, String relevantContext) {
         List<NewsSearchClient.NewsItem> chosen = new ArrayList<>();
 
         if (indexes != null) {
@@ -58,12 +59,16 @@ final class NewsReferenceSupport {
         }
 
         return chosen.stream()
-                .map(item -> ReviewReference.of(
-                        item.title(),
-                        item.publisher(),
-                        item.link(),
-                        item.pubDate(),
-                        item.description()))
+                .map(item -> {
+                    ReviewReference reference = ReviewReference.of(
+                            item.title(),
+                            item.publisher(),
+                            item.link(),
+                            item.pubDate(),
+                            item.description());
+                    reference.describeRelevance(relevantContext);
+                    return reference;
+                })
                 .toList();
     }
 }

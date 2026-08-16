@@ -2,13 +2,19 @@ package com.example.oops.service;
 
 import com.example.oops.common.BusinessException;
 import com.example.oops.common.ErrorCode;
+import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.SourceType;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.VideoRegisterRequest;
 import com.example.oops.dto.VideoSummaryResponse;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import com.example.oops.repository.AnalysisJobRepository;
+import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
 import com.example.oops.storage.StorageService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +28,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class VideoService {
 
     private final VideoRepository videoRepository;
+    private final AnalysisJobRepository jobRepository;
+    private final RiskFindingRepository findingRepository;
     private final StorageService storageService;
 
     /**
@@ -55,14 +63,42 @@ public class VideoService {
                 .build());
     }
 
-    /** 최근 등록순 목록. 관리·디버깅용이라 페이징 없이 최근 100건만 준다. */
+    /**
+     * 검수 이력. 최근 등록순 100건. (명세 §3-2)
+     *
+     * 진행률과 검토 후보 개수를 함께 준다.
+     * 영상마다 따로 조회하면 100건에 쿼리가 200번 나가므로 한 번에 모아서 붙인다.
+     */
     public List<VideoSummaryResponse> findRecent() {
-        return videoRepository.findAll(
+        List<Video> videos = videoRepository.findAll(
                         org.springframework.data.domain.PageRequest.of(0, 100,
                                 org.springframework.data.domain.Sort.by(
                                         org.springframework.data.domain.Sort.Direction.DESC, "id")))
-                .map(VideoSummaryResponse::from)
                 .getContent();
+
+        if (videos.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> ids = videos.stream().map(Video::getId).toList();
+
+        // id 오름차순이라 뒤에 오는 것이 최신 Job 이다
+        Map<Long, AnalysisJob> latestJobs = new HashMap<>();
+        for (AnalysisJob job : jobRepository.findByVideoIdInOrderByIdAsc(ids)) {
+            latestJobs.put(job.getVideo().getId(), job);
+        }
+
+        Map<Long, Integer> eventCounts = new HashMap<>();
+        for (Object[] row : findingRepository.countByVideoIds(ids)) {
+            eventCounts.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+
+        return videos.stream()
+                .map(v -> VideoSummaryResponse.of(
+                        v,
+                        latestJobs.get(v.getId()),
+                        eventCounts.getOrDefault(v.getId(), 0)))
+                .toList();
     }
 
     public Video getEntity(Long videoId) {

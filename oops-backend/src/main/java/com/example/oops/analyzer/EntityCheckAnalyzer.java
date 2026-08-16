@@ -218,7 +218,10 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
 
             // AI 가 대조에 쓴 기사를 그대로 남긴다.
             // 무관한 기사와 비교한 오탐이라면 사용자가 링크를 열어보고 바로 판단할 수 있다.
-            finding.adoptReferences(NewsReferenceSupport.pick(news, verdict.sources()));
+            // relevantContext 에는 기사에서 확인된 내용을 넣는다.
+            // 사용자가 링크를 열기 전에 "이 자료에 뭐가 있는지" 를 먼저 볼 수 있다.
+            finding.adoptReferences(NewsReferenceSupport.pick(
+                    news, verdict.sources(), hasEvidence ? correction : null));
             findings.add(finding);
 
             log.info("[fact-check] '{}' → {} (score={}, 참고자료 {}건)",

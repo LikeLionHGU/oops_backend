@@ -53,9 +53,18 @@ public class ReviewReference extends BaseTimeEntity {
     @Column(length = 80)
     private String publishedAt;
 
-    /** 어떤 대목이 관련 있는지 */
+    /** 기사 본문 발췌 */
     @Column(length = 500)
     private String snippet;
+
+    /**
+     * 이 자료에서 확인된 내용.
+     *
+     * snippet 은 기사에 있는 문장 그대로이고, 이건 "그래서 뭐가 확인됐는지" 다.
+     * AI 가 대조 결과로 내놓은 문장을 넣는다. 카드에서 자료를 클릭할지 말지 판단하는 재료다.
+     */
+    @Column(length = 500)
+    private String relevantContext;
 
     /** 표시 순서 */
     @Column(nullable = false)
@@ -79,6 +88,17 @@ public class ReviewReference extends BaseTimeEntity {
         String resolved = (publisher == null || publisher.isBlank())
                 ? hostOf(url) : publisher;
         return new ReviewReference(title, resolved, url, publishedAt, snippet);
+    }
+
+    /**
+     * 이 자료에서 확인된 내용을 채운다.
+     *
+     * 분석기가 자료를 다 붙인 뒤 한 번에 넣는다.
+     * 어느 기사에서 나왔는지까지 쪼개려면 LLM 응답 형식을 더 복잡하게 만들어야 하는데,
+     * 지금은 "이 자료들에서 확인된 내용" 수준이면 충분하다.
+     */
+    public void describeRelevance(String relevantContext) {
+        this.relevantContext = trim(relevantContext, 500);
     }
 
     /** RiskFinding.addReference 에서만 호출한다. */
