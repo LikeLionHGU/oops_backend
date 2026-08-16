@@ -57,10 +57,17 @@
 </div>
 
 <div class="row">
+  <label>최근 영상</label>
+  <select id="picker" style="min-width:340px"></select>
+  <button id="refresh" class="ghost">목록 새로고침</button>
+</div>
+
+<div class="row">
   <label>videoId</label>
   <input type="number" id="videoId" value="1">
   <button id="load">불러오기</button>
   <button id="reload" class="ghost">영상만 다시 로드</button>
+  <span id="now" style="color:#999;font-size:12px"></span>
 </div>
 
 <div id="err"></div>
@@ -95,6 +102,36 @@ function fmt(ms) {
   return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
 }
 
+const CHECK_LABELS = {
+  'c-report': '검수 리스트 조회',
+  'c-stream': '영상 재생(/stream)',
+  'c-seek':   '구간 이동(HTTP Range)',
+  'c-frame':  '캡처 이미지(/frames)',
+  'c-ref':    '참고 자료(references)'
+};
+
+/** 다른 영상을 불러올 때 지난 결과가 남아 있으면 헷갈린다. */
+function resetChecks() {
+  Object.entries(CHECK_LABELS).forEach(([id, label]) => {
+    const el = $(id);
+    el.className = 'wait';
+    el.textContent = `· ${label} — 대기`;
+  });
+}
+
+/** 실패했을 때 다음에 뭘 해야 하는지까지 알려준다. */
+function hint(id, body) {
+  const code = body.error?.code;
+  if (code === 'ANALYSIS_NOT_COMPLETED') {
+    return `${body.message}  ·  videoId ${id} 은 아직 분석 중입니다. ` +
+           `방금 올린 영상이 맞는지 위 목록에서 확인하세요.`;
+  }
+  if (code === 'VIDEO_NOT_FOUND') {
+    return `${body.message}  ·  videoId ${id} 이 없습니다. 위 목록에서 골라주세요.`;
+  }
+  return body.message;
+}
+
 function esc(s) {
   return String(s ?? '').replace(/[&<>"]/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -123,6 +160,47 @@ function refs(list) {
           </div>`;
 }
 
+/**
+ * 최근 올린 영상 목록.
+ *
+ * videoId 를 직접 외워서 넣으면 엉뚱한 영상을 불러오기 쉽다.
+ * 분석이 끝난 것과 아직 도는 것을 구분해서 보여준다.
+ */
+async function loadList(selectLatest) {
+  let videos;
+  try {
+    const body = await (await fetch('/api/v1/videos')).json();
+    if (!body.success) return;
+    videos = body.data;
+  } catch (e) {
+    return;
+  }
+
+  const STATUS = {
+    COMPLETED: '분석 완료', PROCESSING: '분석 중',
+    PENDING: '대기 중', FAILED: '실패'
+  };
+
+  $('picker').innerHTML = videos.map(v => {
+    const name = v.title || v.filename || v.sourceUrl || '(이름 없음)';
+    const when = v.createdAt ? v.createdAt.replace('T', ' ').slice(5, 16) : '';
+    return `<option value="${v.videoId}">
+              #${v.videoId} · ${esc(name).slice(0, 40)} · ${STATUS[v.status] ?? v.status} · ${when}
+            </option>`;
+  }).join('');
+
+  // 목록은 최신순이라 첫 번째가 방금 올린 영상이다
+  if (selectLatest && videos.length) {
+    $('picker').value = videos[0].videoId;
+    $('videoId').value = videos[0].videoId;
+  }
+}
+
+$('picker').addEventListener('change', () => {
+  $('videoId').value = $('picker').value;
+  load();
+});
+$('refresh').addEventListener('click', () => loadList(true));
 $('load').addEventListener('click', load);
 $('reload').addEventListener('click', () => {
   const id = $('videoId').value;
@@ -137,6 +215,16 @@ async function load() {
   $('summary').innerHTML = '';
   seekTested = false;
 
+  // 영상을 가장 먼저 바꾼다.
+  // 리포트 조회가 실패했을 때 앞서 보던 영상이 그대로 남아 있으면
+  // "왜 다른 영상이 뜨지" 하고 헷갈린다. 화면과 videoId 는 항상 같이 움직여야 한다.
+  player.pause();
+  player.src = `/api/v1/videos/${id}/stream?t=` + Date.now();
+  player.load();
+  $('now').textContent = `videoId ${id}`;
+
+  resetChecks();
+
   // 1) 리포트
   let report;
   try {
@@ -144,7 +232,7 @@ async function load() {
     const body = await res.json();
     if (!body.success) {
       mark('c-report', false, `리포트 조회 실패 — ${body.message} [${body.error?.code}]`);
-      $('err').textContent = body.message;
+      $('err').textContent = hint(id, body);
       return;
     }
     report = body.data;
@@ -153,10 +241,6 @@ async function load() {
     mark('c-report', false, '리포트 조회 실패 — 서버 응답 없음');
     return;
   }
-
-  // 2) 영상
-  player.src = `/api/v1/videos/${id}/stream`;
-  player.load();
 
   // 3) 요약
   const s = report.summary;
@@ -247,6 +331,8 @@ async function load() {
 player.addEventListener('loadedmetadata', () => {
   mark('c-stream', true, `영상 재생 준비 완료 — 길이 ${fmt(player.duration * 1000)}`);
 });
+loadList(true);
+
 player.addEventListener('error', () => {
   mark('c-stream', false, '영상 로드 실패 — 업로드한 영상만 재생됩니다 (유튜브 링크는 불가)');
 });
