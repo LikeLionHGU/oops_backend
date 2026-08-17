@@ -66,6 +66,20 @@ oops:
     model: gpt-4o-mini
     timeout: 90s
 
+    # 토큰 단가. 분석이 끝나면 로그에 [openai-cost] 로 원가가 찍힌다.
+    #
+    # 코드에 박지 않고 여기 둔 이유는, OpenAI 가 가격을 바꾸면
+    # 로그 숫자가 조용히 틀리기 시작하는데 틀린 줄도 모르게 되기 때문이다.
+    # 모델을 바꿀 때도 여기만 고치면 된다.
+    #
+    # 최신 단가: https://openai.com/api/pricing
+    pricing:
+      input-per-1m: 0.15          # 1M 입력 토큰당 USD (gpt-4o-mini)
+      cached-input-per-1m: 0.075  # 같은 프롬프트 반복 시 캐시된 입력은 절반
+      output-per-1m: 0.60
+      stt-per-minute: 0.006       # 음성 인식(whisper-1) 분당 USD
+      usd-to-krw: 1400            # 원화 환산용. 대략치다
+
   # 뉴스 검색 소스는 자동 선택된다.
   #   키가 있으면  -> 네이버 뉴스 (국내 매체 커버리지가 넓다)
   #   키가 없으면  -> 구글 뉴스 RSS (키 불필요, 기본값)

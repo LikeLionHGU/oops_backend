@@ -124,10 +124,72 @@ public class OpenAiClient {
     private static final ThreadLocal<int[]> failureCount = ThreadLocal.withInitial(() -> new int[1]);
     private static final ThreadLocal<String> failureReason = new ThreadLocal<>();
 
+    /**
+     * 지금 어느 영상의 어느 분석기를 돌리고 있는지.
+     *
+     * completeAsJson 에 인자로 넘기지 않고 여기 두는 이유는,
+     * 호출처가 9곳이라 하나만 빠뜨려도 그 분석기의 토큰이 조용히 누락되기 때문이다.
+     * 파이프라인이 분석기를 돌리기 직전에 한 번만 세팅한다.
+     */
+    private static final ThreadLocal<long[]> currentVideoId = ThreadLocal.withInitial(() -> new long[]{0});
+    private static final ThreadLocal<String> currentAnalyzer = ThreadLocal.withInitial(() -> "-");
+
+    /** 영상 한 편에 쓴 토큰 누적치 */
+    private static final ThreadLocal<long[]> usageTotals =
+            ThreadLocal.withInitial(() -> new long[4]);   // calls, prompt, cached, completion
+
+    /** 영상 분석을 시작할 때 한 번 호출한다. */
+    public void beginVideo(Long videoId) {
+        currentVideoId.get()[0] = videoId == null ? 0 : videoId;
+        usageTotals.set(new long[4]);
+    }
+
     /** 분석기 하나를 돌리기 전에 호출한다. */
+    public void beginAnalyzer(String analyzerKey) {
+        currentAnalyzer.set(analyzerKey == null ? "-" : analyzerKey);
+        resetFailureTracking();
+    }
+
     public void resetFailureTracking() {
         failureCount.get()[0] = 0;
         failureReason.remove();
+    }
+
+    /** 이 영상에 지금까지 쓴 양. 파이프라인이 마지막에 한 줄로 정리한다. */
+    public TokenUsage videoUsage() {
+        long[] u = usageTotals.get();
+        return new TokenUsage(u[0], u[1], u[2], u[3], properties.modelOrDefault(),
+                properties.pricing());
+    }
+
+    /**
+     * 토큰 사용량과 그에 따른 비용.
+     *
+     * 단가는 설정에서 읽는다. 코드에 박아두면 OpenAI 가 가격을 바꿨을 때
+     * 숫자가 조용히 틀리기 시작하는데, 틀린 줄도 모르게 된다.
+     */
+    public record TokenUsage(long calls, long promptTokens, long cachedTokens,
+                             long completionTokens, String model,
+                             OpenAiProperties.Pricing pricing) {
+
+        /** 캐시되지 않은 입력 토큰. 캐시된 것은 값이 다르므로 따로 센다. */
+        public long freshPromptTokens() {
+            return Math.max(0, promptTokens - cachedTokens);
+        }
+
+        public double costUsd() {
+            return freshPromptTokens() / 1_000_000.0 * pricing.inputUsd()
+                    + cachedTokens / 1_000_000.0 * pricing.cachedInputUsd()
+                    + completionTokens / 1_000_000.0 * pricing.outputUsd();
+        }
+
+        public double costKrw() {
+            return costUsd() * pricing.krwRate();
+        }
+
+        public boolean isEmpty() {
+            return calls == 0;
+        }
     }
 
     public int failureCount() {
@@ -171,6 +233,7 @@ public class OpenAiClient {
 
                 logRateLimitOnce(entity.getHeaders());
                 ChatCompletionResponse response = entity.getBody();
+                recordUsage(response);
 
                 String content = Optional.ofNullable(response)
                         .map(ChatCompletionResponse::choices)
@@ -230,6 +293,37 @@ public class OpenAiClient {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * 호출 하나가 쓴 토큰을 기록한다.
+     *
+     * 한 줄씩 남기는 이유는 어느 분석기가 비싼지 보기 위해서다.
+     * 영상 하나에 호출이 수십 번 나가는데, 총합만 보면
+     * 대본이 긴 게 문제인지 분석기 하나가 유독 큰지 알 수 없다.
+     */
+    private void recordUsage(ChatCompletionResponse response) {
+        if (response == null || response.usage() == null) {
+            return;
+        }
+        var usage = response.usage();
+        long cached = usage.prompt_tokens_details() == null
+                ? 0 : usage.prompt_tokens_details().cached_tokens();
+
+        long[] total = usageTotals.get();
+        total[0]++;
+        total[1] += usage.prompt_tokens();
+        total[2] += cached;
+        total[3] += usage.completion_tokens();
+
+        log.info("[openai-usage] videoId={} analyzer={} model={} input={} cached={} output={} total={}",
+                currentVideoId.get()[0],
+                currentAnalyzer.get(),
+                response.model(),
+                usage.prompt_tokens(),
+                cached,
+                usage.completion_tokens(),
+                usage.total_tokens());
     }
 
     /**
@@ -313,8 +407,25 @@ public class OpenAiClient {
         return text.length() <= 300 ? text : text.substring(0, 300) + "...";
     }
 
-    record ChatCompletionResponse(List<Choice> choices) {
+    /**
+     * OpenAI 응답. usage 를 같이 읽어서 토큰 사용량을 기록한다.
+     *
+     * 필드 이름이 스네이크 케이스인 이유는 OpenAI 가 그렇게 주기 때문이다.
+     * 애노테이션으로 매핑할 수도 있지만, 이 record 는 응답을 그대로 받는 용도라
+     * 원본 이름을 유지하는 편이 대조하기 쉽다.
+     */
+    record ChatCompletionResponse(String model, List<Choice> choices, Usage usage) {
+
         record Choice(Message message) {}
+
         record Message(String content) {}
+
+        record Usage(long prompt_tokens,
+                     long completion_tokens,
+                     long total_tokens,
+                     PromptTokensDetails prompt_tokens_details) {}
+
+        /** 같은 프롬프트를 반복해서 보내면 일부가 캐시된다. 캐시된 입력은 절반 값이다. */
+        record PromptTokensDetails(long cached_tokens) {}
     }
 }

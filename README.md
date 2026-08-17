@@ -258,6 +258,28 @@ WebSocket `/ws` → `/topic/videos/{videoId}/progress` 구독
 > 계정 등급이 낮으면 요청 한도에 걸려 중간에 끊깁니다.
 > **시연은 3~5분짜리로 하는 것을 권합니다.**
 
+### 얼마 나갔는지 로그로 확인합니다
+
+분석이 끝나면 실제 사용량이 찍힙니다. 짐작하지 않고 숫자로 봅니다.
+
+```
+[openai-usage] videoId=65 analyzer=speech-review model=gpt-4o-mini input=2841 cached=0 output=327 total=3168
+[openai-usage] videoId=65 analyzer=entity-check  model=gpt-4o-mini input=1850 cached=0 output=126 total=1976
+...
+[openai-cost]  videoId=65 호출 9회 · 입력 18420토큰(캐시 0) · 출력 1633토큰
+[openai-cost]  videoId=65 분석 $0.00374 + 음성인식 $0.00080 = $0.00454 (약 6원)
+[openai-cost]  videoId=65 1분당 약 48원 (영상 0.1분)
+```
+
+호출마다 **어느 분석기가 썼는지** 남기므로, 대본이 긴 게 문제인지
+분석기 하나가 유독 비싼지 구분됩니다.
+
+**음성 인식도 같이 셉니다.** 긴 영상에서는 이쪽이 대부분을 차지해서,
+LLM 만 보여주면 "생각보다 싸네" 라고 잘못 판단하게 됩니다.
+
+단가는 `application.yml` 의 `oops.openai.pricing` 에 있습니다.
+코드에 박아두면 OpenAI 가 가격을 바꿨을 때 숫자가 조용히 틀리기 시작합니다.
+
 ## 분석에 실패하면 실패라고 말합니다
 
 음성도 화면 글자도 못 읽으면 **분석을 실패로 끝냅니다.**

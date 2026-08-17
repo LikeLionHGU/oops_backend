@@ -85,6 +85,7 @@ public class AnalysisPipeline {
 
         try {
             video.updateStatus(AnalysisStatus.PROCESSING);
+            openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
 
             // 1. 음성 → 타임스탬프 대본
             progressService.update(jobId, AnalysisStage.STT, 15);
@@ -133,6 +134,7 @@ public class AnalysisPipeline {
             if (genre == null) {
                 progressService.update(jobId, AnalysisStage.TEXT_RISK, 42, "영상 유형 판별 중");
                 mark = System.currentTimeMillis();
+                openAiClient.beginAnalyzer("genre");
                 genre = genreDetector.detect(transcript, screenTexts);
                 video.assignGenre(genre);
                 elapsed.put("유형판별", System.currentTimeMillis() - mark);
@@ -185,7 +187,7 @@ public class AnalysisPipeline {
                 }
                 try {
                     long analyzerStart = System.currentTimeMillis();
-                    openAiClient.resetFailureTracking();
+                    openAiClient.beginAnalyzer(analyzer.key());
 
                     List<RiskFinding> produced = analyzer.analyze(context);
 
@@ -247,6 +249,7 @@ public class AnalysisPipeline {
             log.info("[pipeline] 완료 videoId={} score={} events={} 총 {}초",
                     videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 — {}", formatElapsed(elapsed, total));
+            logCost(videoId, video.getDurationSec());
 
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
@@ -277,6 +280,49 @@ public class AnalysisPipeline {
     }
 
     /** application.yml 에 켜둔 분석기만, 설정 순서대로 실행한다. */
+    /**
+     * 이 영상에 실제로 얼마가 나갔는지 한 줄로 정리한다.
+     *
+     * 호출 하나하나는 [openai-usage] 로 이미 찍히지만, 그걸 손으로 더하고 있을 수는 없다.
+     * 영상 길이별 원가를 재려면 결국 이 한 줄이 필요하다.
+     *
+     * 음성 인식을 같이 세는 이유는 그쪽이 대부분을 차지하기 때문이다.
+     * 긴 영상에서는 LLM 비용보다 음성 인식이 훨씬 크다.
+     * LLM 만 보여주면 "생각보다 싸네" 라고 잘못 판단하게 된다.
+     */
+    private void logCost(Long videoId, Integer durationSec) {
+        OpenAiClient.TokenUsage usage = openAiClient.videoUsage();
+
+        double sttUsd = 0;
+        if (durationSec != null && durationSec > 0) {
+            sttUsd = durationSec / 60.0 * usage.pricing().sttUsdPerMinute();
+        }
+        double totalUsd = usage.costUsd() + sttUsd;
+        double krw = totalUsd * usage.pricing().krwRate();
+
+        if (usage.isEmpty() && sttUsd == 0) {
+            return;
+        }
+
+        log.info("[openai-cost] videoId={} 호출 {}회 · 입력 {}토큰(캐시 {}) · 출력 {}토큰",
+                videoId, usage.calls(), usage.promptTokens(),
+                usage.cachedTokens(), usage.completionTokens());
+
+        log.info("[openai-cost] videoId={} 분석 ${} + 음성인식 ${} = ${} (약 {}원)",
+                videoId,
+                "%.5f".formatted(usage.costUsd()),
+                "%.5f".formatted(sttUsd),
+                "%.5f".formatted(totalUsd),
+                Math.round(krw));
+
+        if (durationSec != null && durationSec > 0) {
+            log.info("[openai-cost] videoId={} 1분당 약 {}원 (영상 {}분)",
+                    videoId,
+                    Math.round(krw / (durationSec / 60.0)),
+                    "%.1f".formatted(durationSec / 60.0));
+        }
+    }
+
     /**
      * 단계별 수행 결과를 모은다.
      *
