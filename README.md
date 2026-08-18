@@ -268,32 +268,42 @@ Base URL `/api/v1` · 문서는 `/swagger-ui.html`
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/videos` | 영상 업로드 (multipart). **업로드 즉시 분석 시작** |
-| POST | `/videos` | 유튜브 URL 등록 (JSON `{url}`) |
 | GET | `/videos/{id}/status` | 진행률 폴링 |
-| GET | `/videos/{id}/report` | Timeline Report |
+| GET | `/videos/history` | 검수 이력 (페이징) |
+| GET | `/videos/{id}/report` | 검수 리포트 |
+| PUT | `/videos/{id}/review-actions/{eventId}` | 확인함·수정함·보류·유용하지않음 |
+| POST | `/videos/{id}/review-completion` | 검수 완료 |
 | POST | `/videos/{id}/analysis/retry` | 재분석 |
+| POST | `/videos/{id}/analysis/cancel` | 분석 취소 |
 | GET | `/videos/{id}/stream` | 영상 재생 (HTTP Range) |
 | GET | `/videos/{id}/frames/{frameId}` | 화면 캡처 이미지 |
-| GET | `/videos` | 검수 이력 (최근 100건) |
-| POST | `/videos/{id}/review-actions` | 확인함·수정함·보류·유용하지않음 저장 |
-| GET | `/videos/{id}/review-actions` | 저장된 처리 내역 (새로고침 복구용) |
 | DELETE | `/videos/{id}` | 영상·결과·파일 삭제 |
-| GET | `/metrics` | 검수 품질 지표 (오탐률 등, 팀 내부용) |
+| GET | `/metrics` | 검수 품질 지표 (팀 내부용) |
 
 WebSocket `/ws` → `/topic/videos/{videoId}/progress` 구독
 
-### `/report` 응답에서 눈여겨볼 것
+### 응답 규칙
+
+```json
+{ "success": true,  "data": { }, "error": null }
+{ "success": false, "data": null, "error": { "code": "...", "message": "...", "details": {} } }
+```
+
+**모든 id 는 문자열**(`"123"`), **시각은 ISO-8601 UTC**, **구간은 밀리초 정수**입니다.
+
+### `/report` 에서 눈여겨볼 것
 
 | 필드 | 뜻 |
 |---|---|
-| `events[].candidateType` | 왜 확인하는지. `FACT_ENTITY`, `CONTEXT_REFERENCE` 등 |
-| `events[].references[]` | **AI 가 근거로 본 기사.** 제목·매체·URL·게시일 |
-| `coverage[]` | 단계별 수행 결과. `SUCCESS`/`FAILED`/`SKIPPED`/`NOT_ENABLED` |
-| `warnings[]` | 그중 사용자에게 알려야 하는 것. **비어 있지 않으면 화면에 띄워야 합니다** |
-| `genre`, `adSuitability` | 영상 유형, 유튜브 광고 적합성 |
+| `events[].type` | 어디서 나왔나. `SPEECH` 발언 / `CAPTION` 화면 글자 |
+| `events[].candidateType` | 왜 확인하나. `SPEECH_REVIEW` / `FACT_CHECK` |
+| `events[].references[]` | **AI 가 근거로 본 기사.** 항상 배열 |
+| `events[].contextBefore/After` | 발언 앞뒤 대본 줄 |
+| `events[].reviewAction` | 저장된 결정. 아직이면 `null` |
+| `coverage` | 무엇을 분석했는지 |
+| `warnings[]` | **비어 있지 않으면 화면에 띄워야 합니다** |
 
-`events[].type` 은 "어디서 나온 말인가"(발언/화면)이고
-`candidateType` 은 "왜 확인하는가" 입니다. 프론트는 후자로 카드를 나누면 됩니다.
+프론트는 `candidateType` 으로 카드를 나누고 `type` 은 뱃지로 쓰면 됩니다.
 
 전체 계약은 [docs/API명세-구현-대조표.md](docs/API명세-구현-대조표.md) 에 있습니다.
 
