@@ -7,6 +7,7 @@ import com.example.oops.domain.*;
 import com.example.oops.dto.ReviewActionRequest;
 import com.example.oops.dto.ReviewActionResponse;
 import com.example.oops.dto.ReviewCompletionResponse;
+import com.example.oops.repository.AnalysisJobRepository;
 import com.example.oops.repository.ReviewActionRepository;
 import com.example.oops.repository.RiskFindingRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class ReviewActionService {
     private final VideoService videoService;
     private final RiskFindingRepository findingRepository;
     private final ReviewActionRepository actionRepository;
+    private final AnalysisJobRepository jobRepository;
 
     /**
      * 후보 한 건의 결정을 저장한다.
@@ -43,6 +45,16 @@ public class ReviewActionService {
     @Transactional
     public ReviewActionResponse save(Long videoId, String eventId, ReviewActionRequest request) {
         Video video = videoService.getEntity(videoId);
+
+        // 재분석 중이면 findings 가 삭제·재생성되므로 검수 저장을 막는다.
+        // 허용하면 FK 위반이나 엉뚱한 후보에 결정이 붙는다.
+        boolean analysisRunning = jobRepository.existsByVideoIdAndStatusIn(
+                videoId, List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING));
+        if (analysisRunning) {
+            throw new BusinessException(ErrorCode.ANALYSIS_IN_PROGRESS,
+                    "분석이 진행 중입니다. 완료 후 다시 시도해주세요.");
+        }
+
         RiskFinding finding = findingRepository.findById(Ids.parse(eventId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.EVENT_NOT_FOUND));
 

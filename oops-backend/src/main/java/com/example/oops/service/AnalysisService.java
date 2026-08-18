@@ -27,6 +27,7 @@ import java.util.Map;
 public class AnalysisService {
 
     private final VideoService videoService;
+    private final VideoRepository videoRepository;
     private final AnalysisPipeline analysisPipeline;
     private final AnalysisServerClient analysisServerClient;
     private final AnalysisJobRepository jobRepository;
@@ -46,7 +47,10 @@ public class AnalysisService {
      */
     @Transactional
     public AnalysisJob startAnalysis(Long videoId) {
-        Video video = videoService.getEntity(videoId);
+        // 비관적 락으로 영상 행을 잡아서 동시 요청을 직렬화한다.
+        // 두 요청이 동시에 들어와도 하나만 PENDING 상태를 만들 수 있다.
+        Video video = videoRepository.findByIdForUpdate(videoId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
 
         boolean running = jobRepository.existsByVideoIdAndStatusIn(
                 video.getId(), List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING));
