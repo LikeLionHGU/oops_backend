@@ -1,7 +1,6 @@
 package com.example.oops.config;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -26,8 +25,8 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final List<String> allowedOrigins;
 
-    public WebConfig(@Value("${oops.cors.allowed-origins}") List<String> allowedOrigins) {
-        this.allowedOrigins = allowedOrigins;
+    public WebConfig(CorsProperties properties) {
+        this.allowedOrigins = properties.originsOrDefault();
         log.info("[cors] 허용 Origin: {}", allowedOrigins);
     }
 

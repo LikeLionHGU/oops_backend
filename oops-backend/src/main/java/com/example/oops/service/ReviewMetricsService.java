@@ -68,7 +68,7 @@ public class ReviewMetricsService {
         Map<CandidateType, int[]> stats = new EnumMap<>(CandidateType.class);
 
         for (RiskFinding f : findings) {
-            CandidateType type = CandidateType.from(f.getCategory(), f.getEventType());
+            CandidateType type = CandidateType.from(f.getCategory());
             int[] row = stats.computeIfAbsent(type, k -> new int[3]);   // total, reviewed, notUseful
             row[0]++;
 

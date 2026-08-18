@@ -29,10 +29,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     private final java.util.List<String> allowedOrigins;
 
-    public WebSocketConfig(
-            @org.springframework.beans.factory.annotation.Value("${oops.cors.allowed-origins}")
-            java.util.List<String> allowedOrigins) {
-        this.allowedOrigins = allowedOrigins;
+    public WebSocketConfig(CorsProperties properties) {
+        this.allowedOrigins = properties.originsOrDefault();
     }
 
 
