@@ -20,8 +20,22 @@ public interface NewsSearchClient {
     /** 로그에 찍을 이름 */
     String providerName();
 
-    /** 최신순으로 뉴스를 가져온다. 실패하면 빈 리스트. */
+    /**
+     * 최근 것만. "지금 이 주제가 민감한가" 를 볼 때 쓴다.
+     * 오래된 기사는 현재 분위기 판단에 방해가 되므로 일부러 자른다.
+     */
     List<NewsItem> searchRecent(String query, int display);
+
+    /**
+     * 기간 제한 없이. 사실 확인에 쓴다.
+     *
+     * "그 회사는 2019년에 설립됐다" 를 확인하려면 최근 30일 기사로는 안 된다.
+     * 예전에는 이것도 searchRecent 를 썼는데, 오래된 사실을 물으면
+     * 관련 기사가 아예 안 나와서 조용히 검증을 건너뛰고 있었다.
+     */
+    default List<NewsItem> searchArchive(String query, int display) {
+        return searchRecent(query, display);
+    }
 
     /**
      * 기사 1건.

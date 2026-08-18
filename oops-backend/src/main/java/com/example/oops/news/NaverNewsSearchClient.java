@@ -41,6 +41,20 @@ public class NaverNewsSearchClient implements NewsSearchClient {
 
     @Override
     public List<NewsItem> searchRecent(String query, int display) {
+        return search(query, display, "date");
+    }
+
+    /**
+     * 사실 확인용. 최신순이 아니라 정확도순으로 가져온다.
+     *
+     * 오래된 사실을 확인할 때 최신순으로 받으면 관련 없는 최근 기사만 올라온다.
+     */
+    @Override
+    public List<NewsItem> searchArchive(String query, int display) {
+        return search(query, display, "sim");
+    }
+
+    private List<NewsItem> search(String query, int display, String sort) {
         if (!isEnabled()) {
             return List.of();
         }
@@ -49,7 +63,7 @@ public class NaverNewsSearchClient implements NewsSearchClient {
                     .uri(builder -> builder.path("/v1/search/news.json")
                             .queryParam("query", query)
                             .queryParam("display", display)
-                            .queryParam("sort", "date")
+                            .queryParam("sort", sort)
                             .build())
                     .retrieve()
                     .body(SearchResponse.class);

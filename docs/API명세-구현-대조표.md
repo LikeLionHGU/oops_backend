@@ -121,10 +121,19 @@ WebSocket이 끊겨 폴링으로 넘어가도 화면 분기가 달라지지 않�
     "url": "https://...",
     "publishedAt": "Mon, 03 Aug 2026 09:12:00 GMT",
     "relevantContext": "기사에는 2020년 설립으로 나옵니다",
-    "snippet": "2020년 설립된 OO그룹은..."
+    "snippet": "2020년 설립된 OO그룹은...",
+    "sourceType": "DIRECT_QUOTE_SOURCE",
+    "sourceLabel": "인터뷰·직접 인용"
   }
 ]
 ```
+
+`sourceType` 은 그 자료가 **원출처에 얼마나 가까운지**입니다.
+`PRIMARY_SOURCE` / `OFFICIAL_SOURCE` / `DIRECT_QUOTE_SOURCE` / `REPUTABLE_MEDIA` / `SECONDARY_SOURCE`.
+`sourceLabel` 은 같은 값을 사람이 읽는 말로 준 것이라 뱃지에 그대로 쓰면 됩니다.
+
+**진실성 순위가 아니라 표시 순서입니다.** 당사자 말이 항상 맞는 것도,
+언론 보도가 항상 틀린 것도 아닙니다. 주장 성격에 맞는 자료를 위로 올릴 뿐입니다.
 
 `snippet` 은 기사에 있는 문장 그대로이고, `relevantContext` 는 **그래서 뭐가 확인됐는지** 입니다.
 링크를 열기 전에 볼 수 있게 카드에 같이 보여주면 좋습니다.

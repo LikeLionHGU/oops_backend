@@ -1,5 +1,6 @@
 package com.example.oops.dto;
 
+import com.example.oops.domain.ReferenceSourceType;
 import com.example.oops.domain.ReviewReference;
 
 /**
@@ -25,7 +26,19 @@ public record ReviewReferenceDto(
         String relevantContext,
 
         /** 기사 본문 발췌 */
-        String snippet
+        String snippet,
+
+        /**
+         * 원출처에 얼마나 가까운지.
+         * PRIMARY_SOURCE / OFFICIAL_SOURCE / DIRECT_QUOTE_SOURCE
+         * / REPUTABLE_MEDIA / SECONDARY_SOURCE
+         *
+         * 화면에 뱃지로 보여주면 좋습니다. 필수는 아닙니다.
+         */
+        ReferenceSourceType sourceType,
+
+        /** 위 값을 사람이 읽는 말로. "인터뷰·직접 인용" 등 */
+        String sourceLabel
 ) {
     public static ReviewReferenceDto from(ReviewReference r) {
         return new ReviewReferenceDto(
@@ -34,6 +47,8 @@ public record ReviewReferenceDto(
                 r.getUrl(),
                 r.getPublishedAt(),
                 r.getRelevantContext(),
-                r.getSnippet());
+                r.getSnippet(),
+                r.getSourceType(),
+                r.getSourceType() == null ? null : r.getSourceType().getLabel());
     }
 }

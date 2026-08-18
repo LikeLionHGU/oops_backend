@@ -1,5 +1,6 @@
 package com.example.oops.analyzer;
 
+import com.example.oops.domain.ReferenceSourceType;
 import com.example.oops.domain.ReviewReference;
 import com.example.oops.news.NewsSearchClient;
 
@@ -42,6 +43,13 @@ final class NewsReferenceSupport {
      */
     static List<ReviewReference> pick(List<NewsSearchClient.NewsItem> news,
                                       List<Integer> indexes, String relevantContext) {
+        return pick(news, indexes, relevantContext, null);
+    }
+
+    /** sourceTypes 를 주면 자료 유형까지 함께 저장한다. 사실 확인에서 쓴다. */
+    static List<ReviewReference> pick(List<NewsSearchClient.NewsItem> news,
+                                      List<Integer> indexes, String relevantContext,
+                                      java.util.Map<String, ReferenceSourceType> sourceTypes) {
         List<NewsSearchClient.NewsItem> chosen = new ArrayList<>();
 
         if (indexes != null) {
@@ -67,6 +75,10 @@ final class NewsReferenceSupport {
                             item.pubDate(),
                             item.description());
                     reference.describeRelevance(relevantContext);
+                    if (sourceTypes != null) {
+                        reference.classifyAs(sourceTypes.get(
+                                item.link() == null ? item.title() : item.link()));
+                    }
                     return reference;
                 })
                 .toList();

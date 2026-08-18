@@ -50,12 +50,22 @@ public class GoogleNewsRssSearchClient implements NewsSearchClient {
 
     @Override
     public List<NewsItem> searchRecent(String query, int display) {
+        return search(query + RECENCY, display, "최근");
+    }
+
+    /** 사실 확인용. when:30d 를 붙이지 않는다. */
+    @Override
+    public List<NewsItem> searchArchive(String query, int display) {
+        return search(query, display, "전체기간");
+    }
+
+    private List<NewsItem> search(String query, int display, String label) {
         try {
             // 직접 인코딩하면 안 된다. UriBuilder 가 한 번 더 인코딩해서
             // 검색어가 %25EC%25... 형태로 망가지고 결과가 항상 0건이 된다.
             String xml = restClient.get()
                     .uri(builder -> builder.path("/rss/search")
-                            .queryParam("q", query + RECENCY)
+                            .queryParam("q", query)
                             .queryParam("hl", "ko")
                             .queryParam("gl", "KR")
                             .queryParam("ceid", "KR:ko")
@@ -67,7 +77,7 @@ public class GoogleNewsRssSearchClient implements NewsSearchClient {
                 return List.of();
             }
             List<NewsItem> items = parse(xml, display);
-            log.info("[news:google] '{}' → {}건", query, items.size());
+            log.info("[news:google:{}] '{}' → {}건", label, query, items.size());
             return items;
 
         } catch (RestClientException e) {

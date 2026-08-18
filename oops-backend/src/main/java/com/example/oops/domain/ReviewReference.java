@@ -66,6 +66,16 @@ public class ReviewReference extends BaseTimeEntity {
     @Column(length = 500)
     private String relevantContext;
 
+    /**
+     * 원출처에 얼마나 가까운 자료인지.
+     *
+     * "본인이 뭐라고 했는가" 를 확인할 때는 요약 기사보다
+     * 본인 말을 인용한 기사가 낫다. 그걸 위로 올리기 위한 값이다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(columnDefinition = "varchar(40)")
+    private ReferenceSourceType sourceType;
+
     /** 표시 순서 */
     @Column(nullable = false)
     private int displayOrder;
@@ -99,6 +109,10 @@ public class ReviewReference extends BaseTimeEntity {
      */
     public void describeRelevance(String relevantContext) {
         this.relevantContext = trim(relevantContext, 500);
+    }
+
+    public void classifyAs(ReferenceSourceType sourceType) {
+        this.sourceType = sourceType;
     }
 
     /** RiskFinding.addReference 에서만 호출한다. */
