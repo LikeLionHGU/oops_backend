@@ -35,7 +35,14 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addMapping("/api/**")
                 .allowedOriginPatterns(allowedOrigins.toArray(String[]::new))
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                .allowedHeaders("Content-Type", "Accept", "Range")
+                // 요청 헤더는 열어둔다.
+                //
+                // 예전에는 Content-Type, Accept, Range 만 허용했는데,
+                // 프론트가 그 밖의 헤더를 하나라도 붙이면 preflight 가 막힌다.
+                // axios 나 fetch 래퍼가 조용히 헤더를 더하는 경우가 있어서
+                // 원인을 찾기 어렵다. 여기를 막아서 얻는 보안 이득은 거의 없다.
+                // 정작 중요한 건 위의 Origin 제한이다.
+                .allowedHeaders("*")
                 // 영상 재생에 필요하다. 노출하지 않으면 브라우저가 Range 응답을 못 읽는다.
                 .exposedHeaders("Content-Range", "Accept-Ranges", "Content-Length")
                 .allowCredentials(true)

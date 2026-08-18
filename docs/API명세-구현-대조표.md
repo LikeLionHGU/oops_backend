@@ -359,13 +359,41 @@ oops:
     allowed-origins:
       - http://localhost:5173
       - http://localhost:3000
+      - http://localhost:8080
+      - https://oops-im-so-sorry.vercel.app
+      - https://oops-im-so-sorry-*.vercel.app   # 브랜치·PR 미리보기
 ```
 
-기본으로 `localhost:5173`, `localhost:3000`, `localhost:8080` 이 열려 있습니다.
-**배포 도메인이 정해지면 여기만 추가하면 됩니다.**
+`allowedOriginPatterns` 로 받으므로 `*` 를 쓸 수 있습니다.
+Vercel 은 브랜치마다 미리보기 주소를 새로 만들기 때문에,
+그때마다 설정을 고치고 서버를 다시 띄우는 건 현실적이지 않습니다.
+
+**요청 헤더는 `*` 로 열어뒀습니다.** 예전에는 `Content-Type`, `Accept`, `Range`
+만 허용했는데, 프론트가 그 밖의 헤더를 하나라도 붙이면 Preflight 가 막힙니다.
+axios 같은 래퍼가 조용히 헤더를 더하는 경우가 있어 원인을 찾기 어렵습니다.
+막아서 얻는 이득이 거의 없고, 정작 중요한 건 Origin 제한입니다.
+
+서버가 뜰 때 허용 목록이 로그에 찍힙니다. 여기 없으면 그 Origin 은 막힙니다.
+
+```
+[cors] 허용 Origin: [http://localhost:5173, ..., https://oops-im-so-sorry.vercel.app]
+```
 
 `PUT /review-actions` 는 JSON 이라 Preflight `OPTIONS` 가 먼저 날아옵니다.
 Spring 이 처리하며, 결과를 하루 캐시합니다.
+
+### CORS 로 보이지만 아닌 경우
+
+배포된 프론트(https)가 로컬 백엔드를 부를 때는 **CORS 가 아니라 다른 문제**입니다.
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `Mixed Content` 차단 | https 페이지에서 http API 호출 | 백엔드도 https 로 서비스 |
+| 요청이 아예 안 나감 | `localhost` 는 **보는 사람의 PC** 를 가리킨다 | 백엔드를 공개 주소로 배포 |
+| WebSocket 만 실패 | https 페이지에서 `ws://` 사용 | `wss://` 필요 |
+
+CORS 설정을 아무리 고쳐도 이 셋은 안 풀립니다.
+브라우저 콘솔의 에러 문구를 그대로 보고 구분하세요.
 
 영상 재생을 위해 `Content-Range`, `Accept-Ranges`, `Content-Length` 를 노출합니다.
 이게 없으면 브라우저가 Range 응답을 못 읽습니다.
