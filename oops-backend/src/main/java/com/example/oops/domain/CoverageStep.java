@@ -36,7 +36,7 @@ public enum CoverageStep {
      */
     public static CoverageStep of(String analyzerKey) {
         return switch (analyzerKey) {
-            case "subtitle", "speech-review" -> SPEECH_REVIEW;
+            case "subtitle", "speech-review", "context-lexicon" -> SPEECH_REVIEW;
             case "screen-text", "screen-text-review" -> SCREEN_TEXT_REVIEW;
             case "entity-check" -> FACT_ENTITY;
             case "context-check" -> CONTEXT_REFERENCE;

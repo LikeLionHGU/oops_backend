@@ -96,6 +96,7 @@ oops:
     enabled-analyzers:
       - subtitle          # 대본 금지어·개인정보 (LLM 불필요, 안전망)
       - speech-review     # 발언 중 확인할 지점 (낯선 맥락, 대상 평가)
+      - context-lexicon   # 낯선 맥락 표현 사전 + 앞뒤 확인  ← P0 핵심
       - screen-text       # 화면 자막 금지어 (LLM 불필요)
       - screen-text-review # 화면 자막 중 확인할 지점
       - entity-check      # 이름·날짜·수치 확인       ← P0 핵심
