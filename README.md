@@ -510,6 +510,7 @@ cd oops-analysis ; pip install -r requirements-dev.txt ; pytest
 | [docs/개발자-인수인계.md](docs/개발자-인수인계.md) | **백엔드 개발자. 먼저 읽으세요** |
 | [docs/API명세-구현-대조표.md](docs/API명세-구현-대조표.md) | 프론트엔드 |
 | [docs/사용중인-프롬프트-전문.md](docs/사용중인-프롬프트-전문.md) | 탐지 품질 담당 |
+| [docs/원출처-우선순위-반영결과.md](docs/원출처-우선순위-반영결과.md) | 사실 확인 개선안 반영 결과 · 기획 |
 | [docs/프로젝트-현황-정리.md](docs/프로젝트-현황-정리.md) | 비개발자 · 발표 준비 |
 | [oops-backend/.../context-lexicon.json](oops-backend/src/main/resources/context-lexicon.json) | **맥락 표현 사전. 개발 지식 없이 채울 수 있습니다** |
 | [oops-backend/README.md](oops-backend/README.md) | 백엔드 상세 |
