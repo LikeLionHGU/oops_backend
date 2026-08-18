@@ -91,6 +91,37 @@ public class StorageService {
         deleteDirectory(frameDir(videoId));
     }
 
+    /**
+     * 원본 영상 파일만 지운다. 프레임 이미지는 남긴다.
+     *
+     * 프레임을 같이 지우지 않는 이유는, 검토 후보 카드가 그 이미지를 쓰기 때문이다.
+     * 화면 글자에서 나온 후보는 "이 장면에 이렇게 적혀 있습니다" 를
+     * 캡처로 보여주는 게 설명의 절반이다. 그걸 지우면 카드가 반쪽이 된다.
+     *
+     * 용량으로 봐도 원본이 거의 전부다.
+     * 60분 영상 한 편이 수백 MB 인데 프레임은 다 합쳐도 몇 MB 다.
+     */
+    public void deleteSourceFile(Long videoId) {
+        deleteDirectory(resolve("videos/%d".formatted(videoId)));
+    }
+
+    /** videos/{id} 폴더가 쓰는 바이트. 정리 전후 로그에 쓴다. */
+    public long sourceBytes(Long videoId) {
+        Path dir = resolve("videos/%d".formatted(videoId));
+        if (!Files.isDirectory(dir)) return 0;
+        try (var paths = Files.walk(dir)) {
+            return paths.filter(Files::isRegularFile).mapToLong(p -> {
+                try {
+                    return Files.size(p);
+                } catch (IOException e) {
+                    return 0;
+                }
+            }).sum();
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
     /** 저장소가 지금 몇 바이트를 쓰고 있는지 */
     public long usedBytes() {
         Path root = root();

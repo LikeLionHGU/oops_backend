@@ -14,6 +14,16 @@ import java.util.List;
  *
  *   type          어디서 나왔나  SPEECH = 발언 / CAPTION = 화면 글자
  *   candidateType 왜 확인하나   SPEECH_REVIEW / FACT_CHECK
+ *
+ * **화면 문구는 candidateType 이 아니라 type 으로 정해야 합니다.**
+ * candidateType 이 SPEECH_REVIEW 라고 무조건 "발언" 이라 쓰면 안 됩니다.
+ * type 이 CAPTION 이면 그건 화면에 적힌 글자입니다.
+ *
+ * severity 와 riskTypes 는 여기서 뺐습니다.
+ * 이 도구는 위험도를 매기지 않습니다. 점수가 화면에 보이는 순간
+ * "AI 가 0.8 이라고 했으니 문제다" 가 되고, 그건 판정입니다.
+ * 두 값 모두 내부 RiskFinding 에는 그대로 남아 있어서
+ * 정렬·병합·품질 지표 계산에는 계속 쓰입니다.
  */
 public record TimelineEventDto(
         String id,
@@ -36,9 +46,6 @@ public record TimelineEventDto(
         /** 아직 결정하지 않았으면 null */
         ReviewActionType reviewAction,
 
-        /** 내부 값. v2.1 §10-6 에서 optional 로 내려갔다 */
-        Severity severity,
-
         /**
          * 같은 후보가 영상에서 몇 번 등장했는지. 1 이면 한 번.
          * 2 이상이면 startMs~endMs 가 그 전체 구간을 뜻한다.
@@ -51,7 +58,6 @@ public record TimelineEventDto(
         String contextBefore,
         /** 직후 대본 줄. 없으면 null */
         String contextAfter,
-        List<String> riskTypes,
 
         // ---- CAPTION 전용 ----
         String speechText,
@@ -72,12 +78,10 @@ public record TimelineEventDto(
                 frameUrl(f),
                 references(f),
                 action,
-                f.getSeverity(),
                 f.getMergedCount(),
                 caption ? null : f.getText(),
                 caption ? null : before,
                 caption ? null : after,
-                caption ? null : List.of(f.getCategory().name()),
                 caption ? f.getSpeechText() : null,
                 caption ? f.getCaptionText() : null
         );

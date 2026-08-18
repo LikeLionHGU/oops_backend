@@ -18,6 +18,12 @@ import java.util.Map;
  * LLM 판정을 쓴다. 대본을 통째로 넣지 않고 창(window) 단위로 잘라 넣는데,
  * 앞뒤 문맥이 있어야 "조롱인지 자학인지" 를 구분할 수 있기 때문이다.
  *
+ * **사실 확인은 여기서 하지 않는다.**
+ * 이 분석기는 검색을 하지 않아서 근거 자료를 붙일 수 없다.
+ * 근거 없이 "이건 틀린 것 같다" 고 말하는 게 이 도구가 가장 하면 안 되는 일이다.
+ * 연도·숫자·이름 확인은 EntityCheckAnalyzer 가 실제로 기사를 찾아서 대조한다.
+ * 역할을 이렇게 나눠 두면 FACT_CHECK 카드에는 항상 참고 자료가 붙는다.
+ *
  * API 키가 없으면 조용히 빈 결과를 돌려주고, 룰 기반 SubtitleAnalyzer 결과만 남는다.
  */
 @Slf4j
@@ -51,7 +57,12 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             2. 화자가 모를 수 있는 사회·문화·역사적 맥락이 붙은 표현
                (특정 커뮤니티에서 쓰는 은어, 과거 논쟁이 있었던 표현, 역사적 함의가 있는 단어)
             3. 특정 인물·회사·집단을 언급하며 평가하는 대목
-            4. 사실로 단정했지만 확인이 필요한 서술
+
+            **사실 관계는 네가 볼 몫이 아니다.**
+            연도가 맞는지, 숫자가 맞는지, 이름이 맞는지는 다른 분석기가
+            실제로 자료를 검색해서 대조한다. 너는 검색을 하지 않으므로
+            "이건 사실이 아닐 수 있다" 고 말할 근거가 없다.
+            사실이 의심스러운 대목을 보더라도 올리지 마라.
 
             유형:
             - UNFAMILIAR_CONTEXT: 특정 커뮤니티·역사·사건과 얽힌 표현.
@@ -82,7 +93,6 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             - SENSITIVE_TOPIC: 다루기 민감한 주제를 언급한 대목
             - DISCRIMINATION: 성별·인종·장애·나이와 얽힌 표현
             - PRIVACY: 타인의 신상이 드러나는 대목
-            - MISINFORMATION: 사실로 단정했지만 확인이 필요한 서술
 
             판단 절차 (반드시 이 순서로):
             1. 이 말이 향하는 대상이 누구/무엇인지 정한다.
@@ -96,6 +106,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             - 화자가 자기 자신에 대해 하는 이야기
             - 상황 설명, 진행 멘트
             - 대상이 특정되지 않는 일반적인 감상
+            - **연도·숫자·이름이 틀린 것 같은 대목** (사실 확인 분석기가 맡는다)
 
             UNFAMILIAR_CONTEXT 를 적을 때는 어떤 맥락인지 반드시 알려줘라.
             "정치적 맥락이 있는 표현입니다" 처럼 뭉뚱그리면 제작자가 확인할 수가 없다.
@@ -198,6 +209,22 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
                 continue; // LLM 이 엉뚱한 번호를 준 경우 버린다
             }
 
+            RiskCategory category = RiskCategory.fromOrDefault(
+                    item.category(), RiskCategory.SENSITIVE_TOPIC);
+
+            // 사실 확인 후보는 여기서 만들 수 없다.
+            //
+            // 프롬프트로 막아뒀지만 모델이 그래도 FACT_ERROR 를 뱉을 때가 있다.
+            // 그게 통과하면 candidateType 이 FACT_CHECK 로 붙는데,
+            // 이 분석기는 검색을 하지 않으므로 참고 자료가 하나도 없다.
+            // 사용자에게는 "사실 확인" 카드인데 확인할 자료가 없는 상태로 보인다.
+            // 근거 없는 사실 주장은 이 도구가 하지 말아야 할 바로 그것이다.
+            if (CandidateType.from(category) == CandidateType.FACT_CHECK) {
+                log.debug("[speech-risk] 사실 확인은 entity-check 몫이라 버립니다 — {} / {}",
+                        category, item.reason());
+                continue;
+            }
+
             TranscriptSegment segment = window.get(localIndex);
             double score = item.score() == null ? 0.5 : Math.max(0.0, Math.min(1.0, item.score()));
 
@@ -221,7 +248,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             findings.add(RiskFinding.builder()
                     .video(context.video())
                     .eventType(TimelineEventType.SPEECH)
-                    .category(RiskCategory.fromOrDefault(item.category(), RiskCategory.SENSITIVE_TOPIC))
+                    .category(category)
                     .source(EvidenceSource.SUBTITLE)
                     .score(score)
                     .startMs(segment.getStartMs())

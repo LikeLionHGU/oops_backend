@@ -137,7 +137,35 @@ public class Video extends BaseTimeEntity {
         return durationSec == null ? null : durationSec * 1000L;
     }
 
+    /**
+     * 원본 영상 파일을 지운 시각. 아직 갖고 있으면 null.
+     *
+     * 원본은 분석이 끝나면 더 필요 없다. 우리가 계속 들고 있을 이유가 없고,
+     * 출연자 얼굴과 목소리가 그대로 담긴 파일이라 오래 둘수록 부담만 커진다.
+     * 그래서 분석 완료 24시간 뒤에 파일만 지운다.
+     *
+     * **리포트·대본·검토 후보·참고 자료·검수 이력은 지우지 않는다.**
+     * 그것까지 사라지면 사용자는 어제 받은 검수 결과를 다시 볼 수 없다.
+     * 지우는 건 원본 미디어뿐이다.
+     */
+    private java.time.LocalDateTime sourcePurgedAt;
+
+    public boolean isSourcePurged() {
+        return sourcePurgedAt != null;
+    }
+
+    public void markSourcePurged(java.time.LocalDateTime at) {
+        this.sourcePurgedAt = at;
+    }
+
+    /**
+     * 영상을 재생할 수 있는지.
+     *
+     * 원본을 지운 뒤에는 false 다. 카드의 시각을 눌러도 영상이 안 뜨는데,
+     * 이건 고장이 아니라 정책이다. 프론트는 streamUrl 이 null 이면
+     * "보관 기간이 지나 원본은 삭제되었습니다" 를 보여주면 된다.
+     */
     public boolean isStreamable() {
-        return sourceType == SourceType.UPLOAD && storageKey != null;
+        return sourceType == SourceType.UPLOAD && storageKey != null && !isSourcePurged();
     }
 }

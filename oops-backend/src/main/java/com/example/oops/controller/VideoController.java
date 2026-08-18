@@ -96,8 +96,14 @@ public class VideoController {
                     `events` 는 **우선순위 내림차순**이다. 위에서부터 그리면 된다.
 
                     `type` 을 기준으로 분기하는 유니온 타입이다.
-                    - `SPEECH`: `text`, `riskTypes` 가 온다
+                    - `SPEECH`: `text`, `contextBefore`, `contextAfter` 가 온다
                     - `CAPTION`: `speechText`, `captionText` 가 온다
+
+                    `candidateType` 은 **왜** 확인하는지다 (`SPEECH_REVIEW` / `FACT_CHECK`).
+                    **어디서** 나왔는지는 `type` 이 답한다. 화면 문구는 `type` 으로 정해라.
+
+                    위험도 점수(`severity`)와 내부 분류(`riskTypes`)는 내려가지 않는다.
+                    이 도구는 판정하지 않고 확인할 지점만 올린다.
 
                     해당 타입에 없는 필드는 JSON 에서 아예 빠진다.
                     `frameUrl` 이 있으면 그 시점의 화면 캡처를 보여줄 수 있다.

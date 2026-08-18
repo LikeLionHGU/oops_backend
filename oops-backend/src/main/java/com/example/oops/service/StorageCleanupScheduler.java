@@ -14,26 +14,81 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 오래된 영상을 주기적으로 정리한다.
+ * 저장소를 주기적으로 정리한다. 두 가지를 따로 돈다.
  *
- * 영상 하나에 원본 수십 MB 와 프레임 이미지 수십 장이 쌓인다.
- * 지우는 로직이 없으면 서버 디스크가 조용히 찬다.
+ *   1. 원본 미디어 정리 (1시간마다)
+ *      분석이 끝나고 24시간 지난 영상의 **원본 파일만** 지운다.
+ *      리포트·대본·검토 후보·참고 자료·검수 이력은 그대로 남는다.
+ *      사용자는 어제 받은 검수 결과를 계속 볼 수 있고,
+ *      우리는 출연자 얼굴과 목소리가 담긴 파일을 오래 들고 있지 않는다.
  *
- * 보관 기간은 oops.storage.retention-days 로 정한다.
- * 0 이하면 정리하지 않는다. 개발 중에 자기 테스트 영상이 사라지면 곤란하므로
- * 기본값을 짧게 두지 않았다.
+ *   2. 전체 정리 (매일 새벽 4시, 기본 꺼짐)
+ *      영상에 딸린 모든 것을 지운다. 리포트도 사라진다.
+ *      oops.storage.retention-days 가 0 이면 돌지 않는다.
+ *
+ * **1번을 1시간마다 도는 이유가 있다.**
+ * 하루 한 번만 돌면 24시간을 지킬 수 없다.
+ * 새벽 4시에 도는데 분석이 4시 1분에 끝났다면, 다음 실행 때는 23시간 59분이라
+ * 아직 안 지워지고, 그다음 실행까지 기다리면 거의 48시간이 된다.
+ * "24시간 안에 지웁니다" 라고 말하려면 확인 간격이 그보다 훨씬 촘촘해야 한다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class StorageCleanupScheduler {
 
+    /** 원본을 지우면 안 되는 상태. 분석이 아직 그 파일을 읽고 있다. */
+    private static final List<AnalysisStatus> RUNNING =
+            List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING);
+
     private final OopsProperties properties;
     private final VideoRepository videoRepository;
     private final VideoDeletionService deletionService;
     private final StorageService storageService;
 
-    /** 매일 새벽 4시 */
+    /**
+     * 원본 미디어 정리. 매시 정각.
+     *
+     * 지우는 건 videos/{id}/original.* 하나뿐이다.
+     * 프레임 이미지는 검토 후보 카드가 쓰기 때문에 남긴다.
+     */
+    @Scheduled(cron = "0 0 * * * *")
+    public void purgeExpiredSources() {
+        int hours = properties.storage().sourceRetentionHoursOrDefault();
+        if (hours <= 0) {
+            log.debug("[purge] 원본 보관 시간이 0 이라 정리하지 않습니다.");
+            return;
+        }
+
+        LocalDateTime threshold = LocalDateTime.now().minusHours(hours);
+        List<Video> targets = videoRepository.findSourcePurgeTargets(threshold, RUNNING);
+        if (targets.isEmpty()) {
+            return;
+        }
+
+        long freed = 0;
+        int purged = 0;
+        for (Video video : targets) {
+            try {
+                freed += deletionService.purgeSource(video.getId());
+                purged++;
+            } catch (Exception e) {
+                // 한 건 실패해도 나머지는 계속 지운다. 다음 시간에 다시 시도된다.
+                log.warn("[purge] videoId={} 원본 삭제 실패: {}", video.getId(), e.getMessage());
+            }
+        }
+
+        log.info("[purge] 원본 {}개 삭제 ({}MB 확보). 기준: 분석 완료 후 {}시간. 리포트는 유지됩니다.",
+                purged, freed / 1024 / 1024, hours);
+    }
+
+    /**
+     * 전체 정리. 매일 새벽 4시.
+     *
+     * 이건 리포트까지 지운다. 기본값은 꺼져 있다(retention-days: 0).
+     * 로컬 개발에서 테스트 영상이 사라지면 곤란하고,
+     * 배포에서도 검수 결과를 며칠 만에 없애는 건 보통 원하는 동작이 아니다.
+     */
     @Scheduled(cron = "0 0 4 * * *")
     public void cleanUp() {
         int retentionDays = properties.storage().retentionDaysOrDefault();
@@ -65,7 +120,7 @@ public class StorageCleanupScheduler {
         }
         long after = storageService.usedBytes();
 
-        log.info("[cleanup] {}개 정리 완료. 저장소 {}MB → {}MB",
+        log.info("[cleanup] {}개 전체 삭제 완료. 저장소 {}MB → {}MB",
                 deleted, before / 1024 / 1024, after / 1024 / 1024);
     }
 }

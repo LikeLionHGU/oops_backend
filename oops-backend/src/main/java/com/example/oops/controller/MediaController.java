@@ -67,6 +67,12 @@ public class MediaController {
             @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) {
 
         Video video = videoService.getEntity(Ids.parse(videoId));
+
+        // 지운 것과 원래 없는 것을 구분해서 알려준다.
+        // 둘 다 404 로 뭉뚱그리면 사용자는 서버가 고장 났다고 생각한다.
+        if (video.isSourcePurged()) {
+            throw new BusinessException(ErrorCode.VIDEO_SOURCE_PURGED);
+        }
         if (!video.isStreamable()) {
             throw new BusinessException(ErrorCode.VIDEO_NOT_FOUND,
                     "업로드된 영상만 스트리밍할 수 있습니다. 유튜브 영상은 원본 링크를 사용하세요.");

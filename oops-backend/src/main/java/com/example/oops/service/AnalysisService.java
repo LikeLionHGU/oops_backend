@@ -221,9 +221,20 @@ public class AnalysisService {
      * 왜 못 했는지는 warnings 가 설명한다.
      */
     private CoverageDto toCoverage(List<AnalysisCoverage> coverage) {
+        // 화면 글자를 봤는지는 **어느 분석기가 봤든** true 다.
+        //
+        // 화면 글자 표현 검토(screen-text-review)를 껐기 때문에
+        // SCREEN_TEXT_REVIEW 만 보면 항상 false 가 된다.
+        // 그런데 이름·수치 확인(entity-check)이 화면 글자를 읽고 있으므로
+        // 실제로는 본 것이다. 여기서 false 를 주면 사용자는
+        // "화면은 아예 안 봤구나" 로 읽는다. 그건 사실이 아니다.
+        boolean screenTextRead = analyzed(coverage, CoverageStep.OCR)
+                && (analyzed(coverage, CoverageStep.SCREEN_TEXT_REVIEW)
+                    || analyzed(coverage, CoverageStep.FACT_ENTITY));
+
         return new CoverageDto(
                 analyzed(coverage, CoverageStep.STT) && analyzed(coverage, CoverageStep.SPEECH_REVIEW),
-                analyzed(coverage, CoverageStep.OCR) && analyzed(coverage, CoverageStep.SCREEN_TEXT_REVIEW),
+                screenTextRead,
                 analyzed(coverage, CoverageStep.VISUAL));
     }
 

@@ -21,6 +21,17 @@ public enum ErrorCode {
     /** 결정하지 않은 검토 후보가 남아 있는데 검수 완료를 요청했다 */
     REVIEW_INCOMPLETE(HttpStatus.CONFLICT, "아직 결정하지 않은 검토 후보가 있습니다."),
 
+    /**
+     * 보관 기간이 지나 원본 영상을 이미 지웠다.
+     *
+     * 404 가 아니라 410 인 이유는, 없었던 게 아니라 있다가 없어진 것이기 때문이다.
+     * 프론트는 이 코드를 받으면 "파일을 못 찾았습니다" 가 아니라
+     * "보관 기간이 지나 원본은 삭제되었습니다" 를 보여줘야 한다.
+     * 검수 결과 자체는 그대로 남아 있으므로 리포트는 계속 열린다.
+     */
+    VIDEO_SOURCE_PURGED(HttpStatus.GONE,
+            "보관 기간이 지나 원본 영상은 삭제되었습니다. 검수 결과는 그대로 확인할 수 있습니다."),
+
     /** 영상 Range 요청 범위가 잘못됐다 */
     RANGE_NOT_SATISFIABLE(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
             "요청한 재생 구간이 올바르지 않습니다."),

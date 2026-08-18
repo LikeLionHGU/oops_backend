@@ -12,27 +12,40 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * 대화 중 언급된 이름·날짜·수치가 맞는지 확인한다.
+ * 언급되거나 화면에 적힌 이름·날짜·수치가 맞는지 확인한다.
  *
  * 토크나 인터뷰는 즉흥적으로 말하기 때문에 사람 이름, 소속, 연도, 숫자가
  * 자주 어긋난다. 제작자도 편집자도 그 자리에서는 맞다고 믿기 때문에
  * 반복해서 봐도 걸러지지 않는다. 전형적인 검수 사각지대다.
+ *
+ * **말한 것뿐 아니라 화면에 박은 것도 본다.**
+ * 편집자는 지난 영상의 자막 템플릿을 복사해서 쓴다.
+ * 그러면서 연도나 숫자만 고치는 걸 잊는다.
+ * "2023년 발매" 라고 적힌 자막이 2024년 영상에 그대로 남는 식이다.
+ * 말로 한 실수는 다시 들으면 걸리지만, 화면에 박힌 숫자는
+ * 만든 사람이 맞다고 믿고 넣은 것이라 몇 번을 봐도 안 걸린다.
  *
  * 도덕 판단이 아니라 단순 정확성 문제라서, 확인만 하면 해결된다.
  *
  * LLM 은 세부 사실을 정확히 외우지 못하고 학습 시점 이후는 아예 모른다.
  * 그래서 검색을 끼워 세 단계로 나눴다.
  *
- *   1. 대본에서 확인이 필요한 대목을 뽑는다   (LLM)
- *   2. 그 내용을 뉴스에서 찾아본다             (검색)
- *   3. 기사와 대조해 어긋나는지 본다           (LLM)
+ *   1. 대본·화면글자에서 확인이 필요한 대목을 뽑는다   (LLM)
+ *   2. 그 내용을 뉴스에서 찾아본다                      (검색)
+ *   3. 기사와 대조해 어긋나는지 본다                    (LLM)
  *
  * 맞는 것은 보고하지 않는다. 확인이 필요한 것만 올린다.
+ *
+ * 이 분석기는 **FACT_CHECK 후보를 만들 수 있는 유일한 곳**이다.
+ * 사실 확인 카드에는 항상 참고 자료가 붙어야 하고,
+ * 자료를 붙이려면 검색을 해야 하는데 검색은 여기서만 한다.
  */
 @Slf4j
 @Component
@@ -46,9 +59,31 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
     /** 검증에 실제로 넘길 자료 수. 많이 넣으면 토큰만 늘고 판단은 흐려진다 */
     private static final int TOP_EVIDENCE = 4;
 
+    /**
+     * 프롬프트에 넣을 화면 글자 줄 수 상한.
+     *
+     * OCR 은 같은 자막을 프레임마다 다시 읽기 때문에 중복을 걷어내도 양이 많다.
+     * 대본까지 함께 넣는데 화면 글자가 수백 줄이면 모델이 앞쪽만 보고 만다.
+     */
+    private static final int MAX_SCREEN_LINES = 80;
+
+    /** 이보다 짧은 화면 글자는 확인할 사실이 담기지 않는다 */
+    private static final int MIN_SCREEN_TEXT_LENGTH = 4;
+
     private static final String EXTRACT_PROMPT = """
             너는 영상 공개 전에 확인할 지점을 짚어주는 검수 보조자다.
-            대화 대본을 받아서, 사실 확인이 필요한 대목만 뽑아낸다.
+            영상에서 나온 줄들을 받아서, 사실 확인이 필요한 대목만 뽑아낸다.
+
+            각 줄 앞에는 그게 어디서 나왔는지가 붙어 있다.
+            - (발언) 출연자가 말한 것. 음성 인식 결과다.
+            - (화면) 화면에 글자로 박혀 있는 것. 편집 자막이나 자료 화면이다.
+
+            **(화면) 줄을 특히 눈여겨봐라.**
+            편집자는 지난 영상의 자막을 복사해서 쓰다가 숫자만 고치는 걸 잊는다.
+            발매 연도, 나이, 순위, 소속, 직함이 옛날 값 그대로 남는 일이 잦다.
+            말로 한 실수는 다시 들으면 걸리지만 화면에 박힌 숫자는
+            만든 사람이 맞다고 믿고 넣은 것이라 몇 번을 봐도 안 걸린다.
+            그래서 (화면) 줄에 연도·숫자·직함·소속이 있으면 적극적으로 뽑아라.
 
             대화형 영상에서는 즉흥적으로 말하다 보니 이런 것이 자주 어긋난다.
             이건 도덕 판단이 아니라 단순 정확성 문제라서, 확인만 하면 해결된다.
@@ -73,12 +108,17 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               구독자 수, 조회수, 채널 이력 같은 것.
               기사에 나올 리 없고 나와도 시점이 다르다.
             - 농담이나 과장이 분명한 수치 ("백만 번은 말했다")
+            - **글자가 깨져 뜻을 알 수 없는 (화면) 줄**
+              화면 글자는 기계가 읽은 것이라 자주 깨진다.
+              무슨 말인지 확실하지 않으면 뽑지 마라. 깨진 글자로 검색하면
+              엉뚱한 기사가 나오고, 그걸로 "틀렸다" 는 카드가 만들어진다.
+            - **채널 로고, 워터마크, 구독 안내 같은 화면 고정 문구**
 
             반드시 이 JSON 형식으로만 답한다:
             {"claims":[{"index":0,"claim":"확인할 내용을 한 문장으로","subject":"누구·무엇에 대한 이야기인지",
                         "claimType":"DATE","searchQueries":["검색어1","검색어2"]}]}
 
-            index 는 그 내용이 나온 대본 줄 번호다.
+            index 는 그 내용이 나온 줄 번호다. 대괄호 안의 숫자를 그대로 쓴다.
 
             claimType 은 다음 중 하나다. **이 값에 따라 어떤 자료를 먼저 볼지가 달라진다.**
             - PERSONAL_STATEMENT : 본인의 생각·의도·경험. "그때 이런 마음이었다고 했다"
@@ -137,6 +177,11 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               UNVERIFIED_CLAIM 을 쓴다. 그냥 안 나온다고 쓰지 마라.
             - 기사끼리 엇갈리면 UNVERIFIED_CLAIM 이다.
             - 반올림이나 표현 차이는 넘어간다. 의미가 달라질 때만 잡는다.
+            - **화면에 박힌 글자는 기계가 읽은 것이라 오탈자가 섞인다.**
+              원문이 깨져 보이면 OK 를 반환해라.
+              글자를 잘못 읽은 것을 "사실이 틀렸다" 로 올리면
+              제작자는 고칠 것이 없는 카드를 받게 된다.
+              화면 글자는 **숫자나 연도가 자료와 분명히 다를 때만** 잡는다.
             - 애매하면 OK 를 골라라. 이 유형은 잘못 잡으면 신뢰를 크게 잃는다.
               "틀렸다" 고 했는데 틀리지 않았으면 제작자가 도구 자체를 안 믿게 된다.
 
@@ -173,7 +218,11 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
     public boolean supports(AnalysisContext context) {
         // 대화형 영상에서 즉흥적으로 언급되는 이름·날짜·수치를 확인한다.
         // 경제 지표 검증이 아니라 단순 정확성 문제라서 유형을 가리지 않는다.
-        return context.hasTranscript() && openAiClient.isEnabled() && newsClient() != null;
+        //
+        // 대본이 없어도 화면 글자만으로 돌 수 있다.
+        // 음성이 거의 없고 자막으로 정보를 주는 영상이 실제로 있다.
+        return (context.hasTranscript() || context.hasScreenText())
+                && openAiClient.isEnabled() && newsClient() != null;
     }
 
     private NewsSearchClient newsClient() {
@@ -185,13 +234,20 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
 
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
-        List<TranscriptSegment> transcript = context.transcript();
         NewsSearchClient newsClient = newsClient();
         if (newsClient == null) {
             return List.of();
         }
 
-        List<Claim> claims = extractClaims(transcript);
+        // 발언과 화면 글자를 한 목록으로 합친다.
+        // 어디서 나왔는지는 FactLine.type 이 들고 있어서, 카드를 만들 때
+        // 발언이면 text 로, 화면 글자면 captionText + 화면 캡처로 저장한다.
+        List<FactLine> lines = collectLines(context);
+        if (lines.isEmpty()) {
+            return List.of();
+        }
+
+        List<Claim> claims = extractClaims(lines);
         if (claims.isEmpty()) {
             log.info("[fact-check] videoId={} 검증할 주장 없음", context.video().getId());
             return List.of();
@@ -201,7 +257,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
 
         for (Claim claim : claims.stream().limit(MAX_CLAIMS).toList()) {
-            if (claim.index() == null || claim.index() < 0 || claim.index() >= transcript.size()) {
+            if (claim.index() == null || claim.index() < 0 || claim.index() >= lines.size()) {
                 continue;
             }
             List<String> queries = claim.queriesOrFallback();
@@ -220,7 +276,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             }
 
             List<NewsSearchClient.NewsItem> news = evidence.stream().map(Evidence::item).toList();
-            Verdict verdict = verify(today, claim, evidence);
+            Verdict verdict = verify(today, claim, lines.get(claim.index()), evidence);
             if (verdict == null || verdict.verdict() == null || "OK".equalsIgnoreCase(verdict.verdict())) {
                 continue;
             }
@@ -230,7 +286,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             double score = verdict.score() == null
                     ? 0.6 : Math.max(0.0, Math.min(1.0, verdict.score()));
 
-            TranscriptSegment segment = transcript.get(claim.index());
+            FactLine line = lines.get(claim.index());
             String reason = verdict.reason() == null
                     ? "확인이 필요한 내용입니다." : verdict.reason();
 
@@ -248,18 +304,28 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                 reason = reason + " · 기사 내용: " + correction;
             }
 
-            RiskFinding finding = RiskFinding.builder()
+            // 발언이면 text, 화면 글자면 captionText 에 넣는다.
+            // 프론트는 type 으로 분기하므로 여기서 제대로 갈라놓지 않으면
+            // 화면에 박힌 자막이 "출연자가 이렇게 말했습니다" 로 보인다.
+            boolean caption = line.type() == TimelineEventType.CAPTION;
+
+            RiskFinding.RiskFindingBuilder builder = RiskFinding.builder()
                     .video(context.video())
-                    .eventType(TimelineEventType.SPEECH)
+                    .eventType(line.type())
                     .category(category)
-                    .source(EvidenceSource.SUBTITLE)
+                    .source(caption ? EvidenceSource.VISION : EvidenceSource.SUBTITLE)
                     .score(score)
-                    .startMs(segment.getStartMs())
-                    .endMs(segment.getEndMs())
-                    .text(segment.getText())
+                    .startMs(line.startMs())
+                    .endMs(line.endMs())
                     .reason(reason)
-                    .target(query)
-                    .build();
+                    .target(query);
+
+            if (caption) {
+                builder.captionText(line.text()).frame(line.frame());
+            } else {
+                builder.text(line.text());
+            }
+            RiskFinding finding = builder.build();
 
             // AI 가 대조에 쓴 기사를 그대로 남긴다.
             // 무관한 기사와 비교한 오탐이라면 사용자가 링크를 열어보고 바로 판단할 수 있다.
@@ -275,13 +341,78 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                     news, verdict.sources(), hasEvidence ? correction : null, sourceTypes));
             findings.add(finding);
 
-            log.info("[fact-check] '{}' → {} (score={}, 참고자료 {}건)",
-                    query, category, score, finding.getReferences().size());
+            log.info("[fact-check] {} '{}' → {} (score={}, 참고자료 {}건)",
+                    caption ? "화면" : "발언", query, category, score,
+                    finding.getReferences().size());
         }
 
-        log.info("[fact-check] videoId={} 주장={}개 findings={}",
-                context.video().getId(), claims.size(), findings.size());
+        long captionFindings = findings.stream()
+                .filter(f -> f.getEventType() == TimelineEventType.CAPTION).count();
+        log.info("[fact-check] videoId={} 검토줄={}개 주장={}개 findings={} (발언 {} / 화면 {})",
+                context.video().getId(), lines.size(), claims.size(), findings.size(),
+                findings.size() - captionFindings, captionFindings);
         return findings;
+    }
+
+    /**
+     * 발언과 화면 글자를 한 목록으로 합친다.
+     *
+     * 두 번 나눠 부르지 않고 한 번에 넣는 이유는,
+     * "화면에는 2023년이라고 적혀 있는데 말로는 2024년이라 했다" 같은
+     * 어긋남을 모델이 같은 화면에서 볼 수 있어야 하기 때문이다.
+     *
+     * 화면 글자는 손질이 필요하다. OCR 은 같은 자막을 프레임마다 다시 읽어서
+     * 똑같은 줄이 수십 개씩 들어온다. 그대로 넣으면 대본이 밀려난다.
+     */
+    private List<FactLine> collectLines(AnalysisContext context) {
+        List<FactLine> lines = new ArrayList<>();
+
+        if (context.hasTranscript()) {
+            for (TranscriptSegment s : context.transcript()) {
+                if (s.getText() != null && !s.getText().isBlank()) {
+                    lines.add(new FactLine(TimelineEventType.SPEECH,
+                            s.getStartMs(), s.getEndMs(), s.getText().trim(), null));
+                }
+            }
+        }
+
+        if (context.hasScreenText()) {
+            Set<String> seen = new HashSet<>();
+            int added = 0;
+            for (ScreenText s : context.screenTexts()) {
+                if (added >= MAX_SCREEN_LINES) break;
+
+                String text = s.getText() == null ? "" : s.getText().trim();
+                if (text.length() < MIN_SCREEN_TEXT_LENGTH) {
+                    continue;   // "ㅋㅋ", "1" 같은 건 확인할 사실이 없다
+                }
+                // 공백과 기호를 뺀 형태로 중복을 본다.
+                // OCR 이 같은 자막을 읽을 때마다 띄어쓰기가 조금씩 달라진다.
+                if (!seen.add(text.replaceAll("\\s+", ""))) {
+                    continue;
+                }
+                lines.add(new FactLine(TimelineEventType.CAPTION,
+                        s.getStartMs(), s.getEndMs(), text, s.getFrame()));
+                added++;
+            }
+        }
+
+        lines.sort(Comparator.comparingLong(FactLine::startMs));
+        return lines;
+    }
+
+    /**
+     * 사실 확인 대상 한 줄. 발언이든 화면 글자든 여기로 모인다.
+     *
+     * @param frame 화면 글자일 때 그 장면 캡처. 발언이면 null
+     */
+    record FactLine(TimelineEventType type, long startMs, long endMs,
+                    String text, VideoFrame frame) {
+
+        /** 프롬프트에 붙일 출처 표시 */
+        String sourceLabel() {
+            return type == TimelineEventType.CAPTION ? "화면" : "발언";
+        }
     }
 
     /**
@@ -318,10 +449,12 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
     /** 검색 결과 하나와 그 자료가 원출처에 얼마나 가까운지 */
     record Evidence(NewsSearchClient.NewsItem item, ReferenceSourceType sourceType) {}
 
-    private List<Claim> extractClaims(List<TranscriptSegment> transcript) {
-        StringBuilder prompt = new StringBuilder("영상 대본이다. 검증 가능한 사실 주장을 뽑아라.\n\n");
-        for (int i = 0; i < transcript.size(); i++) {
-            prompt.append("[%d] %s%n".formatted(i, transcript.get(i).getText()));
+    private List<Claim> extractClaims(List<FactLine> lines) {
+        StringBuilder prompt = new StringBuilder(
+                "영상에서 나온 줄들이다. 검증 가능한 사실 주장을 뽑아라.\n\n");
+        for (int i = 0; i < lines.size(); i++) {
+            FactLine line = lines.get(i);
+            prompt.append("[%d] (%s) %s%n".formatted(i, line.sourceLabel(), line.text()));
         }
 
         ClaimResult result = openAiClient
@@ -330,10 +463,13 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         return result == null || result.claims() == null ? List.of() : result.claims();
     }
 
-    private Verdict verify(String today, Claim claim, List<Evidence> evidence) {
+    private Verdict verify(String today, Claim claim, FactLine line, List<Evidence> evidence) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("오늘 날짜: ").append(today).append("\n\n");
         prompt.append("영상에서 나온 주장: ").append(claim.claim()).append("\n");
+        prompt.append("나온 곳: ").append(line.type() == TimelineEventType.CAPTION
+                ? "화면에 박힌 글자 (편집 자막). 원문: \"" + line.text() + "\""
+                : "출연자 발언. 원문: \"" + line.text() + "\"").append("\n");
         if (claim.subject() != null && !claim.subject().isBlank()) {
             prompt.append("주장의 대상: ").append(claim.subject()).append("\n");
         }

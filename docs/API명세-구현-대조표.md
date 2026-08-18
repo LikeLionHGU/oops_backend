@@ -58,6 +58,7 @@ Severity        LOW | MEDIUM | HIGH        (내부값. optional)
 | 400 | `INVALID_REQUEST` |
 | 404 | `VIDEO_NOT_FOUND` · `FRAME_NOT_FOUND` · `EVENT_NOT_FOUND` |
 | 409 | `ANALYSIS_IN_PROGRESS` · `ANALYSIS_NOT_COMPLETED` · `INVALID_ANALYSIS_STATE` · `REVIEW_INCOMPLETE` |
+| 410 | `VIDEO_SOURCE_PURGED` — 보관 기간이 지나 원본을 지웠습니다 |
 | 413 | `MAX_UPLOAD_SIZE_EXCEEDED` |
 | 415 | `UNSUPPORTED_VIDEO_FORMAT` |
 | 416 | `RANGE_NOT_SATISFIABLE` |
@@ -173,12 +174,24 @@ GET /api/v1/videos/history?status=ALL&page=0&size=20
   "reason": "문장 끝의 '~노' 어미입니다. 경상도 사투리로도 쓰이지만...",
   "frameUrl": "/api/v1/videos/123/frames/45",
   "references": [], "reviewAction": "CONFIRMED",
-  "severity": "MEDIUM", "occurrences": 5,
+  "occurrences": 5,
 
   "text": "정치판에 내 얘기가 왜 나오노?",
   "contextBefore": "아 진짜로?",
-  "contextAfter": "그러게 말이에요",
-  "riskTypes": ["UNFAMILIAR_CONTEXT"] }
+  "contextAfter": "그러게 말이에요" }
+```
+
+화면 글자에서 나온 사실 확인 후보는 이렇게 옵니다.
+
+```json
+{ "id": "204", "startMs": 61000, "endMs": 65000,
+  "type": "CAPTION", "candidateType": "FACT_CHECK",
+  "title": "'앨범 발매 연도' — 사실 확인 필요",
+  "reason": "화면에는 2023년으로 적혀 있는데 기사에는 2024년으로 나옵니다.",
+  "frameUrl": "/api/v1/videos/123/frames/88",
+  "references": [ ... ], "reviewAction": null, "occurrences": 1,
+
+  "captionText": "2023년 정규 2집 발매" }
 ```
 
 **`type` 과 `candidateType` 은 다른 질문에 답합니다.**
@@ -189,7 +202,18 @@ candidateType 왜 확인하나     SPEECH_REVIEW = 다시 읽어볼 표현
                              FACT_CHECK    = 외부 자료와 대조가 필요
 ```
 
-프론트는 `candidateType` 으로 카드를 나누고, `type` 은 뱃지로 쓰면 됩니다.
+네 조합이 다 나올 수 있습니다.
+
+| `type` | `candidateType` | 어떤 카드인가 |
+|---|---|---|
+| `SPEECH` | `SPEECH_REVIEW` | 출연자 발언 중 다시 읽어볼 표현 |
+| `SPEECH` | `FACT_CHECK` | 출연자가 말한 이름·연도·숫자 |
+| `CAPTION` | `FACT_CHECK` | 화면 자막에 박힌 이름·연도·숫자 |
+| `CAPTION` | `SPEECH_REVIEW` | (현재 안 나옴 — 화면 글자 표현 검토는 꺼져 있음) |
+
+**화면 문구는 `candidateType` 이 아니라 `type` 으로 정하세요.**
+`SPEECH_REVIEW` 라고 무조건 "발언" 이라 쓰면 안 됩니다.
+`type` 이 `CAPTION` 이면 그건 편집자가 쓴 화면 글자입니다.
 
 | 필드 | 설명 |
 |---|---|
@@ -197,7 +221,15 @@ candidateType 왜 확인하나     SPEECH_REVIEW = 다시 읽어볼 표현
 | `references` | **항상 배열.** 자료가 없으면 `[]` |
 | `reviewAction` | 아직 결정 안 했으면 `null` |
 | `occurrences` | 같은 후보가 몇 번 나왔는지. `2` 이상이면 `startMs~endMs` 가 전체 구간 |
-| `severity` · `riskTypes` | 내부값. 화면 문구의 기준으로 쓰지 마세요 |
+
+**`severity` 와 `riskTypes` 는 더 이상 내려가지 않습니다.**
+이 도구는 위험도를 매기지 않습니다. 점수가 화면에 보이는 순간
+"AI 가 0.8 이라고 했으니 문제다" 가 되고, 그건 판정입니다.
+두 값 모두 서버 내부에는 남아 있어 정렬·병합·품질 지표에 계속 쓰입니다.
+
+**`FACT_CHECK` 카드에는 항상 `references` 가 붙습니다.**
+사실 확인 후보는 실제로 자료를 검색해 대조한 분석기만 만들 수 있게 막아뒀습니다.
+근거 없는 사실 지적이 나가지 않습니다.
 
 **`contextBefore` / `contextAfter` 는 SPEECH 에만** 붙습니다.
 직전·직후 대본 줄입니다. 카드만 보면 발언이 앞뒤 없이 뚝 떨어져 있어서
@@ -306,6 +338,14 @@ POST /api/v1/videos/{videoId}/review-completion
 
 `sceneAnalyzed` 는 항상 `false` 입니다. 화면 자료 분석은 아직 없습니다.
 
+**`screenTextAnalyzed` 는 화면 글자를 어느 분석기든 봤으면 `true` 입니다.**
+화면 글자의 표현 검토는 꺼졌지만, 이름·수치 확인이 화면 글자를 읽고 있습니다.
+그 단계만 보고 `false` 를 주면 "화면은 아예 안 봤구나" 로 읽히는데 사실이 아닙니다.
+
+단계별 상세(`/videos/{id}/coverage`)에서 `SCREEN_TEXT_REVIEW` 는
+`NOT_ENABLED` 로 나옵니다. 화면 글자를 안 본다는 뜻이 아니라
+**화면 자막의 표현 검토**를 지금 안 한다는 뜻입니다.
+
 ---
 
 ## 5. CORS (§11)
@@ -394,6 +434,22 @@ videoRef.current.currentTime = event.startMs / 1000;
 
 `streamUrl` 과 `frameUrl` 은 응답에서 온 값을 그대로 쓰세요. 직접 조합하지 마세요.
 S3 로 옮겨도 계약은 유지되지만 경로 규칙은 바뀔 수 있습니다.
+
+**`streamUrl` 이 `null` 일 수 있습니다.** 두 경우입니다.
+
+| 상황 | 재생 요청 시 |
+|---|---|
+| 유튜브 링크로 등록한 영상 | `404 VIDEO_NOT_FOUND` |
+| 보관 기간이 지나 원본을 지운 영상 | `410 VIDEO_SOURCE_PURGED` |
+
+원본은 **분석 완료 24시간 뒤에 자동으로 삭제**됩니다.
+지워지는 건 영상 파일뿐이고 **리포트·대본·검토 후보·참고 자료·검수 이력은
+그대로 남습니다.** 화면 캡처(`frameUrl`)도 남아서 카드는 정상적으로 보입니다.
+
+그래서 `410` 은 오류 화면이 아니라 안내 문구로 처리하세요.
+"영상을 찾을 수 없습니다" 가 아니라
+"보관 기간이 지나 원본은 삭제되었습니다. 검수 결과는 그대로 확인할 수 있습니다" 입니다.
+카드의 시각을 눌러도 이동할 곳이 없으므로 재생 컨트롤 자체를 감추는 편이 낫습니다.
 
 **동작 예시 페이지**가 있습니다. 카드 UI, 검수 버튼, 경고 배너가 다 들어 있어
 구현 참고용으로 보시면 됩니다.
