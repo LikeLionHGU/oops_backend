@@ -19,6 +19,20 @@ public record OpenAiProperties(
         String model,
         Duration timeout,
 
+        /**
+         * 분당 보낼 요청 수. 계정 한도(RPM)에 맞춘다.
+         *
+         * 이 값이 계정 한도보다 크면 429 가 나고, OpenAI 는 벌칙으로
+         * 수십 분 뒤에 다시 오라고 답한다. 그러면 그 영상 분석은 사실상 끝난다.
+         * 그래서 **낮게 잡는 편이 안전하다.** 느린 것과 실패하는 것은 다르다.
+         *
+         * 실제 한도는 첫 응답 헤더(x-ratelimit-limit-requests)로 확인되고,
+         * 그때 이 값이 자동으로 맞춰진다. 여기 적는 건 그 전까지 쓸 초기값이다.
+         *
+         * 계정 한도 확인: https://platform.openai.com/settings/organization/limits
+         */
+        Integer requestsPerMinute,
+
         /** 토큰 단가. 비용을 로그로 확인하는 용도다. */
         Pricing pricing
 ) {
@@ -72,5 +86,19 @@ public record OpenAiProperties(
 
     public Duration timeoutOrDefault() {
         return timeout != null ? timeout : Duration.ofSeconds(90);
+    }
+
+    /**
+     * 기본값을 10 으로 둔 이유.
+     *
+     * 결제 이력이 없는 신규 계정(Tier 1)의 gpt-4o-mini 한도가 분당 10건이다.
+     * 여기서 넉넉하게 잡아두면 첫 영상부터 429 를 맞고, 한 번 맞으면
+     * OpenAI 가 수십 분 뒤에 오라고 해서 그 영상은 결과가 비게 된다.
+     *
+     * 반대로 낮게 잡아 손해 보는 건 시간뿐이고, 실제 한도가 더 높으면
+     * 첫 응답 헤더를 보고 알아서 올라간다.
+     */
+    public int requestsPerMinuteOrDefault() {
+        return requestsPerMinute == null || requestsPerMinute <= 0 ? 10 : requestsPerMinute;
     }
 }

@@ -307,6 +307,11 @@ public class AnalysisPipeline {
         double totalUsd = usage.costUsd() + sttUsd;
         double krw = totalUsd * usage.pricing().krwRate();
 
+        // 한도 사용량은 비용보다 먼저 남긴다.
+        // 호출이 전부 실패했을 때가 가장 알고 싶은 순간인데,
+        // 아래 조기 반환 뒤에 두면 바로 그때 안 찍힌다.
+        logRequestBudget(videoId, durationSec, usage);
+
         if (usage.isEmpty() && sttUsd == 0) {
             return;
         }
@@ -328,6 +333,45 @@ public class AnalysisPipeline {
                     Math.round(krw / (durationSec / 60.0)),
                     "%.1f".formatted(durationSec / 60.0));
         }
+    }
+
+    /**
+     * 이 영상이 요청 한도를 얼마나 먹었는지, 60분이면 얼마일지 남긴다.
+     *
+     * 비용과 한도는 다른 이야기다.
+     * 비용은 응답을 받은 호출에만 붙지만, **요청 한도는 거절당한 요청도 깎는다.**
+     * 그래서 성공 호출 수만 보면 "1회 했는데 왜 한도에 걸리지" 가 된다.
+     *
+     * 60분 환산을 같이 찍는 이유는, 짧은 영상으로 시험한 뒤
+     * 실제 대상(20~60분)에서 한도에 걸릴지 미리 알기 위해서다.
+     * 요청 수는 대본 길이에 거의 비례하므로 이 환산이 꽤 잘 맞는다.
+     */
+    private void logRequestBudget(Long videoId, Integer durationSec,
+                                  OpenAiClient.TokenUsage usage) {
+        if (usage.requests() == 0) {
+            return;
+        }
+
+        log.info("[openai-quota] videoId={} 요청 {}건 (성공 {} · 한도거절 {})",
+                videoId, usage.requests(), usage.calls(), usage.rateLimited());
+
+        if (durationSec == null || durationSec <= 0) {
+            return;
+        }
+        double minutes = durationSec / 60.0;
+        double perMinute = usage.requests() / minutes;
+
+        log.info("[openai-quota] videoId={} 영상 1분당 {}건 → 60분이면 약 {}건 · 하루 200건 한도라면 약 {}편",
+                videoId,
+                "%.1f".formatted(perMinute),
+                Math.round(perMinute * 60),
+                Math.max(1, Math.round(200 / Math.max(1, perMinute * 60))));
+
+        // 토큰도 같이 본다. 분당 토큰(TPM) 한도는 요청 수와 따로 논다.
+        log.info("[openai-quota] videoId={} 60분 환산 — 요청 약 {}건 · 토큰 약 {}",
+                videoId,
+                Math.round(perMinute * 60),
+                Math.round((usage.promptTokens() + usage.completionTokens()) / minutes * 60));
     }
 
     /**
