@@ -9,5 +9,6 @@ public record ReviewCompletionResponse(
         String reviewedAt,
         Summary summary
 ) {
-    public record Summary(int total, int confirmed, int edited, int hold, int notUseful) {}
+    public record Summary(int total, int decided, int remaining,
+                              int confirmed, int edited, int hold, int notUseful) {}
 }

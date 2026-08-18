@@ -116,7 +116,8 @@ public class ReviewActionService {
                 ReviewStatus.COMPLETED,
                 Ids.utc(now),
                 new ReviewCompletionResponse.Summary(
-                        findings.size(), confirmed, edited, hold, notUseful));
+                        findings.size(), decided.size(), 0,
+                        confirmed, edited, hold, notUseful));
     }
 
     /**
