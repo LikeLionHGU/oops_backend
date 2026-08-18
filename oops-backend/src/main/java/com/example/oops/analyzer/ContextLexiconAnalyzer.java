@@ -37,6 +37,9 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
     /** 한 영상에서 확인할 최대 건수. 넘으면 비용도 화면도 감당이 안 된다 */
     private static final int MAX_MATCHES = 24;
 
+    /** AI 문구가 사전 문구와 이만큼 겹치면 같은 말로 보고 안 붙인다 */
+    private static final double SAME_MEANING = 0.75;
+
     private final ContextLexicon lexicon;
     private final ContextValidator validator;
 
@@ -133,9 +136,13 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
             score = Math.max(0.2, score - 0.15);
         }
 
-        StringBuilder reason = new StringBuilder(entry.reason());
-        if (verdict != null && verdict.note() != null && !verdict.note().isBlank()) {
-            reason.append(' ').append(verdict.note());
+        // 사전 문구와 AI 문구가 같은 말이면 하나만 남긴다.
+        // 둘 다 붙이면 "커뮤니티 말투로 읽히기도 합니다. 커뮤니티 말투로 읽힐 수 있습니다."
+        // 처럼 같은 문장이 두 번 나온다. 읽는 사람이 신뢰를 잃는다.
+        String reason = entry.reason();
+        String note = verdict == null ? null : verdict.note();
+        if (note != null && !note.isBlank() && addsSomething(reason, note)) {
+            reason = reason + " " + note.trim();
         }
 
         String target = verdict != null && verdict.target() != null && !verdict.target().isBlank()
@@ -151,7 +158,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
                 .score(score)
                 .startMs(line.startMs())
                 .endMs(line.endMs())
-                .reason(reason.toString())
+                .reason(reason)
                 .target(target)
                 .frame(line.frame());
 
@@ -161,6 +168,33 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
             builder.captionText(line.text());
         }
         return builder.build();
+    }
+
+    /**
+     * AI 가 덧붙인 말이 새 정보인지.
+     *
+     * 사전 문구를 조금 바꿔 되풀이한 것이면 붙이지 않는다.
+     * 글자 단위로 보는 이유는 어순이나 어미만 바뀐 경우를 잡기 위해서다.
+     */
+    private boolean addsSomething(String reason, String note) {
+        String a = reason.replaceAll("[^가-힣a-zA-Z0-9]", "");
+        String b = note.replaceAll("[^가-힣a-zA-Z0-9]", "");
+        if (a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+
+        Map<Character, Integer> counts = new java.util.HashMap<>();
+        for (char c : a.toCharArray()) counts.merge(c, 1, Integer::sum);
+
+        int common = 0;
+        for (char c : b.toCharArray()) {
+            Integer left = counts.get(c);
+            if (left != null && left > 0) {
+                counts.put(c, left - 1);
+                common++;
+            }
+        }
+        return (double) common / b.length() < SAME_MEANING;
     }
 
     private String textAt(List<Line> lines, int index) {

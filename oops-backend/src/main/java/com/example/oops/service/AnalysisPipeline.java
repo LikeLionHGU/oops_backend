@@ -228,6 +228,13 @@ public class AnalysisPipeline {
             // 4. 다중 후보 병합 + 우선순위
             progressService.update(jobId, AnalysisStage.MULTIMODAL, 85, "논란 후보 정리 중");
             List<RiskFinding> findings = fusionService.fuse(candidates);
+
+            // 명세 §9 — 모든 구간이 영상 길이 안에 있어야 한다.
+            // OCR 은 프레임 간격만큼 endMs 를 잡아서 마지막 자막이 영상 밖으로 나간다.
+            Long durationMs = video.durationMs();
+            if (durationMs != null) {
+                findings.forEach(f -> f.clampTo(durationMs));
+            }
             findingRepository.saveAll(findings);
 
             // 5. 리포트 집계

@@ -212,6 +212,28 @@ public class RiskFinding extends BaseTimeEntity {
         }
     }
 
+    /**
+     * 구간이 영상 길이를 넘지 않게 맞춘다. 명세 §5·§9.
+     *
+     * OCR 은 프레임 간격만큼 endMs 를 잡기 때문에 마지막 자막이 영상 밖으로 나간다.
+     * 8초 영상인데 endMs 가 9000 으로 나오는 식이다.
+     * 프론트가 그 값으로 재생 위치를 잡으면 영상 끝으로 튄다.
+     */
+    public void clampTo(long durationMs) {
+        if (durationMs <= 0) {
+            return;
+        }
+        this.endMs = Math.min(this.endMs, durationMs);
+        this.startMs = Math.max(0, Math.min(this.startMs, this.endMs));
+
+        // 잘라내고 나서 길이가 0이 되면 최소 구간을 준다.
+        // start == end 면 프론트에서 클릭해도 아무 데도 못 간다.
+        if (this.endMs <= this.startMs) {
+            this.startMs = Math.max(0, durationMs - 1000);
+            this.endMs = durationMs;
+        }
+    }
+
     public void attachFrame(VideoFrame frame) {
         if (this.frame == null) {
             this.frame = frame;
