@@ -37,6 +37,14 @@ springdoc:
   paths-to-match: /api/**
 
 oops:
+  # 프론트가 다른 도메인에서 호출한다. 명세 §11.
+  # 배포 도메인이 정해지면 여기만 고치면 된다. REST 와 WebSocket 이 같은 목록을 쓴다.
+  cors:
+    allowed-origins:
+      - http://localhost:5173      # Vite dev server
+      - http://localhost:3000
+      - http://localhost:8080      # 백엔드 자체 테스트 페이지
+
   storage:
     location: ./uploads              # 업로드 파일 저장 위치
 

@@ -16,6 +16,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.GetMapping;
+import com.example.oops.common.Ids;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -62,10 +63,10 @@ public class MediaController {
                     """)
     @GetMapping("/stream")
     public ResponseEntity<Resource> stream(
-            @PathVariable Long videoId,
+            @PathVariable String videoId,
             @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) {
 
-        Video video = videoService.getEntity(videoId);
+        Video video = videoService.getEntity(Ids.parse(videoId));
         if (!video.isStreamable()) {
             throw new BusinessException(ErrorCode.VIDEO_NOT_FOUND,
                     "업로드된 영상만 스트리밍할 수 있습니다. 유튜브 영상은 원본 링크를 사용하세요.");
@@ -121,10 +122,10 @@ public class MediaController {
     @Operation(summary = "화면 캡처 이미지",
             description = "리포트의 `frameUrl` 이 가리키는 실제 이미지. `<img src={event.frameUrl}>` 로 쓰면 된다.")
     @GetMapping("/frames/{frameId}")
-    public ResponseEntity<Resource> frame(@PathVariable Long videoId, @PathVariable Long frameId) {
-        videoService.getEntity(videoId);
+    public ResponseEntity<Resource> frame(@PathVariable String videoId, @PathVariable String frameId) {
+        videoService.getEntity(Ids.parse(videoId));
 
-        VideoFrame frame = videoFrameRepository.findByIdAndVideoId(frameId, videoId)
+        VideoFrame frame = videoFrameRepository.findByIdAndVideoId(Ids.parse(frameId), Ids.parse(videoId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.FRAME_NOT_FOUND));
 
         Path path = storageService.resolve(frame.getStorageKey());

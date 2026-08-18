@@ -1,62 +1,64 @@
 package com.example.oops.dto;
 
+import com.example.oops.common.Ids;
 import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.AnalysisStatus;
-import com.example.oops.domain.ContentGenre;
-import com.example.oops.domain.SourceType;
+import com.example.oops.domain.ReviewStatus;
 import com.example.oops.domain.Video;
 
-import java.time.ZoneOffset;
+import java.time.LocalDateTime;
 
 /**
- * 검수 이력 1건. 명세 §3-2 · §15-2 VideoHistoryItem.
+ * 검수 이력 1건. 명세 §4.
  *
- * 앞의 7개가 프론트와 고정한 계약이고, 뒤의 4개는 관리·디버깅용 확장 필드다.
- * 프론트는 모르는 필드를 무시한다.
+ * 화면의 파일명 → 업로드 일자 → 전체 후보 수 → 수정 수 → 상태를
+ * 이 응답만으로 그릴 수 있어야 합니다.
+ *
+ * **분석 상태와 검수 상태는 다른 필드입니다.**
+ * 분석은 끝났어도 사람이 아직 안 봤을 수 있습니다.
  */
 public record VideoSummaryResponse(
-        Long videoId,
+        String videoId,
         String filename,
 
-        /** 업로드 시각. ISO-8601 UTC 문자열 (예: 2026-08-16T12:30:00Z) */
+        /** ISO-8601 UTC */
         String uploadedAt,
 
-        AnalysisStatus status,
+        AnalysisStatus analysisStatus,
+        ReviewStatus reviewStatus,
 
-        /** 0~100. 현재 Job 의 진행률 */
-        int progress,
-
-        /** 완료된 리포트의 events.length 와 같은 기준 */
+        /** 전체 검토 후보 수 */
         int eventCount,
 
-        /** 원본이 서버에 없으면 null (유튜브 링크 등록) */
-        String streamUrl,
+        /** 그중 '수정함' 으로 결정한 수 */
+        int editedCount,
 
-        // ---- 아래는 확장 필드. 프론트 계약은 아니다 ----
-        SourceType sourceType,
-        String sourceUrl,
-        String title,
-        ContentGenre genre
+        /** 검수를 마친 시각. 아직이면 null */
+        String reviewedAt,
+
+        /** 원본이 서버에 없으면 null */
+        String streamUrl
 ) {
-    public static VideoSummaryResponse of(Video video, AnalysisJob job, int eventCount) {
+    public static VideoSummaryResponse of(Video video, AnalysisJob job,
+                                          int eventCount, int editedCount,
+                                          ReviewStatus reviewStatus, LocalDateTime reviewedAt) {
         return new VideoSummaryResponse(
-                video.getId(),
+                Ids.of(video.getId()),
                 displayName(video),
-                toUtcIso(video),
+                Ids.utc(video.getCreatedAt()),
                 job == null ? video.getStatus() : job.getStatus(),
-                job == null ? 0 : job.getProgress(),
+                reviewStatus,
                 eventCount,
-                video.isStreamable() ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null,
-                video.getSourceType(),
-                video.getSourceUrl(),
-                video.getTitle(),
-                video.getGenre()
+                editedCount,
+                Ids.utc(reviewedAt),
+                video.isStreamable()
+                        ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null
         );
     }
 
     /**
      * 유튜브로 등록한 영상은 filename 이 없다.
-     * 목록에서 빈칸으로 보이면 어떤 영상인지 알 수 없어서 제목이나 주소로 대신 채운다.
+     * 목록에서 빈칸이면 어떤 영상인지 알 수 없어서 제목이나 주소로 채운다.
      */
     private static String displayName(Video video) {
         if (video.getFilename() != null && !video.getFilename().isBlank()) {
@@ -66,15 +68,5 @@ public record VideoSummaryResponse(
             return video.getTitle();
         }
         return video.getSourceUrl();
-    }
-
-    /** 서버 로컬 시간대에 의존하면 프론트에서 시간이 어긋난다. UTC 로 고정해 보낸다. */
-    private static String toUtcIso(Video video) {
-        if (video.getCreatedAt() == null) {
-            return null;
-        }
-        return video.getCreatedAt().atZone(java.time.ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .format(java.time.format.DateTimeFormatter.ISO_INSTANT);
     }
 }

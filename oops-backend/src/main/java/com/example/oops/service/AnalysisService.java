@@ -14,7 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import com.example.oops.common.Ids;
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -30,6 +34,7 @@ public class AnalysisService {
     private final AnalysisCoverageRepository coverageRepository;
     private final TranscriptSegmentRepository transcriptRepository;
     private final ScreenTextRepository screenTextRepository;
+    private final ReviewActionRepository actionRepository;
 
     /**
      * 분석 실행 1회를 새로 만든다. 업로드 직후와 재시도 모두 이 메서드를 쓴다.
@@ -70,10 +75,42 @@ public class AnalysisService {
         return job;
     }
 
-    /** API 명세 9-1. videoId 는 유지하고 새 jobId 를 발급한다. */
+    /**
+     * 재시도. 명세 §7 — 실패하거나 취소한 작업만 다시 돌린다.
+     * videoId 는 유지하고 새 jobId 를 발급한다.
+     */
     @Transactional
     public AnalysisRetryResponse retry(Long videoId) {
+        AnalysisJob last = jobRepository.findTopByVideoIdOrderByIdDesc(videoId).orElse(null);
+        if (last != null && !last.getStatus().isRetryable()) {
+            throw new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE,
+                    "실패했거나 취소한 분석만 다시 시도할 수 있습니다. (현재 상태: %s)"
+                            .formatted(last.getStatus()));
+        }
+        // 후보 id 가 새로 발급되므로 검수도 처음부터다
+        videoService.getEntity(videoId).resetReview();
         return AnalysisRetryResponse.from(startAnalysis(videoId));
+    }
+
+    /**
+     * 취소. 명세 §7 — 대기 중이거나 진행 중인 작업만 취소한다.
+     *
+     * 이미 도는 스레드를 중간에 죽이지는 않는다.
+     * 상태만 CANCELLED 로 바꾸고, 파이프라인이 다음 단계로 넘어갈 때 스스로 멈춘다.
+     * 강제로 끊으면 반쯤 저장된 결과가 남는다.
+     */
+    @Transactional
+    public AnalysisRetryResponse cancel(Long videoId) {
+        AnalysisJob job = latestJob(videoId);
+        if (!job.getStatus().isRunning()) {
+            throw new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE,
+                    "대기 중이거나 진행 중인 분석만 취소할 수 있습니다. (현재 상태: %s)"
+                            .formatted(job.getStatus()));
+        }
+        job.cancel();
+        job.getVideo().updateStatus(AnalysisStatus.CANCELLED);
+        log.info("[cancel] videoId={} jobId={} 취소", videoId, job.getJobKey());
+        return AnalysisRetryResponse.from(job);
     }
 
     /** API 명세 3-1 */
@@ -81,7 +118,7 @@ public class AnalysisService {
         return VideoStatusResponse.from(latestJob(videoId));
     }
 
-    /** API 명세 5-1 */
+    /** 검수 리포트. 명세 §5 */
     public AnalysisReportResponse getReport(Long videoId) {
         Video video = videoService.getEntity(videoId);
         AnalysisJob job = latestJob(videoId);
@@ -95,7 +132,15 @@ public class AnalysisService {
                 .sorted(FindingOrder.byPriority())
                 .toList();
 
-        AdSuitability adSuitability = predictAdSuitability(findings);
+        // 결정 내역을 한 번에 읽어 카드마다 붙인다
+        Map<Long, ReviewActionType> actions = new HashMap<>();
+        for (ReviewAction a : actionRepository.findByVideoIdOrderByIdAsc(videoId)) {
+            actions.put(a.getFinding().getId(), a.getAction());
+        }
+
+        // 발언 카드에 앞뒤 줄을 붙인다. 명세 v2.1 §10 — contextBefore / contextAfter
+        List<TranscriptSegment> transcript =
+                transcriptRepository.findByVideoIdOrderByStartMsAsc(videoId);
 
         List<AnalysisCoverage> coverage = coverageRepository.findByVideoIdOrderByIdAsc(videoId);
         List<AnalysisWarningDto> warnings = coverage.stream()
@@ -104,33 +149,90 @@ public class AnalysisService {
                 .toList();
 
         return new AnalysisReportResponse(
-                video.getId(),
+                Ids.of(video.getId()),
                 job.getJobKey(),
+                video.getFilename(),
+                Ids.utc(job.getFinishedAt()),
+                video.durationMs(),
+                video.isStreamable()
+                        ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null,
+                video.reviewStatusOrDefault(),
                 job.getStatus(),
-                video.genreOrGeneral(),
-                adSuitability,
-                adSuitability.getNote(),
                 RiskSummary.of(findings),
-                findings.stream().map(TimelineEventDto::from).toList(),
-                coverage.isEmpty() ? null : coverage.stream().map(CoverageDto::from).toList(),
-                warnings.isEmpty() ? null : warnings
+                reviewSummary(findings, actions),
+                toCoverage(coverage),
+                warnings,
+                findings.stream()
+                        .map(f -> TimelineEventDto.from(f, actions.get(f.getId()),
+                                lineBefore(transcript, f), lineAfter(transcript, f)))
+                        .toList(),
+                video.genreOrGeneral()
         );
     }
 
     /**
-     * 영상 전체의 광고 적합성.
-     * 유튜브도 가장 심한 구간을 기준으로 등급을 매기므로 최악값을 따른다.
+     * 검토 후보 앞뒤의 대본 줄.
+     *
+     * 카드만 보면 "요즘 젊은 사람들은" 이 앞뒤 없이 뚝 떨어져 있어서
+     * 제작자가 실제로 어떤 흐름이었는지 판단하기 어렵다.
+     * DB 컬럼을 늘리지 않고 리포트 만들 때 조회한다.
      */
-    private AdSuitability predictAdSuitability(List<RiskFinding> findings) {
-        AdSuitability worst = AdSuitability.MONETIZED;
-        for (RiskFinding f : findings) {
-            if (f.getCategory() == RiskCategory.AD_DEMONETIZED) {
-                worst = worst.worse(AdSuitability.DEMONETIZED);
-            } else if (f.getCategory() == RiskCategory.AD_LIMITED) {
-                worst = worst.worse(AdSuitability.LIMITED);
+    private String lineBefore(List<TranscriptSegment> transcript, RiskFinding f) {
+        TranscriptSegment found = null;
+        for (TranscriptSegment s : transcript) {
+            if (s.getStartMs() >= f.getStartMs()) break;
+            found = s;
+        }
+        return found == null ? null : found.getText();
+    }
+
+    private String lineAfter(List<TranscriptSegment> transcript, RiskFinding f) {
+        for (TranscriptSegment s : transcript) {
+            if (s.getStartMs() > f.getStartMs() && s.getStartMs() >= f.getEndMs()) {
+                return s.getText();
             }
         }
-        return worst;
+        return null;
+    }
+
+    private ReviewSummaryDto reviewSummary(List<RiskFinding> findings,
+                                           Map<Long, ReviewActionType> actions) {
+        int confirmed = 0, edited = 0, hold = 0, notUseful = 0, decided = 0;
+
+        for (RiskFinding f : findings) {
+            ReviewActionType action = actions.get(f.getId());
+            if (action == null) continue;
+            decided++;
+            switch (action) {
+                case CONFIRMED -> confirmed++;
+                case EDITED -> edited++;
+                case HOLD -> hold++;
+                case NOT_USEFUL -> notUseful++;
+            }
+        }
+        return new ReviewSummaryDto(decided, findings.size() - decided,
+                confirmed, edited, hold, notUseful);
+    }
+
+    /**
+     * 무엇을 분석했는지. 명세 §5.
+     *
+     * 실패·건너뜀은 분석하지 못한 것으로 본다.
+     * 왜 못 했는지는 warnings 가 설명한다.
+     */
+    private CoverageDto toCoverage(List<AnalysisCoverage> coverage) {
+        return new CoverageDto(
+                analyzed(coverage, CoverageStep.STT) && analyzed(coverage, CoverageStep.SPEECH_REVIEW),
+                analyzed(coverage, CoverageStep.OCR) && analyzed(coverage, CoverageStep.SCREEN_TEXT_REVIEW),
+                analyzed(coverage, CoverageStep.VISUAL));
+    }
+
+    private boolean analyzed(List<AnalysisCoverage> coverage, CoverageStep step) {
+        return coverage.stream()
+                .filter(c -> c.getStep() == step)
+                .findFirst()
+                .map(c -> c.getStatus() == AnalyzerStatus.SUCCESS)
+                .orElse(false);
     }
 
     /** STT 대본 원문 (디버깅·대본 패널용) */

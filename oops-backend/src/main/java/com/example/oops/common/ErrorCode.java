@@ -12,10 +12,18 @@ public enum ErrorCode {
     MAX_UPLOAD_SIZE_EXCEEDED(HttpStatus.PAYLOAD_TOO_LARGE, "업로드 가능한 파일 크기를 초과했습니다."),
     // 업로드 직후 길이 검증은 아직 없다. 현재는 분석 중에 파이썬이 길이를 재고 실패로 끝낸다.
     // 명세 §2-1 대로 업로드에서 거절하려면 파이썬에 /probe 를 추가해야 한다.
-    MAX_VIDEO_DURATION_EXCEEDED(HttpStatus.BAD_REQUEST, "분석 가능한 영상 길이를 초과했습니다."),
+    MAX_VIDEO_DURATION_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "분석 가능한 영상 길이를 초과했습니다."),
     ANALYSIS_IN_PROGRESS(HttpStatus.CONFLICT, "이미 분석이 진행 중입니다."),
     ANALYSIS_NOT_COMPLETED(HttpStatus.CONFLICT, "분석이 아직 완료되지 않았습니다."),
-    INVALID_ANALYSIS_STATE(HttpStatus.BAD_REQUEST, "현재 분석 상태에서는 처리할 수 없는 요청입니다."),
+    // 명세 §1 — 상태 전이가 맞지 않는 요청은 409 다. 값이 틀린 400 과 구분한다.
+    INVALID_ANALYSIS_STATE(HttpStatus.CONFLICT, "현재 상태에서 요청을 수행할 수 없습니다."),
+
+    /** 결정하지 않은 검토 후보가 남아 있는데 검수 완료를 요청했다 */
+    REVIEW_INCOMPLETE(HttpStatus.CONFLICT, "아직 결정하지 않은 검토 후보가 있습니다."),
+
+    /** 영상 Range 요청 범위가 잘못됐다 */
+    RANGE_NOT_SATISFIABLE(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            "요청한 재생 구간이 올바르지 않습니다."),
     WORKER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "분석 서버를 사용할 수 없습니다."),
     ANALYSIS_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "분석에 실패했습니다."),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 값이 올바르지 않습니다."),

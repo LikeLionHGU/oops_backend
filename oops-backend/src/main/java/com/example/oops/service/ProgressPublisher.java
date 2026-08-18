@@ -1,7 +1,7 @@
 package com.example.oops.service;
 
 import com.example.oops.domain.AnalysisJob;
-import com.example.oops.dto.ProgressMessage;
+import com.example.oops.dto.VideoStatusResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -24,7 +24,9 @@ public class ProgressPublisher {
 
     public void publish(AnalysisJob job) {
         try {
-            ProgressMessage message = ProgressMessage.from(job);
+            // 명세 §3 — STOMP 메시지는 상태 조회 응답과 같은 구조다.
+            // 폴링으로 넘어가도 프론트가 같은 코드를 쓸 수 있어야 한다.
+            VideoStatusResponse message = VideoStatusResponse.from(job);
             messagingTemplate.convertAndSend(
                     DESTINATION.formatted(job.getVideo().getId()), message);
             log.debug("[ws] videoId={} {}% {}", job.getVideo().getId(),

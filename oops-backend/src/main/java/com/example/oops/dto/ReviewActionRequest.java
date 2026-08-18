@@ -3,12 +3,12 @@ package com.example.oops.dto;
 import com.example.oops.domain.ReviewActionType;
 import jakarta.validation.constraints.NotNull;
 
-/** 명세 §9-2 요청 본문 */
+/**
+ * 검수 결정 저장 요청. 명세 §6.
+ *
+ * eventId 는 경로에 있으므로 본문에는 없습니다.
+ */
 public record ReviewActionRequest(
-
-        /** 처리할 검토 후보 id. report 의 events[].id 와 같다 */
-        @NotNull(message = "eventId 는 필수입니다.")
-        Long eventId,
 
         @NotNull(message = "action 은 필수입니다.")
         ReviewActionType action,

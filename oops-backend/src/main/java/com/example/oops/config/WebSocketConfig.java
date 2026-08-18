@@ -23,13 +23,26 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    /**
+     * 명세 §11 — STOMP 연결도 REST 와 같은 Origin 을 허용해야 한다.
+     * 여기만 빠뜨리면 API 는 되는데 진행률만 안 오는 상태가 된다.
+     */
+    private final java.util.List<String> allowedOrigins;
+
+    public WebSocketConfig(
+            @org.springframework.beans.factory.annotation.Value("${oops.cors.allowed-origins}")
+            java.util.List<String> allowedOrigins) {
+        this.allowedOrigins = allowedOrigins;
+    }
+
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*");
+                .setAllowedOriginPatterns(allowedOrigins.toArray(String[]::new));
 
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns(allowedOrigins.toArray(String[]::new))
                 .withSockJS();
     }
 

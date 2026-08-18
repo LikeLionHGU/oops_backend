@@ -1,6 +1,7 @@
 package com.example.oops.controller;
 
 import com.example.oops.common.ApiResponse;
+import com.example.oops.common.Ids;
 import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.*;
@@ -56,7 +57,7 @@ public class VideoController {
         AnalysisJob job = analysisService.startAnalysis(video.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("영상 업로드 성공", VideoUploadResponse.of(video, job)));
+                .body(ApiResponse.ok(VideoUploadResponse.of(video, job)));
     }
 
     @Operation(summary = "유튜브 링크로 등록",
@@ -74,7 +75,7 @@ public class VideoController {
         AnalysisJob job = analysisService.startAnalysis(video.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("영상 등록 성공", VideoUploadResponse.of(video, job)));
+                .body(ApiResponse.ok(VideoUploadResponse.of(video, job)));
     }
 
     @Operation(summary = "분석 상태 조회",
@@ -86,8 +87,8 @@ public class VideoController {
                     - `progress`: 0~100
                     """)
     @GetMapping("/{videoId}/status")
-    public ApiResponse<VideoStatusResponse> status(@PathVariable Long videoId) {
-        return ApiResponse.ok("분석 상태 조회 성공", analysisService.getStatus(videoId));
+    public ApiResponse<VideoStatusResponse> status(@PathVariable String videoId) {
+        return ApiResponse.ok(analysisService.getStatus(Ids.parse(videoId)));
     }
 
     @Operation(summary = "분석 결과 조회 (Timeline Report)",
@@ -104,8 +105,8 @@ public class VideoController {
                     분석이 안 끝났으면 `ANALYSIS_NOT_COMPLETED`(409) 가 온다.
                     """)
     @GetMapping("/{videoId}/report")
-    public ApiResponse<AnalysisReportResponse> report(@PathVariable Long videoId) {
-        return ApiResponse.ok("분석 결과 조회 성공", analysisService.getReport(videoId));
+    public ApiResponse<AnalysisReportResponse> report(@PathVariable String videoId) {
+        return ApiResponse.ok(analysisService.getReport(Ids.parse(videoId)));
     }
 
     @Operation(summary = "분석 재시도",
@@ -115,53 +116,80 @@ public class VideoController {
                     이미 분석 중이면 `ANALYSIS_IN_PROGRESS`(409) 가 온다.
                     """)
     @PostMapping("/{videoId}/analysis/retry")
-    public ResponseEntity<ApiResponse<AnalysisRetryResponse>> retry(@PathVariable Long videoId) {
+    public ResponseEntity<ApiResponse<AnalysisRetryResponse>> retry(@PathVariable String videoId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(ApiResponse.ok("분석 재시작 요청이 접수되었습니다.", analysisService.retry(videoId)));
+                .body(ApiResponse.ok(analysisService.retry(Ids.parse(videoId))));
     }
 
     @Operation(summary = "검수 이력",
             description = """
-                    업로드한 영상을 최신순으로 100건 준다. (명세 3-2)
+                    업로드한 영상을 최신순으로 준다. (명세 4)
 
-                    - `uploadedAt` 은 ISO-8601 **UTC** 문자열이다.
-                    - `progress` 는 현재 Job 의 진행률(0~100).
-                    - `eventCount` 는 리포트의 `events.length` 와 같은 기준.
-                    - `streamUrl` 은 원본이 서버에 없으면 `null`.
+                    - `status`: `ALL` | `COMPLETED` | `FAILED` (기본 ALL)
+                    - `page`: 0부터. `size`: 기본 20
+                    - `analysisStatus` 와 `reviewStatus` 는 **다른 값**이다.
+                      분석은 끝났어도 사람이 아직 안 봤을 수 있다.
                     """)
-    @GetMapping
-    public ApiResponse<List<VideoSummaryResponse>> list() {
-        return ApiResponse.ok("영상 목록 조회 성공", videoService.findRecent());
+    @GetMapping("/history")
+    public ApiResponse<VideoHistoryResponse> history(
+            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        return ApiResponse.ok(videoService.findHistory(status, page, size));
     }
 
-    @Operation(summary = "검수 액션 저장",
+    @Operation(summary = "분석 취소",
             description = """
-                    제작자가 검토 후보를 어떻게 처리했는지 저장한다. (명세 9-2)
+                    진행 중인 분석을 취소한다. (명세 7)
+
+                    - `PENDING` 또는 `PROCESSING` 만 취소할 수 있다.
+                    - 그 밖의 상태면 `INVALID_ANALYSIS_STATE`(409).
+                    - 취소한 작업은 재시도할 수 있다.
+                    """)
+    @PostMapping("/{videoId}/analysis/cancel")
+    public ApiResponse<AnalysisRetryResponse> cancel(@PathVariable String videoId) {
+        return ApiResponse.ok(analysisService.cancel(Ids.parse(videoId)));
+    }
+
+    @Operation(summary = "검수 결정 저장",
+            description = """
+                    후보 한 건의 결정을 저장하거나 수정한다. (명세 6)
 
                     - `eventId` 는 리포트의 `events[].id`.
                     - `action`: `CONFIRMED` / `EDITED` / `HOLD` / `NOT_USEFUL`
-                    - 같은 후보를 다시 보내면 마지막 값으로 덮는다.
+                    - 같은 요청을 반복해도 결과가 같다.
+                    - 첫 결정을 저장하면 `reviewStatus` 가 `IN_REVIEW` 가 된다.
 
-                    다른 영상의 후보를 보내면 `EVENT_NOT_FOUND`(404) 가 온다.
+                    다른 영상의 후보를 보내면 `EVENT_NOT_FOUND`(404).
                     """)
-    @PostMapping("/{videoId}/review-actions")
+    @PutMapping("/{videoId}/review-actions/{eventId}")
     public ApiResponse<ReviewActionResponse> saveReviewAction(
-            @PathVariable Long videoId,
+            @PathVariable String videoId,
+            @PathVariable String eventId,
             @Valid @RequestBody ReviewActionRequest request) {
 
-        return ApiResponse.ok("검수 액션 저장 성공",
-                reviewActionService.save(videoId, request));
+        return ApiResponse.ok(
+                reviewActionService.save(Ids.parse(videoId), eventId, request));
     }
 
-    @Operation(summary = "검수 액션 목록",
+    @Operation(summary = "검수 완료",
             description = """
-                    저장된 처리 내역. 새로고침 후 화면을 복구할 때 쓴다.
+                    모든 후보를 결정한 뒤 검수를 마친다. (명세 6)
 
-                    명세에는 없지만, 저장만 하고 못 읽으면 저장하는 의미가 없어서 추가했다.
+                    결정하지 않은 후보가 남아 있으면 `REVIEW_INCOMPLETE`(409) 가 온다.
+                    "다 봤다" 는 기록은 실제로 다 봤을 때만 남아야 하기 때문이다.
                     """)
+    @PostMapping("/{videoId}/review-completion")
+    public ApiResponse<ReviewCompletionResponse> completeReview(@PathVariable String videoId) {
+        return ApiResponse.ok(reviewActionService.complete(Ids.parse(videoId)));
+    }
+
+    @Operation(summary = "검수 결정 목록",
+            description = "저장된 결정 내역. 리포트의 events[].reviewAction 으로도 확인할 수 있다.")
     @GetMapping("/{videoId}/review-actions")
-    public ApiResponse<List<ReviewActionResponse>> reviewActions(@PathVariable Long videoId) {
-        return ApiResponse.ok("검수 액션 조회 성공", reviewActionService.findByVideo(videoId));
+    public ApiResponse<List<ReviewActionResponse>> reviewActions(@PathVariable String videoId) {
+        return ApiResponse.ok(reviewActionService.findByVideo(Ids.parse(videoId)));
     }
 
     @Operation(summary = "영상 삭제",
@@ -173,22 +201,22 @@ public class VideoController {
                     백그라운드 작업이 사라진 데이터를 건드리는 것을 막기 위해서다.
                     """)
     @DeleteMapping("/{videoId}")
-    public ApiResponse<Void> delete(@PathVariable Long videoId) {
-        videoDeletionService.delete(videoId);
-        return ApiResponse.ok("영상 삭제 성공");
+    public ApiResponse<Void> delete(@PathVariable String videoId) {
+        videoDeletionService.delete(Ids.parse(videoId));
+        return ApiResponse.ok();
     }
 
     @Operation(summary = "[디버깅] STT 대본 원문",
             description = "음성 인식 결과 전체. 분석이 왜 그렇게 나왔는지 확인할 때 쓴다.")
     @GetMapping("/{videoId}/transcript")
-    public ApiResponse<List<TranscriptLineDto>> transcript(@PathVariable Long videoId) {
-        return ApiResponse.ok("대본 조회 성공", analysisService.getTranscript(videoId));
+    public ApiResponse<List<TranscriptLineDto>> transcript(@PathVariable String videoId) {
+        return ApiResponse.ok(analysisService.getTranscript(Ids.parse(videoId)));
     }
 
     @Operation(summary = "[디버깅] OCR 화면 자막 원문",
             description = "화면에서 읽어낸 텍스트 전체. OCR 이 글자를 어떻게 인식했는지 볼 수 있다.")
     @GetMapping("/{videoId}/screen-texts")
-    public ApiResponse<List<TranscriptLineDto>> screenTexts(@PathVariable Long videoId) {
-        return ApiResponse.ok("화면 자막 조회 성공", analysisService.getScreenTexts(videoId));
+    public ApiResponse<List<TranscriptLineDto>> screenTexts(@PathVariable String videoId) {
+        return ApiResponse.ok(analysisService.getScreenTexts(Ids.parse(videoId)));
     }
 }

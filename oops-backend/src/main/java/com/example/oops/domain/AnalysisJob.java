@@ -96,6 +96,13 @@ public class AnalysisJob extends BaseTimeEntity {
         this.finishedAt = LocalDateTime.now();
     }
 
+    /** 사용자가 취소했다. 명세 §7 */
+    public void cancel() {
+        this.status = AnalysisStatus.CANCELLED;
+        this.message = "사용자가 분석을 취소했습니다.";
+        this.finishedAt = java.time.LocalDateTime.now();
+    }
+
     public void fail(String errorCode, String message) {
         this.status = AnalysisStatus.FAILED;
         this.errorCode = errorCode;

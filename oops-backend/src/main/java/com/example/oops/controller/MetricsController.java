@@ -34,6 +34,6 @@ public class MetricsController {
                     """)
     @GetMapping
     public ApiResponse<ReviewMetricsResponse> metrics() {
-        return ApiResponse.ok("지표 조회 성공", metricsService.collect());
+        return ApiResponse.ok(metricsService.collect());
     }
 }

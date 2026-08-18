@@ -21,18 +21,18 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiErrorResponse> handleBusiness(BusinessException e) {
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
         return build(e.getErrorCode(), e.getMessage(), e, false);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ApiErrorResponse> handleUploadSize(MaxUploadSizeExceededException e) {
+    public ResponseEntity<ApiResponse<Void>> handleUploadSize(MaxUploadSizeExceededException e) {
         return build(ErrorCode.MAX_UPLOAD_SIZE_EXCEEDED,
                 ErrorCode.MAX_UPLOAD_SIZE_EXCEEDED.getDefaultMessage(), e, false);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException e) {
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .collect(Collectors.joining(", "));
@@ -45,14 +45,14 @@ public class GlobalExceptionHandler {
      * 처리하지 않으면 기본 핸들러에 걸려 500 으로 나가서, 서버 잘못처럼 보인다.
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ApiErrorResponse> handleUnreadableBody(HttpMessageNotReadableException e) {
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(HttpMessageNotReadableException e) {
         return build(ErrorCode.INVALID_REQUEST,
                 "요청 본문을 읽을 수 없습니다. JSON 형식을 확인하세요.", e, false);
     }
 
     @ExceptionHandler({MethodArgumentTypeMismatchException.class,
                        MissingServletRequestParameterException.class})
-    public ResponseEntity<ApiErrorResponse> handleBadRequest(Exception e) {
+    public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception e) {
         return build(ErrorCode.INVALID_REQUEST, e.getMessage(), e, false);
     }
 
@@ -64,7 +64,7 @@ public class GlobalExceptionHandler {
      * 서버 오류가 아니므로 응답을 쓰지 않고 조용히 넘어간다.
      *
      * 여기서 응답을 쓰려고 하면 Content-Type 이 이미 video/mp4 로 정해져 있어서
-     * "No converter for ApiErrorResponse" 라는 2차 오류까지 발생한다.
+     * "No converter for ApiResponse" 라는 2차 오류까지 발생한다.
      */
     @ExceptionHandler({AsyncRequestNotUsableException.class, ClientAbortException.class})
     public void handleClientAbort(Exception e) {
@@ -77,20 +77,20 @@ public class GlobalExceptionHandler {
      * 기본 핸들러에 걸리면 스택트레이스가 통째로 찍혀서 진짜 오류가 묻힌다.
      */
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleNoResource(NoResourceFoundException e) {
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException e) {
         log.debug("정적 리소스 없음: {}", e.getResourcePath());
         return ResponseEntity.status(ErrorCode.VIDEO_NOT_FOUND.getStatus())
-                .body(ApiErrorResponse.of(ErrorCode.VIDEO_NOT_FOUND,
-                        "요청한 경로를 찾을 수 없습니다.", "-"));
+                .body(ApiResponse.fail(ApiError.of(ErrorCode.VIDEO_NOT_FOUND,
+                        "요청한 경로를 찾을 수 없습니다.", "-")));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception e) {
+    public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception e) {
         return build(ErrorCode.INTERNAL_SERVER_ERROR,
                 ErrorCode.INTERNAL_SERVER_ERROR.getDefaultMessage(), e, true);
     }
 
-    private ResponseEntity<ApiErrorResponse> build(ErrorCode code, String message,
+    private ResponseEntity<ApiResponse<Void>> build(ErrorCode code, String message,
                                                    Exception e, boolean unexpected) {
         String traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
@@ -101,6 +101,6 @@ public class GlobalExceptionHandler {
         }
 
         return ResponseEntity.status(code.getStatus())
-                .body(ApiErrorResponse.of(code, message, traceId));
+                .body(ApiResponse.fail(ApiError.of(code, message, traceId)));
     }
 }

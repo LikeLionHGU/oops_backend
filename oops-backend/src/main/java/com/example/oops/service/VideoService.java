@@ -4,10 +4,12 @@ import com.example.oops.client.AnalysisServerClient;
 import com.example.oops.common.BusinessException;
 import com.example.oops.common.ErrorCode;
 import com.example.oops.domain.AnalysisJob;
+import com.example.oops.domain.AnalysisStatus;
 import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.SourceType;
 import com.example.oops.domain.Video;
 import com.example.oops.dto.VideoRegisterRequest;
+import com.example.oops.dto.VideoHistoryResponse;
 import com.example.oops.dto.VideoSummaryResponse;
 
 import java.util.HashMap;
@@ -15,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.example.oops.repository.AnalysisJobRepository;
+import com.example.oops.repository.ReviewActionRepository;
 import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
 import com.example.oops.storage.StorageService;
@@ -31,6 +34,7 @@ public class VideoService {
     private final VideoRepository videoRepository;
     private final AnalysisJobRepository jobRepository;
     private final RiskFindingRepository findingRepository;
+    private final ReviewActionRepository actionRepository;
     private final StorageService storageService;
     private final AnalysisServerClient analysisServerClient;
 
@@ -92,20 +96,32 @@ public class VideoService {
     }
 
     /**
-     * 검수 이력. 최근 등록순 100건. (명세 §3-2)
+     * 검수 이력. 명세 §4.
      *
-     * 진행률과 검토 후보 개수를 함께 준다.
-     * 영상마다 따로 조회하면 100건에 쿼리가 200번 나가므로 한 번에 모아서 붙인다.
+     * 화면의 파일명 → 업로드 일자 → 전체 후보 수 → 수정 수 → 상태를
+     * 이 응답만으로 그릴 수 있어야 한다.
+     *
+     * 영상마다 따로 조회하면 20건에 쿼리가 60번 나가므로 한 번에 모아 붙인다.
      */
-    public List<VideoSummaryResponse> findRecent() {
-        List<Video> videos = videoRepository.findAll(
-                        org.springframework.data.domain.PageRequest.of(0, 100,
-                                org.springframework.data.domain.Sort.by(
-                                        org.springframework.data.domain.Sort.Direction.DESC, "id")))
-                .getContent();
+    public VideoHistoryResponse findHistory(String statusFilter, int page, int size) {
+        List<AnalysisStatus> filter = switch (statusFilter == null ? "ALL" : statusFilter.toUpperCase()) {
+            case "COMPLETED" -> List.of(AnalysisStatus.COMPLETED);
+            case "FAILED" -> List.of(AnalysisStatus.FAILED, AnalysisStatus.CANCELLED);
+            default -> List.of();
+        };
 
+        var pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(0, page), Math.max(1, Math.min(100, size)),
+                org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "id"));
+
+        var result = filter.isEmpty()
+                ? videoRepository.findAll(pageable)
+                : videoRepository.findByStatusIn(filter, pageable);
+
+        List<Video> videos = result.getContent();
         if (videos.isEmpty()) {
-            return List.of();
+            return new VideoHistoryResponse(List.of(), result.getNumber(), result.getSize(), 0, 0);
         }
 
         List<Long> ids = videos.stream().map(Video::getId).toList();
@@ -121,12 +137,23 @@ public class VideoService {
             eventCounts.put((Long) row[0], ((Number) row[1]).intValue());
         }
 
-        return videos.stream()
+        Map<Long, Integer> editedCounts = new HashMap<>();
+        for (Object[] row : actionRepository.countEditedByVideoIds(ids)) {
+            editedCounts.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+
+        List<VideoSummaryResponse> items = videos.stream()
                 .map(v -> VideoSummaryResponse.of(
                         v,
                         latestJobs.get(v.getId()),
-                        eventCounts.getOrDefault(v.getId(), 0)))
+                        eventCounts.getOrDefault(v.getId(), 0),
+                        editedCounts.getOrDefault(v.getId(), 0),
+                        v.reviewStatusOrDefault(),
+                        v.getReviewedAt()))
                 .toList();
+
+        return new VideoHistoryResponse(items, result.getNumber(), result.getSize(),
+                result.getTotalElements(), result.getTotalPages());
     }
 
     public Video getEntity(Long videoId) {
