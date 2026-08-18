@@ -93,8 +93,8 @@ public class OpenAiClient {
             return;
         }
         String key = properties.apiKey();
-        String masked = key.length() > 12
-                ? key.substring(0, 8) + "..." + key.substring(key.length() - 4) : "***";
+        String masked = key.length() > 8
+                ? key.substring(0, 3) + "..." + key.substring(key.length() - 4) : "***";
 
         log.info("[openai] 키={} 조직={} 프로젝트={} 모델={}",
                 masked,
@@ -138,10 +138,25 @@ public class OpenAiClient {
     private static final ThreadLocal<long[]> usageTotals =
             ThreadLocal.withInitial(() -> new long[4]);   // calls, prompt, cached, completion
 
-    /** 영상 분석을 시작할 때 한 번 호출한다. */
+    /** 영상 분석을 시작할 때 한 번 호출한다. 이전 분석의 잔여 상태를 정리한다. */
     public void beginVideo(Long videoId) {
         currentVideoId.get()[0] = videoId == null ? 0 : videoId;
         usageTotals.set(new long[4]);
+        resetFailureTracking();
+        currentAnalyzer.set("-");
+    }
+
+    /**
+     * 영상 분석이 끝났을 때 호출한다.
+     * 스레드 풀에서 스레드를 재사용하므로 ThreadLocal 잔여 상태를 반드시 정리해야 한다.
+     * 정리하지 않으면 다음 영상 분석이 이전 영상의 failureCount/reason 을 물려받는다.
+     */
+    public void endVideo() {
+        failureCount.remove();
+        failureReason.remove();
+        currentVideoId.remove();
+        currentAnalyzer.remove();
+        usageTotals.remove();
     }
 
     /** 분석기 하나를 돌리기 전에 호출한다. */

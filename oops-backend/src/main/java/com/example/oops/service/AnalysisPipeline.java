@@ -262,6 +262,8 @@ public class AnalysisPipeline {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             video.updateStatus(AnalysisStatus.FAILED);
             progressService.fail(jobId, "ANALYSIS_FAILED", e.getMessage());
+        } finally {
+            openAiClient.endVideo();
         }
     }
 
