@@ -156,6 +156,7 @@ public class AnalysisService {
                 video.durationMs(),
                 video.isStreamable()
                         ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null,
+                video.getSourceUrl(),
                 video.reviewStatusOrDefault(),
                 job.getStatus(),
                 RiskSummary.of(findings),

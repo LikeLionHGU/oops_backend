@@ -18,6 +18,12 @@ public record AnalysisReportResponse(
         Long durationMs,
         String streamUrl,
 
+        /**
+         * 유튜브 등 외부 링크로 등록한 영상의 원본 URL.
+         * 서버에 파일이 없어 streamUrl 이 null 일 때 프론트가 이 값으로 재생한다.
+         */
+        String sourceUrl,
+
         /** 분석 상태와 별개인 사용자의 검수 진행 상태 */
         ReviewStatus reviewStatus,
 
