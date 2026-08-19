@@ -108,6 +108,12 @@ public class MonetizationRiskAnalyzer implements ContentAnalyzer {
         return (context.hasTranscript() || context.hasScreenText()) && openAiClient.isEnabled();
     }
 
+    /** 대상을 창 단위로 훑으므로 길이에 비례해 호출이 는다. */
+    @Override
+    public boolean scalesWithLength() {
+        return true;
+    }
+
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         List<Line> lines = collectLines(context);

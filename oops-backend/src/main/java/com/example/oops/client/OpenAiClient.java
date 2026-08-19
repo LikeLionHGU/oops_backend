@@ -177,9 +177,20 @@ public class OpenAiClient {
     private static final ThreadLocal<long[]> requestCounts =
             ThreadLocal.withInitial(() -> new long[2]);   // requests, rateLimited
 
+    /**
+     * 분석기별 요청 수. 60분 환산을 제대로 하려면 이게 필요하다.
+     *
+     * 총합만 알면 "1분에 7.8건이니 60분이면 468건" 같은 계산을 하게 되는데,
+     * 대부분의 분석기는 상한이 걸려 있어서 길어져도 호출이 안 는다.
+     * 나뉘어 있어야 늘어나는 것만 곱할 수 있다.
+     */
+    private static final ThreadLocal<java.util.Map<String, Long>> requestsByAnalyzer =
+            ThreadLocal.withInitial(java.util.LinkedHashMap::new);
+
     /** 영상 하나가 시작될 때 호출. 사용량과 요청 수를 처음부터 다시 센다. */
     public void beginVideo(Long videoId) {
         requestCounts.set(new long[2]);
+        requestsByAnalyzer.set(new java.util.LinkedHashMap<>());
         currentVideoId.get()[0] = videoId == null ? 0 : videoId;
         usageTotals.set(new long[4]);
     }
@@ -193,6 +204,11 @@ public class OpenAiClient {
     public void resetFailureTracking() {
         failureCount.get()[0] = 0;
         failureReason.remove();
+    }
+
+    /** 분석기별로 요청이 몇 건 나갔는지. 60분 환산에 쓴다. */
+    public java.util.Map<String, Long> requestsByAnalyzer() {
+        return java.util.Map.copyOf(requestsByAnalyzer.get());
     }
 
     /** 이 영상에 지금까지 쓴 양. 파이프라인이 마지막에 한 줄로 정리한다. */
@@ -269,7 +285,9 @@ public class OpenAiClient {
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             throttle();
-            requestCounts.get()[0]++;   // 거절당해도 한도는 깎인다. 보내기 전에 센다.
+            // 거절당해도 한도는 깎인다. 보내기 전에 센다.
+            requestCounts.get()[0]++;
+            requestsByAnalyzer.get().merge(currentAnalyzer.get(), 1L, Long::sum);
             try {
                 var entity = restClient.post()
                         .uri("/chat/completions")

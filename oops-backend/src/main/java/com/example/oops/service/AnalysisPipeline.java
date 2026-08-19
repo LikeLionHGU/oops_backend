@@ -355,23 +355,51 @@ public class AnalysisPipeline {
         log.info("[openai-quota] videoId={} 요청 {}건 (성공 {} · 한도거절 {})",
                 videoId, usage.requests(), usage.calls(), usage.rateLimited());
 
+        Map<String, Long> byAnalyzer = openAiClient.requestsByAnalyzer();
+        if (!byAnalyzer.isEmpty()) {
+            log.info("[openai-quota] videoId={} 분석기별 — {}", videoId,
+                    byAnalyzer.entrySet().stream()
+                            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                            .map(e -> "%s %d건".formatted(e.getKey(), e.getValue()))
+                            .collect(java.util.stream.Collectors.joining(", ")));
+        }
+
         if (durationSec == null || durationSec <= 0) {
             return;
         }
         double minutes = durationSec / 60.0;
-        double perMinute = usage.requests() / minutes;
 
-        log.info("[openai-quota] videoId={} 영상 1분당 {}건 → 60분이면 약 {}건 · 하루 200건 한도라면 약 {}편",
-                videoId,
-                "%.1f".formatted(perMinute),
-                Math.round(perMinute * 60),
-                Math.max(1, Math.round(200 / Math.max(1, perMinute * 60))));
+        // **총합을 그냥 60배 하면 안 된다.**
+        //
+        // 분석기 대부분은 상한이 걸려 있어서 영상이 길어져도 호출이 안 는다.
+        //   entity-check 7회 / context-check 9회 / context-lexicon 2회 가 끝이다.
+        // 늘어나는 건 대본을 창 단위로 훑는 분석기뿐이다.
+        //
+        // 짧은 영상일수록 고정 호출의 비중이 커서, 그냥 곱하면
+        // 실제보다 몇 배 크게 나온다. 1분짜리 13건을 60배 하면 780건인데
+        // 실제 60분 영상은 50~60건 수준이다.
+        java.util.Set<String> scaling = analyzers.stream()
+                .filter(ContentAnalyzer::scalesWithLength)
+                .map(ContentAnalyzer::key)
+                .collect(java.util.stream.Collectors.toSet());
 
-        // 토큰도 같이 본다. 분당 토큰(TPM) 한도는 요청 수와 따로 논다.
-        log.info("[openai-quota] videoId={} 60분 환산 — 요청 약 {}건 · 토큰 약 {}",
-                videoId,
-                Math.round(perMinute * 60),
+        long fixed = 0;
+        long scaled = 0;
+        for (Map.Entry<String, Long> e : byAnalyzer.entrySet()) {
+            if (scaling.contains(e.getKey())) {
+                scaled += Math.round(e.getValue() / minutes * 60);
+            } else {
+                fixed += e.getValue();   // 길어져도 그대로다
+            }
+        }
+        long projected = fixed + scaled;
+
+        log.info("[openai-quota] videoId={} 60분 환산 약 {}건 (고정 {} + 길이비례 {}) · 토큰 약 {}",
+                videoId, projected, fixed, scaled,
                 Math.round((usage.promptTokens() + usage.completionTokens()) / minutes * 60));
+
+        log.info("[openai-quota] videoId={} 하루 한도가 200건이면 60분짜리 약 {}편",
+                videoId, Math.max(1, 200 / Math.max(1, projected)));
     }
 
     /**

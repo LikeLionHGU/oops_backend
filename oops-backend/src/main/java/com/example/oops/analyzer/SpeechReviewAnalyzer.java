@@ -166,6 +166,17 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         return context.hasTranscript() && openAiClient.isEnabled();
     }
 
+    /**
+     * 이 분석기만 길이에 비례한다.
+     *
+     * 대본을 20줄씩 잘라 창마다 한 번씩 부르므로,
+     * 대본이 두 배면 호출도 두 배다. 다른 분석기는 상한이 걸려 있다.
+     */
+    @Override
+    public boolean scalesWithLength() {
+        return true;
+    }
+
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         List<TranscriptSegment> transcript = context.transcript();

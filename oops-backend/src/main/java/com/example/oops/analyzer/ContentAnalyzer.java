@@ -24,4 +24,24 @@ public interface ContentAnalyzer {
     boolean supports(AnalysisContext context);
 
     List<RiskFinding> analyze(AnalysisContext context);
+
+    /**
+     * 영상이 길어지면 AI 호출 수도 같이 늘어나는지.
+     *
+     * 대부분의 분석기는 **아니다.** 상한이 걸려 있다.
+     *   entity-check    확인할 주장 6개까지    → 길어도 7회
+     *   context-check   주제 8개까지           → 길어도 9회
+     *   context-lexicon 표현 24개까지, 12개씩  → 길어도 2회
+     *
+     * 대본을 창 단위로 훑는 분석기만 길이에 비례한다.
+     * 20줄씩 자르므로 대본이 두 배면 호출도 두 배다.
+     *
+     * 이 값이 필요한 이유는 요청 한도 예측 때문이다.
+     * 1분짜리로 시험한 결과를 그냥 60배 하면 상한이 걸린 분석기까지
+     * 같이 늘어나서 실제보다 몇 배 크게 나온다.
+     * 짧은 영상일수록 고정 호출의 비중이 커서 오차가 심해진다.
+     */
+    default boolean scalesWithLength() {
+        return false;
+    }
 }
