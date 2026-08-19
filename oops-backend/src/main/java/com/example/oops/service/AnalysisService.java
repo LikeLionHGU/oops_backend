@@ -162,6 +162,7 @@ public class AnalysisService {
                 // 유튜브 영상은 서버에 파일이 없어 video 태그로 재생할 수 없다.
                 // sourceUrl 을 그대로 넣으면 검은 화면이 되므로 삽입용 주소를 따로 준다.
                 YouTubeUrls.embedUrl(video.getSourceUrl()),
+                YouTubeUrls.videoId(video.getSourceUrl()),
                 video.reviewStatusOrDefault(),
                 job.getStatus(),
                 RiskSummary.of(findings),

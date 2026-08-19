@@ -50,6 +50,18 @@ public record AnalysisReportResponse(
          */
         String embedUrl,
 
+        /**
+         * 유튜브 영상 id. 업로드 영상이면 null.
+         *
+         * 공식 IFrame Player API 를 쓰려면 주소가 아니라 id 가 필요하다.
+         *     new YT.Player(el, { videoId: report.youtubeVideoId })
+         *
+         * 프론트가 주소에서 다시 뽑게 하면 형태가 여러 가지라
+         * (watch / youtu.be / shorts, 파라미터 순서도 제각각) 파싱이 또 생긴다.
+         * 서버가 이미 뽑아뒀으니 그대로 준다.
+         */
+        String youtubeVideoId,
+
         /** 분석 상태와 별개인 사용자의 검수 진행 상태 */
         ReviewStatus reviewStatus,
 

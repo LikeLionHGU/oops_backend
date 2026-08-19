@@ -19,6 +19,7 @@
   button.mini { padding: 3px 10px; font-size: 12px; background: #e5e7eb; color: #374151; }
   button.mini.on { background: #2563eb; color: #fff; }
   video { width: 100%; max-height: 420px; background: #000; border-radius: 8px; }
+  #ytWrap iframe { width: 100%; height: 420px; border: 0; border-radius: 8px; background: #000; }
   .checks { font-size: 13px; margin: 14px 0 22px; padding: 12px 16px;
             border: 1px solid #ddd; border-radius: 8px; }
   .checks div { margin: 3px 0; }
@@ -100,13 +101,15 @@
 
 <!-- 재생기는 두 가지다. sourceType 에 따라 하나만 보여준다.
      업로드  → <video>  서버에 파일이 있다
-     유튜브  → <iframe> 서버에 파일이 없다. 삽입 플레이어로만 재생된다
+     유튜브  → YT.Player  서버에 파일이 없다. 삽입 플레이어로만 재생된다
      유튜브 주소를 <video src> 에 넣으면 오류 없이 검은 화면만 나온다. -->
 <video id="player" controls preload="metadata"></video>
-<iframe id="ytPlayer" style="display:none; width:100%; height:420px; border:0;
-        border-radius:8px; background:#000;"
-        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-        allowfullscreen></iframe>
+
+<!-- YT.Player 가 안쪽 div 를 iframe 으로 바꿔 넣는다.
+     그래서 보이기/숨기기는 바깥 wrap 으로 한다. -->
+<div id="ytWrap" style="display:none">
+  <div id="ytPlayer"></div>
+</div>
 
 <div id="warnings"></div>
 <div class="summary" id="summary"></div>
@@ -116,13 +119,46 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const player = $('player');
-const ytPlayer = $('ytPlayer');
+const ytWrap = $('ytWrap');
 let seekTested = false;
 let currentVideoId = null;
 
 /** 지금 유튜브 영상을 보고 있는지. 재생·이동 방법이 달라진다 */
 let isYouTube = false;
-let ytEmbedUrl = null;
+let ytVideoId = null;
+let ytSourceUrl = null;
+
+/** 공식 IFrame API 로 만든 플레이어. 준비되기 전에는 null */
+let yt = null;
+let ytReady = false;
+
+/** 플레이어가 준비되기 전에 카드를 누른 경우 기억해 뒀다가 준비되면 실행한다 */
+let pendingSeekSec = null;
+
+/** 삽입 재생이 막힌 영상인지. 그러면 유튜브에서 열 수밖에 없다 */
+let ytEmbedBlocked = false;
+
+/**
+ * 유튜브 IFrame API 스크립트를 한 번만 불러온다.
+ *
+ * postMessage 로 직접 명령을 보내는 방법도 있지만 그건 불안정하다.
+ * 플레이어가 준비되기 전에 보내면 조용히 무시되고,
+ * 준비됐는지 알 방법이 없어서 "눌러도 아무 일도 안 일어나는" 상태가 된다.
+ * 공식 API 는 onReady 를 주기 때문에 그 시점을 알 수 있다.
+ */
+let ytApiPromise = null;
+function loadYouTubeApi() {
+  if (ytApiPromise) return ytApiPromise;
+
+  ytApiPromise = new Promise((resolve) => {
+    if (window.YT && window.YT.Player) return resolve();
+    window.onYouTubeIframeAPIReady = () => resolve();
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  });
+  return ytApiPromise;
+}
 
 /**
  * 리포트를 보고 맞는 재생기를 띄운다.
@@ -131,24 +167,56 @@ let ytEmbedUrl = null;
  * 그 주소는 영상 파일이 아니라 HTML 페이지라서 video 태그가 재생할 수 없다.
  * 서버가 유튜브에 접속을 못 해서가 아니다. 서버는 관여하지 않는다.
  */
-function mountPlayer(report) {
+async function mountPlayer(report) {
   isYouTube = report.sourceType === 'YOUTUBE';
-  ytEmbedUrl = report.embedUrl ?? null;
+  ytVideoId = report.youtubeVideoId ?? null;
+  ytSourceUrl = report.sourceUrl ?? null;
+  ytReady = false;
+  ytEmbedBlocked = false;
+  pendingSeekSec = null;
 
-  if (isYouTube && ytEmbedUrl) {
+  if (isYouTube && ytVideoId) {
     player.pause();
     player.removeAttribute('src');
     player.load();
     player.style.display = 'none';
+    ytWrap.style.display = 'block';
 
-    // origin 은 삽입하는 쪽 도메인이다. 붙여야 JS API 로 조작할 수 있다.
-    ytPlayer.src = `${ytEmbedUrl}&origin=${encodeURIComponent(location.origin)}`;
-    ytPlayer.style.display = 'block';
+    await loadYouTubeApi();
+
+    // 영상이 바뀌면 이전 플레이어는 버린다.
+    // destroy 가 iframe 을 지우므로 자리를 다시 만들어 준다.
+    if (yt) { try { yt.destroy(); } catch (_) {} yt = null; }
+    ytWrap.innerHTML = '<div id="ytPlayer"></div>';
+
+    yt = new YT.Player('ytPlayer', {
+      videoId: ytVideoId,
+      playerVars: { rel: 0, playsinline: 1 },
+      events: {
+        onReady: () => {
+          ytReady = true;
+          mark('c-stream', true, '유튜브 플레이어 준비 완료 (서버 파일 없음)');
+          // 준비 전에 누른 카드가 있으면 지금 처리한다
+          if (pendingSeekSec != null) {
+            yt.seekTo(pendingSeekSec, true);
+            yt.playVideo();
+            pendingSeekSec = null;
+          }
+        },
+        onError: (e) => {
+          // 101 / 150 = 영상 주인이 삽입 재생을 막아둔 것.
+          // 우리가 풀 수 있는 문제가 아니라 유튜브에서 여는 수밖에 없다.
+          ytEmbedBlocked = (e.data === 101 || e.data === 150);
+          mark('c-stream', false, ytEmbedBlocked
+            ? '이 영상은 삽입 재생이 막혀 있습니다. 시각을 누르면 유튜브에서 열립니다'
+            : `유튜브 플레이어 오류 (코드 ${e.data})`);
+        }
+      }
+    });
     return;
   }
 
-  ytPlayer.style.display = 'none';
-  ytPlayer.removeAttribute('src');
+  ytWrap.style.display = 'none';
   player.style.display = 'block';
 
   if (report.streamUrl) {
@@ -160,23 +228,33 @@ function mountPlayer(report) {
 /**
  * 그 시각으로 이동한다.
  *
- * 유튜브는 postMessage 로 삽입 플레이어에 명령을 보낸다.
- * iframe 안은 다른 도메인이라 currentTime 을 직접 건드릴 수 없다.
+ * 유튜브는 iframe 안이 다른 도메인이라 currentTime 을 직접 못 건드린다.
+ * 공식 API 의 seekTo 를 쓴다.
  */
 function seekTo(startMs) {
-  const sec = startMs / 1000;
+  const sec = Math.max(0, startMs / 1000);
 
-  if (isYouTube) {
-    ytPlayer.contentWindow?.postMessage(JSON.stringify({
-      event: 'command', func: 'seekTo', args: [sec, true]
-    }), '*');
-    ytPlayer.contentWindow?.postMessage(JSON.stringify({
-      event: 'command', func: 'playVideo', args: []
-    }), '*');
+  if (!isYouTube) {
+    player.currentTime = sec;
+    player.play();
     return;
   }
-  player.currentTime = sec;
-  player.play();
+
+  // 삽입이 막힌 영상은 새 탭에서 그 시각으로 연다.
+  // 타임코드만 보여주고 이동을 막으면 이 도구의 핵심이 빠진다.
+  if (ytEmbedBlocked) {
+    window.open(`https://www.youtube.com/watch?v=${ytVideoId}&t=${Math.floor(sec)}`, '_blank');
+    return;
+  }
+
+  // 아직 준비 중이면 기억해 뒀다가 onReady 에서 처리한다.
+  // 여기서 그냥 버리면 사용자에게는 "눌렀는데 아무 일도 안 일어남" 이 된다.
+  if (!ytReady || !yt) {
+    pendingSeekSec = sec;
+    return;
+  }
+  yt.seekTo(sec, true);
+  yt.playVideo();
 }
 
 function mark(id, ok, text) {
@@ -477,9 +555,9 @@ $('picker').addEventListener('change', () => {
 $('refresh').addEventListener('click', () => loadList(true));
 $('load').addEventListener('click', load);
 $('reload').addEventListener('click', () => {
-  // 유튜브는 iframe 을 다시 붙이고, 업로드는 스트림을 다시 받는다
-  if (isYouTube && ytEmbedUrl) {
-    ytPlayer.src = `${ytEmbedUrl}&origin=${encodeURIComponent(location.origin)}&_=${Date.now()}`;
+  // 유튜브는 처음부터 다시 재생하고, 업로드는 스트림을 다시 받는다
+  if (isYouTube) {
+    if (ytReady && yt) { yt.seekTo(0, true); yt.playVideo(); }
     return;
   }
   player.src = `/api/v1/videos/${$('videoId').value}/stream?t=` + Date.now();
@@ -511,13 +589,6 @@ player.addEventListener('error', () => {
   mark('c-stream', false, '영상 로드 실패 — 서버에 파일이 없거나 보관 기간이 지났습니다');
 });
 
-// 유튜브는 iframe 이 뜬 것까지만 확인할 수 있다.
-// 다른 도메인이라 안에서 실제로 재생됐는지는 우리가 알 수 없다.
-ytPlayer.addEventListener('load', () => {
-  if (isYouTube) {
-    mark('c-stream', true, '유튜브 삽입 플레이어 준비 완료 (서버 파일 없음)');
-  }
-});
 </script>
 
 </body>

@@ -70,4 +70,21 @@ public final class YouTubeUrls {
         return id == null ? null
                 : "https://www.youtube.com/embed/%s?enablejsapi=1&rel=0".formatted(id);
     }
+
+    /**
+     * 그 시각에서 시작하는 유튜브 시청 주소. 유튜브가 아니면 null.
+     *
+     * **삽입 재생이 막힌 영상을 위한 대비책이다.**
+     *
+     * 영상 주인이 삽입을 꺼두면 iframe 안에서 재생이 안 된다.
+     * 그건 유튜브 정책이라 우리가 풀 방법이 없다.
+     * 그때도 최소한 "그 시각으로 유튜브에서 열기" 는 되어야 한다.
+     * 타임코드만 보여주고 이동은 못 하게 두면 사용자가 직접 찾아가야 하는데,
+     * 확인할 지점을 짚어주는 도구에서 그건 핵심이 빠진 것이다.
+     */
+    public static String watchUrlAt(String url, long startMs) {
+        String id = videoId(url);
+        return id == null ? null
+                : "https://www.youtube.com/watch?v=%s&t=%d".formatted(id, Math.max(0, startMs / 1000));
+    }
 }

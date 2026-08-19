@@ -151,7 +151,7 @@ GET /api/v1/videos/history?status=ALL&page=0&size=20
   "generatedAt": "2026-08-18T08:11:09Z", "durationMs": 8000,
   "sourceType": "UPLOAD",
   "streamUrl": "/api/v1/videos/123/stream",
-  "sourceUrl": null, "embedUrl": null,
+  "sourceUrl": null, "embedUrl": null, "youtubeVideoId": null,
   "reviewStatus": "IN_REVIEW", "status": "COMPLETED",
 
   "summary":       { "total": 3, "speechReview": 2, "factCheck": 1 },
@@ -495,25 +495,73 @@ sourceType = YOUTUBE  → <iframe src={embedUrl}>
 |---|---|
 | `streamUrl` | 업로드 영상 재생. 유튜브면 `null` |
 | `embedUrl` | 유튜브 iframe 재생. 업로드면 `null` |
+| `youtubeVideoId` | `YT.Player({ videoId })` 에 넣을 값. 업로드면 `null` |
 | `sourceUrl` | "원본 보기" 링크. **재생용이 아님** |
 
-**구간 이동은 방식이 다릅니다.** iframe 안은 다른 도메인이라
-`currentTime` 을 직접 못 건드립니다. `postMessage` 로 명령을 보냅니다.
+### 구간 이동 — 커스텀 재생바로는 iframe 을 못 움직입니다
 
-```js
-// 업로드
-player.currentTime = event.startMs / 1000;
+iframe 안은 다른 도메인이라 `currentTime` 을 읽지도 쓰지도 못합니다.
+`<video>` 기준으로 만든 진행바·10초 버튼은 유튜브 영상에서 아무 일도 하지 않습니다.
 
-// 유튜브 — embedUrl 에 enablejsapi=1 이 이미 붙어 있습니다
-iframe.contentWindow.postMessage(JSON.stringify({
-  event: 'command', func: 'seekTo', args: [event.startMs / 1000, true]
-}), '*');
+**공식 IFrame Player API 를 쓰세요.** `postMessage` 로 직접 명령을 보내는 방법도
+있지만, 플레이어가 준비되기 전에 보내면 조용히 무시됩니다.
+준비됐는지 알 방법이 없어서 "눌러도 아무 일도 안 일어남" 이 됩니다.
+공식 API 는 `onReady` 를 주기 때문에 그 시점을 알 수 있습니다.
+
+```html
+<script src="https://www.youtube.com/iframe_api"></script>
 ```
 
-`embedUrl` 에 `&origin=<프론트 도메인>` 을 덧붙이세요.
-서버는 프론트 도메인을 몰라서 붙일 수 없습니다.
+```js
+let yt, ytReady = false, pending = null;
 
-동작하는 예시가 `/report-test.html` 에 있습니다 (`mountPlayer`, `seekTo`).
+window.onYouTubeIframeAPIReady = () => {
+  yt = new YT.Player('ytPlayer', {          // <div id="ytPlayer"></div>
+    videoId: report.youtubeVideoId,          // 주소가 아니라 id 입니다
+    playerVars: { rel: 0, playsinline: 1 },
+    events: {
+      onReady: () => {
+        ytReady = true;
+        if (pending != null) { yt.seekTo(pending, true); yt.playVideo(); pending = null; }
+      },
+      onError: (e) => {
+        // 101 / 150 = 영상 주인이 삽입 재생을 막아둠
+        if (e.data === 101 || e.data === 150) embedBlocked = true;
+      }
+    }
+  });
+};
+
+function seekTo(startMs) {
+  const sec = startMs / 1000;
+
+  if (sourceType !== 'YOUTUBE') { player.currentTime = sec; player.play(); return; }
+
+  // 삽입이 막힌 영상은 새 탭에서 그 시각으로 연다
+  if (embedBlocked) {
+    window.open(`https://www.youtube.com/watch?v=${id}&t=${Math.floor(sec)}`, '_blank');
+    return;
+  }
+  // 아직 준비 중이면 기억해 뒀다가 onReady 에서 처리한다.
+  // 여기서 버리면 사용자에게는 "눌렀는데 아무 반응 없음" 이 된다.
+  if (!ytReady) { pending = sec; return; }
+
+  yt.seekTo(sec, true);
+  yt.playVideo();
+}
+```
+
+**`YT.Player` 는 지정한 요소를 iframe 으로 바꿔 끼웁니다.**
+`<iframe>` 이 아니라 **빈 `<div>`** 를 넘기세요.
+보이기/숨기기는 바깥 wrapper 로 하고, 영상을 바꿀 때는
+`destroy()` 후 그 자리에 `<div>` 를 다시 만들어야 합니다.
+
+**삽입 재생이 막힌 영상이 있습니다.** 영상 주인이 설정한 것이라 우리가 풀 수 없습니다.
+그때도 시각을 누르면 유튜브에서 그 지점으로 열리게 해두세요.
+타임코드만 보여주고 이동을 막으면 이 도구의 핵심이 빠집니다.
+
+동작하는 예시가 `/report-test.html` 에 있습니다 (`loadYouTubeApi`, `mountPlayer`, `seekTo`).
+그대로 가져다 쓸 수 있습니다.
 
 ### `streamUrl` 이 `null` 인 두 경우
 
