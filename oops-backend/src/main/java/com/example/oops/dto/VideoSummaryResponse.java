@@ -1,9 +1,11 @@
 package com.example.oops.dto;
 
 import com.example.oops.common.Ids;
+import com.example.oops.common.YouTubeUrls;
 import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.AnalysisStatus;
 import com.example.oops.domain.ReviewStatus;
+import com.example.oops.domain.SourceType;
 import com.example.oops.domain.Video;
 
 import java.time.LocalDateTime;
@@ -36,8 +38,14 @@ public record VideoSummaryResponse(
         /** 검수를 마친 시각. 아직이면 null */
         String reviewedAt,
 
+        /** 업로드·유튜브 구분. 재생 방법이 이 값으로 갈린다 */
+        SourceType sourceType,
+
         /** 원본이 서버에 없으면 null */
-        String streamUrl
+        String streamUrl,
+
+        /** 유튜브 영상의 iframe 삽입 주소. 업로드 영상이면 null */
+        String embedUrl
 ) {
     public static VideoSummaryResponse of(Video video, AnalysisJob job,
                                           int eventCount, int editedCount,
@@ -51,8 +59,10 @@ public record VideoSummaryResponse(
                 eventCount,
                 editedCount,
                 Ids.utc(reviewedAt),
+                video.getSourceType(),
                 video.isStreamable()
-                        ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null
+                        ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null,
+                YouTubeUrls.embedUrl(video.getSourceUrl())
         );
     }
 

@@ -131,8 +131,9 @@ GET /api/v1/videos/history?status=ALL&page=0&size=20
     { "videoId": "123", "filename": "sample.mp4",
       "uploadedAt": "2026-08-18T08:10:00Z",
       "analysisStatus": "COMPLETED", "reviewStatus": "IN_REVIEW",
-      "eventCount": 3, "editedCount": 1,
-      "reviewedAt": null, "streamUrl": "/api/v1/videos/123/stream" }
+      "eventCount": 3, "editedCount": 1, "reviewedAt": null,
+      "sourceType": "UPLOAD",
+      "streamUrl": "/api/v1/videos/123/stream", "embedUrl": null }
   ],
   "page": 0, "size": 20, "totalElements": 1, "totalPages": 1 }
 ```
@@ -148,7 +149,9 @@ GET /api/v1/videos/history?status=ALL&page=0&size=20
 ```json
 { "videoId": "123", "jobId": "job_8fc391", "filename": "sample.mp4",
   "generatedAt": "2026-08-18T08:11:09Z", "durationMs": 8000,
+  "sourceType": "UPLOAD",
   "streamUrl": "/api/v1/videos/123/stream",
+  "sourceUrl": null, "embedUrl": null,
   "reviewStatus": "IN_REVIEW", "status": "COMPLETED",
 
   "summary":       { "total": 3, "speechReview": 2, "factCheck": 1 },
@@ -463,12 +466,61 @@ videoRef.current.currentTime = event.startMs / 1000;
 `streamUrl` 과 `frameUrl` 은 응답에서 온 값을 그대로 쓰세요. 직접 조합하지 마세요.
 S3 로 옮겨도 계약은 유지되지만 경로 규칙은 바뀔 수 있습니다.
 
-**`streamUrl` 이 `null` 일 수 있습니다.** 두 경우입니다.
+### 재생기는 `sourceType` 으로 갈라야 합니다
 
-| 상황 | 재생 요청 시 |
+```
+sourceType = UPLOAD   → <video src={streamUrl}>
+sourceType = YOUTUBE  → <iframe src={embedUrl}>
+```
+
+**유튜브 영상을 `<video>` 에 넣으면 오류 없이 검은 화면만 나옵니다.**
+
+유튜브로 등록한 영상은 **서버에 파일이 없습니다.** 분석할 때 임시로 받아
+쓰고 끝나면 지웁니다. 그래서 `streamUrl` 이 `null` 이고, 대신 `sourceUrl`
+(원본 링크)과 `embedUrl`(삽입용 주소)이 옵니다.
+
+`sourceUrl` 을 `<video src>` 에 넣고 싶어지지만 그게 검은 화면의 원인입니다.
+`https://www.youtube.com/watch?v=...` 는 영상 파일이 아니라 **HTML 페이지**라
+`<video>` 가 재생할 수 없습니다. 에러 이벤트도 안 뜨는 경우가 많아
+"서버가 유튜브에 접속을 못 하나" 로 오해하기 쉽습니다. 서버는 관여하지 않습니다.
+
+```json
+{ "sourceType": "YOUTUBE",
+  "streamUrl": null,
+  "sourceUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "embedUrl":  "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1&rel=0" }
+```
+
+| 필드 | 쓰임 |
 |---|---|
-| 유튜브 링크로 등록한 영상 | `404 VIDEO_NOT_FOUND` |
-| 보관 기간이 지나 원본을 지운 영상 | `410 VIDEO_SOURCE_PURGED` |
+| `streamUrl` | 업로드 영상 재생. 유튜브면 `null` |
+| `embedUrl` | 유튜브 iframe 재생. 업로드면 `null` |
+| `sourceUrl` | "원본 보기" 링크. **재생용이 아님** |
+
+**구간 이동은 방식이 다릅니다.** iframe 안은 다른 도메인이라
+`currentTime` 을 직접 못 건드립니다. `postMessage` 로 명령을 보냅니다.
+
+```js
+// 업로드
+player.currentTime = event.startMs / 1000;
+
+// 유튜브 — embedUrl 에 enablejsapi=1 이 이미 붙어 있습니다
+iframe.contentWindow.postMessage(JSON.stringify({
+  event: 'command', func: 'seekTo', args: [event.startMs / 1000, true]
+}), '*');
+```
+
+`embedUrl` 에 `&origin=<프론트 도메인>` 을 덧붙이세요.
+서버는 프론트 도메인을 몰라서 붙일 수 없습니다.
+
+동작하는 예시가 `/report-test.html` 에 있습니다 (`mountPlayer`, `seekTo`).
+
+### `streamUrl` 이 `null` 인 두 경우
+
+| 상황 | 재생 방법 | `/stream` 호출 시 |
+|---|---|---|
+| 유튜브 링크로 등록 | `embedUrl` 로 iframe | `404 VIDEO_NOT_FOUND` |
+| 보관 기간이 지나 원본 삭제 | **없음** | `410 VIDEO_SOURCE_PURGED` |
 
 원본은 **분석 완료 24시간 뒤에 자동으로 삭제**됩니다.
 지워지는 건 영상 파일뿐이고 **리포트·대본·검토 후보·참고 자료·검수 이력은
@@ -478,6 +530,8 @@ S3 로 옮겨도 계약은 유지되지만 경로 규칙은 바뀔 수 있습니
 "영상을 찾을 수 없습니다" 가 아니라
 "보관 기간이 지나 원본은 삭제되었습니다. 검수 결과는 그대로 확인할 수 있습니다" 입니다.
 카드의 시각을 눌러도 이동할 곳이 없으므로 재생 컨트롤 자체를 감추는 편이 낫습니다.
+
+검수 이력(`/videos/history`)에도 같은 필드가 나갑니다.
 
 **동작 예시 페이지**가 있습니다. 카드 UI, 검수 버튼, 경고 배너가 다 들어 있어
 구현 참고용으로 보시면 됩니다.

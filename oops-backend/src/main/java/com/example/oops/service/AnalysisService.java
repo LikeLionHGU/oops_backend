@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.example.oops.common.Ids;
+import com.example.oops.common.YouTubeUrls;
 
 import java.util.HashMap;
 import java.util.List;
@@ -154,9 +155,13 @@ public class AnalysisService {
                 video.getFilename(),
                 Ids.utc(job.getFinishedAt()),
                 video.durationMs(),
+                video.getSourceType(),
                 video.isStreamable()
                         ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null,
                 video.getSourceUrl(),
+                // 유튜브 영상은 서버에 파일이 없어 video 태그로 재생할 수 없다.
+                // sourceUrl 을 그대로 넣으면 검은 화면이 되므로 삽입용 주소를 따로 준다.
+                YouTubeUrls.embedUrl(video.getSourceUrl()),
                 video.reviewStatusOrDefault(),
                 job.getStatus(),
                 RiskSummary.of(findings),
