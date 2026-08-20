@@ -127,6 +127,55 @@ class FindingFusionServiceTest {
     }
 
     @Test
+    @DisplayName("한 줄에 지적이 둘이면 문장이 같아도 따로 남긴다")
+    void doesNotMergeDifferentTargetsOnSameLine() {
+        // 8초 영상에서 실제로 겪은 일이다.
+        // 사전이 '나오노' 를 커뮤니티 어미로, 배경 확인이 같은 줄을
+        // '정치판 논란' 으로 잡았는데 문장이 같다는 이유로 후보 5건이 1건이 됐다.
+        // 사용자에게 커뮤니티 어미 카드는 아예 나가지 않았다.
+        String line = "이런 게 왜 정치판에서 나오노";
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.UNFAMILIAR_CONTEXT, 0.6, 3000, line, "나오노"),
+                speech(RiskCategory.UNFAMILIAR_CONTEXT, 0.6, 3000, line, "나오노"),
+                speech(RiskCategory.TIMING_SENSITIVE, 0.8, 3000, line, "정치판 논란")
+        ));
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(RiskFinding::getTarget)
+                .containsExactlyInAnyOrder("나오노", "정치판 논란");
+    }
+
+    @Test
+    @DisplayName("같은 문장에 같은 대상이면 그대로 한 건이다")
+    void stillMergesRepeatedSameTargetOnSameLine() {
+        // 위 관문이 고정 자막 중복 제거를 깨뜨리지 않는지 확인한다.
+        // 이쪽이 깨지면 같은 카드가 프레임 수만큼 쌓인다. 원래 불만의 시작이었다.
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.UNFAMILIAR_CONTEXT, 0.6, 3000, "독도는 일본땅", "독도"),
+                speech(RiskCategory.UNFAMILIAR_CONTEXT, 0.6, 9000, "독도는 일본땅", "독도"),
+                speech(RiskCategory.UNFAMILIAR_CONTEXT, 0.6, 15000, "독도는 일본땅", "독도")
+        ));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getMergedCount()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("흡수된 지적은 문장이 같아도 대상 이름으로 카드에 남는다")
+    void absorbedFindingSurvivesAsTargetName() {
+        // 대표가 대상을 안 적었으면 병합은 그대로 일어난다.
+        // 그때도 흡수된 쪽이 무엇을 지적했는지는 카드에 남아야 한다.
+        String line = "이런 게 왜 정치판에서 나오노";
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.TIMING_SENSITIVE, 0.8, 3000, line, null),
+                speech(RiskCategory.UNFAMILIAR_CONTEXT, 0.5, 3000, line, "나오노")
+        ));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getReason()).contains("나오노");
+    }
+
+    @Test
     @DisplayName("빈 목록도 처리한다")
     void handlesEmpty() {
         assertThat(service.fuse(List.of())).isEmpty();

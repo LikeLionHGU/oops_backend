@@ -251,8 +251,22 @@ public class FindingFusionService {
 
             // 2) 문장이 사실상 같으면 한 건이다.
             //    영상 내내 떠 있는 자막이 프레임마다 다시 잡히는 경우가 여기 해당한다.
-            if (members.stream().anyMatch(m ->
-                    similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD)) {
+            //
+            //    **단, 가리키는 대상이 다르면 같은 문장이어도 다른 지적이다.**
+            //
+            //    한 문장 안에 지적할 것이 둘 있으면 분석기 둘이 같은 줄을
+            //    서로 다른 이유로 보고한다. 그때 문장은 당연히 같다.
+            //    8초 영상에서 사전이 '나오노' 를 커뮤니티 어미로 잡고
+            //    배경 확인이 같은 줄을 '정치판 논란' 으로 잡았는데,
+            //    문장이 같다는 이유로 후보 5건이 1건이 됐다.
+            //    사용자에게 커뮤니티 어미 카드는 아예 나가지 않았다.
+            //
+            //    3번 갈래에는 이 관문이 있었는데 여기에는 없었다.
+            //    문장이 같다는 것은 같은 줄이라는 뜻일 뿐, 같은 지적이라는 뜻이 아니다.
+            //    같은 문구가 프레임마다 다시 잡히는 경우는 대상도 같으므로 그대로 묶인다.
+            boolean sameText = members.stream().anyMatch(m ->
+                    similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD);
+            if (sameText && !hasDifferentTarget(candidate)) {
                 return true;
             }
 
@@ -317,16 +331,43 @@ public class FindingFusionService {
         String otherExpressions(RiskFinding representative) {
             String repText = representative.primaryText() == null
                     ? "" : representative.primaryText();
+            String repTarget = representative.getTarget() == null
+                    ? "" : representative.getTarget();
 
             return members.stream()
                     .filter(m -> m != representative)
-                    .map(RiskFinding::primaryText)
+                    .map(m -> labelFor(m, repText, repTarget))
                     .filter(t -> t != null && !t.isBlank())
-                    .filter(t -> similarity(t, repText) < SAME_ISSUE_THRESHOLD)
                     .distinct()
                     .limit(2)
                     .map(t -> "\"" + (t.length() > 30 ? t.substring(0, 30) + "…" : t) + "\"")
                     .collect(java.util.stream.Collectors.joining(", "));
+        }
+
+        /**
+         * 흡수된 구성원을 카드에 무엇으로 적을지 고른다.
+         *
+         *   문장이 대표와 다르면        그 문장을 적는다
+         *   문장은 같은데 대상이 다르면  **대상 이름**을 적는다
+         *   둘 다 같으면               진짜 중복이므로 적지 않는다
+         *
+         * 가운데 갈래가 없어서 지적이 통째로 사라진 적이 있다.
+         * 한 줄에 지적이 둘이면 문장이 같을 수밖에 없는데, 문장만 비교해
+         * 걸러내니 흡수된 쪽이 흔적도 없이 없어졌다.
+         * 병합 자체를 막는 것은 accepts() 몫이고, 여기는 마지막 보험이다.
+         */
+        private String labelFor(RiskFinding member, String repText, String repTarget) {
+            String text = member.primaryText();
+            if (text != null && !text.isBlank()
+                    && similarity(text, repText) < SAME_ISSUE_THRESHOLD) {
+                return text;
+            }
+            String target = member.getTarget();
+            if (target != null && !target.isBlank()
+                    && similarity(target, repTarget) < SAME_TARGET_THRESHOLD) {
+                return target;
+            }
+            return null;
         }
 
         /** 어떤 것들이 흡수됐는지 로그용 한 줄 */
