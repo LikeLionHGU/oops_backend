@@ -245,11 +245,22 @@
         "까보전"
       ],
       "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": [],
-      "suppressHints": [],
+      "contextHints": [
+        "여성",
+        "남성",
+        "커뮤니티",
+        "댓글",
+        "논쟁"
+      ],
+      "suppressHints": [
+        "라는 말",
+        "용어",
+        "줄임말",
+        "뜻이"
+      ],
       "needsContext": true,
       "reason": "특정 지역을 가리키는 축약 은어로 알려진 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
       "id": "CTX_009",
@@ -406,11 +417,21 @@
         "똥팔륙"
       ],
       "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": [],
-      "suppressHints": [],
+      "contextHints": [
+        "세대",
+        "586",
+        "기성세대",
+        "정치",
+        "운동권"
+      ],
+      "suppressHints": [
+        "라는 말",
+        "용어",
+        "표현을"
+      ],
       "needsContext": true,
       "reason": "특정 세대·정치 세력을 낮춰 부르는 표현으로 쓰입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
       "id": "CTX_016",
@@ -434,11 +455,22 @@
         "허버허버"
       ],
       "triggerMode": "DISPUTED_CONTEXT",
-      "contextHints": [],
-      "suppressHints": [],
+      "contextHints": [
+        "커뮤니티",
+        "논란",
+        "밈",
+        "댓글",
+        "남성"
+      ],
+      "suppressHints": [
+        "라는 말",
+        "용어",
+        "먹방",
+        "먹는 소리"
+      ],
       "needsContext": true,
       "reason": "급하게 먹는 모습을 나타내는 의태어로 쓰이지만, 기원을 두고 젠더 논쟁이 있었던 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
       "id": "CTX_018",
@@ -650,11 +682,23 @@
         "개딸"
       ],
       "triggerMode": "POLITICAL_SIGNAL",
-      "contextHints": [],
-      "suppressHints": [],
+      "contextHints": [
+        "지지자",
+        "정치",
+        "당",
+        "의원",
+        "팬덤"
+      ],
+      "suppressHints": [
+        "라는 말",
+        "용어",
+        "딸",
+        "아빠",
+        "가족"
+      ],
       "needsContext": true,
       "reason": "특정 정치인 지지층을 가리키는 표현입니다. 지지자들이 스스로 쓰기도 하고 비판적으로 쓰이기도 합니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
       "id": "CTX_028",
@@ -875,11 +919,25 @@
         "young forty"
       ],
       "triggerMode": "MEANING_SHIFT",
-      "contextHints": [],
-      "suppressHints": [],
+      "contextHints": [
+        "40대",
+        "아저씨",
+        "중년",
+        "세대",
+        "꼰대",
+        "아재"
+      ],
+      "suppressHints": [
+        "신조어",
+        "용어",
+        "마케팅",
+        "브랜드",
+        "트렌드",
+        "라는 말"
+      ],
       "needsContext": true,
       "reason": "처음에는 젊은 감각의 40대를 뜻하는 말이었지만, 최근에는 특정 40대를 조롱하는 뜻으로 쓰인다는 분석이 있습니다. 의도한 쪽이 맞는지 확인하세요.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
       "id": "CTX_042",
@@ -888,11 +946,23 @@
         "영 피프티"
       ],
       "triggerMode": "MEANING_SHIFT",
-      "contextHints": [],
-      "suppressHints": [],
+      "contextHints": [
+        "50대",
+        "중년",
+        "아저씨",
+        "세대",
+        "꼰대"
+      ],
+      "suppressHints": [
+        "신조어",
+        "용어",
+        "마케팅",
+        "브랜드",
+        "라는 말"
+      ],
       "needsContext": true,
       "reason": "라이프스타일을 뜻하는 말로 시작했지만 세대 조롱으로 쓰이기도 합니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
       "id": "CTX_043",
