@@ -81,6 +81,17 @@ public class OpenAiClient {
     /** 헤더에서 읽은 계정 한도(분당 요청). 아직 모르면 0 */
     private static final AtomicLong knownRpm = new AtomicLong(0);
 
+    /** 헤더에서 읽은 계정 한도(분당 토큰). 아직 모르면 0 */
+    private static final AtomicLong knownTpm = new AtomicLong(0);
+
+    /**
+     * 호출 하나가 쓰는 평균 토큰. 분당 토큰 한도를 간격으로 바꾸는 데 쓴다.
+     *
+     * 첫 호출 전에는 알 수 없으므로 넉넉하게 잡아둔다.
+     * 적게 잡으면 처음 몇 번이 너무 빨리 나가서 토큰 한도를 넘긴다.
+     */
+    private static final AtomicLong avgTokensPerCall = new AtomicLong(3_000);
+
     private final RestClient restClient;
     private final OpenAiProperties properties;
 
@@ -411,6 +422,16 @@ public class OpenAiClient {
         total[2] += cached;
         total[3] += usage.completion_tokens();
 
+        // 평균 토큰이 처음 추정치와 많이 다르면 간격을 다시 잡는다.
+        // 프롬프트가 커서 호출당 토큰이 예상보다 크면 토큰 한도가 먼저 마른다.
+        if (total[0] > 0) {
+            long avg = (total[1] + total[3]) / total[0];
+            long before = avgTokensPerCall.getAndSet(Math.max(500, avg));
+            if (knownRpm.get() > 0 && Math.abs(avg - before) > before * 0.3) {
+                applyRpm((int) knownRpm.get(), "토큰 재측정");
+            }
+        }
+
         log.info("[openai-usage] videoId={} analyzer={} model={} input={} cached={} output={} total={}",
                 currentVideoId.get()[0],
                 currentAnalyzer.get(),
@@ -440,13 +461,28 @@ public class OpenAiClient {
             return;
         }
 
+        Long tokenLimit = parseLong(headers.getFirst("x-ratelimit-limit-tokens"));
+        if (tokenLimit != null && tokenLimit > 0) {
+            knownTpm.set(tokenLimit);
+        }
+
         Long limit = parseLong(headers.getFirst("x-ratelimit-limit-requests"));
         if (limit != null && limit > 0 && knownRpm.get() != limit) {
             applyRpm(limit.intValue(), "계정 한도");
-
-            String tokensPerMin = headers.getFirst("x-ratelimit-limit-tokens");
             log.info("[openai] 계정 한도 — 분당 요청 {}건 / 분당 토큰 {} (모델 {})",
-                    limit, tokensPerMin == null ? "?" : tokensPerMin, properties.modelOrDefault());
+                    limit, tokenLimit == null ? "?" : tokenLimit, properties.modelOrDefault());
+        }
+
+        // 남은 토큰이 바닥이면 창이 열릴 때까지 쉰다.
+        // 요청 수는 남아 있는데 토큰이 먼저 마르는 경우가 실제로 더 흔하다.
+        Long remainingTokens = parseLong(headers.getFirst("x-ratelimit-remaining-tokens"));
+        if (remainingTokens != null && remainingTokens < avgTokensPerCall.get() * 2) {
+            long resetMs = parseDurationMs(headers.getFirst("x-ratelimit-reset-tokens"));
+            if (resetMs > 0 && resetMs <= MAX_WAIT_MS) {
+                log.info("[openai] 분당 토큰이 거의 다 찼습니다(남은 {}). {}초 쉬어갑니다.",
+                        remainingTokens, Math.max(1, resetMs / 1000));
+                reserveAfter(resetMs + 500);
+            }
         }
 
         // 남은 횟수가 바닥이면 창이 새로 열릴 때까지 쉰다.
@@ -517,12 +553,38 @@ public class OpenAiClient {
                 headers.getFirst("x-ratelimit-reset-tokens"));
     }
 
-    /** 분당 요청 수를 간격으로 바꿔 적용한다. */
+    /**
+     * 분당 요청 수를 간격으로 바꿔 적용한다.
+     *
+     * **요청 수만 보면 안 된다. 분당 토큰이 먼저 걸린다.**
+     *
+     * 계정 한도가 분당 1만 건이라고 해도 분당 토큰이 20만이면,
+     * 호출 하나가 3천 토큰을 쓰는 우리 경우 실제 상한은 분당 66건이다.
+     * 요청 수만 보고 간격을 7ms 로 잡으면 분당 8500건 속도가 되어
+     * 토큰 쪽에서 곧바로 막힌다. 그러면 "분당 1만 건인데 왜 걸리지" 가 된다.
+     *
+     * 그래서 둘 다 계산해서 **느린 쪽**을 쓴다.
+     */
     private void applyRpm(int rpm, String source) {
-        long interval = (long) Math.ceil(60_000.0 / (Math.max(1, rpm) * HEADROOM));
         knownRpm.set(rpm);
+
+        long byRequests = (long) Math.ceil(60_000.0 / (Math.max(1, rpm) * HEADROOM));
+
+        long tpm = knownTpm.get();
+        long perCall = Math.max(1, avgTokensPerCall.get());
+        long byTokens = tpm <= 0 ? 0
+                : (long) Math.ceil(60_000.0 / (Math.max(1, tpm / (double) perCall) * HEADROOM));
+
+        long interval = Math.max(byRequests, byTokens);
         minIntervalMs.set(interval);
-        log.info("[openai] 호출 속도 — 분당 {}건 ({}) → 요청 간격 {}ms", rpm, source, interval);
+
+        if (byTokens > byRequests) {
+            log.info("[openai] 호출 속도 — 분당 {}건 ({}) 이지만 분당 토큰 {} 이 먼저 걸려 "
+                            + "간격 {}ms (약 분당 {}건)",
+                    rpm, source, tpm, interval, 60_000 / Math.max(1, interval));
+        } else {
+            log.info("[openai] 호출 속도 — 분당 {}건 ({}) → 요청 간격 {}ms", rpm, source, interval);
+        }
     }
 
     /**
