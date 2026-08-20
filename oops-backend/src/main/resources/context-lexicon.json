@@ -32,358 +32,996 @@
     "정치 표현은 좌·우 어느 한쪽만 담지 않습니다.",
     "한쪽만 잡으면 그 자체가 편향입니다."
   ],
-
   "entries": [
     {
-      "id": "CTX_001", "patterns": ["~노"], "triggerMode": "CONTEXT_REQUIRED",
-      "regex": "[가-힣]{2,}노[?!.]?\\s*$|[가-힣]{2,}노[?!]",
-      "contextHints": ["정치", "대통령", "좌파", "우파", "일베", "커뮤니티"],
-      "suppressHints": ["머하노", "뭐하노", "가가", "억수로", "우얄", "안캐", "그카", "이카", "왔노", "밥은"],
+      "id": "CTX_001",
+      "patterns": [
+        "~노"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "regex": "[가-힣]{2,}노(?=[\\s?!.,~]|$)",
+      "contextHints": [
+        "정치",
+        "대통령",
+        "좌파",
+        "우파",
+        "일베",
+        "커뮤니티"
+      ],
+      "suppressHints": [
+        "머하노",
+        "뭐하노",
+        "가가",
+        "억수로",
+        "우얄",
+        "안캐",
+        "그카",
+        "이카",
+        "왔노",
+        "밥은",
+        "하노이",
+        "피아노",
+        "노트",
+        "노랗",
+        "노란",
+        "노래"
+      ],
       "needsContext": true,
       "reason": "문장 끝의 '~노' 어미입니다. 경상도 사투리로도 쓰이지만 특정 커뮤니티 말투로 읽히기도 해 시청자 반응이 갈릴 수 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
-      "id": "CTX_002", "patterns": ["이기야"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["정치", "커뮤니티", "일베"],
-      "suppressHints": ["사투리", "경상", "부산", "대구"],
+      "id": "CTX_002",
+      "patterns": [
+        "이기야"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "정치",
+        "커뮤니티",
+        "일베"
+      ],
+      "suppressHints": [
+        "사투리",
+        "경상",
+        "부산",
+        "대구"
+      ],
       "needsContext": true,
       "reason": "경상도 사투리로도 쓰이지만 특정 커뮤니티 말투로 알려진 표현이기도 합니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_003", "patterns": ["민주화시키", "민주화당하", "민주화됐", "민주화된다"],
+      "id": "CTX_003",
+      "patterns": [
+        "민주화시키",
+        "민주화당하",
+        "민주화됐",
+        "민주화된다"
+      ],
       "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["댓글", "추천", "비추", "커뮤니티", "게시판"],
-      "suppressHints": ["운동", "역사", "1987", "항쟁", "절차", "제도", "이행", "국가"],
+      "contextHints": [
+        "댓글",
+        "추천",
+        "비추",
+        "커뮤니티",
+        "게시판"
+      ],
+      "suppressHints": [
+        "운동",
+        "역사",
+        "1987",
+        "항쟁",
+        "절차",
+        "제도",
+        "이행",
+        "국가"
+      ],
       "needsContext": true,
       "reason": "민주화 운동을 뜻하는 일반적 의미 외에, 온라인에서 '집단으로 깎아내리다' 라는 반대 뜻으로 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_004", "patterns": ["산업화"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["민주화", "추천", "댓글", "커뮤니티"],
-      "suppressHints": ["경제", "근대", "제조업", "공업", "발전", "역사", "70년대", "60년대", "성장"],
+      "id": "CTX_004",
+      "patterns": [
+        "산업화"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "민주화",
+        "추천",
+        "댓글",
+        "커뮤니티"
+      ],
+      "suppressHints": [
+        "경제",
+        "근대",
+        "제조업",
+        "공업",
+        "발전",
+        "역사",
+        "70년대",
+        "60년대",
+        "성장"
+      ],
       "needsContext": true,
       "reason": "경제·산업 맥락의 일반적 의미 외에, 온라인에서 '민주화' 의 반대 뜻으로 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_005", "patterns": ["7시", "7시 멀티", "일곱시"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["전라", "호남", "광주", "전남", "전북", "지역", "사람들", "출신"],
-      "suppressHints": ["오전", "오후", "저녁", "아침", "예약", "출발", "도착", "약속", "방향", "시작", "마감", "뉴스"],
+      "id": "CTX_005",
+      "patterns": [
+        "7시",
+        "7시 멀티",
+        "일곱시"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "전라",
+        "호남",
+        "광주",
+        "전남",
+        "전북",
+        "지역",
+        "사람들",
+        "출신"
+      ],
+      "suppressHints": [
+        "오전",
+        "오후",
+        "저녁",
+        "아침",
+        "예약",
+        "출발",
+        "도착",
+        "약속",
+        "방향",
+        "시작",
+        "마감",
+        "뉴스"
+      ],
       "needsContext": true,
       "reason": "일반적인 시간 표현 외에, 특정 지역을 가리키는 온라인 은어로 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_006", "patterns": ["홍어"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["전라", "호남", "광주", "사람", "것들", "새끼"],
-      "suppressHints": ["회", "삭히", "무침", "먹", "맛", "요리", "안주", "막걸리", "식당", "시장"],
+      "id": "CTX_006",
+      "patterns": [
+        "홍어"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "전라",
+        "호남",
+        "광주",
+        "사람",
+        "것들",
+        "새끼"
+      ],
+      "suppressHints": [
+        "회",
+        "삭히",
+        "무침",
+        "먹",
+        "맛",
+        "요리",
+        "안주",
+        "막걸리",
+        "식당",
+        "시장"
+      ],
       "needsContext": true,
       "reason": "음식 이름이지만 특정 지역 출신을 비하하는 은어로 쓰인 사례가 보도된 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_007", "patterns": ["알보칠"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["전라", "호남", "광주", "지역"],
-      "suppressHints": ["입", "구내염", "약", "바르", "아프", "병원", "치료"],
+      "id": "CTX_007",
+      "patterns": [
+        "알보칠"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "전라",
+        "호남",
+        "광주",
+        "지역"
+      ],
+      "suppressHints": [
+        "입",
+        "구내염",
+        "약",
+        "바르",
+        "아프",
+        "병원",
+        "치료"
+      ],
       "needsContext": true,
       "reason": "의약품 이름이지만 특정 지역과 엮인 은어로 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_008", "patterns": ["까보전"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": [], "suppressHints": [],
+      "id": "CTX_008",
+      "patterns": [
+        "까보전"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [],
+      "suppressHints": [],
       "needsContext": true,
       "reason": "특정 지역을 가리키는 축약 은어로 알려진 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_009", "patterns": ["포도"], "triggerMode": "HISTORICAL_EVENT",
-      "contextHints": ["광주", "5·18", "518", "오일팔", "계엄", "헬기", "묘역"],
-      "suppressHints": ["먹", "포도주", "과일", "송이", "청포도", "농장", "맛", "juice", "주스", "씨", "껍질"],
+      "id": "CTX_009",
+      "patterns": [
+        "포도"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "광주",
+        "5·18",
+        "518",
+        "오일팔",
+        "계엄",
+        "헬기",
+        "묘역"
+      ],
+      "suppressHints": [
+        "먹",
+        "포도주",
+        "과일",
+        "송이",
+        "청포도",
+        "농장",
+        "맛",
+        "juice",
+        "주스",
+        "씨",
+        "껍질"
+      ],
       "needsContext": true,
       "reason": "과일 이름이지만 5·18 관련 은어로 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_010", "patterns": ["노무노무", "노무현", "노무"], "triggerMode": "DISPUTED_CONTEXT",
-      "contextHints": ["대통령", "정치", "부엉이", "바위"],
-      "suppressHints": ["노무사", "노무법인", "인사노무", "노무관리", "전 대통령", "재단"],
+      "id": "CTX_010",
+      "patterns": [
+        "노무노무",
+        "노무현",
+        "노무"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "contextHints": [
+        "대통령",
+        "정치",
+        "부엉이",
+        "바위"
+      ],
+      "suppressHints": [
+        "노무사",
+        "노무법인",
+        "인사노무",
+        "노무관리",
+        "전 대통령",
+        "재단"
+      ],
       "needsContext": true,
       "reason": "'너무너무' 의 말놀이로 쓰이기도 하지만, 특정 인물의 성을 비하 접두사처럼 쓰는 용례가 알려져 방송인이 뜻을 모르고 썼다가 논란이 된 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_011", "patterns": ["운지"], "triggerMode": "HISTORICAL_EVENT",
-      "contextHints": ["대통령", "바위", "뛰", "떨어"],
-      "suppressHints": ["운지법", "리코더", "기타", "플루트", "손가락", "악기", "코드"],
+      "id": "CTX_011",
+      "patterns": [
+        "운지"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "대통령",
+        "바위",
+        "뛰",
+        "떨어"
+      ],
+      "suppressHints": [
+        "운지법",
+        "리코더",
+        "기타",
+        "플루트",
+        "손가락",
+        "악기",
+        "코드"
+      ],
       "needsContext": true,
       "reason": "악기 운지법 등 일반적 쓰임도 있지만, 특정 인물의 죽음을 조롱하는 뜻으로 쓰인 사례가 보도된 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_012", "patterns": ["전라디언"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_012",
+      "patterns": [
+        "전라디언"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 지역 출신을 비하하는 은어입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_013", "patterns": ["통구이"], "triggerMode": "HISTORICAL_EVENT",
-      "contextHints": ["대구", "지하철", "참사", "화재", "중앙로"],
-      "suppressHints": ["닭", "돼지", "고기", "바베큐", "바비큐", "구워", "먹", "맛집", "요리", "오븐"],
+      "id": "CTX_013",
+      "patterns": [
+        "통구이"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "대구",
+        "지하철",
+        "참사",
+        "화재",
+        "중앙로"
+      ],
+      "suppressHints": [
+        "닭",
+        "돼지",
+        "고기",
+        "바베큐",
+        "바비큐",
+        "구워",
+        "먹",
+        "맛집",
+        "요리",
+        "오븐"
+      ],
       "needsContext": true,
       "reason": "음식 표현이지만 대구 지하철 참사와 엮어 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_014", "patterns": ["일동차렷"], "triggerMode": "HISTORICAL_EVENT",
-      "contextHints": ["광주", "5·18", "518", "계엄"],
-      "suppressHints": ["학교", "조회", "운동장", "군대", "훈련", "구령"],
+      "id": "CTX_014",
+      "patterns": [
+        "일동차렷"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "광주",
+        "5·18",
+        "518",
+        "계엄"
+      ],
+      "suppressHints": [
+        "학교",
+        "조회",
+        "운동장",
+        "군대",
+        "훈련",
+        "구령"
+      ],
       "needsContext": true,
       "reason": "일반적인 구령이지만 5·18 관련 맥락에서 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_015", "patterns": ["똥팔육", "똥팔륙"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": [], "suppressHints": [], "needsContext": true,
+      "id": "CTX_015",
+      "patterns": [
+        "똥팔육",
+        "똥팔륙"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "특정 세대·정치 세력을 낮춰 부르는 표현으로 쓰입니다.",
       "reviewedAt": "2026-08-17"
     },
-
     {
-      "id": "CTX_016", "patterns": ["보이루"], "triggerMode": "DISPUTED_GUARD",
-      "contextHints": [], "suppressHints": ["인사", "유튜버", "인사말"],
+      "id": "CTX_016",
+      "patterns": [
+        "보이루"
+      ],
+      "triggerMode": "DISPUTED_GUARD",
+      "contextHints": [],
+      "suppressHints": [
+        "인사",
+        "유튜버",
+        "인사말"
+      ],
       "needsContext": true,
       "reason": "한 유튜버의 인사말에서 나온 표현입니다. 여성혐오 표현이라는 주장이 있었으나 법원은 표현 자체가 그렇다고 보기 어렵다고 판단했습니다. 논쟁이 있었다는 사실만 참고하세요.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_017", "patterns": ["허버허버"], "triggerMode": "DISPUTED_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": true,
+      "id": "CTX_017",
+      "patterns": [
+        "허버허버"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "급하게 먹는 모습을 나타내는 의태어로 쓰이지만, 기원을 두고 젠더 논쟁이 있었던 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_018", "patterns": ["오조오억"], "triggerMode": "DISPUTED_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": true,
+      "id": "CTX_018",
+      "patterns": [
+        "오조오억"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "contextHints": [
+        "커뮤니티",
+        "논란",
+        "밈",
+        "댓글",
+        "남자",
+        "여자"
+      ],
+      "suppressHints": [
+        "라는 말",
+        "용어",
+        "뜻이",
+        "숫자로",
+        "억 원",
+        "조 원"
+      ],
+      "needsContext": true,
       "reason": "'아주 많다' 는 과장 표현으로 쓰이지만, 기원을 두고 젠더 논쟁이 있었던 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-20"
     },
     {
-      "id": "CTX_019", "patterns": ["드릉드릉"], "triggerMode": "DISPUTED_CONTEXT",
-      "contextHints": [], "suppressHints": ["코", "엔진", "오토바이", "소리", "시동"],
+      "id": "CTX_019",
+      "patterns": [
+        "드릉드릉"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [
+        "코",
+        "엔진",
+        "오토바이",
+        "소리",
+        "시동"
+      ],
       "needsContext": true,
       "reason": "기계 소리 등을 나타내는 일상 표현이지만, 특정 커뮤니티 용법을 두고 논쟁이 있었던 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_020", "patterns": ["재기하", "재기해", "재기시"], "triggerMode": "HISTORICAL_EVENT",
-      "contextHints": ["한강", "투신", "남성연대"],
-      "suppressHints": ["사업", "재기했", "재기에 성공", "부활", "회사", "재도전", "재기를 노"],
+      "id": "CTX_020",
+      "patterns": [
+        "재기하",
+        "재기해",
+        "재기시"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "한강",
+        "투신",
+        "남성연대"
+      ],
+      "suppressHints": [
+        "사업",
+        "재기했",
+        "재기에 성공",
+        "부활",
+        "회사",
+        "재도전",
+        "재기를 노"
+      ],
       "needsContext": true,
       "reason": "'다시 일어서다' 라는 일반적 의미가 있지만, 특정 인물의 사망을 빗대는 은어로 쓰인 사례가 있는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_021", "patterns": ["한남"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["남자", "남성", "새끼", "들은", "특", "죄다"],
-      "suppressHints": ["한남동", "한남대교", "한남대", "한남더힐", "지하철", "주소", "이태원", "역"],
+      "id": "CTX_021",
+      "patterns": [
+        "한남"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "남자",
+        "남성",
+        "새끼",
+        "들은",
+        "특",
+        "죄다"
+      ],
+      "suppressHints": [
+        "한남동",
+        "한남대교",
+        "한남대",
+        "한남더힐",
+        "지하철",
+        "주소",
+        "이태원",
+        "역"
+      ],
       "needsContext": true,
       "reason": "지명 축약으로도 쓰이지만 한국 남성 전체를 낮춰 부르는 표현으로 쓰인 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_022", "patterns": ["한녀"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["여자", "여성", "들은", "특", "죄다"],
-      "suppressHints": [], "needsContext": true,
+      "id": "CTX_022",
+      "patterns": [
+        "한녀"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "여자",
+        "여성",
+        "들은",
+        "특",
+        "죄다"
+      ],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "한국 여성 전체를 낮춰 부르는 표현으로 쓰인 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_023", "patterns": ["퐁퐁남", "퐁퐁단"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": [], "suppressHints": ["세제", "주방", "설거지 세제"],
+      "id": "CTX_023",
+      "patterns": [
+        "퐁퐁남",
+        "퐁퐁단"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [],
+      "suppressHints": [
+        "세제",
+        "주방",
+        "설거지 세제"
+      ],
       "needsContext": true,
       "reason": "결혼·젠더 담론에서 특정 남성상을 조롱하는 뜻으로 쓰이는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_024", "patterns": ["설거지론", "설거지 당했", "설거지당했"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["결혼", "남자", "여자", "연애"],
-      "suppressHints": ["그릇", "주방", "싱크대", "세제", "고무장갑", "밥 먹고"],
+      "id": "CTX_024",
+      "patterns": [
+        "설거지론",
+        "설거지 당했",
+        "설거지당했"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "결혼",
+        "남자",
+        "여자",
+        "연애"
+      ],
+      "suppressHints": [
+        "그릇",
+        "주방",
+        "싱크대",
+        "세제",
+        "고무장갑",
+        "밥 먹고"
+      ],
       "needsContext": true,
       "reason": "집안일 이야기가 아니라, 온라인 젠더 담론에서 결혼을 두고 쓰이는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_025", "patterns": ["꼴페미"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_025",
+      "patterns": [
+        "꼴페미"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 집단을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
-
     {
-      "id": "CTX_026", "patterns": ["수박"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": ["의원", "당", "정치", "계파", "공천", "경선", "민주당"],
-      "suppressHints": ["먹", "과일", "여름", "화채", "씨", "껍질", "쪼개", "잘라", "맛", "달", "밭", "농사"],
+      "id": "CTX_026",
+      "patterns": [
+        "수박"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [
+        "의원",
+        "당",
+        "정치",
+        "계파",
+        "공천",
+        "경선",
+        "민주당"
+      ],
+      "suppressHints": [
+        "먹",
+        "과일",
+        "여름",
+        "화채",
+        "씨",
+        "껍질",
+        "쪼개",
+        "잘라",
+        "맛",
+        "달",
+        "밭",
+        "농사"
+      ],
       "needsContext": true,
       "reason": "과일 이름이지만 정치 맥락에서 특정 계파를 가리키는 표현으로 쓰인 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_027", "patterns": ["개딸"], "triggerMode": "POLITICAL_SIGNAL",
-      "contextHints": [], "suppressHints": [], "needsContext": true,
+      "id": "CTX_027",
+      "patterns": [
+        "개딸"
+      ],
+      "triggerMode": "POLITICAL_SIGNAL",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "특정 정치인 지지층을 가리키는 표현입니다. 지지자들이 스스로 쓰기도 하고 비판적으로 쓰이기도 합니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_028", "patterns": ["낙지"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": ["의원", "당", "정치", "대표", "후보"],
-      "suppressHints": ["먹", "볶음", "탕탕이", "연포탕", "해산물", "요리", "맛", "산낙지", "food", "시장"],
+      "id": "CTX_028",
+      "patterns": [
+        "낙지"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [
+        "의원",
+        "당",
+        "정치",
+        "대표",
+        "후보"
+      ],
+      "suppressHints": [
+        "먹",
+        "볶음",
+        "탕탕이",
+        "연포탕",
+        "해산물",
+        "요리",
+        "맛",
+        "산낙지",
+        "food",
+        "시장"
+      ],
       "needsContext": true,
       "reason": "음식 이름이지만 정치 맥락에서 특정 인물을 가리키는 표현으로 쓰인 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_029", "patterns": ["똥파리"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": ["의원", "당", "정치", "지지자", "계파"],
-      "suppressHints": ["벌레", "날아", "잡", "여름", "쓰레기", "곤충", "파리채", "영화"],
+      "id": "CTX_029",
+      "patterns": [
+        "똥파리"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [
+        "의원",
+        "당",
+        "정치",
+        "지지자",
+        "계파"
+      ],
+      "suppressHints": [
+        "벌레",
+        "날아",
+        "잡",
+        "여름",
+        "쓰레기",
+        "곤충",
+        "파리채",
+        "영화"
+      ],
       "needsContext": true,
       "reason": "곤충 이름이지만 정치 맥락에서 특정 집단을 가리키는 표현으로 쓰인 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_030", "patterns": ["윤어게인", "윤 어게인", "Yoon Again"], "triggerMode": "POLITICAL_SIGNAL",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_030",
+      "patterns": [
+        "윤어게인",
+        "윤 어게인",
+        "Yoon Again"
+      ],
+      "triggerMode": "POLITICAL_SIGNAL",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치 흐름을 나타내는 구호입니다. 비하 표현이 아니라 정치적 입장 표시이므로, 영상의 성격과 맞는지만 확인하세요.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_031", "patterns": ["대깨문"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_031",
+      "patterns": [
+        "대깨문"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인 지지층을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_032", "patterns": ["대깨윤"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_032",
+      "patterns": [
+        "대깨윤"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인 지지층을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_033", "patterns": ["대깨명"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_033",
+      "patterns": [
+        "대깨명"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인 지지층을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_034", "patterns": ["2찍", "이찍"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": ["투표", "선거", "지지", "후보", "찍었"],
-      "suppressHints": [], "needsContext": true,
+      "id": "CTX_034",
+      "patterns": [
+        "2찍",
+        "이찍"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [
+        "투표",
+        "선거",
+        "지지",
+        "후보",
+        "찍었"
+      ],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "특정 후보에게 투표한 유권자를 낮춰 부르는 표현입니다. 정치인이 사용한 뒤 사과한 사례가 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_035", "patterns": ["굥"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_035",
+      "patterns": [
+        "굥"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_036", "patterns": ["찢재명", "찢"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": ["대표", "후보", "정치", "민주당"],
-      "suppressHints": ["찢어", "찢었", "종이", "옷", "찢기", "가슴 찢"],
+      "id": "CTX_036",
+      "patterns": [
+        "찢재명",
+        "찢"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [
+        "대표",
+        "후보",
+        "정치",
+        "민주당"
+      ],
+      "suppressHints": [
+        "찢어",
+        "찢었",
+        "종이",
+        "옷",
+        "찢기",
+        "가슴 찢"
+      ],
       "needsContext": true,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_037", "patterns": ["문재앙"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_037",
+      "patterns": [
+        "문재앙"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_038", "patterns": ["문죄인"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_038",
+      "patterns": [
+        "문죄인"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_039", "patterns": ["쥐박이"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_039",
+      "patterns": [
+        "쥐박이"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_040", "patterns": ["닭근혜", "그년"], "triggerMode": "POLITICAL_CONTEXT",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_040",
+      "patterns": [
+        "닭근혜",
+        "그년"
+      ],
+      "triggerMode": "POLITICAL_CONTEXT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
       "reviewedAt": "2026-08-17"
     },
-
     {
-      "id": "CTX_041", "patterns": ["영포티", "영 포티", "young forty"], "triggerMode": "MEANING_SHIFT",
-      "contextHints": [], "suppressHints": [], "needsContext": true,
+      "id": "CTX_041",
+      "patterns": [
+        "영포티",
+        "영 포티",
+        "young forty"
+      ],
+      "triggerMode": "MEANING_SHIFT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "처음에는 젊은 감각의 40대를 뜻하는 말이었지만, 최근에는 특정 40대를 조롱하는 뜻으로 쓰인다는 분석이 있습니다. 의도한 쪽이 맞는지 확인하세요.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_042", "patterns": ["영피프티", "영 피프티"], "triggerMode": "MEANING_SHIFT",
-      "contextHints": [], "suppressHints": [], "needsContext": true,
+      "id": "CTX_042",
+      "patterns": [
+        "영피프티",
+        "영 피프티"
+      ],
+      "triggerMode": "MEANING_SHIFT",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "라이프스타일을 뜻하는 말로 시작했지만 세대 조롱으로 쓰이기도 합니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_043", "patterns": ["잼민이"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["짜증", "진짜", "역시", "또"],
-      "suppressHints": [], "needsContext": true,
+      "id": "CTX_043",
+      "patterns": [
+        "잼민이"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "짜증",
+        "진짜",
+        "역시",
+        "또"
+      ],
+      "suppressHints": [],
+      "needsContext": true,
       "reason": "친근한 밈으로도 쓰이지만 어린이를 낮춰 부르는 말로 받아들여지기도 합니다. 어린이 대상 조사에서 비하 표현으로 인식된다는 응답이 있었습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_044", "patterns": ["급식충"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_044",
+      "patterns": [
+        "급식충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "청소년을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_045", "patterns": ["틀딱", "틀딱충"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_045",
+      "patterns": [
+        "틀딱",
+        "틀딱충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "노년층을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_046", "patterns": ["맘충"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_046",
+      "patterns": [
+        "맘충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 행동에 대한 비판을 넘어 부모 집단 전체를 낮춰 부르는 표현으로 읽힐 수 있습니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_047", "patterns": ["캣맘"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["민원", "짜증", "때문에", "피해"],
-      "suppressHints": ["구조", "봉사", "중성화", "TNR", "돌보", "보호소"],
+      "id": "CTX_047",
+      "patterns": [
+        "캣맘"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "민원",
+        "짜증",
+        "때문에",
+        "피해"
+      ],
+      "suppressHints": [
+        "구조",
+        "봉사",
+        "중성화",
+        "TNR",
+        "돌보",
+        "보호소"
+      ],
       "needsContext": true,
       "reason": "길고양이를 돌보는 사람을 가리키는 중립적 표현이지만, 조롱하는 뜻으로 쓰이기도 합니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_048", "patterns": ["비건충"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_048",
+      "patterns": [
+        "비건충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "특정 식습관을 가진 사람들을 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_049", "patterns": ["문신충"], "triggerMode": "SAFETY_NET",
-      "contextHints": [], "suppressHints": [], "needsContext": false,
+      "id": "CTX_049",
+      "patterns": [
+        "문신충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "contextHints": [],
+      "suppressHints": [],
+      "needsContext": false,
       "reason": "문신을 한 사람 전체를 낮춰 부르는 표현입니다.",
       "reviewedAt": "2026-08-17"
     },
     {
-      "id": "CTX_050", "patterns": ["초딩"], "triggerMode": "CONTEXT_REQUIRED",
-      "contextHints": ["수준", "같", "짓", "발상", "입맛", "유치"],
-      "suppressHints": ["학년", "학교", "우리 애", "조카", "아들", "딸", "학원", "등교", "입학", "졸업"],
+      "id": "CTX_050",
+      "patterns": [
+        "초딩"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "수준",
+        "같",
+        "짓",
+        "발상",
+        "입맛",
+        "유치"
+      ],
+      "suppressHints": [
+        "학년",
+        "학교",
+        "우리 애",
+        "조카",
+        "아들",
+        "딸",
+        "학원",
+        "등교",
+        "입학",
+        "졸업"
+      ],
       "needsContext": true,
       "reason": "초등학생을 가리키는 말이지만, 미숙함을 빗대는 비유로 쓰면 비하로 받아들여질 수 있습니다.",
       "reviewedAt": "2026-08-17"

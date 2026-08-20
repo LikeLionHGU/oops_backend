@@ -40,6 +40,21 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
     /** AI 문구가 사전 문구와 이만큼 겹치면 같은 말로 보고 안 붙인다 */
     private static final double SAME_MEANING = 0.75;
 
+    /**
+     * 되풀이로 볼 재활용 비율.
+     *
+     * AI 문구 중 사전 문구에서 그대로 가져온 글자가 이 비율을 넘으면
+     * 새 정보가 아니라 같은 말을 다시 한 것으로 본다.
+     *
+     * 실측으로 정했다.
+     *   되풀이 문장    38%  → 버림
+     *   새 정보 문장   23%, 0%  → 붙임
+     */
+    private static final double RECYCLED = 0.35;
+
+    /** 이만큼 연속으로 겹쳐야 "가져다 썼다" 로 센다. 짧으면 우연히 겹친다 */
+    private static final int RUN = 6;
+
     private final ContextLexicon lexicon;
     private final ContextValidator validator;
 
@@ -174,12 +189,27 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
      * AI 가 덧붙인 말이 새 정보인지.
      *
      * 사전 문구를 조금 바꿔 되풀이한 것이면 붙이지 않는다.
-     * 글자 단위로 보는 이유는 어순이나 어미만 바뀐 경우를 잡기 위해서다.
+     * 실제로 이런 카드가 나왔다.
+     *
+     *   "기계 소리를 나타내는 일상 표현이지만, 특정 커뮤니티 용법을 두고
+     *    논쟁이 있었던 표현입니다. 특정 커뮤니티에서 논쟁이 있었던 표현으로,
+     *    일반적인 의미 외에 다른 맥락으로 읽힐 수 있다."
+     *
+     * 같은 말을 두 번 한다. 읽는 사람은 도구가 대충 만든다고 느낀다.
+     *
+     * 글자를 하나씩 세는 방식으로는 이걸 못 잡는다.
+     * 뒤 문장에 "일반적인 의미 외에" 같은 새 글자가 섞여 비율이 내려간다.
+     * 그래서 **사전 문구를 얼마나 통째로 가져다 썼는지**를 함께 본다.
      */
     private boolean addsSomething(String reason, String note) {
-        String a = reason.replaceAll("[^가-힣a-zA-Z0-9]", "");
-        String b = note.replaceAll("[^가-힣a-zA-Z0-9]", "");
+        String a = normalize(reason);
+        String b = normalize(note);
         if (a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+
+        // 사전 문구를 많이 가져다 썼으면 되풀이다
+        if (recycledRatio(a, b) >= RECYCLED) {
             return false;
         }
 
@@ -195,6 +225,39 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
             }
         }
         return (double) common / b.length() < SAME_MEANING;
+    }
+
+    /**
+     * note 중에서 reason 을 그대로 가져다 쓴 글자가 몇 퍼센트인지.
+     *
+     * 가장 긴 겹침만 보면 안 된다. 되풀이 문장과 새 정보 문장이
+     * 똑같이 8글자씩 겹쳐서 구분이 안 됐다.
+     * **얼마나 많이 재활용했는지**를 재야 갈린다.
+     */
+    private double recycledRatio(String a, String b) {
+        boolean[] covered = new boolean[b.length()];
+
+        for (int i = 0; i < b.length(); i++) {
+            for (int j = b.length(); j >= i + RUN; j--) {
+                if (a.contains(b.substring(i, j))) {
+                    for (int k = i; k < j; k++) {
+                        covered[k] = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        int count = 0;
+        for (boolean c : covered) {
+            if (c) count++;
+        }
+        return b.isEmpty() ? 0 : (double) count / b.length();
+    }
+
+    /** 비교용으로 공백과 기호를 뺀다 */
+    private String normalize(String text) {
+        return text.replaceAll("[^가-힣a-zA-Z0-9]", "");
     }
 
     private String textAt(List<Line> lines, int index) {
