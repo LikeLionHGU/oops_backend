@@ -1025,6 +1025,112 @@
       "needsContext": true,
       "reason": "초등학생을 가리키는 말이지만, 미숙함을 빗대는 비유로 쓰면 비하로 받아들여질 수 있습니다.",
       "reviewedAt": "2026-08-17"
+    },
+    {
+      "id": "CTX_051",
+      "patterns": [
+        "독도는 일본",
+        "독도가 일본",
+        "다케시마"
+      ],
+      "regex": "독도[는가]?\\s*일본\\s*(땅|영토|것)?",
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "일본",
+        "영토",
+        "주권",
+        "일본땅",
+        "센카쿠"
+      ],
+      "suppressHints": [
+        "잘못",
+        "아니",
+        "말도 안",
+        "반박",
+        "억지",
+        "주장은",
+        "라는 주장",
+        "왜곡"
+      ],
+      "needsContext": true,
+      "reason": "영토 주권과 얽힌 표현입니다. 한국에서 가장 민감하게 받아들여지는 주제 중 하나라, 농담이나 인용이라도 그 문장만 잘려 퍼지면 채널 전체가 문제가 됩니다.",
+      "reviewedAt": "2026-08-20"
+    },
+    {
+      "id": "CTX_052",
+      "patterns": [
+        "동해를 일본해",
+        "일본해 표기",
+        "Sea of Japan"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "표기",
+        "지도",
+        "동해",
+        "명칭"
+      ],
+      "suppressHints": [
+        "잘못",
+        "아니",
+        "반박",
+        "정정",
+        "라는 표기는"
+      ],
+      "needsContext": true,
+      "reason": "동해 표기를 두고 오래 논쟁이 있는 주제입니다. 자막이나 지도 표기가 의도와 다르게 읽힐 수 있습니다.",
+      "reviewedAt": "2026-08-20"
+    },
+    {
+      "id": "CTX_053",
+      "patterns": [
+        "위안부는 자발",
+        "위안부 자발",
+        "강제성 없",
+        "강제동원 아니"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "위안부",
+        "강제",
+        "일제",
+        "식민"
+      ],
+      "suppressHints": [
+        "잘못",
+        "아니",
+        "반박",
+        "왜곡",
+        "라는 주장"
+      ],
+      "needsContext": true,
+      "reason": "역사적 강제성을 부정하는 서술로 읽힐 수 있는 표현입니다. 학계와 정부 공식 입장과 다르게 해석될 수 있어 확인이 필요합니다.",
+      "reviewedAt": "2026-08-20"
+    },
+    {
+      "id": "CTX_054",
+      "patterns": [
+        "일제강점기 덕분",
+        "식민지 근대화",
+        "일제 덕분"
+      ],
+      "triggerMode": "HISTORICAL_EVENT",
+      "contextHints": [
+        "일제",
+        "식민",
+        "근대화",
+        "발전"
+      ],
+      "suppressHints": [
+        "잘못",
+        "아니",
+        "반박",
+        "비판",
+        "라는 주장"
+      ],
+      "needsContext": true,
+      "reason": "식민지 근대화론과 연결되는 표현입니다. 학술적 논쟁과 별개로 짧은 자막으로 나가면 역사관 논란으로 번진 사례가 여러 번 있습니다.",
+      "reviewedAt": "2026-08-20"
     }
   ]
 }
