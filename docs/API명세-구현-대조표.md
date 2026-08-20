@@ -205,14 +205,19 @@ candidateType 왜 확인하나     SPEECH_REVIEW = 다시 읽어볼 표현
                              FACT_CHECK    = 외부 자료와 대조가 필요
 ```
 
-네 조합이 다 나올 수 있습니다.
+네 조합을 다 처리해야 하지만, **지금 실제로 나오는 것은 위 두 개뿐입니다.**
+사실 확인(`entity-check`)이 꺼져 있어 `FACT_CHECK` 는 0건입니다.
 
 | `type` | `candidateType` | 어떤 카드인가 |
 |---|---|---|
 | `SPEECH` | `SPEECH_REVIEW` | 출연자 발언 중 다시 읽어볼 표현 |
-| `SPEECH` | `FACT_CHECK` | 출연자가 말한 이름·연도·숫자 |
-| `CAPTION` | `FACT_CHECK` | 화면 자막에 박힌 이름·연도·숫자 |
-| `CAPTION` | `SPEECH_REVIEW` | (현재 안 나옴 — 화면 글자 표현 검토는 꺼져 있음) |
+| `CAPTION` | `SPEECH_REVIEW` | **편집 자막 중 다시 읽어볼 표현** ← "발언" 이라 쓰면 안 됩니다 |
+| `SPEECH` | `FACT_CHECK` | 출연자가 말한 이름·연도·숫자 (지금 0건) |
+| `CAPTION` | `FACT_CHECK` | 화면 자막에 박힌 이름·연도·숫자 (지금 0건) |
+
+`CAPTION` × `SPEECH_REVIEW` 가 **지금 가장 흔한 조합**입니다.
+예전 문서는 이 조합을 "안 나옴" 으로 적고 `FACT_CHECK` 를 나오는 것으로
+적어뒀는데, 정확히 뒤집혀 있었습니다.
 
 **화면 문구는 `candidateType` 이 아니라 `type` 으로 정하세요.**
 `SPEECH_REVIEW` 라고 무조건 "발언" 이라 쓰면 안 됩니다.
@@ -342,12 +347,17 @@ POST /api/v1/videos/{videoId}/review-completion
 `sceneAnalyzed` 는 항상 `false` 입니다. 화면 자료 분석은 아직 없습니다.
 
 **`screenTextAnalyzed` 는 화면 글자를 어느 분석기든 봤으면 `true` 입니다.**
-화면 글자의 표현 검토는 꺼졌지만, 이름·수치 확인이 화면 글자를 읽고 있습니다.
-그 단계만 보고 `false` 를 주면 "화면은 아예 안 봤구나" 로 읽히는데 사실이 아닙니다.
+지금은 화면 자막 표현 검토(`screen-text-review`)가 켜져 있어서 그쪽으로 `true`
+가 됩니다. 이름·수치 확인은 꺼져 있습니다. 둘 중 하나라도 성공하면 `true` 입니다.
 
-단계별 상세(`/videos/{id}/coverage`)에서 `SCREEN_TEXT_REVIEW` 는
-`NOT_ENABLED` 로 나옵니다. 화면 글자를 안 본다는 뜻이 아니라
-**화면 자막의 표현 검토**를 지금 안 한다는 뜻입니다.
+**단계별 상세를 주는 별도 엔드포인트는 없습니다.** 리포트의 `warnings[]` 로만
+나갑니다. 지금 `NOT_ENABLED` 로 나가는 단계는 `FACT_ENTITY`(사실 확인)와
+`VISUAL`(화면 자료 분석) 둘입니다.
+
+> **`NOT_ENABLED` 는 `warnings[]` 에 안 들어갑니다.** 경고는 `FAILED`·`SKIPPED`
+> 일 때만 붙습니다. 그래서 사실 확인이 꺼져 있다는 사실은 응답만 봐서는
+> 알 수 없고, `summary.factCheck: 0` 이 "대조했는데 어긋난 게 없다" 로 읽힙니다.
+> 화면에서 사실 확인 항목을 아예 감추는 편이 안전합니다.
 
 ---
 
@@ -364,6 +374,7 @@ oops:
       - http://localhost:3000
       - http://localhost:8080
       - https://oops-im-so-sorry.vercel.app
+      - https://oops-im-sorry.online            # 커스텀 도메인
       - https://oops-im-so-sorry-*.vercel.app   # 브랜치·PR 미리보기
 ```
 
@@ -437,12 +448,11 @@ DELETE /api/v1/videos/{id}              영상·결과·파일 삭제
 
 | 항목 | 상태 |
 |---|---|
-| v2.1 §10-3 화면 텍스트에서 사실 주장 추출 | 미착수 |
-| v2.1 §10-4 OCR Fact → `type=CAPTION` + `FACT_CHECK` | 미착수 |
-| v2.1 §10-5 `ScreenTextReviewAnalyzer` 비활성화 | 아직 켜져 있음 |
+| v2.1 §10-3·10-4 화면 텍스트 사실 주장 → `type=CAPTION` + `FACT_CHECK` | 구현됨 · 기본 비활성 (`entity-check` 꺼짐) |
+| v2.1 §10-5 `ScreenTextReviewAnalyzer` 비활성화 | 아직 켜져 있음 (일부러 켜뒀습니다) |
 | §9 Range 200·206·416 계약 테스트 | 동작하지만 테스트 없음 |
 | 인증 | 없음. 주소가 공개되면 누구나 업로드 가능 |
-| 배포 | 미착수. 현재 로컬 전용 |
+| 배포 | 완료. 커스텀 도메인 + Vercel 프론트 |
 
 `CAPTION_CONSISTENCY`(발언↔자막 비교)는 MVP 제외로 확정돼
 분석기를 꺼둔 상태가 맞습니다.
