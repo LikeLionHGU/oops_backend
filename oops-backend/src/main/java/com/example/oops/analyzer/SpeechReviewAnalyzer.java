@@ -363,10 +363,13 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     }
 
     /**
-     * 이 분석기만 길이에 비례한다.
+     * 길이에 비례해 호출이 는다.
      *
-     * 대본을 20줄씩 잘라 창마다 한 번씩 부르므로,
-     * 대본이 두 배면 호출도 두 배다. 다른 분석기는 상한이 걸려 있다.
+     * 대본을 20줄 창으로 자르고 3줄씩 겹치므로 보폭은 17줄이다.
+     * 대본이 두 배면 호출도 두 배다.
+     * 나머지는 상한이 걸려 있어 영상이 길어도 호출이 안 는다 —
+     * 다만 ScreenTextReviewAnalyzer 도 자막을 창 단위로 훑어서 여기와 같다.
+     * 예전 주석은 "이 분석기만" 이라고 적어뒀는데 둘이다.
      */
     @Override
     public boolean scalesWithLength() {
