@@ -114,11 +114,22 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     채널 로고나 고정 배너가 자막에 섞여 들어가는 것을 막기 위해서다.
     """
     started = time.time()
+
+    # 단계마다 로그를 남긴다.
+    #
+    # 예전에는 이 함수가 도는 동안 아무 기록도 안 남겼다.
+    # 그래서 중간에 프로세스가 죽으면 자바 쪽에 "응답을 못 받았다" 만 남고,
+    # 모델 로딩에서 죽었는지 프레임 추출에서 죽었는지 인식에서 죽었는지
+    # 알 방법이 없었다. 원인을 찾는 데 며칠이 걸렸다.
+    log.info("[ocr] 시작 — 영상 %.0f초, 요청 간격 %.1f초", video.duration_sec, interval_sec)
+
     engine = _engine()
+    log.info("[ocr] 엔진 준비 완료 (%.1f초)", time.time() - started)
 
     interval_sec = _adjust_interval(video.duration_sec, interval_sec)
     frames = extract_frames(video, interval_sec)
     extracted_at = time.time()
+    log.info("[ocr] 프레임 %d장 추출 완료 (%.1f초)", len(frames), extracted_at - started)
 
     keep_dir = Path(frame_dir) if frame_dir else None
     if keep_dir:
@@ -126,7 +137,10 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
 
     # ---- 1단계: 프레임별로 줄 단위 인식 결과를 모은다 ----
     per_frame: list[tuple[int, Path, list[tuple[str, float]]]] = []
-    for time_ms, frame_path in frames:
+    for i, (time_ms, frame_path) in enumerate(frames, start=1):
+        # 10장마다 한 줄. 여기서 로그가 끊기면 그 프레임에서 죽은 것이다.
+        if i == 1 or i % 10 == 0 or i == len(frames):
+            log.info("[ocr] 인식 중 %d/%d", i, len(frames))
         try:
             raw = engine.ocr(str(frame_path), cls=True)
         except Exception as e:
