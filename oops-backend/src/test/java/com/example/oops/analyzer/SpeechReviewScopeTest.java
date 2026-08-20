@@ -93,6 +93,38 @@ class SpeechReviewScopeTest {
     }
 
     @Test
+    @DisplayName("'특정 인물' 같은 분류명은 대상이 아니다")
+    void placeholderTargetsAreRejected() {
+        // 관문이 "이름을 댈 수 있는가" 인데 모델은 못 대면 분류명을 적어 넣는다.
+        // '특정 인물' 카드가 실제로 올라왔다. 열어봐도 누구인지 알 수 없다.
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("특정 인물")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("특정인")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("특정 브랜드")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("어떤 가게")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("인물")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("누군가")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("상대방")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("너")).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget(null)).isTrue();
+        assertThat(SpeechReviewAnalyzer.isPlaceholderTarget("  ")).isTrue();
+    }
+
+    @Test
+    @DisplayName("실제 대상 이름은 막지 않는다")
+    void realTargetsSurvive() {
+        // 이걸 막으면 사용자가 원하는 카드가 통째로 사라진다.
+        // 특히 '메뉴' 와 '지역' 은 분류명처럼 보이지만, 무엇이 평가받았는지를
+        // 알려주므로 카드로서 값이 있다. PLACEHOLDER_WORDS 에 넣지 마라.
+        for (String target : new String[]{
+                "롯데리아", "할머니", "김치찌개", "메뉴", "중국산", "부산 어묵",
+                "그 가게", "사장님", "OO식당", "중국인", "20대", "경상도 사람"}) {
+            assertThat(SpeechReviewAnalyzer.isPlaceholderTarget(target))
+                    .as("막히면 안 되는 대상: %s", target)
+                    .isFalse();
+        }
+    }
+
+    @Test
     @DisplayName("한 창에서 받는 건수에 상한이 있다")
     void windowHasCap() {
         assertThat(SpeechReviewAnalyzer.MAX_PER_WINDOW)
