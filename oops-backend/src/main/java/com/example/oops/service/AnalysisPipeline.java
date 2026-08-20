@@ -87,12 +87,18 @@ public class AnalysisPipeline {
             video.updateStatus(AnalysisStatus.PROCESSING);
             openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
 
-            // 분석 시작을 즉시 DB에 기록한다.
-            // STT가 동기적으로 수십 초 걸리는 동안 프론트가 0%를 볼 수 있게 한다.
-            // 이게 없으면 첫 폴링이 STT 완료 후 35%부터 시작한다.
-            progressService.update(jobId, AnalysisStage.UPLOAD, 0, "분석 준비 중");
-
             // 1. 음성 → 타임스탬프 대본
+            //
+            // 시작 직후 진행률은 begin() 이 이미 STT 5% 로 발행했다.
+            // 그래서 여기서 따로 0% 를 한 번 더 쏘지 않는다.
+            //
+            // 예전에는 "분석이 시작됐다는 걸 바로 보여주자" 는 뜻으로
+            // UPLOAD 0% 를 먼저 발행했는데 두 가지가 잘못됐다.
+            //   · 진행률이 5% → 0% → 5% 로 뒤로 갔다
+            //   · 프론트 진행 화면은 5단계(STT·OCR·TEXT_RISK·MULTIMODAL·FINALIZING)만
+            //     알고 있어서 UPLOAD 를 받으면 목록에서 찾지 못했다
+            //
+            // 목적(시작을 즉시 보여주기)은 begin() 의 STT 5% 로 이미 달성된다.
             progressService.update(jobId, AnalysisStage.STT, 5, "음성 인식 중");
             long mark = System.currentTimeMillis();
             List<TranscriptSegment> transcript = transcriptService.extractAndSave(video);
