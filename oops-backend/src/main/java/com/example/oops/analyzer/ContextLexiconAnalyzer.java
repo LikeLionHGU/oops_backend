@@ -82,8 +82,21 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         List<Candidate> candidates = new ArrayList<>();
 
         // 1단계 — 사전 매칭. 일반 용법 신호가 있으면 여기서 걸러진다
+        int menuSkipped = 0;
         for (int i = 0; i < lines.size() && candidates.size() < MAX_MATCHES; i++) {
             Line line = lines.get(i);
+
+            // 메뉴판·가격표는 편집 자막이 아니라 가게가 만든 글자다.
+            // 식당 메뉴판의 '낙지전골' 이 사전의 '낙지'(정치 맥락)에 걸려
+            // '정치인' 카드가 메뉴판 사진과 함께 나간 적이 있다.
+            // 앞뒤가 온통 음식 이름이라 AI 도 판단 근거가 없다.
+            // 앞뒤 맥락으로는 쓰되(textAt) 여기서 뽑지는 않는다.
+            if (line.type() == TimelineEventType.CAPTION
+                    && ScreenTextShape.looksLikePriceList(line.text())) {
+                menuSkipped++;
+                continue;
+            }
+
             for (ContextLexicon.Match match : lexicon.match(line.text())) {
                 // 맥락을 안 봐도 되는 항목은 CommunitySlangRules 가 맡는다.
                 // 그쪽은 AI 키가 없어도 돌기 때문에 안전망 역할을 한다.
@@ -94,6 +107,11 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
                         textAt(lines, i - 1), textAt(lines, i + 1)));
                 if (candidates.size() >= MAX_MATCHES) break;
             }
+        }
+
+        if (menuSkipped > 0) {
+            log.info("[lexicon] videoId={} 가격표로 보이는 화면 글자 {}건은 건너뜀",
+                    context.video().getId(), menuSkipped);
         }
 
         if (candidates.isEmpty()) {

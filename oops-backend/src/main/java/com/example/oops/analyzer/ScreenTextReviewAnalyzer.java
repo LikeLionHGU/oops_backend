@@ -146,9 +146,22 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
 
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
-        List<ScreenText> texts = context.screenTexts();
-        List<RiskFinding> findings = new ArrayList<>();
+        List<ScreenText> all = context.screenTexts();
 
+        // 메뉴판·가격표는 편집자가 넣은 문구가 아니라 가게가 만든 글자다.
+        // 이 분석기가 찾는 것은 '편집 자막의 도발적 문구' 이므로 대상이 아니다.
+        // 빼면 토큰도 줄고, 무엇보다 메뉴판을 두고 표현을 논하는 카드가 안 나간다.
+        List<ScreenText> texts = all.stream()
+                .filter(s -> !ScreenTextShape.looksLikePriceList(s.getText()))
+                .toList();
+
+        int skipped = all.size() - texts.size();
+        if (skipped > 0) {
+            log.info("[screen-text-risk] videoId={} 가격표로 보이는 {}건은 검토에서 뺌",
+                    context.video().getId(), skipped);
+        }
+
+        List<RiskFinding> findings = new ArrayList<>();
         for (int start = 0; start < texts.size(); start += WINDOW_SIZE - OVERLAP) {
             int end = Math.min(start + WINDOW_SIZE, texts.size());
             findings.addAll(analyzeWindow(context, texts.subList(start, end)));
@@ -156,8 +169,9 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
         }
 
         List<RiskFinding> deduped = dedupe(findings);
-        log.info("[screen-text-risk] videoId={} 자막={}건 findings={} (중복제거 후 {})",
-                context.video().getId(), texts.size(), findings.size(), deduped.size());
+        log.info("[screen-text-risk] videoId={} 자막={}건(가격표 제외 후 {}건) findings={} (중복제거 후 {})",
+                context.video().getId(), all.size(), texts.size(),
+                findings.size(), deduped.size());
         return deduped;
     }
 
