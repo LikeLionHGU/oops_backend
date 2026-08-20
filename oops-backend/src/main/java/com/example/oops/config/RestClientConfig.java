@@ -39,6 +39,36 @@ public class RestClientConfig {
     }
 
     /**
+     * 같은 분석 서버용이지만 **살아 있는지만 묻는** 클라이언트.
+     *
+     * 위 analysisRestClient 는 읽기 타임아웃이 10분이다. STT·OCR 이 그만큼
+     * 걸리니 그건 맞다. 그런데 그 클라이언트로 /health 를 부르면,
+     * 서버가 OCR 로 바쁠 때 핑 하나가 **최대 10분** 매달린다.
+     *
+     * 업로드 직전에 이 핑을 넣었더니 업로드가 통째로 타임아웃됐다.
+     * 앞 영상의 OCR 이 도는 중에 다음 영상을 올리면 그렇게 된다.
+     * 살아 있는지 묻는 데 10분을 기다릴 이유는 없다.
+     *
+     * 길이 재기(/probe)도 여기로 보낸다. 업로드 파일은 로컬에 있으므로
+     * ffprobe 한 번이면 끝나고, 실패하면 호출한 쪽이 그냥 통과시킨다.
+     */
+    @Bean
+    public RestClient analysisQuickRestClient(AnalysisServerProperties properties) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(3))
+                .build();
+
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(20));
+
+        return RestClient.builder()
+                .baseUrl(properties.baseUrl() != null ? properties.baseUrl() : "http://localhost:8000")
+                .requestFactory(factory)
+                .build();
+    }
+
+    /**
      * 구글 뉴스 RSS 용. 인증이 없는 공개 피드라 키가 필요 없다.
      * 기본 User-Agent 로는 응답이 막히는 경우가 있어 브라우저 형태로 보낸다.
      */
