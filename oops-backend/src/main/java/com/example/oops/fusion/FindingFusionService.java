@@ -55,6 +55,19 @@ public class FindingFusionService {
      */
     private static final double SAME_TARGET_THRESHOLD = 0.5;
 
+    /**
+     * 대상 이름이 이 길이 미만이면 글자 겹침 비율을 쓰지 않는다.
+     *
+     * 짧은 이름은 글자 하나가 곧 다른 뜻이다. 실측한 겹침 비율은 이렇다.
+     *   '남자'/'여자' 0.50 · '가게'/'가격' 0.50 · '20대'/'30대' 0.67
+     *   '중국인'/'중국산' 0.67 · '할머니'/'어머니' 0.67
+     * 전부 기준선 0.5 를 넘어서 "같은 대상" 으로 판정됐다.
+     * 그러면 20분 떨어진 남자 얘기와 여자 얘기가 한 카드로 합쳐지고,
+     * 구간이 05:00~25:00 으로 벌어지며 한쪽 지적은 사라진다.
+     * 대상 평가와 차별을 다시 켜면서 이런 짧은 이름이 훨씬 많아졌다.
+     */
+    private static final int SHORT_TARGET_LEN = 5;
+
     /** 교차 검증됐을 때 점수를 몇 배로 올릴지 */
     private static final double CROSS_MODAL_BOOST = 1.25;
 
@@ -136,10 +149,17 @@ public class FindingFusionService {
             RiskFinding representative = cluster.pickRepresentative();
             boolean crossModal = cluster.isCrossModal();
 
-            // 여러 번 등장했다면 카드 하나로 합치고 구간을 처음~끝으로 넓힌다
+            // 등장 시각을 **먼저** 뽑는다.
+            //
+            // expandRange 가 대표의 startMs 를 묶음 최솟값으로 덮어쓴다.
+            // 대표도 묶음의 구성원이라, 순서를 바꾸면 대표가 실제로 나온 시각이
+            // 최솟값으로 바뀌고 distinct() 에서 사라진다.
+            // 대표는 확신도가 가장 높은 건인데, 하필 그게 목록에서 빠진다.
+            // 26초·44초에 잡힌 것 중 44초가 대표면 "등장: 00:26" 만 남았다.
+            String occurrences = cluster.size() > 1 ? cluster.occurrenceTimes() : null;
             representative.expandRange(cluster.minStartMs(), cluster.maxEndMs());
-            if (cluster.size() > 1) {
-                representative.recordOccurrences(cluster.occurrenceTimes());
+            if (occurrences != null) {
+                representative.recordOccurrences(occurrences);
             }
 
             // 버려지는 후보가 들고 있던 참고 자료를 대표에게 넘긴다.
@@ -266,7 +286,14 @@ public class FindingFusionService {
             //    같은 문구가 프레임마다 다시 잡히는 경우는 대상도 같으므로 그대로 묶인다.
             boolean sameText = members.stream().anyMatch(m ->
                     similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD);
-            if (sameText && !hasDifferentTarget(candidate)) {
+            //    대상이 비어 있을 때도 유형 묶음은 봐야 한다.
+            //    룰 기반 후보(RiskRuleEngine)는 target 을 아예 안 채운다.
+            //    그러면 hasDifferentTarget 이 false 라서, 같은 줄에 걸린
+            //    전혀 다른 지적이 여기서 다시 합쳐진다.
+            if (sameText
+                    && !hasDifferentTarget(candidate)
+                    && groupOf(members.get(0).getCategory())
+                            .equals(groupOf(candidate.getCategory()))) {
                 return true;
             }
 
@@ -307,8 +334,7 @@ public class FindingFusionService {
                     .toList();
             if (targets.isEmpty()) return false;
 
-            return targets.stream()
-                    .noneMatch(t -> similarity(t, candidateTarget) >= SAME_TARGET_THRESHOLD);
+            return targets.stream().noneMatch(t -> sameTarget(t, candidateTarget));
         }
 
         /** 대상 이름이 겹치는지. "할머니" 와 "할머니 맛" 은 같은 대상으로 본다. */
@@ -319,7 +345,30 @@ public class FindingFusionService {
             return members.stream()
                     .map(RiskFinding::getTarget)
                     .filter(t -> t != null && !t.isBlank())
-                    .anyMatch(t -> similarity(t, candidateTarget) >= SAME_TARGET_THRESHOLD);
+                    .anyMatch(t -> sameTarget(t, candidateTarget));
+        }
+
+        /**
+         * 두 대상 이름이 같은 것을 가리키는지.
+         *
+         * 짧은 이름은 한쪽이 다른 쪽을 품고 있을 때만 같다고 본다.
+         *   '할머니' ⊂ '할머니 맛', '메뉴' ⊂ '메뉴판'  → 같은 대상
+         *   '남자' vs '여자', '중국인' vs '중국산'      → 다른 대상
+         * 긴 이름은 표기가 흔들리기 쉬워서 예전 기준을 그대로 쓴다.
+         *   '코로나 초기' vs '코로나19 초기'            → 같은 대상
+         */
+        private boolean sameTarget(String a, String b) {
+            String x = strip(a);
+            String y = strip(b);
+            if (x.isEmpty() || y.isEmpty()) return false;
+            if (x.contains(y) || y.contains(x)) return true;
+            if (Math.min(x.length(), y.length()) < SHORT_TARGET_LEN) return false;
+            return similarity(x, y) >= SAME_TARGET_THRESHOLD;
+        }
+
+        /** 조사·기호를 뺀 글자만 남긴다. similarity 와 같은 기준이다. */
+        private String strip(String s) {
+            return s == null ? "" : s.replaceAll("[^가-힣a-zA-Z0-9]", "");
         }
 
         /**
@@ -363,8 +412,7 @@ public class FindingFusionService {
                 return text;
             }
             String target = member.getTarget();
-            if (target != null && !target.isBlank()
-                    && similarity(target, repTarget) < SAME_TARGET_THRESHOLD) {
+            if (target != null && !target.isBlank() && !sameTarget(target, repTarget)) {
                 return target;
             }
             return null;

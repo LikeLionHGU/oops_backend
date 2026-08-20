@@ -2,6 +2,7 @@ package com.example.oops.service;
 
 import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.AnalysisStage;
+import com.example.oops.domain.AnalysisStatus;
 import com.example.oops.repository.AnalysisJobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,20 @@ public class JobProgressService {
         jobRepository.flush();
         progressPublisher.publish(job);
         return job.getVideo().getId();
+    }
+
+    /**
+     * 취소를 눌렀는지. 파이프라인이 단계 사이에서 확인한다.
+     *
+     * 파이프라인 본체는 하나의 긴 트랜잭션이라, 그 안에서 job 을 다시 읽어도
+     * 트랜잭션 시작 시점의 값이 보인다. REQUIRES_NEW 로 새로 열어야
+     * 취소 API 가 커밋한 상태가 보인다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public boolean isCancelled(Long jobId) {
+        return jobRepository.findById(jobId)
+                .map(job -> job.getStatus() == AnalysisStatus.CANCELLED)
+                .orElse(false);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

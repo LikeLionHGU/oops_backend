@@ -84,7 +84,14 @@ public class AnalysisJob extends BaseTimeEntity {
 
     public void updateProgress(AnalysisStage stage, int progress, String message) {
         this.stage = stage;
-        this.progress = Math.max(0, Math.min(progress, 99));
+        // 진행률은 뒤로 가지 않는다.
+        //
+        // OCR 이 오래 걸리는 동안 ProgressTicker 가 35 → 55 로 조금씩 올려둔다.
+        // 그런데 OCR 이 끝나면 다음 단계가 42 를 쓰기 때문에,
+        // 3분짜리 영상에서 51% → 42% 로 되돌아가는 것이 보인다.
+        // VideoStatusResponse 가 "같은 jobId 안에서는 감소하지 않는다" 고
+        // 약속하고 있으니 여기서 지킨다. 재시도는 새 job 이라 0 부터 다시 센다.
+        this.progress = Math.max(this.progress, Math.max(0, Math.min(progress, 99)));
         this.message = message;
     }
 

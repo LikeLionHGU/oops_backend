@@ -46,6 +46,17 @@ public enum RiskCategory {
         return label;
     }
 
+    /**
+     * 아는 값만 돌려준다. 모르면 null.
+     *
+     * fromOrDefault 는 모델이 엉뚱한 유형을 보냈을 때 조용히 기본값으로 바꾼다.
+     * 그 기본값이 허용 목록 안에 있으면 검사를 그대로 통과한다.
+     * "유형은 이 셋만" 같은 관문을 세워둔 곳에서는 이 메서드를 써야 한다.
+     */
+    public static RiskCategory from(String value) {
+        return fromOrDefault(value, null);
+    }
+
     public static RiskCategory fromOrDefault(String value, RiskCategory fallback) {
         if (value == null) return fallback;
         for (RiskCategory category : values()) {

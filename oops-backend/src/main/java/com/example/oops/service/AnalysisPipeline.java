@@ -103,6 +103,20 @@ public class AnalysisPipeline {
             video.updateStatus(AnalysisStatus.PROCESSING);
             openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
 
+            // 지난 분석 결과를 먼저 지운다. **OCR 보다 앞이어야 한다.**
+            //
+            // risk_finding.frame_id 가 video_frame 을 참조하는데,
+            // OCR 단계(screenTextService.extractAndSave)가 video_frame 을 지운다.
+            // 후보 삭제가 OCR 뒤에 있으면, 재분석 때 지난 후보가 프레임을
+            // 붙잡고 있어서 프레임 삭제가 FK 제약에 걸린다.
+            // 그러면 재분석이 통째로 실패한다. 한 번 실패하면 계속 실패한다.
+            //
+            // 참고 자료와 검수 액션은 risk_finding 을 참조하므로 그 둘을 먼저 지운다.
+            // 후보 id 가 새로 발급되므로 옛 액션은 어차피 엉뚱한 곳을 가리킨다.
+            actionRepository.deleteByVideoId(videoId);
+            referenceRepository.deleteByVideoId(videoId);
+            findingRepository.deleteByVideoId(videoId);
+
             // 1. 음성 → 타임스탬프 대본
             //
             // 시작 직후 진행률은 begin() 이 이미 STT 5% 로 발행했다.
@@ -119,6 +133,7 @@ public class AnalysisPipeline {
             long mark = System.currentTimeMillis();
             List<TranscriptSegment> transcript = transcriptService.extractAndSave(video);
             elapsed.put("STT", System.currentTimeMillis() - mark);
+            stopIfCancelled(jobId);
 
             // 수행 여부를 기록한다. 0건과 실패는 다르다.
             Map<CoverageStep, AnalysisCoverage> coverage = new LinkedHashMap<>();
@@ -143,6 +158,7 @@ public class AnalysisPipeline {
                 screenTexts = screenTextService.extractAndSave(video);
             }
             elapsed.put("OCR", System.currentTimeMillis() - mark);
+            stopIfCancelled(jobId);
 
             // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
             // 분석 서버가 사유를 남겼을 때만 실패로 본다.
@@ -194,17 +210,14 @@ public class AnalysisPipeline {
             AnalysisContext context = new AnalysisContext(video, genre, transcript, screenTexts);
 
             // 3. 분석기 실행 → 논란 후보 수집
-            // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
-            // 검수 액션도 지운다. 후보 id 가 새로 발급되므로 옛 액션은 엉뚱한 곳을 가리킨다.
-            actionRepository.deleteByVideoId(videoId);
-            referenceRepository.deleteByVideoId(videoId);
-            findingRepository.deleteByVideoId(videoId);
+            // (지난 결과 삭제는 위쪽 OCR 앞에서 이미 했다 — FK 순서 때문이다)
             List<ContentAnalyzer> active = activeAnalyzers();
             List<RiskFinding> candidates = new ArrayList<>();
 
             int index = 0;
             for (ContentAnalyzer analyzer : active) {
                 index++;
+                stopIfCancelled(jobId);
                 progressService.update(jobId, stageOf(analyzer),
                         45 + (35 * index / Math.max(1, active.size())),
                         analyzer.displayName() + " 중");
@@ -260,6 +273,7 @@ public class AnalysisPipeline {
             coverageRepository.saveAll(coverage.values());
 
             // 4. 다중 후보 병합 + 우선순위
+            stopIfCancelled(jobId);
             progressService.update(jobId, AnalysisStage.MULTIMODAL, 85, "논란 후보 정리 중");
             List<RiskFinding> findings = fusionService.fuse(candidates);
 
@@ -292,10 +306,41 @@ public class AnalysisPipeline {
             log.info("[pipeline] 소요 내역 — {}", formatElapsed(elapsed, total));
             logCost(videoId, video.getDurationSec(), transcript.size());
 
+        } catch (Cancelled e) {
+            // 사용자가 취소를 눌렀다. 실패가 아니므로 사유를 남기지 않는다.
+            // 여기까지 저장된 대본·자막은 그대로 두고, 후보만 안 만든 상태로 끝난다.
+            log.info("[pipeline] videoId={} jobId={} 취소 요청으로 중단", videoId, jobId);
+            video.updateStatus(AnalysisStatus.CANCELLED);
+
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             video.updateStatus(AnalysisStatus.FAILED);
             progressService.fail(jobId, "ANALYSIS_FAILED", e.getMessage());
+        }
+    }
+
+    /**
+     * 취소를 눌렀으면 다음 단계로 넘어가지 않는다.
+     *
+     * 예전에는 취소 API 가 상태만 CANCELLED 로 바꿨고 파이프라인은 그걸 보지 않았다.
+     * 주석에는 "파이프라인이 다음 단계로 넘어갈 때 스스로 멈춘다" 고 적혀 있었지만
+     * 멈추는 코드가 없었다. 그래서 취소를 눌러도 분석이 끝까지 돌고,
+     * 마지막에 complete() 가 상태를 COMPLETED 로 되돌려 취소가 사라졌다.
+     * 그 사이 OpenAI 요청도 계속 나갔다.
+     *
+     * 스레드를 강제로 죽이지는 않는다. 단계 경계에서만 빠져나온다.
+     * 중간에 끊으면 반쯤 저장된 결과가 남는다.
+     */
+    private void stopIfCancelled(Long jobId) {
+        if (progressService.isCancelled(jobId)) {
+            throw new Cancelled();
+        }
+    }
+
+    /** 취소로 빠져나오는 신호. 실패와 구분해야 해서 따로 둔다. */
+    private static class Cancelled extends RuntimeException {
+        Cancelled() {
+            super(null, null, false, false);   // 메시지·스택 없음. 흐름 제어용이다
         }
     }
 

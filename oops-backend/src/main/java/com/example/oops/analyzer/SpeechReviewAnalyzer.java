@@ -416,8 +416,18 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
                 continue; // LLM 이 엉뚱한 번호를 준 경우 버린다
             }
 
-            RiskCategory category = RiskCategory.fromOrDefault(
-                    item.category(), RiskCategory.SENSITIVE_TOPIC);
+            // 모르는 유형은 버린다. 기본값으로 바꾸지 않는다.
+            //
+            // 예전에는 SENSITIVE_TOPIC 으로 떨어뜨렸는데, 그게 허용 목록 안이라
+            // 아래 관문을 그대로 통과했다. 모델이 "INSULT" 나 잘린 값을 보내면
+            // 엉뚱하게 민감 주제 카드가 되고, FACT_ERROR 를 흘려도
+            // 유형만 바뀐 채 살아남는다. 아래 두 관문이 열려 있던 셈이다.
+            RiskCategory category = RiskCategory.from(item.category());
+            if (category == null) {
+                log.debug("[speech-risk] 모르는 유형이라 버립니다 — '{}' / {}",
+                        item.category(), item.reason());
+                continue;
+            }
 
             // 사실 확인 후보는 여기서 만들 수 없다.
             //

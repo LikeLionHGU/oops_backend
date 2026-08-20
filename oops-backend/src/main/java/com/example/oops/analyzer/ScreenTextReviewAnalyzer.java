@@ -26,6 +26,27 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
 
+    /**
+     * 프롬프트에 열거한 유형. 이 밖은 버린다.
+     *
+     * **FACT_* 가 여기 없는 것이 핵심이다.**
+     * 이 분석기는 검색을 하지 않아서 근거 기사를 붙일 수 없다.
+     * 그런데 모델이 FACT_ERROR 를 보내면 candidateType 이 FACT_CHECK 로 붙어,
+     * 참고 자료가 없는 사실 확인 카드가 나간다.
+     * 근거 없이 "이건 틀렸다" 고 말하는 게 이 도구가 가장 하면 안 되는 일이고,
+     * 문서도 "FACT_CHECK 는 entity-check 만 만든다" 고 약속하고 있다.
+     * 프롬프트에만 적어두면 모델이 가끔 뚫으므로 코드로 막는다.
+     */
+    static final java.util.Set<RiskCategory> ALLOWED = java.util.Set.of(
+            RiskCategory.UNFAMILIAR_CONTEXT,
+            RiskCategory.BELITTLEMENT,
+            RiskCategory.MOCKERY,
+            RiskCategory.GENERALIZATION,
+            RiskCategory.SENSITIVE_TOPIC,
+            RiskCategory.DISCRIMINATION,
+            RiskCategory.PRIVACY,
+            RiskCategory.PROFANITY);
+
     private static final int WINDOW_SIZE = 20;
     private static final int OVERLAP = 2;
 
@@ -174,10 +195,17 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
                 caption = "%s  (해석: %s)".formatted(caption, item.reading());
             }
 
+            RiskCategory category = RiskCategory.from(item.category());
+            if (category == null || !ALLOWED.contains(category)) {
+                log.debug("[screen-text-risk] 받을 수 없는 유형이라 버립니다 — '{}' / {}",
+                        item.category(), item.reason());
+                continue;
+            }
+
             findings.add(RiskFinding.builder()
                     .video(context.video())
                     .eventType(TimelineEventType.CAPTION)
-                    .category(RiskCategory.fromOrDefault(item.category(), RiskCategory.SENSITIVE_TOPIC))
+                    .category(category)
                     .source(EvidenceSource.VISION)
                     .score(score)
                     .startMs(target.getStartMs())

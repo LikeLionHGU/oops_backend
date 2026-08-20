@@ -176,6 +176,67 @@ class FindingFusionServiceTest {
     }
 
     @Test
+    @DisplayName("대표 자신이 나온 시각도 등장 목록에 남는다")
+    void representativeOwnTimeSurvives() {
+        // expandRange 가 대표의 startMs 를 묶음 최솟값으로 덮어쓰기 때문에,
+        // 등장 시각을 그 뒤에 뽑으면 대표가 나온 시각이 사라졌다.
+        // 대표는 확신도가 가장 높은 건이라 하필 그게 안 보이게 된다.
+        // 위 mergesRepeatedText 는 점수가 다 같아서 이걸 못 잡는다.
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.MOCKERY, 0.6, 26000, "너무 특색이 없어가지고", "메뉴"),
+                speech(RiskCategory.MOCKERY, 0.9, 44000, "너무 특색이 없어가지고", "메뉴")
+        ));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getScore()).isEqualTo(0.9);              // 대표는 44초 쪽
+        assertThat(result.get(0).getOccurrenceTimes()).contains("00:26", "00:44");
+    }
+
+    @Test
+    @DisplayName("글자 하나 차이인 짧은 대상은 다른 대상이다")
+    void shortTargetsDifferingByOneCharAreNotMerged() {
+        // 글자 겹침 비율만 보면 '남자'/'여자' 가 0.50 으로 기준선을 넘어
+        // 같은 대상이 된다. 그러면 5분과 25분의 전혀 다른 지적이 한 카드가 되고
+        // 구간이 05:00~25:00 으로 벌어지며 한쪽 설명은 사라진다.
+        // 대상 평가와 차별을 다시 켜면서 이런 짧은 이름이 훨씬 많아졌다.
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.GENERALIZATION, 0.6, 300_000, "앞쪽 발언입니다", "남자"),
+                speech(RiskCategory.GENERALIZATION, 0.6, 1_500_000, "뒤쪽 발언입니다", "여자")
+        ));
+
+        assertThat(result).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("한쪽이 다른 쪽을 품고 있으면 같은 대상이다")
+    void containedTargetIsStillTheSameTarget() {
+        // 위 관문이 '할머니' 와 '할머니 맛' 을 갈라놓으면 안 된다.
+        // 같은 대상을 분석기마다 조금 다르게 적는 일이 흔하다.
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.BELITTLEMENT, 0.6, 5000, "어떤 발언입니다", "할머니"),
+                speech(RiskCategory.BELITTLEMENT, 0.6, 6000, "다른 발언입니다", "할머니 맛")
+        ));
+
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("유형 묶음이 다르면 같은 줄이어도 둘 다 남는다")
+    void sameLineDifferentGroupsBothSurvive() {
+        // 룰 기반 후보는 target 을 안 채운다. 그러면 '대상이 다른가' 관문이
+        // 통과되면서, 같은 줄에 걸린 전혀 다른 지적이 다시 합쳐졌다.
+        String line = "그 가게 선거 얘기하다가 특색이 없더라";
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.SENSITIVE_TOPIC, 0.35, 7000, line, null),
+                speech(RiskCategory.BELITTLEMENT, 0.70, 7000, line, "가게")
+        ));
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(RiskFinding::getCategory)
+                .containsExactlyInAnyOrder(RiskCategory.BELITTLEMENT, RiskCategory.SENSITIVE_TOPIC);
+    }
+
+    @Test
     @DisplayName("빈 목록도 처리한다")
     void handlesEmpty() {
         assertThat(service.fuse(List.of())).isEmpty();

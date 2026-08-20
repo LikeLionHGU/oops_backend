@@ -317,7 +317,13 @@ public class OpenAiClient {
                         .orElse(null);
 
                 if (content == null || content.isBlank()) {
-                    return Optional.empty();
+                    // 200 인데 내용이 없다. 거절·내용 필터·잘린 응답이 여기로 온다.
+                    //
+                    // 그냥 empty 를 돌리면 실패 횟수가 안 올라간다.
+                    // 그러면 파이프라인이 이 분석기를 SUCCESS 로 적고,
+                    // 리포트는 warnings 없이 '확인할 지점 0곳' 으로 나간다.
+                    // 사용자에게는 "봤는데 없다" 로 읽히지만 못 본 것이다.
+                    return fail("AI 가 응답 내용을 돌려주지 않았습니다.");
                 }
                 return Optional.of(jsonMapper.readValue(content, type));
 
