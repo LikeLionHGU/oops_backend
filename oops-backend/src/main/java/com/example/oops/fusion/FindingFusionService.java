@@ -146,6 +146,19 @@ public class FindingFusionService {
             // 근거를 들고 있던 쪽이 대표가 아닐 수 있어서, 그냥 두면 링크가 사라진다.
             cluster.collectReferencesInto(representative);
 
+            // **흡수된 쪽이 지적한 표현도 남긴다.**
+            //
+            // 같은 대상에 대한 지적이라 한 카드로 묶는 건 맞지만,
+            // 대표의 문장만 남기면 나머지가 무엇이었는지 흔적도 없이 사라진다.
+            // "할머니 맛" 이 대표로 뽑히면서 같은 구간의
+            // "할머니 살을 뜯는 거 같다" 가 통째로 안 보이게 된 적이 있다.
+            //
+            // 제작자는 그 문장을 보려고 이 도구를 쓴다. 지워서는 안 된다.
+            String others = cluster.otherExpressions(representative);
+            if (!others.isBlank()) {
+                representative.appendReason("같은 구간에서 함께 걸린 표현: " + others);
+            }
+
             if (crossModal) {
                 representative.boostScore(representative.getScore() * CROSS_MODAL_BOOST);
                 representative.appendReason("발언과 화면 양쪽에서 나타납니다.");
@@ -175,10 +188,12 @@ public class FindingFusionService {
         // 잡았는데 여기서 사라진 건지 구분이 안 됐다.
         // 8초 영상에서 10건이 1건으로 줄어든 걸 찾는 데 한참 걸렸다.
         if (candidates.size() > result.size()) {
-            result.stream()
-                    .filter(f -> f.getMergedCount() > 1)
-                    .forEach(f -> log.info("[fusion] '{}' 로 {}건 합침 ({} {}ms)",
-                            f.getTarget(), f.getMergedCount(), f.getCategory(), f.getStartMs()));
+            for (Cluster c : clusters) {
+                if (c.size() <= 1) continue;
+                log.info("[fusion] {}ms 에서 {}건을 '{}' 하나로 합침 — 흡수된 것: {}",
+                        c.minStartMs(), c.size(), c.pickRepresentative().getTarget(),
+                        c.absorbedSummary());
+            }
         }
         return result;
     }
@@ -291,6 +306,36 @@ public class FindingFusionService {
                     .map(RiskFinding::getTarget)
                     .filter(t -> t != null && !t.isBlank())
                     .anyMatch(t -> similarity(t, candidateTarget) >= SAME_TARGET_THRESHOLD);
+        }
+
+        /**
+         * 대표가 아닌 구성원이 지적한 표현들.
+         *
+         * 대표와 겹치는 것은 뺀다. 같은 말을 두 번 보여줄 이유가 없다.
+         * 카드가 길어지지 않게 두 개까지만, 각각 30자까지 자른다.
+         */
+        String otherExpressions(RiskFinding representative) {
+            String repText = representative.primaryText() == null
+                    ? "" : representative.primaryText();
+
+            return members.stream()
+                    .filter(m -> m != representative)
+                    .map(RiskFinding::primaryText)
+                    .filter(t -> t != null && !t.isBlank())
+                    .filter(t -> similarity(t, repText) < SAME_ISSUE_THRESHOLD)
+                    .distinct()
+                    .limit(2)
+                    .map(t -> "\"" + (t.length() > 30 ? t.substring(0, 30) + "…" : t) + "\"")
+                    .collect(java.util.stream.Collectors.joining(", "));
+        }
+
+        /** 어떤 것들이 흡수됐는지 로그용 한 줄 */
+        String absorbedSummary() {
+            RiskFinding rep = pickRepresentative();
+            return members.stream()
+                    .filter(m -> m != rep)
+                    .map(m -> "%s/'%s'".formatted(m.getCategory(), m.getTarget()))
+                    .collect(java.util.stream.Collectors.joining(", "));
         }
 
         void add(RiskFinding finding) {
