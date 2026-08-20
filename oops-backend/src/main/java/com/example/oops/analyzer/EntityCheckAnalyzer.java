@@ -245,6 +245,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
     private final OpenAiClient openAiClient;
     private final List<NewsSearchClient> newsSearchClients;
     private final SourceClassifier sourceClassifier;
+    private final com.example.oops.config.OopsProperties oopsProperties;
 
     @Override
     public String key() {
@@ -261,10 +262,17 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         // 대화형 영상에서 즉흥적으로 언급되는 이름·날짜·수치를 확인한다.
         // 경제 지표 검증이 아니라 단순 정확성 문제라서 유형을 가리지 않는다.
         //
-        // 대본이 없어도 화면 글자만으로 돌 수 있다.
-        // 음성이 거의 없고 자막으로 정보를 주는 영상이 실제로 있다.
-        return (context.hasTranscript() || context.hasScreenText())
-                && openAiClient.isEnabled() && newsClient() != null;
+        // 화면 글자까지 볼 때만 대본 없이도 돌 수 있다.
+        // 발언만 보는 기본 설정에서 대본이 없으면 확인할 것이 없다.
+        boolean hasInput = context.hasTranscript()
+                || (screenTextEnabled() && context.hasScreenText());
+        return hasInput && openAiClient.isEnabled() && newsClient() != null;
+    }
+
+    /** 사실 확인이 화면 글자까지 볼지. 기본은 발언만. */
+    private boolean screenTextEnabled() {
+        return oopsProperties.analysis() != null
+                && oopsProperties.analysis().factCheckScreenTextOrDefault();
     }
 
     private NewsSearchClient newsClient() {
@@ -418,15 +426,25 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             }
         }
 
-        if (context.hasScreenText()) {
+        // 화면 글자는 기본으로 안 본다. OopsProperties.Analysis 주석 참고.
+        if (screenTextEnabled() && context.hasScreenText()) {
             Set<String> seen = new HashSet<>();
             int added = 0;
+            int menuSkipped = 0;
             for (ScreenText s : context.screenTexts()) {
                 if (added >= MAX_SCREEN_LINES) break;
 
                 String text = s.getText() == null ? "" : s.getText().trim();
                 if (text.length() < MIN_SCREEN_TEXT_LENGTH) {
                     continue;   // "ㅋㅋ", "1" 같은 건 확인할 사실이 없다
+                }
+
+                // 메뉴판·가격표는 확인할 '사실' 이 아니라 그 가게의 값이다.
+                // 이걸 안 걸러서 "평균 가격" 기사와 대조하는 오탐이 반복됐다.
+                // 프롬프트로도 막아뒀지만 여기가 문이다.
+                if (ScreenTextShape.looksLikePriceList(text)) {
+                    menuSkipped++;
+                    continue;
                 }
                 // 공백과 기호를 뺀 형태로 중복을 본다.
                 // OCR 이 같은 자막을 읽을 때마다 띄어쓰기가 조금씩 달라진다.
@@ -436,6 +454,9 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                 lines.add(new FactLine(TimelineEventType.CAPTION,
                         s.getStartMs(), s.getEndMs(), text, s.getFrame()));
                 added++;
+            }
+            if (menuSkipped > 0) {
+                log.info("[fact-check] 가격표로 보이는 화면 글자 {}건은 확인 대상에서 뺌", menuSkipped);
             }
         }
 

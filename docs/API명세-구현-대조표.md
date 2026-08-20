@@ -205,15 +205,15 @@ candidateType 왜 확인하나     SPEECH_REVIEW = 다시 읽어볼 표현
                              FACT_CHECK    = 외부 자료와 대조가 필요
 ```
 
-네 조합을 다 처리해야 하지만, **지금 실제로 나오는 것은 위 두 개뿐입니다.**
-사실 확인(`entity-check`)이 꺼져 있어 `FACT_CHECK` 는 0건입니다.
+네 조합을 다 처리해야 하지만, **지금 `CAPTION` × `FACT_CHECK` 는 안 나옵니다.**
+사실 확인이 발언만 보기 때문입니다 (`fact-check-screen-text: false`).
 
 | `type` | `candidateType` | 어떤 카드인가 |
 |---|---|---|
 | `SPEECH` | `SPEECH_REVIEW` | 출연자 발언 중 다시 읽어볼 표현 |
 | `CAPTION` | `SPEECH_REVIEW` | **편집 자막 중 다시 읽어볼 표현** ← "발언" 이라 쓰면 안 됩니다 |
-| `SPEECH` | `FACT_CHECK` | 출연자가 말한 이름·연도·숫자 (지금 0건) |
-| `CAPTION` | `FACT_CHECK` | 화면 자막에 박힌 이름·연도·숫자 (지금 0건) |
+| `SPEECH` | `FACT_CHECK` | 출연자가 말한 이름·연도·숫자. **근거 기사가 붙습니다** |
+| `CAPTION` | `FACT_CHECK` | 화면 자막에 박힌 이름·연도·숫자 (지금 0건 — 화면 사실확인 꺼짐) |
 
 `CAPTION` × `SPEECH_REVIEW` 가 **지금 가장 흔한 조합**입니다.
 예전 문서는 이 조합을 "안 나옴" 으로 적고 `FACT_CHECK` 를 나오는 것으로
@@ -355,9 +355,9 @@ POST /api/v1/videos/{videoId}/review-completion
 `VISUAL`(화면 자료 분석) 둘입니다.
 
 > **`NOT_ENABLED` 는 `warnings[]` 에 안 들어갑니다.** 경고는 `FAILED`·`SKIPPED`
-> 일 때만 붙습니다. 그래서 사실 확인이 꺼져 있다는 사실은 응답만 봐서는
-> 알 수 없고, `summary.factCheck: 0` 이 "대조했는데 어긋난 게 없다" 로 읽힙니다.
-> 화면에서 사실 확인 항목을 아예 감추는 편이 안전합니다.
+> 일 때만 붙습니다. 지금은 사실 확인이 켜져 있으므로 `summary.factCheck` 를
+> 그대로 보여주면 됩니다. 다만 화면 글자 쪽은 꺼져 있어서
+> `type=CAPTION` + `FACT_CHECK` 조합은 나오지 않습니다.
 
 ---
 
@@ -448,7 +448,7 @@ DELETE /api/v1/videos/{id}              영상·결과·파일 삭제
 
 | 항목 | 상태 |
 |---|---|
-| v2.1 §10-3·10-4 화면 텍스트 사실 주장 → `type=CAPTION` + `FACT_CHECK` | 구현됨 · 기본 비활성 (`entity-check` 꺼짐) |
+| v2.1 §10-3·10-4 화면 텍스트 사실 주장 → `type=CAPTION` + `FACT_CHECK` | 구현됨 · 기본 비활성 (`fact-check-screen-text: false`) |
 | v2.1 §10-5 `ScreenTextReviewAnalyzer` 비활성화 | 아직 켜져 있음 (일부러 켜뒀습니다) |
 | §9 Range 200·206·416 계약 테스트 | 동작하지만 테스트 없음 |
 | 인증 | 없음. 주소가 공개되면 누구나 업로드 가능 |
