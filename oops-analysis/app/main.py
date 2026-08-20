@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from . import ocr, stt
 from .config import get_settings
-from .media import MediaError, prepare
+from .media import MediaError, prepare, PreparedVideo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -56,8 +56,7 @@ def probe(request: MediaRequest) -> dict:
         log.exception("길이 확인 실패")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
-        if video and not request.filePath:
-            video.cleanup()
+        _cleanup(video)
 
 
 @app.post("/transcribe")
@@ -76,8 +75,7 @@ def transcribe(request: MediaRequest) -> dict:
         log.exception("전사 실패")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
-        if video and not request.filePath:
-            video.cleanup()
+        _cleanup(video)
 
 
 @app.post("/ocr")
@@ -97,8 +95,28 @@ def run_ocr(request: MediaRequest) -> dict:
         log.exception("OCR 실패")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
-        if video and not request.filePath:
-            video.cleanup()
+        _cleanup(video)
+
+
+def _cleanup(video: PreparedVideo | None) -> None:
+    """작업 폴더를 지운다.
+
+    예전에는 `not request.filePath` 로 감싸서 업로드 파일일 때는 아예 안 지웠다.
+    유튜브는 workdir 안에 원본을 내려받으니 지우면 안 될 것처럼 보이지만,
+    로컬 파일도 workdir 는 따로 만든다(uuid 폴더 하나). 원본은 그 안에 없다.
+    그래서 업로드 경로에서도 지우는 것이 맞다.
+
+    안 지우면 분석 1회마다 이만큼 남는다.
+      audio.mp3 + 분할 조각        60분 영상에 8MB 안팎
+      frames/ JPEG 최대 300장      50~150MB
+    채점처럼 여러 편을 연달아 돌리면 디스크가 찬다.
+    workdir 를 청소하는 코드는 스프링 쪽에도 없다 — 여기가 유일하다.
+
+    /ocr 은 글자가 있는 프레임만 frameDir(스프링 쪽 uploads/frames)로 **복사**한다.
+    finally 는 return 값이 만들어진 뒤에 도므로 캡처 이미지는 그대로 남는다.
+    """
+    if video:
+        video.cleanup()
 
 
 def _guard_duration(duration_sec: float) -> None:

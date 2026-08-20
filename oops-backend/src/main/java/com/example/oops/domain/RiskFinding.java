@@ -134,15 +134,29 @@ public class RiskFinding extends BaseTimeEntity {
         this.severity = Severity.fromScore(score);
         this.startMs = startMs;
         this.endMs = endMs;
-        this.text = text;
-        this.speechText = speechText;
-        this.captionText = captionText;
-        this.reason = reason;
-        this.target = target;
+        // 길이를 여기서 자른다.
+        //
+        // reason·target 은 LLM 이 준 문자열이 그대로 들어온다.
+        // "한 문장" 이라고 적어뒀지만 모델이 길게 쓸 때가 있고, 그러면
+        // flush 에서 터진다. 이 파이프라인은 하나의 긴 트랜잭션이라
+        // 한 건 때문에 **그 영상의 모든 분석기 결과가 통째로 사라진다.**
+        // 카드 하나가 잘리는 것보다 그게 훨씬 나쁘다.
+        // ReviewReference·ReviewAction 은 이미 같은 방식으로 자르고 있다.
+        this.text = clamp(text, 2000);
+        this.speechText = clamp(speechText, 2000);
+        this.captionText = clamp(captionText, 2000);
+        this.reason = clamp(reason, 1000);
+        this.target = clamp(target, 200);
         this.frame = frame;
         this.priority = 0;
         this.crossModal = false;
         this.mergedCount = 1;
+    }
+
+    /** 컬럼 길이를 넘으면 자른다. 넘치면 저장이 실패해 분석 전체가 날아간다. */
+    private static String clamp(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /** 병합 단계에서만 호출한다. */

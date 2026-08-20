@@ -112,6 +112,19 @@ public class MediaController {
         HttpRange range = ranges.get(0);
         long start = range.getRangeStart(contentLength);
         long end = range.getRangeEnd(contentLength);
+
+        // 파일 끝을 넘는 요청은 416 이다.
+        //
+        // getRangeStart 는 경계를 검사하지 않는다. 1KB 파일에 'bytes=999999999-'
+        // 가 오면 end - start + 1 이 음수가 되고, ResourceRegion 생성자가
+        // IllegalArgumentException 을 던져 500 으로 나간다.
+        // 416 은 이미 정의해 뒀는데(RANGE_NOT_SATISFIABLE) 파싱 실패에서만 썼다.
+        if (start >= contentLength || end < start) {
+            return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + contentLength)
+                    .build();
+        }
+
         long length = Math.min(CHUNK_SIZE, end - start + 1);
 
         ResourceRegion region = new ResourceRegion(resource, start, length);

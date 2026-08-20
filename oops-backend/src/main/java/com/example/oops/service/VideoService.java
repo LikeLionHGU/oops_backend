@@ -45,6 +45,7 @@ public class VideoService {
     @Transactional
     public Video createFromUpload(MultipartFile file, String genre) {
         storageService.validateVideoFile(file);
+        requireAnalysisServer();
 
         Video video = videoRepository.save(Video.builder()
                 .sourceType(SourceType.UPLOAD)
@@ -61,6 +62,7 @@ public class VideoService {
     /** 유튜브 링크 등록 (명세 외 확장) */
     @Transactional
     public Video createFromUrl(VideoRegisterRequest request) {
+        requireAnalysisServer();
         return videoRepository.save(Video.builder()
                 .sourceType(SourceType.YOUTUBE)
                 .sourceUrl(request.url())
@@ -68,6 +70,26 @@ public class VideoService {
                 .channelName(request.channelName())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
+    }
+
+    /**
+     * 분석 서버가 살아 있는지 **행을 만들기 전에** 확인한다.
+     *
+     * 예전에는 startAnalysis 에서만 봤다. 그런데 업로드는 트랜잭션이 둘이다.
+     *   1) createFromUpload  — video 행 커밋 + 파일 저장
+     *   2) startAnalysis     — 여기서 503 WORKER_UNAVAILABLE
+     * 그래서 클라이언트는 videoId 없이 503 을 받는데 서버에는 행과 파일이 남았다.
+     * 그 영상은 job 이 없어서
+     *   · 이력에 영원히 '분석 중' 으로 뜨고
+     *   · status·report 는 409 INVALID_ANALYSIS_STATE 를 돌려주고
+     *   · 자동 정리 대상에서도 빠진다 (정리 조건이 '끝난 job 이 있는 것' 이다)
+     * 백엔드를 먼저 켜는 것이 보통의 순서라서 재현이 쉽다.
+     */
+    private void requireAnalysisServer() {
+        if (!analysisServerClient.isHealthy()) {
+            throw new BusinessException(ErrorCode.WORKER_UNAVAILABLE,
+                    "분석 서버에 연결할 수 없습니다. oops-analysis 가 실행 중인지 확인하세요.");
+        }
     }
 
     /**
