@@ -110,9 +110,16 @@ public class AnalysisPipeline {
             }
 
             // 2. 화면 → OCR 자막 (OCR 이 없으면 빈 리스트로 진행)
-            progressService.update(jobId, AnalysisStage.OCR, 35);
+            //
+            // 여기가 제일 오래 걸린다. 10분짜리 영상에 6분씩 걸린 적도 있다.
+            // 그 사이 진행률을 한 번도 안 올리면 화면이 멈춘 것처럼 보여서
+            // 사용자가 취소를 누르게 된다. 도는 동안 조금씩 올려준다.
+            progressService.update(jobId, AnalysisStage.OCR, 35, "화면 글자를 읽고 있습니다");
             mark = System.currentTimeMillis();
-            List<ScreenText> screenTexts = screenTextService.extractAndSave(video);
+            List<ScreenText> screenTexts;
+            try (var ticker = new ProgressTicker(jobId, AnalysisStage.OCR, 35, 55)) {
+                screenTexts = screenTextService.extractAndSave(video);
+            }
             elapsed.put("OCR", System.currentTimeMillis() - mark);
 
             // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
@@ -267,6 +274,62 @@ public class AnalysisPipeline {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             video.updateStatus(AnalysisStatus.FAILED);
             progressService.fail(jobId, "ANALYSIS_FAILED", e.getMessage());
+        }
+    }
+
+    /**
+     * 오래 걸리는 단계가 도는 동안 진행률을 조금씩 올려 준다.
+     *
+     * 화면 글자 인식은 한 번 부르면 몇 분씩 돌아온다.
+     * 그동안 아무 메시지도 안 나가면 두 가지 문제가 생긴다.
+     *
+     *   1. 화면이 멈춘 것처럼 보여 사용자가 취소를 누른다
+     *   2. WebSocket 이 조용해져서 앞단 프록시가 연결을 끊는다
+     *
+     * 2번은 하트비트로도 막지만, 진행률이 멈춰 있는 건 그것과 별개다.
+     *
+     * 실제 진척도를 알 수는 없다. 파이썬이 한 번에 다 하고 돌려주기 때문이다.
+     * 그래서 **끝 지점에 다가가되 닿지는 않게** 올린다.
+     * 남은 거리의 일부만 줄이는 방식이라 100%가 되어 멈춰 있는 일은 없다.
+     * 진짜 완료는 다음 단계가 찍는다.
+     */
+    private final class ProgressTicker implements AutoCloseable {
+
+        private static final long INTERVAL_MS = 5_000;
+
+        private final Thread thread;
+        private volatile boolean running = true;
+
+        ProgressTicker(Long jobId, AnalysisStage stage, int from, int to) {
+            this.thread = new Thread(() -> {
+                double current = from;
+                while (running) {
+                    try {
+                        Thread.sleep(INTERVAL_MS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    if (!running) return;
+
+                    // 남은 거리의 12% 씩 좁힌다. 끝에 가까울수록 느려진다.
+                    current += (to - current) * 0.12;
+                    try {
+                        progressService.update(jobId, stage, (int) current);
+                    } catch (Exception e) {
+                        // 진행률 갱신 실패로 분석을 멈출 이유는 없다
+                        log.debug("[pipeline] 진행률 갱신 실패: {}", e.getMessage());
+                    }
+                }
+            }, "progress-ticker");
+            this.thread.setDaemon(true);
+            this.thread.start();
+        }
+
+        @Override
+        public void close() {
+            running = false;
+            thread.interrupt();
         }
     }
 

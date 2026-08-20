@@ -46,7 +46,40 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
+        // 10초마다 서로 신호를 주고받는다.
+        //
+        // **이게 없으면 긴 단계에서 연결이 끊긴다.**
+        //
+        // 화면 글자 인식(OCR)은 한 번 호출하면 몇 분씩 돌아온다.
+        // 그 사이 진행률 메시지가 하나도 안 나가므로 연결이 조용해지는데,
+        // 앞단에 리버스 프록시(nginx 등)가 있으면 보통 60초쯤 지나
+        // "죽은 연결" 로 보고 끊어버린다.
+        //
+        // 프론트는 폴링으로 넘어가서 화면은 돌아가지만,
+        // 매번 "실시간 연결이 잠시 끊겨..." 가 뜨고 진행률이 뚝뚝 끊긴다.
+        //
+        // 하트비트를 켜면 할 말이 없어도 10초마다 신호가 오가서
+        // 프록시가 연결을 살아 있는 것으로 본다.
+        registry.enableSimpleBroker("/topic")
+                .setHeartbeatValue(new long[]{10_000, 10_000})
+                .setTaskScheduler(heartbeatScheduler());
+
         registry.setApplicationDestinationPrefixes("/app");
+    }
+
+    /**
+     * 하트비트를 보낼 스레드.
+     *
+     * SimpleBroker 는 스케줄러를 주지 않으면 하트비트 설정을 무시한다.
+     * 설정만 하고 스케줄러를 빼먹으면 조용히 안 도는데,
+     * 로그도 안 남아서 "설정했는데 왜 여전히 끊기지" 가 된다.
+     */
+    @org.springframework.context.annotation.Bean
+    public org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler heartbeatScheduler() {
+        var scheduler = new org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("ws-heartbeat-");
+        scheduler.initialize();
+        return scheduler;
     }
 }
