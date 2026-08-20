@@ -50,6 +50,15 @@ public class AnalysisPipeline {
      */
     private static final int SPEECH_WINDOW_STRIDE = 17;
 
+    /**
+     * Tier 1 의 gpt-4o-mini 분당 토큰 한도.
+     *
+     * 요청 수(500)보다 **이쪽이 먼저 걸린다.**
+     * 호출 하나가 3천 토큰쯤 쓰므로 실제 상한은 분당 60여 건이다.
+     * 요청 한도만 보고 500건까지 밀어붙이면 토큰 쪽에서 막힌다.
+     */
+    private static final long TIER1_TOKENS_PER_MINUTE = 200_000;
+
     private final List<ContentAnalyzer> analyzers;
     private final OopsProperties properties;
     private final TranscriptService transcriptService;
@@ -64,6 +73,7 @@ public class AnalysisPipeline {
     private final AnalysisCoverageRepository coverageRepository;
     private final ReviewActionRepository actionRepository;
     private final OpenAiClient openAiClient;
+    private final com.example.oops.config.OpenAiProperties openAiProperties;
     private final ReviewReferenceRepository referenceRepository;
     private final AnalysisReportRepository reportRepository;
 
@@ -489,8 +499,20 @@ public class AnalysisPipeline {
         log.info("[openai-quota] videoId={} 60분 환산 약 {}건 (고정 {} + 대본 {}줄→창 {}개) · 토큰 약 {}",
                 videoId, projected, fixed, linesAt60, windowsAt60, tokensPerCall * projected);
 
-        log.info("[openai-quota] videoId={} 하루 한도가 200건이면 60분짜리 약 {}편",
-                videoId, Math.max(1, 200 / Math.max(1, projected)));
+        long dailyLimit = openAiProperties.requestsPerDayOrDefault();
+        log.info("[openai-quota] videoId={} 하루 한도 {}건이면 60분짜리 약 {}편",
+                videoId, dailyLimit, Math.max(1, dailyLimit / Math.max(1, projected)));
+
+        // **분당 토큰(TPM)이 분당 요청(RPM)보다 먼저 걸린다.**
+        //
+        // Tier 1 은 분당 500건인데 분당 20만 토큰이다.
+        // 호출 하나가 3천 토큰쯤 쓰므로 실제로는 분당 60여 건이 상한이다.
+        // 요청 수만 보고 500건까지 밀어붙이면 토큰 쪽에서 막힌다.
+        if (tokensPerCall > 0) {
+            long callsPerMinuteByToken = TIER1_TOKENS_PER_MINUTE / tokensPerCall;
+            log.info("[openai-quota] videoId={} 호출당 약 {}토큰 → 분당 토큰 한도로는 약 {}건까지",
+                    videoId, tokensPerCall, callsPerMinuteByToken);
+        }
 
         // 표본이 너무 짧으면 환산을 믿지 말라고 알린다.
         // 1분도 안 되는 영상은 대본 몇 줄로 60분을 추정하는 셈이라 오차가 크다.
