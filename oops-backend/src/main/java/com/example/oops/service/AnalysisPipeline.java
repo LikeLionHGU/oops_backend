@@ -44,6 +44,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AnalysisPipeline {
 
+    /**
+     * 발언 검토가 대본을 몇 줄씩 건너뛰며 훑는지 (창 20줄 - 겹침 3줄).
+     * 60분 환산에서 창 개수를 세는 데만 쓴다.
+     */
+    private static final int SPEECH_WINDOW_STRIDE = 17;
+
     private final List<ContentAnalyzer> analyzers;
     private final OopsProperties properties;
     private final TranscriptService transcriptService;
@@ -274,7 +280,7 @@ public class AnalysisPipeline {
             log.info("[pipeline] 완료 videoId={} score={} events={} 총 {}초",
                     videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 — {}", formatElapsed(elapsed, total));
-            logCost(videoId, video.getDurationSec());
+            logCost(videoId, video.getDurationSec(), transcript.size());
 
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
@@ -371,7 +377,7 @@ public class AnalysisPipeline {
      * 긴 영상에서는 LLM 비용보다 음성 인식이 훨씬 크다.
      * LLM 만 보여주면 "생각보다 싸네" 라고 잘못 판단하게 된다.
      */
-    private void logCost(Long videoId, Integer durationSec) {
+    private void logCost(Long videoId, Integer durationSec, int transcriptLines) {
         OpenAiClient.TokenUsage usage = openAiClient.videoUsage();
 
         double sttUsd = 0;
@@ -384,7 +390,7 @@ public class AnalysisPipeline {
         // 한도 사용량은 비용보다 먼저 남긴다.
         // 호출이 전부 실패했을 때가 가장 알고 싶은 순간인데,
         // 아래 조기 반환 뒤에 두면 바로 그때 안 찍힌다.
-        logRequestBudget(videoId, durationSec, usage);
+        logRequestBudget(videoId, durationSec, transcriptLines, usage);
 
         if (usage.isEmpty() && sttUsd == 0) {
             return;
@@ -420,7 +426,7 @@ public class AnalysisPipeline {
      * 실제 대상(20~60분)에서 한도에 걸릴지 미리 알기 위해서다.
      * 요청 수는 대본 길이에 거의 비례하므로 이 환산이 꽤 잘 맞는다.
      */
-    private void logRequestBudget(Long videoId, Integer durationSec,
+    private void logRequestBudget(Long videoId, Integer durationSec, int transcriptLines,
                                   OpenAiClient.TokenUsage usage) {
         if (usage.requests() == 0) {
             return;
@@ -438,42 +444,60 @@ public class AnalysisPipeline {
                             .collect(java.util.stream.Collectors.joining(", ")));
         }
 
-        if (durationSec == null || durationSec <= 0) {
+        if (durationSec == null || durationSec <= 0 || transcriptLines <= 0) {
             return;
         }
         double minutes = durationSec / 60.0;
 
-        // **총합을 그냥 60배 하면 안 된다.**
+        // **호출 수를 영상 길이로 곱하면 안 된다.**
         //
-        // 분석기 대부분은 상한이 걸려 있어서 영상이 길어져도 호출이 안 는다.
+        // 분석기 대부분은 상한이 걸려 있어 길어져도 호출이 안 는다.
         //   entity-check 7회 / context-check 9회 / context-lexicon 2회 가 끝이다.
-        // 늘어나는 건 대본을 창 단위로 훑는 분석기뿐이다.
         //
-        // 짧은 영상일수록 고정 호출의 비중이 커서, 그냥 곱하면
-        // 실제보다 몇 배 크게 나온다. 1분짜리 13건을 60배 하면 780건인데
-        // 실제 60분 영상은 50~60건 수준이다.
+        // 늘어나는 건 대본을 창 단위로 훑는 분석기뿐인데, 그것도 **길이가 아니라
+        // 대본 줄 수**에 비례한다. 그리고 아무리 짧아도 창은 하나 생긴다.
+        //
+        // 이 차이가 짧은 영상에서 크게 벌어진다.
+        // 8초 영상은 대본이 두세 줄이라 창이 1개다. 그 1회를 길이로 곱하면
+        // 60분에 450회가 나오는데, 실제로는 대본 줄이 늘어난 만큼만 는다.
+        // 그래서 줄 수를 먼저 환산하고, 거기서 창 개수를 센다.
         java.util.Set<String> scaling = analyzers.stream()
                 .filter(ContentAnalyzer::scalesWithLength)
                 .map(ContentAnalyzer::key)
                 .collect(java.util.stream.Collectors.toSet());
 
+        long linesAt60 = Math.round(transcriptLines / minutes * 60);
+        long windowsAt60 = Math.max(1, (long) Math.ceil(linesAt60 / (double) SPEECH_WINDOW_STRIDE));
+
         long fixed = 0;
         long scaled = 0;
         for (Map.Entry<String, Long> e : byAnalyzer.entrySet()) {
             if (scaling.contains(e.getKey())) {
-                scaled += Math.round(e.getValue() / minutes * 60);
+                scaled += windowsAt60;   // 창 하나에 한 번씩 부른다
             } else {
                 fixed += e.getValue();   // 길어져도 그대로다
             }
         }
         long projected = fixed + scaled;
 
-        log.info("[openai-quota] videoId={} 60분 환산 약 {}건 (고정 {} + 길이비례 {}) · 토큰 약 {}",
-                videoId, projected, fixed, scaled,
-                Math.round((usage.promptTokens() + usage.completionTokens()) / minutes * 60));
+        // 토큰도 길이가 아니라 **호출 수**로 환산한다.
+        // 프롬프트가 커서 호출 한 번에 드는 고정 토큰이 내용보다 크다.
+        // 길이로 곱하면 그 고정분까지 같이 부풀어 몇 배가 된다.
+        long tokensPerCall = usage.calls() == 0 ? 0
+                : (usage.promptTokens() + usage.completionTokens()) / usage.calls();
+
+        log.info("[openai-quota] videoId={} 60분 환산 약 {}건 (고정 {} + 대본 {}줄→창 {}개) · 토큰 약 {}",
+                videoId, projected, fixed, linesAt60, windowsAt60, tokensPerCall * projected);
 
         log.info("[openai-quota] videoId={} 하루 한도가 200건이면 60분짜리 약 {}편",
                 videoId, Math.max(1, 200 / Math.max(1, projected)));
+
+        // 표본이 너무 짧으면 환산을 믿지 말라고 알린다.
+        // 1분도 안 되는 영상은 대본 몇 줄로 60분을 추정하는 셈이라 오차가 크다.
+        if (durationSec < 60) {
+            log.info("[openai-quota] videoId={} 영상이 {}초라 60분 환산은 참고용입니다. "
+                    + "정확히 재려면 3분 이상으로 돌려보세요.", videoId, durationSec);
+        }
     }
 
     /**
