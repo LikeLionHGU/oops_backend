@@ -168,6 +168,18 @@ public class FindingFusionService {
                 candidates.size(), result.size(),
                 result.stream().filter(RiskFinding::isCrossModal).count(),
                 repeated, candidates.size() - result.size());
+
+        // 무엇이 무엇에 흡수됐는지 남긴다.
+        //
+        // 예전에는 "제거 9건" 만 찍혀서, 분석기가 못 잡은 건지
+        // 잡았는데 여기서 사라진 건지 구분이 안 됐다.
+        // 8초 영상에서 10건이 1건으로 줄어든 걸 찾는 데 한참 걸렸다.
+        if (candidates.size() > result.size()) {
+            result.stream()
+                    .filter(f -> f.getMergedCount() > 1)
+                    .forEach(f -> log.info("[fusion] '{}' 로 {}건 합침 ({} {}ms)",
+                            f.getTarget(), f.getMergedCount(), f.getCategory(), f.getStartMs()));
+        }
         return result;
     }
 
@@ -233,10 +245,41 @@ public class FindingFusionService {
             RiskFinding first = members.get(0);
             if (!groupOf(first.getCategory()).equals(groupOf(candidate.getCategory()))) return false;
 
+            // **가리키는 대상이 서로 분명히 다르면 시간이 붙어 있어도 다른 건이다.**
+            //
+            // 이 조건이 없으면 짧은 영상에서 모든 후보가 한 덩어리가 된다.
+            // 8초 영상은 모든 것이 서로 3초 안에 있기 때문이다.
+            // 실제로 '무섭노', '오조오억', '독도는 일본땅' 이 전혀 다른 지적인데
+            // 한 장면이라는 이유로 묶여서 10건이 1건으로 줄었다.
+            //
+            // 같은 문구가 프레임마다 다시 잡히는 경우는 2번에서 이미 걸러진다.
+            // 여기까지 온 것 중 대상이 다른 건 정말 다른 지적이다.
+            if (hasDifferentTarget(candidate)) return false;
+
             long gap = Math.max(
                     candidate.getStartMs() - maxEndMs(),
                     minStartMs() - candidate.getEndMs());
             return gap <= MERGE_WINDOW_MS;
+        }
+
+        /**
+         * 양쪽 다 대상을 적었는데 서로 다른지.
+         *
+         * 한쪽이라도 대상이 비어 있으면 false 다.
+         * 모르는 것을 다르다고 단정하면 묶여야 할 것까지 흩어진다.
+         */
+        private boolean hasDifferentTarget(RiskFinding candidate) {
+            String candidateTarget = candidate.getTarget();
+            if (candidateTarget == null || candidateTarget.isBlank()) return false;
+
+            List<String> targets = members.stream()
+                    .map(RiskFinding::getTarget)
+                    .filter(t -> t != null && !t.isBlank())
+                    .toList();
+            if (targets.isEmpty()) return false;
+
+            return targets.stream()
+                    .noneMatch(t -> similarity(t, candidateTarget) >= SAME_TARGET_THRESHOLD);
         }
 
         /** 대상 이름이 겹치는지. "할머니" 와 "할머니 맛" 은 같은 대상으로 본다. */
