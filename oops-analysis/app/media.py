@@ -8,6 +8,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .config import get_settings
 
@@ -16,6 +17,48 @@ log = logging.getLogger(__name__)
 
 class MediaError(RuntimeError):
     pass
+
+
+YOUTUBE_HOSTS = {
+    "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
+    "youtu.be", "www.youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com",
+}
+
+
+def validate_video_url(value: str) -> str:
+    if len(value) > 2048:
+        raise MediaError("영상 URL이 너무 깁니다.")
+    try:
+        parsed = urlsplit(value)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError as e:
+        raise MediaError("YouTube 영상 URL이 올바르지 않습니다.") from e
+
+    if (parsed.scheme.lower() != "https"
+            or host is None
+            or host.lower() not in YOUTUBE_HOSTS
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in (None, 443)
+            or not parsed.path.strip("/")):
+        raise MediaError("YouTube 영상 URL만 사용할 수 있습니다.")
+    return value
+
+
+def resolve_storage_path(value: str, category: str) -> Path:
+    """Spring 저장소 중 원본 videos/ 또는 OCR 결과 frames/ 하위 경로만 허용한다."""
+    root = Path(get_settings().media_storage_root).expanduser().resolve()
+    candidate = Path(value).expanduser().resolve()
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as e:
+        raise MediaError("요청한 파일 경로가 허용된 저장소 밖에 있습니다.") from e
+
+    expected = {"source": "videos", "frames": "frames"}.get(category)
+    if expected is None or not relative.parts or relative.parts[0] != expected:
+        raise MediaError("요청한 경로 유형이 허용되지 않습니다.")
+    return candidate
 
 
 def ensure_ffmpeg() -> None:
@@ -56,17 +99,19 @@ def probe_duration(path: Path) -> float:
 def prepare(video_url: str | None, file_path: str | None) -> PreparedVideo:
     """유튜브 링크면 받아오고, 로컬 파일이면 그대로 쓴다."""
     ensure_ffmpeg()
-    workdir = _new_workdir()
-
     if file_path:
-        src = Path(file_path)
-        if not src.exists():
-            raise MediaError(f"파일이 없습니다: {file_path}")
+        src = resolve_storage_path(file_path, "source")
+        if not src.is_file():
+            raise MediaError("요청한 영상 파일을 찾을 수 없습니다.")
+        workdir = _new_workdir()
         return PreparedVideo(path=src, workdir=workdir,
                              duration_sec=probe_duration(src), title=src.name)
 
     if not video_url:
         raise MediaError("videoUrl 또는 filePath 중 하나는 필요합니다.")
+    video_url = validate_video_url(video_url)
+
+    workdir = _new_workdir()
 
     from yt_dlp import YoutubeDL
 

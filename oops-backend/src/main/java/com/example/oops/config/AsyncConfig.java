@@ -4,6 +4,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
+
+import java.util.Map;
 
 /**
  * 분석은 오래 걸리므로 요청 스레드와 분리해서 돌린다.
@@ -26,6 +29,20 @@ public class AsyncConfig {
         executor.setMaxPoolSize(properties.maxPoolSizeOrDefault());
         executor.setQueueCapacity(properties.queueCapacityOrDefault());
         executor.setThreadNamePrefix("analysis-");
+        executor.setTaskDecorator(task -> {
+            Map<String, String> requestContext = MDC.getCopyOfContextMap();
+            return () -> {
+                Map<String, String> previousContext = MDC.getCopyOfContextMap();
+                try {
+                    if (requestContext == null) MDC.clear();
+                    else MDC.setContextMap(requestContext);
+                    task.run();
+                } finally {
+                    if (previousContext == null) MDC.clear();
+                    else MDC.setContextMap(previousContext);
+                }
+            };
+        });
         executor.initialize();
         return executor;
     }

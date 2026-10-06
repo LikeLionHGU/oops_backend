@@ -38,6 +38,23 @@ public class RestClientConfig {
                 .build();
     }
 
+    /** 헬스 확인과 업로드 전 Worker 확인은 분석 호출과 별도의 짧은 제한을 쓴다. */
+    @Bean
+    public RestClient analysisHealthRestClient(AnalysisServerProperties properties) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(2))
+                .build();
+
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(2));
+
+        return RestClient.builder()
+                .baseUrl(properties.baseUrl() != null ? properties.baseUrl() : "http://localhost:8000")
+                .requestFactory(factory)
+                .build();
+    }
+
     /**
      * 구글 뉴스 RSS 용. 인증이 없는 공개 피드라 키가 필요 없다.
      * 기본 User-Agent 로는 응답이 막히는 경우가 있어 브라우저 형태로 보낸다.

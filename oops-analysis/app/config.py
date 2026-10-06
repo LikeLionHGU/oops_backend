@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     openai_project_id: str = ""
     whisper_model: str = "whisper-1"
     work_dir: str = "./workdir"
+    # Spring 의 storage.location 과 같은 디렉터리. 서버 배포 환경에서는 절대 경로로 지정한다.
+    media_storage_root: str = "../oops-backend/uploads"
     ocr_lang: str = "korean"
 
     # 프레임을 몇 초 간격으로 뽑을지 (OCR 기본값)

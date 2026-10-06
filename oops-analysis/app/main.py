@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from . import ocr, stt
 from .config import get_settings
-from .media import MediaError, prepare
+from .media import MediaError, prepare, resolve_storage_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -87,7 +87,9 @@ def run_ocr(request: MediaRequest) -> dict:
         video = prepare(request.videoUrl, request.filePath)
         _guard_duration(video.duration_sec)
         interval = request.intervalSec or get_settings().default_interval_sec
-        return ocr.run(video, interval, request.frameDir)
+        frame_dir = (str(resolve_storage_path(request.frameDir, "frames"))
+                     if request.frameDir else None)
+        return ocr.run(video, interval, frame_dir)
     except ocr.OcrUnavailable as e:
         # Spring 쪽에서 503 을 보고 OCR 단계를 조용히 건너뛴다
         raise HTTPException(status_code=503, detail=str(e)) from e

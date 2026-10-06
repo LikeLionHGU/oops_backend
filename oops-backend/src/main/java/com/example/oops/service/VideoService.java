@@ -25,11 +25,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class VideoService {
+
+    private static final Set<String> YOUTUBE_HOSTS = Set.of(
+            "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
+            "youtu.be", "www.youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com");
 
     private final VideoRepository videoRepository;
     private final AnalysisJobRepository jobRepository;
@@ -61,13 +68,37 @@ public class VideoService {
     /** 유튜브 링크 등록 (명세 외 확장) */
     @Transactional
     public Video createFromUrl(VideoRegisterRequest request) {
+        String videoUrl = validateVideoUrl(request.url());
         return videoRepository.save(Video.builder()
                 .sourceType(SourceType.YOUTUBE)
-                .sourceUrl(request.url())
+                .sourceUrl(videoUrl)
                 .title(request.title())
                 .channelName(request.channelName())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
+    }
+
+    private String validateVideoUrl(String value) {
+        if (value == null || value.length() > 2048) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "YouTube 영상 URL이 올바르지 않습니다.");
+        }
+        try {
+            URI uri = new URI(value.trim()).parseServerAuthority();
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme())
+                    || host == null
+                    || !YOUTUBE_HOSTS.contains(host.toLowerCase(java.util.Locale.ROOT))
+                    || uri.getUserInfo() != null
+                    || (uri.getPort() != -1 && uri.getPort() != 443)
+                    || uri.getRawPath() == null
+                    || uri.getRawPath().equals("/")) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                        "YouTube 영상 URL만 등록할 수 있습니다.");
+            }
+            return value.trim();
+        } catch (URISyntaxException e) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "YouTube 영상 URL이 올바르지 않습니다.");
+        }
     }
 
     /**

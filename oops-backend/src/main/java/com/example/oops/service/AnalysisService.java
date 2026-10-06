@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.core.task.TaskRejectedException;
 
 import com.example.oops.common.Ids;
 
@@ -29,6 +30,7 @@ public class AnalysisService {
     private final VideoService videoService;
     private final VideoRepository videoRepository;
     private final AnalysisPipeline analysisPipeline;
+    private final JobProgressService progressService;
     private final AnalysisServerClient analysisServerClient;
     private final AnalysisJobRepository jobRepository;
     private final RiskFindingRepository findingRepository;
@@ -72,7 +74,13 @@ public class AnalysisService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                analysisPipeline.runAsync(jobId);
+                try {
+                    analysisPipeline.runAsync(jobId);
+                } catch (TaskRejectedException e) {
+                    log.warn("[pipeline] 분석 대기열이 가득 차 작업을 시작하지 못했습니다. jobId={}", jobId);
+                    progressService.fail(jobId, "ANALYSIS_QUEUE_FULL",
+                            "분석 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.");
+                }
             }
         });
 

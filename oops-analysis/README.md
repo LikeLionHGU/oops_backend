@@ -68,3 +68,4 @@ OCR 없이 STT만 먼저 테스트하려면 `pip install`에서 paddle 계열을
 ```
 
 `videoUrl`이면 yt-dlp로 받고, `filePath`면 로컬 파일을 쓴다.
+`filePath`는 `MEDIA_STORAGE_ROOT/videos/` 아래 원본만 허용하고, OCR 프레임은 같은 저장소의 `frames/` 아래에만 쓴다. 로컬 기본값은 `../oops-backend/uploads`이며, 배포 시 Spring의 `oops.storage.location`과 같은 공유 경로로 `MEDIA_STORAGE_ROOT`를 설정한다. YouTube 등록은 HTTPS YouTube 도메인 URL만 허용한다.

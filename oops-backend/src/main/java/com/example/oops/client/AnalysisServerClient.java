@@ -32,20 +32,23 @@ public class AnalysisServerClient {
     private static final ThreadLocal<String> lastFailure = new ThreadLocal<>();
 
     private final RestClient restClient;
+    private final RestClient healthRestClient;
     private final AnalysisServerProperties properties;
     private final StorageService storageService;
 
     public AnalysisServerClient(@Qualifier("analysisRestClient") RestClient restClient,
+                                @Qualifier("analysisHealthRestClient") RestClient healthRestClient,
                                 AnalysisServerProperties properties,
                                 StorageService storageService) {
         this.restClient = restClient;
+        this.healthRestClient = healthRestClient;
         this.properties = properties;
         this.storageService = storageService;
     }
 
     public boolean isHealthy() {
         try {
-            restClient.get().uri("/health").retrieve().toBodilessEntity();
+            healthRestClient.get().uri("/health").retrieve().toBodilessEntity();
             return true;
         } catch (RestClientException e) {
             return false;
