@@ -35,15 +35,6 @@
 
   "entries": [
     {
-      "id": "CTX_001", "patterns": ["~노"], "triggerMode": "CONTEXT_REQUIRED",
-      "regex": "[가-힣]{2,}노[?!.]?\\s*$|[가-힣]{2,}노[?!]",
-      "contextHints": ["정치", "대통령", "좌파", "우파", "일베", "커뮤니티"],
-      "suppressHints": ["머하노", "뭐하노", "가가", "억수로", "우얄", "안캐", "그카", "이카", "왔노", "밥은"],
-      "needsContext": true,
-      "reason": "문장 끝의 '~노' 어미입니다. 경상도 사투리로도 쓰이지만 특정 커뮤니티 말투로 읽히기도 해 시청자 반응이 갈릴 수 있습니다.",
-      "reviewedAt": "2026-08-17"
-    },
-    {
       "id": "CTX_002", "patterns": ["이기야"], "triggerMode": "CONTEXT_REQUIRED",
       "contextHints": ["정치", "커뮤니티", "일베"],
       "suppressHints": ["사투리", "경상", "부산", "대구"],

@@ -169,13 +169,13 @@ GET /api/v1/videos/history?status=ALL&page=0&size=20
 ```json
 { "id": "128", "startMs": 3000, "endMs": 8000,
   "type": "SPEECH", "candidateType": "SPEECH_REVIEW",
-  "title": "'~노' — 배경 확인 필요",
-  "reason": "문장 끝의 '~노' 어미입니다. 경상도 사투리로도 쓰이지만...",
+  "title": "표현 — 배경 확인 필요",
+  "reason": "구체적인 사건·집단·사회적 맥락과 연결된 표현입니다.",
   "frameUrl": "/api/v1/videos/123/frames/45",
   "references": [], "reviewAction": "CONFIRMED",
   "severity": "MEDIUM", "occurrences": 5,
 
-  "text": "정치판에 내 얘기가 왜 나오노?",
+  "text": "정치판에 내 얘기가 왜 나오지?",
   "contextBefore": "아 진짜로?",
   "contextAfter": "그러게 말이에요",
   "riskTypes": ["UNFAMILIAR_CONTEXT"] }

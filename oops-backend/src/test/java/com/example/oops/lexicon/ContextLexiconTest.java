@@ -33,7 +33,7 @@ class ContextLexiconTest {
     @Test
     @DisplayName("사전이 로드된다")
     void loads() {
-        assertThat(lexicon.size()).isGreaterThanOrEqualTo(50);
+        assertThat(lexicon.size()).isGreaterThanOrEqualTo(49);
     }
 
     // ---------- 안 잡아야 하는 것 ----------
@@ -98,9 +98,10 @@ class ContextLexiconTest {
     }
 
     @Test
-    @DisplayName("문장 끝의 ~노 어미를 잡는다")
-    void catchesNoEnding() {
-        assertThat(matches("이거 진짜 무섭노")).isTrue();
+    @DisplayName("~노 어미는 사투리 오탐 방지를 위해 기본 탐지에서 제외한다")
+    void ignoresNoEnding() {
+        assertThat(matches("이거 진짜 무섭노")).isFalse();
+        assertThat(matches("오늘 기분 좋노")).isFalse();
     }
 
     @Test

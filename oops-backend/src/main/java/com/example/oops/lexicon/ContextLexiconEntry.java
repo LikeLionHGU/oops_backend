@@ -11,7 +11,7 @@ public record ContextLexiconEntry(
         String id,
         List<String> patterns,
 
-        /** 정규식이 필요한 항목만 (예: 문장 끝의 '~노' 어미) */
+        /** 정규식이 필요한 항목만 (예: 특정 형태로만 나타나는 표현) */
         String regex,
 
         ContextTriggerMode triggerMode,
