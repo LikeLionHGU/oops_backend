@@ -19,9 +19,9 @@ import java.util.List;
  * 영상 하나에 원본 수십 MB 와 프레임 이미지 수십 장이 쌓인다.
  * 지우는 로직이 없으면 서버 디스크가 조용히 찬다.
  *
- * 보관 기간은 oops.storage.retention-days 로 정한다.
- * 0 이하면 정리하지 않는다. 개발 중에 자기 테스트 영상이 사라지면 곤란하므로
- * 기본값을 짧게 두지 않았다.
+ * 전체 보관 기간은 oops.storage.retention-days 로 정한다.
+ * 원본만 먼저 지우려면 oops.storage.source-retention-hours 를 사용한다.
+ * 두 설정 모두 0 이하면 정리하지 않는다.
  */
 @Slf4j
 @Component
@@ -32,6 +32,33 @@ public class StorageCleanupScheduler {
     private final VideoRepository videoRepository;
     private final VideoDeletionService deletionService;
     private final StorageService storageService;
+
+    /** 원본만 매시 정각 정리한다. 리포트·대본·프레임은 남긴다. */
+    @Scheduled(cron = "0 0 * * * *")
+    public void purgeExpiredSources() {
+        int retentionHours = properties.storage().sourceRetentionHoursOrDefault();
+        if (retentionHours <= 0) {
+            return;
+        }
+
+        LocalDateTime threshold = LocalDateTime.now().minusHours(retentionHours);
+        List<Video> targets = videoRepository.findByCreatedAtBeforeAndStatusIn(
+                threshold, List.of(AnalysisStatus.COMPLETED, AnalysisStatus.FAILED));
+
+        int deleted = 0;
+        for (Video video : targets) {
+            try {
+                storageService.deleteSourceFile(video.getId());
+                deleted++;
+            } catch (Exception e) {
+                log.warn("[purge-source] videoId={} 원본 삭제 실패: {}",
+                        video.getId(), e.getMessage());
+            }
+        }
+        if (deleted > 0) {
+            log.info("[purge-source] 원본 {}개 삭제 완료 (기준: {}시간)", deleted, retentionHours);
+        }
+    }
 
     /** 매일 새벽 4시 */
     @Scheduled(cron = "0 0 4 * * *")

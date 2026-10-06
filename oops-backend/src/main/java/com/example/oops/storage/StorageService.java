@@ -99,6 +99,11 @@ public class StorageService {
         deleteDirectory(frameDir(videoId));
     }
 
+    /** 원본 영상만 지우고 OCR 프레임과 분석 결과는 남긴다. */
+    public void deleteSourceFile(Long videoId) {
+        deleteDirectory(resolve("videos/%d".formatted(videoId)));
+    }
+
     /** 저장소가 지금 몇 바이트를 쓰고 있는지 */
     public long usedBytes() {
         Path root = root();
@@ -114,6 +119,17 @@ public class StorageService {
         } catch (IOException e) {
             log.warn("저장소 용량 계산 실패", e);
             return 0;
+        }
+    }
+
+    /** 원본 업로드를 저장할 수 있는지 확인한다. health check에서 사용한다. */
+    public boolean isWritable() {
+        try {
+            Files.createDirectories(root());
+            return Files.isWritable(root());
+        } catch (IOException e) {
+            log.warn("저장소 쓰기 가능 여부 확인 실패", e);
+            return false;
         }
     }
 

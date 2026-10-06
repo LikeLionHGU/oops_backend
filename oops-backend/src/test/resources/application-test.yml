@@ -28,10 +28,18 @@ spring:
       enabled: false
 
 oops:
+  rate-limit:
+    uploads-per-minute: 10
+    retries-per-minute: 5
+  analysis-executor:
+    core-pool-size: 1
+    max-pool-size: 2
+    queue-capacity: 50
   storage:
     # 테스트가 실제 업로드 폴더를 건드리지 않게 한다
     location: ./build/test-uploads
     retention-days: 0
+    source-retention-hours: 0
   use-dummy-transcript: true
 
 logging:
