@@ -1,5 +1,6 @@
 package com.example.oops.common;
 
+import com.example.oops.security.RequestIdFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +14,6 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -22,7 +22,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
-        return build(e.getErrorCode(), e.getMessage(), e, false);
+        ResponseEntity<ApiResponse<Void>> response = build(e.getErrorCode(), e.getMessage(), e, false);
+        if (e.getErrorCode() == ErrorCode.RATE_LIMIT_EXCEEDED) {
+            return ResponseEntity.status(response.getStatusCode())
+                    .header("Retry-After", "60")
+                    .body(response.getBody());
+        }
+        return response;
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
@@ -92,7 +98,7 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<ApiResponse<Void>> build(ErrorCode code, String message,
                                                    Exception e, boolean unexpected) {
-        String traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String traceId = RequestIdFilter.currentId();
 
         if (unexpected) {
             log.error("[{}] 처리되지 않은 예외", traceId, e);

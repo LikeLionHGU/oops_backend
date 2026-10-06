@@ -10,6 +10,7 @@ public enum ErrorCode {
     EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "검토 후보를 찾을 수 없습니다."),
     UNSUPPORTED_VIDEO_FORMAT(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 영상 형식입니다."),
     MAX_UPLOAD_SIZE_EXCEEDED(HttpStatus.PAYLOAD_TOO_LARGE, "업로드 가능한 파일 크기를 초과했습니다."),
+    RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     // 업로드 직후 길이 검증은 아직 없다. 현재는 분석 중에 파이썬이 길이를 재고 실패로 끝낸다.
     // 명세 §2-1 대로 업로드에서 거절하려면 파이썬에 /probe 를 추가해야 한다.
     MAX_VIDEO_DURATION_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "분석 가능한 영상 길이를 초과했습니다."),

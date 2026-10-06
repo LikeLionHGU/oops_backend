@@ -9,6 +9,7 @@ import com.example.oops.service.AnalysisService;
 import com.example.oops.service.ReviewActionService;
 import com.example.oops.service.VideoDeletionService;
 import com.example.oops.service.VideoService;
+import com.example.oops.security.RequestRateLimiter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.List;
 
@@ -32,6 +34,7 @@ public class VideoController {
     private final AnalysisService analysisService;
     private final VideoDeletionService videoDeletionService;
     private final ReviewActionService reviewActionService;
+    private final RequestRateLimiter requestRateLimiter;
 
     @Operation(summary = "영상 업로드",
             description = """
@@ -51,7 +54,10 @@ public class VideoController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<VideoUploadResponse>> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestPart(value = "genre", required = false) String genre) {
+            @RequestPart(value = "genre", required = false) String genre,
+            HttpServletRequest request) {
+
+        requestRateLimiter.checkUpload(clientKey(request));
 
         Video video = videoService.createFromUpload(file, genre);
         AnalysisJob job = analysisService.startAnalysis(video.getId());
@@ -69,7 +75,10 @@ public class VideoController {
                     """)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<VideoUploadResponse>> registerByUrl(
-            @Valid @RequestBody VideoRegisterRequest request) {
+            @Valid @RequestBody VideoRegisterRequest request,
+            HttpServletRequest httpRequest) {
+
+        requestRateLimiter.checkUpload(clientKey(httpRequest));
 
         Video video = videoService.createFromUrl(request);
         AnalysisJob job = analysisService.startAnalysis(video.getId());
@@ -116,7 +125,9 @@ public class VideoController {
                     이미 분석 중이면 `ANALYSIS_IN_PROGRESS`(409) 가 온다.
                     """)
     @PostMapping("/{videoId}/analysis/retry")
-    public ResponseEntity<ApiResponse<AnalysisRetryResponse>> retry(@PathVariable String videoId) {
+    public ResponseEntity<ApiResponse<AnalysisRetryResponse>> retry(
+            @PathVariable String videoId, HttpServletRequest request) {
+        requestRateLimiter.checkRetry(clientKey(request));
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.ok(analysisService.retry(Ids.parse(videoId))));
     }
@@ -218,5 +229,15 @@ public class VideoController {
     @GetMapping("/{videoId}/screen-texts")
     public ApiResponse<List<TranscriptLineDto>> screenTexts(@PathVariable String videoId) {
         return ApiResponse.ok(analysisService.getScreenTexts(Ids.parse(videoId)));
+    }
+
+    private String clientKey(HttpServletRequest request) {
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) return realIp.trim();
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",", 2)[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

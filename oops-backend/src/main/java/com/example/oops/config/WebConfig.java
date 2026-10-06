@@ -37,7 +37,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("Content-Type", "Accept", "Range")
                 // 영상 재생에 필요하다. 노출하지 않으면 브라우저가 Range 응답을 못 읽는다.
-                .exposedHeaders("Content-Range", "Accept-Ranges", "Content-Length")
+                .exposedHeaders("Content-Range", "Accept-Ranges", "Content-Length", "Retry-After", "X-Request-Id")
                 .allowCredentials(true)
                 // Preflight 결과를 하루 캐시한다. PUT + JSON 은 매번 OPTIONS 가 먼저 날아온다.
                 .maxAge(86400);
