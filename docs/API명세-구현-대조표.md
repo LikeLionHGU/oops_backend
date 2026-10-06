@@ -1,9 +1,11 @@
 # API 명세 ↔ 구현 대조표
 
-> 명세 v2.1 기준 · 2026년 8월 18일
-> 실제 영상으로 동작 확인 완료
+> 명세 v2.1 · 최초 대조·영상 검증 기록: 2026-08-18 · 문서 정리: 2026-10-06
+> 초기 계약 대조를 보존하며 아래에 후속 변경을 명시한다. 이번 문서 정리는 운영 API 재검증 결과가 아니다.
 
 **§1~§8, §11 은 명세와 일치합니다.** 다른 곳은 §3 에 이유와 함께 정리했습니다.
+
+위 일치 여부는 최초 대조 시점의 기록이다. 이후 추가된 Health·요청 추적·요청 제한·부분 분석 경고와 취소 처리는 [서버 아키텍처](서버-아키텍처.md), 판단 기준은 [AI 분석 개선 계획](AI-분석-개선-계획.md)을 함께 확인한다. 실제 배포 응답과 enum의 기준은 DTO·컨트롤러·설정이며, 구현한 필드와 향후 제안 스키마를 섞지 않는다.
 
 ---
 
@@ -62,6 +64,7 @@ Severity        LOW | MEDIUM | HIGH        (내부값. optional)
 | 415 | `UNSUPPORTED_VIDEO_FORMAT` |
 | 416 | `RANGE_NOT_SATISFIABLE` |
 | 422 | `MAX_VIDEO_DURATION_EXCEEDED` |
+| 429 | `RATE_LIMIT_EXCEEDED` — 업로드·재시도 제한에 따른 후속 추가 |
 | 503 | `WORKER_UNAVAILABLE` |
 | 500 | `ANALYSIS_FAILED` · `INTERNAL_SERVER_ERROR` |
 
@@ -98,7 +101,7 @@ Severity        LOW | MEDIUM | HIGH        (내부값. optional)
 ```
 
 `durationMs` 는 업로드 직후 잰 값입니다. 못 쟀으면 `null` 입니다.
-90분을 넘으면 `422 MAX_VIDEO_DURATION_EXCEEDED` 로 거절하고 저장한 파일도 지웁니다.
+Python 설정의 `max_duration_sec`를 넘으면 `422 MAX_VIDEO_DURATION_EXCEEDED`로 거절하고 저장한 파일도 지웁니다. 저장소 기본값은 5400초(90분)이며 환경변수로 바뀔 수 있습니다. 파일 업로드의 별도 기본 상한은 500MB입니다. 따라서 연구용 120분 영상 평가 계획이 현재 업로드 지원을 뜻하지는 않습니다.
 
 ### 분석 상태 (§3)
 
@@ -273,8 +276,7 @@ POST /api/v1/videos/{videoId}/review-completion
 | 재시도 | `FAILED` · `CANCELLED` | `409 INVALID_ANALYSIS_STATE` |
 | 취소 | `PENDING` · `PROCESSING` | `409 INVALID_ANALYSIS_STATE` |
 
-**취소는 도는 스레드를 죽이지 않습니다.** 상태만 바꿉니다.
-강제로 끊으면 반쯤 저장된 결과가 남기 때문입니다.
+**취소는 진행 중인 외부 요청을 즉시 끊지 않습니다.** 후속 구현에서는 단계 경계에서 취소 상태를 확인하고, 취소가 확인된 분석 결과 트랜잭션을 롤백하며 완료가 취소 상태를 덮지 않도록 합니다. 외부 요청 자체의 중단은 별도 과제입니다.
 
 ---
 
@@ -371,7 +373,7 @@ DELETE /api/v1/videos/{id}              영상·결과·파일 삭제
 | v2.1 §10-5 `ScreenTextReviewAnalyzer` 비활성화 | 아직 켜져 있음 |
 | §9 Range 200·206·416 계약 테스트 | 동작하지만 테스트 없음 |
 | 인증 | 없음. 주소가 공개되면 누구나 업로드 가능 |
-| 배포 | 미착수. 현재 로컬 전용 |
+| 배포 | 사용자가 AWS 배포·Python 재시작 자동 실행을 확인한 상태. 운영 프로필·접근 제어·프로세스 관리 설정의 직접 감사는 별도 |
 
 `CAPTION_CONSISTENCY`(발언↔자막 비교)는 MVP 제외로 확정돼
 분석기를 꺼둔 상태가 맞습니다.

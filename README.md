@@ -515,24 +515,25 @@ cd oops-analysis ; pip install -r requirements-dev.txt ; pytest
 
 ## 문서
 
+전체 목차와 통합 이력은 [docs/README.md](docs/README.md)를 먼저 확인하세요. 현재 구조·개선 계획과 2026년 8월의 과거 기록을 분리했습니다.
+
 | 파일 | 대상 |
 |---|---|
-| [docs/개발자-인수인계.md](docs/개발자-인수인계.md) | **백엔드 개발자. 먼저 읽으세요** |
-| [docs/API명세-구현-대조표.md](docs/API명세-구현-대조표.md) | 프론트엔드 |
-| [docs/사용중인-프롬프트-전문.md](docs/사용중인-프롬프트-전문.md) | 탐지 품질 담당 |
-| [docs/원출처-우선순위-반영결과.md](docs/원출처-우선순위-반영결과.md) | 사실 확인 개선안 반영 결과 · 기획 |
-| [docs/프로젝트-현황-정리.md](docs/프로젝트-현황-정리.md) | 비개발자 · 발표 준비 |
 | [docs/서버-아키텍처.md](docs/서버-아키텍처.md) | 현재 서버 구성과 확장 방향 |
 | [docs/AI-분석-로직.md](docs/AI-분석-로직.md) | STT·OCR·룰·LLM 분석 흐름 |
+| [docs/API명세-구현-대조표.md](docs/API명세-구현-대조표.md) | 프론트 계약과 최초 검증·후속 변경 |
+| [docs/AI-분석-개선-계획.md](docs/AI-분석-개선-계획.md) | 사전·프롬프트 개선과 검증 대기 항목 |
+| [docs/논란-데이터셋-구축-계획.md](docs/논란-데이터셋-구축-계획.md) | KOLD 참고 표현 구축·수집·주석·평가와 가상 예문 |
+| [docs/행동-포즈-데이터셋-및-긴영상-적용-계획.md](docs/행동-포즈-데이터셋-및-긴영상-적용-계획.md) | 시각 행동·원본 시점·긴 영상 연구 설계 |
+| [docs/기술-차별성-검증안.md](docs/기술-차별성-검증안.md) | 기술 비교·교수님 피드백·제품·투자 검증 |
 | [docs/향후-개발-계획.md](docs/향후-개발-계획.md) | 비용 단계별 개발 로드맵 |
 | [docs/보안-운영정책.md](docs/보안-운영정책.md) | 현재 보안 장치와 운영 대응 절차 |
+| [docs/사용중인-프롬프트-전문.md](docs/사용중인-프롬프트-전문.md) | 참고 스냅샷과 실행 코드 위치 |
 | [oops-backend/.../context-lexicon.json](oops-backend/src/main/resources/context-lexicon.json) | **맥락 표현 사전. 개발 지식 없이 채울 수 있습니다** |
 | [oops-backend/README.md](oops-backend/README.md) | 백엔드 상세 |
 | [oops-analysis/README.md](oops-analysis/README.md) | 분석 서버 상세 |
 
-인수인계 문서의 **"알아둘 함정들"** 장은 꼭 읽어주세요.
-Spring Boot 4의 Jackson 3 전환, Java HttpClient의 HTTP/2 문제 등
-모르면 하루씩 날리는 것들을 정리해 뒀습니다.
+과거 인수인계의 실행 경험·트러블슈팅은 [초기 현황·인수인계 기록](docs/archive/초기-프로젝트-현황-및-인수인계.md), 기획 격차·원출처 변경 이유는 [기획·구현 검증 기록](docs/archive/기획-대조-및-구현-검증-기록.md)에 보존했습니다. 당시 배포·설정·비용·작업량 설명을 현재 운영 가이드로 사용하지 마세요.
 
 ---
 
