@@ -90,6 +90,29 @@ WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` �
 `VIDEO_NOT_FOUND` `FRAME_NOT_FOUND` `UNSUPPORTED_VIDEO_FORMAT` `MAX_UPLOAD_SIZE_EXCEEDED`
 `ANALYSIS_IN_PROGRESS` `ANALYSIS_NOT_COMPLETED` `INVALID_ANALYSIS_STATE`
 `WORKER_UNAVAILABLE` `ANALYSIS_FAILED` `INVALID_REQUEST` `INTERNAL_SERVER_ERROR`
+`RATE_LIMIT_EXCEEDED`
+
+### 업로드·재분석 요청 제한
+
+인증이 아직 없는 데모 배포 환경에서 반복 업로드와 재분석 요청이 분석 자원과
+OpenAI 비용을 과도하게 사용하지 않도록 요청 IP 기준의 제한을 둔다.
+
+```yaml
+oops:
+  rate-limit:
+    uploads-per-minute: 10
+    retries-per-minute: 5
+```
+
+`0`으로 설정하면 해당 제한을 끈다. 단일 Spring 인스턴스 메모리에서 동작하므로,
+서버를 여러 대로 늘릴 때는 Redis 같은 공유 저장소 기반 제한기로 교체해야 한다.
+제한에 걸리면 `429 RATE_LIMIT_EXCEEDED`와 `Retry-After: 60`이 반환된다.
+
+### 상태 확인과 요청 추적
+
+- `GET /health` 또는 `GET /api/v1/health`에서 Spring, Python 분석 서버, 파일 저장소 상태를 확인한다.
+- 모든 응답에 `X-Request-Id`가 붙는다. 오류 응답의 `error.traceId`와 같은 값이므로
+  문의가 들어오면 이 값을 서버 로그와 함께 확인한다.
 
 ### `/report` 응답
 
@@ -388,13 +411,30 @@ JPA cascade 대신 `VideoDeletionService` 가 순서를 직접 관리한다.
 oops:
   storage:
     retention-days: 0     # 0 이면 정리하지 않음
+    source-retention-hours: 0  # 원본만 먼저 지우려면 24 등으로 설정
 ```
 
 `0` 보다 크면 매일 새벽 4시에 그만큼 지난 영상을 지운다.
 분석이 끝난 것만 대상이며 진행 중인 것은 건드리지 않는다.
 
+`source-retention-hours`를 0보다 크게 설정하면 매시 정각에 원본 영상만 먼저 지운다.
+리포트·대본·OCR 프레임은 남기므로 원본 보관 기간과 결과 보관 기간을 분리할 수 있다.
+
 로컬은 `0` 으로 두었다. 개발 중에 테스트 영상이 사라지면 곤란하다.
 **배포 서버에서는 7 정도로 켜는 것을 권한다.**
+
+### 분석 동시성 설정
+
+분석은 메모리와 외부 API 호출을 많이 사용하므로 기본값은 동시에 2개, 대기열 50개다.
+운영 서버 자원에 맞춰 코드 수정 없이 조절할 수 있다.
+
+```yaml
+oops:
+  analysis-executor:
+    core-pool-size: 1
+    max-pool-size: 2
+    queue-capacity: 50
+```
 
 ## 저장소 규칙
 

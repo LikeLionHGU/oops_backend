@@ -522,6 +522,10 @@ cd oops-analysis ; pip install -r requirements-dev.txt ; pytest
 | [docs/사용중인-프롬프트-전문.md](docs/사용중인-프롬프트-전문.md) | 탐지 품질 담당 |
 | [docs/원출처-우선순위-반영결과.md](docs/원출처-우선순위-반영결과.md) | 사실 확인 개선안 반영 결과 · 기획 |
 | [docs/프로젝트-현황-정리.md](docs/프로젝트-현황-정리.md) | 비개발자 · 발표 준비 |
+| [docs/서버-아키텍처.md](docs/서버-아키텍처.md) | 현재 서버 구성과 확장 방향 |
+| [docs/AI-분석-로직.md](docs/AI-분석-로직.md) | STT·OCR·룰·LLM 분석 흐름 |
+| [docs/향후-개발-계획.md](docs/향후-개발-계획.md) | 비용 단계별 개발 로드맵 |
+| [docs/보안-운영정책.md](docs/보안-운영정책.md) | 현재 보안 장치와 운영 대응 절차 |
 | [oops-backend/.../context-lexicon.json](oops-backend/src/main/resources/context-lexicon.json) | **맥락 표현 사전. 개발 지식 없이 채울 수 있습니다** |
 | [oops-backend/README.md](oops-backend/README.md) | 백엔드 상세 |
 | [oops-analysis/README.md](oops-analysis/README.md) | 분석 서버 상세 |
