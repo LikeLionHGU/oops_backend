@@ -26,8 +26,8 @@ import java.util.regex.Pattern;
  *
  * 그래서 세 단계로 거른다.
  *   1. 표현이 나오는지
- *   2. 근처에 일반 용법 신호(suppressHints)가 있으면 버린다
- *   3. 그래도 애매하면 AI 에게 앞뒤 문장을 주고 물어본다  ← ContextValidator
+ *   2. 일반·특수 용법 신호를 각각 기록한다
+ *   3. 맥락이 필요한 후보는 앞뒤 문장과 함께 AI 에게 확인한다  ← ContextValidator
  *
  * 이 클래스는 1~2단계까지만 한다. 3단계는 호출하는 쪽에서 한다.
  */
@@ -73,8 +73,7 @@ public class ContextLexicon {
     /**
      * 한 줄에서 걸리는 표현을 찾는다.
      *
-     * suppressHints 에 걸리면 아예 돌려주지 않는다.
-     * "7시에 만나기로 했어요" 는 여기서 끝난다. AI 를 부르지도 않는다.
+     * 일반 용법 신호도 보존한다. 특수 용법 신호와 충돌하면 AI 가 문맥을 확인한다.
      */
     public List<Match> match(String text) {
         if (text == null || text.isBlank() || entries.isEmpty()) {
@@ -91,15 +90,11 @@ public class ContextLexicon {
                 continue;
             }
 
-            // 일반 용법 신호가 근처에 있으면 버린다.
-            // 이 한 줄이 오탐의 대부분을 막는다.
-            if (hasHint(lower, text, hit, entry.suppressHintsOrEmpty())) {
-                log.debug("[lexicon] '{}' 는 일반 용법으로 보여 건너뜁니다 — {}", hit, text);
-                continue;
-            }
-
+            // 일반 용법 신호만으로 특수 용법 가능성을 완전히 지우지 않는다.
+            // 두 신호가 함께 있으면 ContextValidator 가 전체 문맥으로 구분한다.
+            boolean commonUsageSupported = hasHint(lower, text, hit, entry.suppressHintsOrEmpty());
             boolean supported = hasHint(lower, text, hit, entry.contextHintsOrEmpty());
-            matches.add(new Match(entry, hit, supported));
+            matches.add(new Match(entry, hit, supported, commonUsageSupported));
         }
         return matches;
     }
@@ -147,12 +142,16 @@ public class ContextLexicon {
      * 사전에 걸린 한 건.
      *
      * @param contextSupported 특수 용법 신호가 근처에 있었는지.
-     *                         true 면 확신도를 조금 올린다.
+     * @param commonUsageSupported 일반 용법 신호가 근처에 있었는지.
      */
-    public record Match(ContextLexiconEntry entry, String matchedText, boolean contextSupported) {
+    public record Match(ContextLexiconEntry entry, String matchedText,
+                        boolean contextSupported, boolean commonUsageSupported) {
 
         public double score() {
             double base = entry.triggerMode().baseScore();
+            if (commonUsageSupported) {
+                return contextSupported ? base : Math.max(0.2, base - 0.15);
+            }
             return contextSupported ? Math.min(0.75, base + 0.15) : base;
         }
     }

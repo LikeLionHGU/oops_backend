@@ -43,18 +43,54 @@ class FindingFusionServiceTest {
                 .build();
     }
 
+    private RiskFinding caption(RiskCategory category, double score,
+                                long startMs, String text, String target) {
+        return RiskFinding.builder()
+                .eventType(TimelineEventType.CAPTION)
+                .category(category)
+                .source(EvidenceSource.VISION)
+                .score(score)
+                .startMs(startMs)
+                .endMs(startMs + 2000)
+                .captionText(text)
+                .reason("화면에 나타난 구체적인 표현입니다.")
+                .target(target)
+                .build();
+    }
+
     @Test
-    @DisplayName("같은 대상을 지적하면 유형이 달라도 한 건으로 묶는다")
-    void mergesBySharedTarget() {
-        // 실제로 겪은 사례: "패스트푸드" 를 한쪽은 비하로, 다른 쪽은 일반화로 보고했다.
-        // 사용자에게는 같은 지적이라 카드가 두 장 뜨면 안 된다.
+    @DisplayName("같은 대상이어도 서로 다른 시점이면 별도 후보로 남긴다")
+    void keepsSharedTargetAtDistantTimesSeparate() {
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.BELITTLEMENT, 0.6, 5000, "패스트푸드 같은 맛이야", "패스트푸드"),
+                speech(RiskCategory.BELITTLEMENT, 0.5, 300000, "패스트푸드 같은 맛이야", "패스트푸드")
+        ));
+
+        assertThat(result).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("같은 시점이어도 서로 다른 위험 유형은 대상명만으로 합치지 않는다")
+    void keepsDifferentCategoriesSeparate() {
         List<RiskFinding> result = service.fuse(List.of(
                 speech(RiskCategory.BELITTLEMENT, 0.6, 5000, "패스트푸드 같은 맛이야", "패스트푸드"),
                 speech(RiskCategory.GENERALIZATION, 0.5, 5000, "패스트푸드 같은 맛이야", "패스트푸드")
         ));
 
+        assertThat(result).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("STT와 같은 문구가 OCR에도 있어도 점수 자체는 올리지 않는다")
+    void doesNotBoostScoreForRepeatedCrossModalEvidence() {
+        List<RiskFinding> result = service.fuse(List.of(
+                speech(RiskCategory.MOCKERY, 0.6, 5000, "그 음식은 정말 별로야", "음식"),
+                caption(RiskCategory.MOCKERY, 0.7, 5000, "그 음식은 정말 별로야", "음식")
+        ));
+
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getMergedCount()).isEqualTo(2);
+        assertThat(result.get(0).isCrossModal()).isTrue();
+        assertThat(result.get(0).getScore()).isEqualTo(0.7);
     }
 
     @Test
@@ -64,14 +100,14 @@ class FindingFusionServiceTest {
         // 구간만 보여주면 "00:26 ~ 00:59 사이 어딘가" 로 뭉뚱그려져 찾을 수 없다.
         List<RiskFinding> result = service.fuse(List.of(
                 speech(RiskCategory.MOCKERY, 0.6, 26000, "너무 특색이 없어가지고", "메뉴"),
-                speech(RiskCategory.MOCKERY, 0.6, 35000, "너무 특색이 없어가지고", "메뉴"),
-                speech(RiskCategory.MOCKERY, 0.6, 44000, "너무 특색이 없어가지고", "메뉴")
+                speech(RiskCategory.MOCKERY, 0.6, 29000, "너무 특색이 없어가지고", "메뉴"),
+                speech(RiskCategory.MOCKERY, 0.6, 32000, "너무 특색이 없어가지고", "메뉴")
         ));
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getOccurrenceTimes()).contains("00:26", "00:35", "00:44");
+        assertThat(result.get(0).getOccurrenceTimes()).contains("00:26", "00:29", "00:32");
         assertThat(result.get(0).getStartMs()).isEqualTo(26000);
-        assertThat(result.get(0).getEndMs()).isEqualTo(46000);
+        assertThat(result.get(0).getEndMs()).isEqualTo(34000);
     }
 
     @Test

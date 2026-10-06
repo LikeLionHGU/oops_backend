@@ -243,7 +243,8 @@ public class AnalysisService {
         return coverage.stream()
                 .filter(c -> c.getStep() == step)
                 .findFirst()
-                .map(c -> c.getStatus() == AnalyzerStatus.SUCCESS)
+                .map(c -> c.getStatus() == AnalyzerStatus.SUCCESS
+                        || c.getStatus() == AnalyzerStatus.PARTIAL)
                 .orElse(false);
     }
 

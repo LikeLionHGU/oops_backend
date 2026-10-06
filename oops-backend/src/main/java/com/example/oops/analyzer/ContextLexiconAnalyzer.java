@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 제작자가 모를 수 있는 맥락을 가진 표현을 찾는다.
@@ -21,8 +22,8 @@ import java.util.Map;
  *
  * 흐름:
  *   대본·화면글자
- *     ↓ 사전 매칭 (일반 용법 신호가 있으면 여기서 버림)
- *   걸린 것들
+ *     ↓ 사전 매칭 (일반·특수 용법 신호를 각각 기록)
+ *   시간대와 맥락 근거를 고려해 고른 후보
  *     ↓ 앞뒤 줄 붙여서 AI 에게 한 번에 확인
  *   LITERAL·QUOTATION → 버림
  *   CONTEXTUAL·AMBIGUOUS → 검토 후보
@@ -42,6 +43,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
 
     private final ContextLexicon lexicon;
     private final ContextValidator validator;
+    private final ThreadLocal<String> coverageNotice = new ThreadLocal<>();
 
     @Override
     public String key() {
@@ -63,11 +65,12 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
 
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
+        coverageNotice.remove();
         List<Line> lines = collectLines(context);
-        List<Candidate> candidates = new ArrayList<>();
+        List<Candidate> allCandidates = new ArrayList<>();
 
-        // 1단계 — 사전 매칭. 일반 용법 신호가 있으면 여기서 걸러진다
-        for (int i = 0; i < lines.size() && candidates.size() < MAX_MATCHES; i++) {
+        // 1단계 — 사전 매칭. 일반 용법 신호와 특수 맥락 신호가 충돌하면 보존한다.
+        for (int i = 0; i < lines.size(); i++) {
             Line line = lines.get(i);
             for (ContextLexicon.Match match : lexicon.match(line.text())) {
                 // 맥락을 안 봐도 되는 항목은 CommunitySlangRules 가 맡는다.
@@ -75,15 +78,27 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
                 if (!match.entry().requiresContextCheck()) {
                     continue;
                 }
-                candidates.add(new Candidate(candidates.size(), line, match,
-                        textAt(lines, i - 1), textAt(lines, i + 1)));
-                if (candidates.size() >= MAX_MATCHES) break;
+                // 일반 용법 신호만 있고 특수 맥락 신호가 없으면 기존처럼 빠르게 제외한다.
+                // 두 신호가 충돌할 때만 AI 문맥 확인으로 넘겨 불필요한 호출을 억제한다.
+                if (match.commonUsageSupported() && !match.contextSupported()) {
+                    continue;
+                }
+                allCandidates.add(new Candidate(allCandidates.size(), line, match,
+                        contextText(lines, i, line.type(), -1),
+                        contextText(lines, i, line.type(), 1),
+                        relatedText(lines, i)));
             }
         }
 
-        if (candidates.isEmpty()) {
+        if (allCandidates.isEmpty()) {
             log.info("[lexicon] videoId={} 걸린 표현 없음", context.video().getId());
             return List.of();
+        }
+
+        List<Candidate> candidates = selectAcrossTimeline(allCandidates);
+        if (candidates.size() < allCandidates.size()) {
+            coverageNotice.set("맥락 사전 후보 %d건 중 %d건을 시간대별로 골라 확인했습니다. 나머지 %d건은 확인하지 못했습니다."
+                    .formatted(allCandidates.size(), candidates.size(), allCandidates.size() - candidates.size()));
         }
 
         // 2단계 — 앞뒤 맥락을 봐야 하는 것만 AI 에게 묻는다
@@ -92,7 +107,8 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
                 .map(c -> new ContextValidator.Request(
                         c.index(), c.match().matchedText(),
                         c.match().entry().reason(),
-                        c.before(), c.line().text(), c.after()))
+                        c.line().type() == TimelineEventType.SPEECH ? "음성 STT 대본" : "화면 OCR 텍스트",
+                        c.before(), c.line().text(), c.after(), c.relatedText()))
                 .toList();
 
         Map<Integer, ContextValidator.Verdict> verdicts = validator.validate(toValidate);
@@ -120,10 +136,17 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
             findings.add(build(context, c, verdict));
         }
 
-        log.info("[lexicon] videoId={} 매칭 {}건 → 확인요청 {}건 → 후보 {}건 (제외 {}건)",
-                context.video().getId(), candidates.size(), toValidate.size(),
-                findings.size(), dropped);
+        log.info("[lexicon] videoId={} 전체매칭 {}건 → 확인요청 {}건 → 후보 {}건 (제외 {}건, 미확인 {}건)",
+                context.video().getId(), allCandidates.size(), toValidate.size(),
+                findings.size(), dropped, allCandidates.size() - candidates.size());
         return findings;
+    }
+
+    @Override
+    public Optional<String> consumeCoverageNotice(AnalysisContext context) {
+        String notice = coverageNotice.get();
+        coverageNotice.remove();
+        return Optional.ofNullable(notice);
     }
 
     private RiskFinding build(AnalysisContext context, Candidate c,
@@ -139,7 +162,9 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         // 사전 문구와 AI 문구가 같은 말이면 하나만 남긴다.
         // 둘 다 붙이면 "커뮤니티 말투로 읽히기도 합니다. 커뮤니티 말투로 읽힐 수 있습니다."
         // 처럼 같은 문장이 두 번 나온다. 읽는 사람이 신뢰를 잃는다.
-        String reason = entry.reason();
+        String reason = verdict != null && verdict.isAmbiguous()
+                ? "이 표현은 알려진 맥락과 관련될 수 있지만, 현재 구간만으로는 특수한 의미로 사용됐는지 판단하기 어렵습니다."
+                : entry.reason();
         String note = verdict == null ? null : verdict.note();
         if (note != null && !note.isBlank() && addsSomething(reason, note)) {
             reason = reason + " " + note.trim();
@@ -197,8 +222,46 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         return (double) common / b.length() < SAME_MEANING;
     }
 
-    private String textAt(List<Line> lines, int index) {
-        return index < 0 || index >= lines.size() ? null : lines.get(index).text();
+    private List<Candidate> selectAcrossTimeline(List<Candidate> candidates) {
+        if (candidates.size() <= MAX_MATCHES) return candidates;
+
+        List<Candidate> selected = new ArrayList<>(MAX_MATCHES);
+        for (int bucket = 0; bucket < MAX_MATCHES; bucket++) {
+            int from = bucket * candidates.size() / MAX_MATCHES;
+            int to = (bucket + 1) * candidates.size() / MAX_MATCHES;
+            Candidate best = candidates.subList(from, to).stream()
+                    .max(java.util.Comparator
+                            .comparing(Candidate::contextSupported)
+                            .thenComparingDouble(c -> c.match().score()))
+                    .orElse(candidates.get(from));
+            selected.add(best);
+        }
+        return selected;
+    }
+
+    private String contextText(List<Line> lines, int index, TimelineEventType type, int direction) {
+        Line current = lines.get(index);
+        for (int i = index + direction; i >= 0 && i < lines.size(); i += direction) {
+            Line neighbor = lines.get(i);
+            if (neighbor.type() != type) continue;
+
+            long gap = direction < 0
+                    ? Math.max(0, current.startMs() - neighbor.endMs())
+                    : Math.max(0, neighbor.startMs() - current.endMs());
+            return gap <= 15_000 ? neighbor.text() : null;
+        }
+        return null;
+    }
+
+    private String relatedText(List<Line> lines, int index) {
+        Line current = lines.get(index);
+        return lines.stream()
+                .filter(line -> line.type() != current.type())
+                .filter(line -> Math.max(0, Math.max(line.startMs() - current.endMs(),
+                        current.startMs() - line.endMs())) <= 2_000)
+                .min(java.util.Comparator.comparingLong(line -> Math.abs(line.startMs() - current.startMs())))
+                .map(Line::text)
+                .orElse(null);
     }
 
     /** 발언과 화면 글자를 한 목록으로 합친다. 앞뒤 맥락을 잡기 위해 시간순으로 둔다. */
@@ -224,5 +287,9 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
                         String text, VideoFrame frame) {}
 
     private record Candidate(int index, Line line, ContextLexicon.Match match,
-                             String before, String after) {}
+                             String before, String after, String relatedText) {
+        boolean contextSupported() {
+            return match.contextSupported() && !match.commonUsageSupported();
+        }
+    }
 }

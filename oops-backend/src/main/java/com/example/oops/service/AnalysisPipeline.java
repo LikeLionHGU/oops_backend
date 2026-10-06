@@ -201,6 +201,7 @@ public class AnalysisPipeline {
                     openAiClient.beginAnalyzer(analyzer.key());
 
                     List<RiskFinding> produced = analyzer.analyze(context);
+                    String coverageNotice = analyzer.consumeCoverageNotice(context).orElse(null);
                     checkNotCancelled(jobId);
 
                     long took = System.currentTimeMillis() - analyzerStart;
@@ -219,7 +220,9 @@ public class AnalysisPipeline {
                                 analyzer.key(), openAiClient.failureCount(), why);
                         record(coverage, video, step, AnalyzerStatus.FAILED, why);
                     } else {
-                        record(coverage, video, step, AnalyzerStatus.SUCCESS, null);
+                        record(coverage, video, step,
+                                coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL,
+                                coverageNotice);
                     }
                 } catch (AnalysisCancelledException e) {
                     throw e;

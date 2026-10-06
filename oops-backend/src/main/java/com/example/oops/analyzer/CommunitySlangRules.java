@@ -35,9 +35,8 @@ public class CommunitySlangRules {
         }
 
         for (ContextLexicon.Match match : lexicon.match(text)) {
-            // 맥락 확인이 필요한 건 여기서 올리지 않는다.
-            // 확인 없이 올리면 일반 용법까지 전부 카드가 된다.
-            if (match.entry().requiresContextCheck()) {
+            // 안전망은 일반 용법 신호가 없고, AI 맥락 확인도 필요 없는 표현만 올린다.
+            if (match.entry().requiresContextCheck() || match.commonUsageSupported()) {
                 continue;
             }
             hits.add(new Hit(

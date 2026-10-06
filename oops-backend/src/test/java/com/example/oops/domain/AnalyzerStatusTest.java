@@ -30,6 +30,13 @@ class AnalyzerStatusTest {
     }
 
     @Test
+    @DisplayName("부분 확인은 성공으로 덮어쓰지 않는다")
+    void partialWinsOverSuccess() {
+        assertThat(AnalyzerStatus.SUCCESS.worseOf(AnalyzerStatus.PARTIAL))
+                .isEqualTo(AnalyzerStatus.PARTIAL);
+    }
+
+    @Test
     @DisplayName("실패가 건너뜀보다 우선한다")
     void failureWinsOverSkipped() {
         assertThat(AnalyzerStatus.SKIPPED.worseOf(AnalyzerStatus.FAILED))

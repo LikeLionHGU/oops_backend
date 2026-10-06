@@ -27,7 +27,8 @@ class ContextLexiconTest {
     }
 
     private boolean matches(String text) {
-        return !lexicon.match(text).isEmpty();
+        return lexicon.match(text).stream()
+                .anyMatch(match -> !match.commonUsageSupported() || match.contextSupported());
     }
 
     @Test
@@ -87,6 +88,31 @@ class ContextLexiconTest {
     void catchesWithContextHint() {
         assertThat(matches("저 의원도 결국 수박이더라고")).isTrue();
         assertThat(matches("그 지역 사람들, 홍어 아니냐")).isTrue();
+    }
+
+    @Test
+    @DisplayName("일반 용법과 특수 맥락 신호가 함께 있으면 후보로 보존한다")
+    void preservesConflictingHintsForContextReview() {
+        ContextLexicon.Match match = lexicon.match("광주에서 포도를 먹었다고").stream()
+                .filter(candidate -> candidate.matchedText().equals("포도"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(match.commonUsageSupported()).isTrue();
+        assertThat(match.contextSupported()).isTrue();
+        assertThat(match.score()).isLessThanOrEqualTo(ContextTriggerMode.HISTORICAL_EVENT.baseScore());
+    }
+
+    @Test
+    @DisplayName("일반 용법 신호만 있는 표현은 일반 용법으로 분류해 빠르게 거를 수 있다")
+    void marksCommonOnlyUseForFastFiltering() {
+        ContextLexicon.Match match = lexicon.match("수박을 반으로 잘라 먹었어요").stream()
+                .filter(candidate -> candidate.matchedText().equals("수박"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(match.commonUsageSupported()).isTrue();
+        assertThat(match.contextSupported()).isFalse();
     }
 
     @Test

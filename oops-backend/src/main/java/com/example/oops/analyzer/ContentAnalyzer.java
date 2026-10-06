@@ -3,6 +3,7 @@ package com.example.oops.analyzer;
 import com.example.oops.domain.RiskFinding;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 논란 탐지기 하나의 계약.
@@ -24,4 +25,9 @@ public interface ContentAnalyzer {
     boolean supports(AnalysisContext context);
 
     List<RiskFinding> analyze(AnalysisContext context);
+
+    /** Consume an optional notice when an analyzer intentionally processed only part of its input. */
+    default Optional<String> consumeCoverageNotice(AnalysisContext context) {
+        return Optional.empty();
+    }
 }

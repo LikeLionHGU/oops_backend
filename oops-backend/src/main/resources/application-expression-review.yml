@@ -1,0 +1,10 @@
+# 표현 검토와 사실 대조의 효과를 비용 없이 구성 수준에서 비교할 때 사용한다.
+# 기본 application.yml 의 실행 분석기 목록은 바꾸지 않는다.
+oops:
+  analysis:
+    enabled-analyzers:
+      - subtitle
+      - speech-review
+      - context-lexicon
+      - screen-text
+      - screen-text-review

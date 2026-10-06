@@ -55,9 +55,6 @@ public class FindingFusionService {
      */
     private static final double SAME_TARGET_THRESHOLD = 0.5;
 
-    /** 교차 검증됐을 때 점수를 몇 배로 올릴지 */
-    private static final double CROSS_MODAL_BOOST = 1.25;
-
     /**
      * 뜻이 겹치는 카테고리 묶음.
      *
@@ -77,6 +74,7 @@ public class FindingFusionService {
 
         MERGE_GROUP.put(RiskCategory.MOCKERY, "PUTDOWN");
         MERGE_GROUP.put(RiskCategory.BELITTLEMENT, "PUTDOWN");
+        MERGE_GROUP.put(RiskCategory.STRONG_NEGATIVE_REVIEW, "NEGATIVE_REVIEW");
 
         MERGE_GROUP.put(RiskCategory.AD_DEMONETIZED, "AD");
         MERGE_GROUP.put(RiskCategory.AD_LIMITED, "AD");
@@ -107,6 +105,7 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.PRIVACY, 90);
         CATEGORY_WEIGHT.put(RiskCategory.TIMING_SENSITIVE, 88);
         CATEGORY_WEIGHT.put(RiskCategory.BELITTLEMENT, 80);
+        CATEGORY_WEIGHT.put(RiskCategory.STRONG_NEGATIVE_REVIEW, 35);
         CATEGORY_WEIGHT.put(RiskCategory.MOCKERY, 78);
         CATEGORY_WEIGHT.put(RiskCategory.SENSITIVE_TOPIC, 75);
         CATEGORY_WEIGHT.put(RiskCategory.FACT_ERROR, 96);
@@ -147,14 +146,13 @@ public class FindingFusionService {
             cluster.collectReferencesInto(representative);
 
             if (crossModal) {
-                representative.boostScore(representative.getScore() * CROSS_MODAL_BOOST);
                 representative.appendReason("발언과 화면 양쪽에서 나타납니다.");
                 // 대표가 발언 쪽이라 프레임이 없으면, 같은 묶음의 화면 캡처를 붙여준다
                 cluster.anyFrame().ifPresent(representative::attachFrame);
             }
 
             representative.applyFusion(
-                    calculatePriority(representative, crossModal, cluster.size()),
+                    calculatePriority(representative),
                     crossModal,
                     cluster.size()
             );
@@ -196,16 +194,11 @@ public class FindingFusionService {
     }
 
     /**
-     * 0 ~ 1000 우선순위.
-     * 확신도(최대 600) + 카테고리 중요도(최대 100) + 교차검증 보너스(150) + 중복 보고 보너스(최대 60)
+     * 0 ~ 1000 우선순위. 병합·교차 출처만으로 점수를 올리지 않는다.
      */
-    private int calculatePriority(RiskFinding finding, boolean crossModal, int mergedCount) {
+    private int calculatePriority(RiskFinding finding) {
         int score = (int) Math.round(finding.getScore() * 600);
         score += CATEGORY_WEIGHT.getOrDefault(finding.getCategory(), 20);
-        if (crossModal) {
-            score += 150;
-        }
-        score += Math.min(60, (mergedCount - 1) * 20);
         return Math.min(1000, score);
     }
 
@@ -217,26 +210,19 @@ public class FindingFusionService {
         boolean accepts(RiskFinding candidate) {
             if (members.isEmpty()) return true;
 
-            // 1) 같은 대상을 지적한 것이면 유형이 달라도 한 건이다.
-            //    "패스트푸드" 를 두고 한쪽은 BELITTLEMENT, 다른 쪽은 GENERALIZATION 으로
-            //    보고하는 일이 흔하다. 사용자에게는 같은 지적이다.
-            if (sharesTarget(candidate)) return true;
-
-            // 2) 문장이 사실상 같으면 한 건이다.
-            //    영상 내내 떠 있는 자막이 프레임마다 다시 잡히는 경우가 여기 해당한다.
-            if (members.stream().anyMatch(m ->
-                    similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD)) {
-                return true;
-            }
-
-            // 3) 같은 유형이고 시간이 붙어 있으면 같은 장면이다.
-            RiskFinding first = members.get(0);
-            if (!groupOf(first.getCategory()).equals(groupOf(candidate.getCategory()))) return false;
-
+            // 같은 대상을 말했더라도 시간대가 다르면 별도 후보로 남긴다.
             long gap = Math.max(
                     candidate.getStartMs() - maxEndMs(),
                     minStartMs() - candidate.getEndMs());
-            return gap <= MERGE_WINDOW_MS;
+            if (gap > MERGE_WINDOW_MS) return false;
+
+            boolean compatibleCategory = members.stream()
+                    .allMatch(m -> groupOf(m.getCategory()).equals(groupOf(candidate.getCategory())));
+            if (!compatibleCategory) return false;
+
+            // 같은 장면 안에서도 대상 또는 원문이 이어지는 후보만 묶는다.
+            return sharesTarget(candidate) || members.stream().anyMatch(m ->
+                    similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD);
         }
 
         /** 대상 이름이 겹치는지. "할머니" 와 "할머니 맛" 은 같은 대상으로 본다. */

@@ -6,6 +6,9 @@ public enum AnalyzerStatus {
     /** 돌았고 끝까지 마쳤다. 후보가 0건이어도 SUCCESS 다 */
     SUCCESS,
 
+    /** 안전한 비용 상한 때문에 일부 입력만 확인했다. */
+    PARTIAL,
+
     /** 돌다가 실패했다. 결과를 믿으면 안 된다 */
     FAILED,
 
@@ -29,8 +32,9 @@ public enum AnalyzerStatus {
 
     private int severity() {
         return switch (this) {
-            case FAILED -> 3;
-            case SKIPPED -> 2;
+            case FAILED -> 4;
+            case SKIPPED -> 3;
+            case PARTIAL -> 2;
             case SUCCESS -> 1;
             case NOT_ENABLED -> 0;
         };
