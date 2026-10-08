@@ -89,7 +89,7 @@ oops:
 키가 제대로 들어갔는지는 시작 로그로 확인합니다.
 
 ```
-[openai] 키=sk-proj-...abcd 조직=(계정 기본값) 모델=gpt-4o-mini
+[openai] 키=(일부 마스킹) 조직=(계정 기본값) 모델=gpt-6-luna
 ```
 
 **키가 없으면 서버는 뜨지만 AI 분석기 4개가 통째로 스킵됩니다.**
@@ -251,12 +251,20 @@ AI 가 확인한 자료 2건 — 직접 열어서 확인하세요
 |---|---|---|
 | 음성 → 대본 | `whisper-1` | 분당 약 8원 |
 | 화면 글자 인식 | PaddleOCR | **로컬, 무료** |
-| 텍스트 판단 전부 | `gpt-4o-mini` | 토큰당 |
+| 텍스트 판단 전부 | `gpt-6-luna` | 토큰당, 기본 reasoning effort `none` |
 
 **분석기별로 모델이 나뉘어 있지 않습니다.** 유형판별·발언검토·화면글자검토·
 이름수치확인·맥락참고·맥락표현확인이 전부 같은 모델을 씁니다.
-바꾸려면 `application.yml` 의 `oops.openai.model` 한 줄만 고치면 되지만,
-**`pricing` 도 같이 고쳐야** 비용 로그가 안 틀립니다.
+모델은 `OPENAI_MODEL` 또는 `application.yml`의 `oops.openai.model`로 선택한다.
+**`pricing`도 같이 고쳐야** 비용 추정 로그가 안 틀린다. 기본 단가는 GPT-6 Luna Standard의
+입력 $0.10 / 캐시 입력 $0.01 / 출력 $0.50(각 100만 토큰, 2026-10-08 확인)이다.
+공식 모델·단가는 [OpenAI 모델 문서](https://developers.openai.com/api/docs/models/gpt-6-luna)를 따른다.
+`OPENAI_REASONING_EFFORT=low` 등으로 추론을 켜면 temperature를 보내지 않는다.
+기본 `none`은 기존 비추론 모델과 비교하기 위한 설정이며 품질 향상을 보장하지 않는다.
+
+GPT Transcribe 교체는 타임스탬프 정렬을 별도 설계할 때 진행한다. 현재 Python STT는
+`whisper-1`을 유지하므로 `WHISPER_MODEL=gpt-transcribe`만 설정하면 안 된다.
+Luna 적용에는 Spring만 재시작하면 된다. 기존 완료 리포트는 변경되지 않아 새 업로드로 비교한다.
 
 OCR 이 분석 시간의 절반 가까이를 차지하는데 **그건 돈이 안 나가는 시간**입니다.
 느린 것과 비싼 것은 다릅니다.
@@ -338,6 +346,9 @@ WebSocket `/ws` → `/topic/videos/{videoId}/progress` 구독
 ### 얼마 나갔는지 로그로 확인합니다
 
 분석이 끝나면 실제 사용량이 찍힙니다. 짐작하지 않고 숫자로 봅니다.
+
+아래는 모델 교체 전의 로그 예시다. 현재 요청 모델은 기본적으로 `gpt-6-luna`이며,
+비용은 설정 단가와 토큰 수 기반 추정치다. 계정 청구서·캐시 쓰기 비용·별도 서비스 티어 등의 실제 과금과 다를 수 있다.
 
 ```
 [openai-usage] videoId=65 analyzer=speech-review model=gpt-4o-mini input=2841 cached=0 output=327 total=3168
@@ -517,6 +528,8 @@ cd oops-analysis ; pip install -r requirements-dev.txt ; pytest
 
 전체 목차와 통합 이력은 [docs/README.md](docs/README.md)를 먼저 확인하세요. 현재 구조·개선 계획과 2026년 8월의 과거 기록을 분리했습니다.
 
+10/8 최신 비교는 [main·minwook 차이 및 HyperFrames/PostHog 검토](docs/main-minwook-비교-및-도구-적용-검토.md), 실제 개발 영상 결과는 [ID별 실험 기록](docs/AI-분석-실험-기록.md)을 확인하세요. ID 9는 묶음 경로 작동을 확인했지만 지역 음식 누락 유지·신체 비유 누락 회귀가 있습니다. 현재 작업 트리에는 미커밋 코드가 포함되며 운영 배포/도구 연동 완료를 뜻하지 않습니다.
+
 | 파일 | 대상 |
 |---|---|
 | [docs/서버-아키텍처.md](docs/서버-아키텍처.md) | 현재 서버 구성과 확장 방향 |
@@ -544,8 +557,9 @@ cd oops-analysis ; pip install -r requirements-dev.txt ; pytest
 
 저장소를 받으면 `application-secret.yml.example` 을 복사해 본인 키를 채우세요.
 
-**비용이 발생합니다.** 영상 1분당 약 100원(Whisper + LLM)입니다.
-개발 중에는 1~2분짜리 짧은 영상을 쓰세요.
+**비용이 발생합니다.** whisper-1 기본 설정의 음성 인식 추정은 분당 $0.006이고,
+LLM 비용은 입력·출력·캐시 토큰 및 재검토 횟수에 따라 달라집니다. 고정 분당 총액으로 안내하지 않습니다.
+개발 중에는 1~2분짜리 짧은 영상을 쓰고 실행별 `[openai-cost]` 로그를 확인하세요.
 
 **OpenAI 요청 한도에 자주 걸립니다.**
 분석기가 여러 번 호출하므로 영상 하나에 수십 건이 나갑니다.
