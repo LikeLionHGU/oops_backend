@@ -7,6 +7,15 @@
 
 위 일치 여부는 최초 대조 시점의 기록이다. 이후 추가된 Health·요청 추적·요청 제한·부분 분석 경고와 취소 처리는 [서버 아키텍처](서버-아키텍처.md), 판단 기준은 [AI 분석 개선 계획](AI-분석-개선-계획.md)을 함께 확인한다. 실제 배포 응답과 enum의 기준은 DTO·컨트롤러·설정이며, 구현한 필드와 향후 제안 스키마를 섞지 않는다.
 
+## 2026-10-08 최신 대조 주의점
+
+- 이 문서의 최초 ‘명세 일치’ 평가는 현재 main/minwook 양쪽의 호환성 보증이 아니다. main `e6b7003`과 minwook 작업 트리의 공개 DTO에는 차이가 있다.
+- main 리포트에는 `sourceType/sourceUrl/embedUrl/youtubeVideoId`가 있지만 현재 작업 트리 `AnalysisReportResponse`에는 없다. 반대로 minwook `TimelineEventDto`는 `severity/riskTypes`를 반환하고 main은 이를 공개 DTO에서 제외한다. 프론트 필드 계약을 합의하고 YouTube 재생 회귀 테스트 후 병합한다.
+- `GET /api/v1/videos/{videoId}/analysis/diagnostics`는 활성 설정일 때만 등록되는 로컬 전용 진단이다. 응답은 available/message/snapshot이며 snapshot에는 설정 모델, 분석기별 구간 상태와 speech-review의 dialogue가 있다. 미보관/만료 시 available=false다. 공개 API·영구 분석 이력·권한 검사가 구현된 endpoint가 아니다.
+- 구간/묶음 판단은 내부 계약이다. 공개 리포트의 전체 status=COMPLETED여도 coverage의 PARTIAL 경고가 있을 수 있다. ID 9는 구간 53개 모두 유효지만 묶음 1개가 탈락했다.
+- 재시도는 현재 실패/취소 상태에만 허용된다. COMPLETED 영상에 동일 retry를 호출해 새 프롬프트를 비교할 수 있다고 안내하지 않는다.
+- HyperFrames export/preview, PostHog 이벤트 전송, 로그인 API는 이번 문서 갱신으로 구현되지 않았다. 상세 차이와 보존 항목은 [브랜치 비교](main-minwook-비교-및-도구-적용-검토.md)를 따른다.
+
 ---
 
 ## 1. 공통 규칙 (§1)
