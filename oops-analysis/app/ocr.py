@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import shutil
 import time
@@ -108,10 +109,8 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     보관 경로를 함께 돌려준다. Spring 이 이 이미지를 프론트에 서빙한다.
     전체 프레임을 다 남기면 용량이 커지므로 필요한 것만 남긴다.
 
-    2단계로 처리한다.
-      1) 모든 프레임을 인식해 줄 단위로 모은다
-      2) 거의 모든 프레임에 나오는 줄은 워터마크로 보고 버린다
-    채널 로고나 고정 배너가 자막에 섞여 들어가는 것을 막기 위해서다.
+    영역별 원문·정규화 좌표와 이어지는 관측을 보존한다.
+    반복 글자를 삭제하거나 같은 프레임의 영역을 합치지 않는다.
     """
     started = time.time()
     engine = _engine()
@@ -125,7 +124,7 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
         keep_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- 1단계: 프레임별로 줄 단위 인식 결과를 모은다 ----
-    per_frame: list[tuple[int, Path, list[tuple[str, float]]]] = []
+    region_frames = []
     for time_ms, frame_path in frames:
         try:
             raw = engine.ocr(str(frame_path), cls=True)
@@ -133,61 +132,119 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
             log.warning("[ocr] 프레임 실패 %s: %s", frame_path.name, e)
             continue
 
-        parsed = [
-            (text.strip(), conf, cx, cy) for text, conf, cx, cy in _parse(raw)
-            if conf >= MIN_CONFIDENCE
-            and len(text.strip()) >= MIN_LENGTH
-            and not any(p in text for p in IGNORE_PATTERNS)
-        ]
-        if parsed:
-            per_frame.append((time_ms, frame_path, parsed))
+        region_frames.append((time_ms, frame_path, _parse_regions(raw)))
 
-    watermarks = _find_watermarks(per_frame)
-    if watermarks:
-        log.info("[ocr] 고정 위치 %d곳 제외 (로고·배너로 판단)", len(watermarks))
-
-    # ---- 2단계: 워터마크를 뺀 나머지로 자막을 만든다 ----
-    items: list[dict] = []
-    previous_text = None
-
-    for time_ms, frame_path, parsed in per_frame:
-        kept = [(t, c) for t, c, cx, cy in parsed
-                if _position_key(cx, cy) not in watermarks]
-        if not kept:
-            continue
-
-        merged = " ".join(text for text, _ in kept)
-        confidence = sum(conf for _, conf in kept) / len(kept)
-
-        # 같은 자막이 여러 프레임에 걸쳐 있으면 앞 항목의 끝시간만 늘린다
-        if merged == previous_text and items:
-            items[-1]["endMs"] = time_ms + int(interval_sec * 1000)
-            continue
-
-        saved_path = None
-        if keep_dir:
-            target = keep_dir / f"{time_ms:09d}.jpg"
-            try:
-                shutil.copyfile(frame_path, target)
-                saved_path = str(target.resolve())
-            except OSError as e:
-                log.warning("[ocr] 프레임 보관 실패 %s: %s", target, e)
-
-        items.append({
-            "startMs": time_ms,
-            "endMs": time_ms + int(interval_sec * 1000),
-            "text": merged,
-            "confidence": round(confidence, 3),
-            "framePath": saved_path,
-        })
-        previous_text = merged
+    # Do not delete repeated text or merge unrelated regions. Classification happens with STT in Spring.
+    items = _region_items(region_frames, interval_sec, video.duration_sec, keep_dir)
 
     now = time.time()
     log.info("[ocr] frames=%d items=%d | 프레임추출 %.1f초, 인식 %.1f초 (프레임당 %.2f초)",
              len(frames), len(items),
              extracted_at - started, now - extracted_at,
              (now - extracted_at) / max(1, len(frames)))
-    return {"items": items}
+    return {"items": items, "formatVersion": "regions-v1"}
+
+
+def _parse_regions(raw):
+    """Preserve each OCR line and its full axis-aligned box; missing geometry stays unknown."""
+    if not raw:
+        return []
+    page = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else raw
+    regions = []
+    for item in page or []:
+        try:
+            text, confidence = item[1][0], float(item[1][1])
+            if not isinstance(text, str) or not math.isfinite(confidence) or confidence < MIN_CONFIDENCE or len(text.strip()) < MIN_LENGTH:
+                continue
+        except (IndexError, TypeError, ValueError):
+            continue
+        box = None
+        try:
+            xs = [float(p[0]) for p in item[0]]
+            ys = [float(p[1]) for p in item[0]]
+            if len(xs) >= 4 and all(math.isfinite(v) for v in xs + ys) and max(xs) > min(xs) and max(ys) > min(ys):
+                box = (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        except (IndexError, TypeError, ValueError):
+            pass
+        regions.append((text, confidence, box))
+    return regions
+
+
+def _frame_size(path):
+    # Optional metadata only: unavailable image reader must not discard raw OCR.
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            return image.size
+    except Exception:
+        try:
+            import cv2
+            image = cv2.imread(str(path))
+            return (image.shape[1], image.shape[0]) if image is not None else None
+        except Exception:
+            return None
+
+
+def _iou(a, b):
+    if a is None or b is None:
+        return 0.0
+    x = max(0, min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0]))
+    y = max(0, min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1]))
+    intersection = x * y
+    return intersection / (a[2] * a[3] + b[2] * b[3] - intersection) if intersection else 0.0
+
+
+def _region_items(frames, interval_sec, duration_sec, keep_dir=None):
+    items, previous, slots = [], [], {}
+    step = max(1, int(interval_sec * 1000))
+    duration = int(duration_sec * 1000) if duration_sec > 0 else None
+    last_time = None
+    for time_ms, path, regions in frames:
+        size = _frame_size(path)
+        saved_path = None
+        if regions and keep_dir:
+            target = keep_dir / f"{time_ms:09d}.jpg"
+            try:
+                shutil.copyfile(path, target)
+                saved_path = str(target.resolve())
+            except OSError as e:
+                log.warning("[ocr] 프레임 보관 실패 %s: %s", target, e)
+        current, used = [], set()
+        for text, confidence, pixels in regions:
+            box = None
+            if pixels and size and size[0] > 0 and size[1] > 0:
+                x, y, w, h = pixels
+                if x >= 0 and y >= 0 and x + w <= size[0] and y + h <= size[1]:
+                    box = (x / size[0], y / size[1], w / size[0], h / size[1])
+            slot = tuple(round(v / 0.05) for v in (box[0] + box[2] / 2, box[1] + box[3] / 2)) if box else None
+            if slot is not None:
+                slots.setdefault(slot, set()).add(text)
+            match = next((index for index in previous if index not in used
+                          and last_time is not None and time_ms - last_time <= step * 1.5
+                          and items[index]["text"] == text and _iou(items[index]["_box"], box) >= 0.6), None)
+            end = min(time_ms + step, duration) if duration is not None else time_ms + step
+            if end <= time_ms:
+                continue
+            if match is not None:
+                item = items[match]
+                item["endMs"] = end
+                item["observations"] += 1
+                item["confidence"] = min(item["confidence"], round(confidence, 3))
+                used.add(match)
+                current.append(match)
+                continue
+            item = {"startMs": time_ms, "endMs": end, "text": text, "confidence": round(confidence, 3),
+                    "framePath": saved_path, "trackId": f"region-{len(items)}", "observations": 1,
+                    "boxX": box[0] if box else None, "boxY": box[1] if box else None,
+                    "boxWidth": box[2] if box else None, "boxHeight": box[3] if box else None,
+                    "_box": box, "_slot": slot}
+            items.append(item)
+            current.append(len(items) - 1)
+        previous, last_time = current, time_ms
+    for item in items:
+        item["slotTextChanges"] = max(0, len(slots.get(item.pop("_slot"), set())) - 1)
+        item.pop("_box")
+    return items
 
 
 def _adjust_interval(duration_sec: float, requested: float) -> float:
