@@ -13,7 +13,7 @@ import java.util.*;
 @Component
 public class ReviewDiagnosticsStore {
     public record Snapshot(Long videoId, Long analysisJobId, Instant recordedAt,
-                           String configuredModel, List<ReviewDiagnostics> analyzers) {
+                           String configuredModel, List<ReviewDiagnostics> analyzers, String textReviewPromptRevision) {
         public Snapshot { analyzers = List.copyOf(analyzers); }
     }
     private final boolean enabled;
@@ -28,7 +28,8 @@ public class ReviewDiagnosticsStore {
 
     public void recordAfterCommit(Long videoId, Long jobId, String model, List<ReviewDiagnostics> analyzers) {
         if (!enabled) return;
-        var snapshot = new Snapshot(videoId, jobId, clock.instant(), model, analyzers);
+        var snapshot = new Snapshot(videoId, jobId, clock.instant(), model, analyzers,
+                com.example.oops.analyzer.TextReviewEngine.PROMPT_REVISION);
         afterCommit(() -> put(snapshot));
     }
     public void removeAfterCommit(Long videoId) {

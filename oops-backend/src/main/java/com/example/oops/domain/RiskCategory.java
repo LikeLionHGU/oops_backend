@@ -10,6 +10,7 @@ public enum RiskCategory {
     MOCKERY("조롱"),
     BELITTLEMENT("비하"),
     STRONG_NEGATIVE_REVIEW("강한 부정 평가"),
+    GRAPHIC_METAPHOR("신체 훼손 비유"),
     GENERALIZATION("과도한 일반화"),
     SENSITIVE_TOPIC("민감 주제"),
     UNFAMILIAR_CONTEXT("배경 확인 필요"),   // 특정 커뮤니티·역사 맥락이 있는 표현

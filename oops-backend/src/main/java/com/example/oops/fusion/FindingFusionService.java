@@ -75,6 +75,7 @@ public class FindingFusionService {
         MERGE_GROUP.put(RiskCategory.MOCKERY, "PUTDOWN");
         MERGE_GROUP.put(RiskCategory.BELITTLEMENT, "PUTDOWN");
         MERGE_GROUP.put(RiskCategory.STRONG_NEGATIVE_REVIEW, "NEGATIVE_REVIEW");
+        MERGE_GROUP.put(RiskCategory.GRAPHIC_METAPHOR, "GRAPHIC_METAPHOR");
 
         MERGE_GROUP.put(RiskCategory.AD_DEMONETIZED, "AD");
         MERGE_GROUP.put(RiskCategory.AD_LIMITED, "AD");
@@ -106,6 +107,7 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.TIMING_SENSITIVE, 88);
         CATEGORY_WEIGHT.put(RiskCategory.BELITTLEMENT, 80);
         CATEGORY_WEIGHT.put(RiskCategory.STRONG_NEGATIVE_REVIEW, 35);
+        CATEGORY_WEIGHT.put(RiskCategory.GRAPHIC_METAPHOR, 45);
         CATEGORY_WEIGHT.put(RiskCategory.MOCKERY, 78);
         CATEGORY_WEIGHT.put(RiskCategory.SENSITIVE_TOPIC, 75);
         CATEGORY_WEIGHT.put(RiskCategory.FACT_ERROR, 96);

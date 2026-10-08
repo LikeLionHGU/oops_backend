@@ -26,6 +26,9 @@ import java.util.regex.Pattern;
 @Component
 public class OpenAiClient {
 
+    /** Provider JSON-mode requirement, independent of analyzer-specific prompt wording. */
+    public static final String JSON_OUTPUT_INSTRUCTION = "반드시 유효한 JSON 객체만 반환한다. JSON을 코드 블록으로 감싸거나 객체 밖에 설명을 덧붙이지 마라.";
+
     /** 429 를 만났을 때 재시도 횟수 */
     private static final int MAX_ATTEMPTS = 4;
 
@@ -324,7 +327,7 @@ public class OpenAiClient {
             body.put("temperature", 0.1);
         }
         body.put("response_format", Map.of("type", "json_object"));
-        body.put("messages", List.of(Map.of("role", "system", "content", systemPrompt),
+        body.put("messages", List.of(Map.of("role", "system", "content", systemPrompt + "\n" + JSON_OUTPUT_INSTRUCTION),
                 Map.of("role", "user", "content", userPrompt)));
         return body;
     }

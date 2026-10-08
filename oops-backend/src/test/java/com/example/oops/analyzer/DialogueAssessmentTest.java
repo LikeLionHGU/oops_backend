@@ -70,7 +70,7 @@ class DialogueAssessmentTest {
         assertThat(result.diagnostics().dialogue().units().get(0).state()).isEqualTo(ReviewDiagnostics.State.NOT_RETURNED);
         assertThat(result.notice()).contains("대화 묶음", "미판정 1");
         assertThat(result.notice().length()).isLessThanOrEqualTo(300);
-        verify(client).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
+        verify(client, times(2)).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
     }
     @ParameterizedTest @ValueSource(strings = {"QUOTE", "TYPE", "TARGET", "RELATION", "UNKNOWN_UNIT"})
     void invalidUnitDecisionDoesNotBypassExistingEvidenceAndTargetGuards(String invalid) {

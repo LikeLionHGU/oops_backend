@@ -96,6 +96,33 @@ class OpenAiClientTest {
         assertThat(pricing.sttUsdPerMinute()).isEqualTo(0.006); // Whisper remains active.
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void systemAlwaysHasExplicitJsonInstructionEvenWhenBothOriginalMessagesLackJson() {
+        var client = new OpenAiClient(RestClient.create(), properties(null, null));
+        var body = client.requestBody("대화 묶음 하나만 판정한다.", "일반 영상 원문");
+        var messages = (java.util.List<java.util.Map<String, String>>) body.get("messages");
+        assertThat(messages.get(0).get("content")).startsWith("대화 묶음 하나만 판정한다.")
+                .endsWith(OpenAiClient.JSON_OUTPUT_INSTRUCTION).contains("JSON");
+        assertThat(messages.get(1).get("content")).isEqualTo("일반 영상 원문");
+        assertThat(body.get("response_format")).isEqualTo(java.util.Map.of("type", "json_object"));
+    }
+
+    @Test
+    void actualMockHttpPayloadHasJsonInstructionWithoutDependingOnAnalyzerWording() {
+        var builder = RestClient.builder().baseUrl("https://example.invalid");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andExpect(jsonPath("$.messages[0].content").value("대화만 판정한다.\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION))
+                .andExpect(jsonPath("$.messages[1].content").value("원문"))
+                .andRespond(withSuccess(mockResponse(), MediaType.APPLICATION_JSON));
+        var client = new OpenAiClient(builder.build(), properties(null, null));
+        client.beginVideo(1L);
+        try { assertThat(client.completeAsJson("대화만 판정한다.", "원문", Answer.class)).contains(new Answer(true)); }
+        finally { client.endVideo(); }
+        server.verify();
+    }
+
     record Answer(boolean ok) {}
 
     private String mockResponse() {

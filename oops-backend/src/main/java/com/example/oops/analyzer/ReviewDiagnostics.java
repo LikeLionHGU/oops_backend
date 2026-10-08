@@ -24,7 +24,7 @@ public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int t
         PRIMARY_QUOTE_MISMATCH, INVALID_TARGET_TYPE, INVALID_TARGET_RELATION,
         VAGUE_TARGET_REASON, MISSING_TARGET_EVIDENCE, INVALID_MISSING_INFORMATION,
         EVIDENCE_VALIDATION, INVALID_CATEGORY, VAGUE_REASON, NONFINITE_SCORE,
-        TARGET_TOO_LONG, MISSING_TARGET
+        TARGET_TOO_LONG, MISSING_TARGET, MISSING_ALTERNATIVE_INTERPRETATION
     }
     public record EvidenceLink(String segmentId, EvidenceRole role) {}
     public record DecisionTrace(Decision decision, String reason, String category, String target,

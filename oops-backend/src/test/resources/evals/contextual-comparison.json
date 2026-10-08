@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "status": "synthetic_development_not_holdout",
+  "cases": [
+    {"id":"food-review","domain":"food","decision":"REVIEW_REQUIRED","category":"MOCKERY","target":"이 마을 사람들","targetType":"RESIDENT_GROUP","lines":["이 마을 사람들은 식당에 갈 수가 없다더라","그래서 이런 걸 먹고 외식한 척하는 거겠지"],"reason":"마을 사람들의 대체 음식 선택을 외식한 척하는 행동으로 낮춰 묘사합니다.","alternative":"식당 접근성 설명일 수 있지만 외식한 척한다는 말은 선택한 사람을 비웃는 평가입니다."},
+    {"id":"food-access","domain":"food","decision":"PASS","lines":["이 마을 사람들은 식당에 갈 수가 없다더라","그래서 주민 식당 지원을 늘리면 좋겠어요"],"reason":"식당 접근성과 지원 개선을 설명하며 주민을 낮추는 평가를 연결하지 않습니다."},
+    {"id":"education-review","domain":"education","decision":"REVIEW_REQUIRED","category":"MOCKERY","target":"그 학교 학생들","targetType":"GROUP","lines":["그 학교 학생들은 실습실이 없대","그 장난감으로 연습하고 기술자인 척하는 거겠지"],"reason":"학생들의 대체 실습을 기술자인 척하는 행동에 빗대며 능력을 낮춰 묘사합니다.","alternative":"시설 부족 설명일 수 있지만 기술자인 척한다는 평가는 시설 문제가 아니라 학생에게 향합니다."},
+    {"id":"education-access","domain":"education","decision":"PASS","lines":["그 학교 학생들은 실습실이 없대","그래서 이동 실습 차량을 지원하고 있어요"],"reason":"시설 부족과 지원 대안을 설명하며 학생의 능력을 낮추는 평가는 없습니다."},
+    {"id":"housing-review","domain":"housing","decision":"REVIEW_REQUIRED","category":"BELITTLEMENT","target":"그 기숙사 학생들","targetType":"GROUP","lines":["그 기숙사 학생들은 방이 좁대","그 상자 같은 데 살면서 집 가진 사람 흉내 내는 거겠지"],"reason":"좁은 주거 공간을 이유로 기숙사 학생들의 생활을 집 가진 사람의 흉내로 낮춰 묘사합니다.","alternative":"좁은 공간 비판일 수 있지만 흉내 낸다는 표현은 공간 개선보다 거주자를 낮추는 데 연결됩니다."},
+    {"id":"housing-access","domain":"housing","decision":"PASS","lines":["그 기숙사 학생들은 방이 좁대","생활 공간을 늘려야 학생들이 편하게 살 수 있어요"],"reason":"주거 환경의 개선을 요구하며 거주자를 낮추는 평가는 없습니다."},
+    {"id":"work-review","domain":"work","decision":"REVIEW_REQUIRED","category":"MOCKERY","target":"이 회사 직원들","targetType":"GROUP","lines":["이 회사 직원들은 전용 사무실이 없대","카페에서 일하며 직장인인 척하는 거겠지"],"reason":"직원들의 대체 근무 공간을 직장인인 척하는 행동으로 연결해 직업적 지위를 비웃습니다.","alternative":"근무 공간 설명일 수 있지만 직장인인 척한다는 말은 직원의 지위를 낮춰 평가합니다."},
+    {"id":"work-access","domain":"work","decision":"PASS","lines":["이 회사 직원들은 전용 사무실이 없대","공유 공간에서 일하니 원격 근무 지원이 필요해요"],"reason":"근무 공간과 지원 필요성을 설명하며 직원의 능력이나 지위를 낮추지 않습니다."},
+    {"id":"own-choice","domain":"hobby","decision":"PASS","lines":["저는 비싼 악기를 못 샀어요","저렴한 악기로 연습했고 소리가 마음에 들어요"],"reason":"자신의 예산과 만족스러운 대체 선택을 설명하며 타인을 비하하지 않습니다."},
+    {"id":"product-comparison","domain":"product","decision":"PASS","lines":["이 카메라는 기능이 적어요","제 용도에는 휴대전화로도 충분해서 그걸 선택했어요"],"reason":"기능과 자신의 용도를 비교하며 사용자 집단을 낮춰 묘사하지 않습니다."},
+    {"id":"critical-quotation","domain":"education","decision":"PASS","lines":["학생들을 보고 기술자인 척한다고 말하는 건 잘못된 평가예요","시설이 부족한 것이 학생의 능력 부족을 뜻하지는 않아요"],"reason":"학생을 낮추는 말을 비판하는 인용이며 화자가 그 평가를 지지하는 문맥이 아닙니다."},
+    {"id":"nostalgia","domain":"food","decision":"PASS","lines":["어릴 때 식당이 멀어서 집에서 만들어 먹었어요","이 음식이 그때 가족과 먹던 맛을 떠올리게 해요"],"reason":"자신의 과거 경험과 가족의 추억을 연결한 음식 감상입니다."},
+    {"id":"stt-ambiguous","domain":"food","decision":"UNCERTAIN","lines":["저기 젊은 아들 아니 애들인지 잘 안 들리네","못 먹으니까 대신 저걸 먹는다고 했어"],"reason":"전사에서 대상이 불분명하고 평가 연결을 확정할 수 없습니다.","missing":"원본 음성에서 지칭 대상과 정확한 발화를 확인할 정보"},
+    {"id":"missing-referent","domain":"general","decision":"UNCERTAIN","lines":["걔들은 그게 없대","그래서 흉내만 낸다는 거지"],"reason":"무엇이 부족하고 누구의 어떤 행동을 평가하는지 연결에 필수적인 대상 정보가 없습니다.","missing":"앞선 지칭 대상과 비교 행동을 설명한 대화"}
+  ]
+}

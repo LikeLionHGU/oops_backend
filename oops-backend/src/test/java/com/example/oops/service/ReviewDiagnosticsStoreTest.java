@@ -18,6 +18,8 @@ class ReviewDiagnosticsStoreTest {
         assertThat(store.find(1L)).isEmpty();
         store.recordAfterCommit(2L, 99L, "new-model", List.of());
         assertThat(store.find(2L).orElseThrow().analysisJobId()).isEqualTo(99L);
+        assertThat(store.find(2L).orElseThrow().textReviewPromptRevision())
+                .isEqualTo(com.example.oops.analyzer.TextReviewEngine.PROMPT_REVISION);
         store.removeAfterCommit(2L);
         assertThat(store.find(2L)).isEmpty();
     }
