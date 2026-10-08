@@ -18,7 +18,7 @@ class TextReviewAnalyzerTest {
     private final Video video = Video.builder().filename("offline.mp4").build();
 
     private ContentAnalyzer analyzer(TimelineEventType type) {
-        return type == TimelineEventType.SPEECH ? new SpeechReviewAnalyzer(client) : new ScreenTextReviewAnalyzer(client);
+        return type == TimelineEventType.SPEECH ? new SpeechReviewAnalyzer(client, false) : new ScreenTextReviewAnalyzer(client);
     }
 
     private AnalysisContext context(TimelineEventType type) {
@@ -39,7 +39,11 @@ class TextReviewAnalyzerTest {
     private String id(TimelineEventType type) { return type == TimelineEventType.SPEECH ? "stt-index-0" : "ocr-index-0"; }
     private LlmDecision decision(String id, String decision, String quote, String category, List<String> missing) {
         return new LlmDecision(id, decision, quote, "소개 중인 가게의 메뉴에 대한 강하고 단정적인 평가입니다.",
-                category, "그 집", 0.9, null, null, missing);
+                category, "그 집", 0.9, null, null, missing,
+                "REVIEW_REQUIRED".equals(decision)
+                        ? List.of(new LlmEvidence(id, quote, "PRIMARY"), new LlmEvidence(id, "그 집", "TARGET"))
+                        : List.of(new LlmEvidence(id, quote, "PRIMARY")),
+                "BUSINESS", "EXPLICIT", "원문에서 그 집의 음식이나 가격을 평가 대상으로 직접 지칭합니다.", null);
     }
     private void response(LlmDecision... decisions) {
         when(client.completeAsJson(anyString(), anyString(), eq(LlmResult.class)))
@@ -122,7 +126,7 @@ class TextReviewAnalyzerTest {
             assertThat(analyzer.analyze(context)).isEmpty();
             var run = analyzer.consumeReviewResult(context).orElseThrow();
             assertThat(run.status()).isEqualTo(AnalyzerStatus.FAILED);
-            assertThat(run.notice()).contains("응답 검증 실패 1건");
+            assertThat(run.notice()).contains("응답 검증 실패 2건", "누락 재검토 1배치");
         }
     }
 
@@ -154,9 +158,70 @@ class TextReviewAnalyzerTest {
     }
 
     @Test
+    void repairsOnlyMissingPrimaryAndRecordsExplicitPassWithoutAssumingSafety() {
+        when(client.completeAsJson(anyString(), anyString(), eq(LlmResult.class))).thenReturn(
+                Optional.of(new LlmResult(List.of(decision("stt-index-0", "PASS", "롯데리아", null, List.of())))),
+                Optional.of(new LlmResult(List.of(decision("stt-index-1", "PASS", "한계를", null, List.of())))));
+        var context = new AnalysisContext(video, null, List.of(
+                new TranscriptSegment(video, 0, 1_000, "롯데리아 없나?"),
+                new TranscriptSegment(video, 2_000, 3_000, "한계를 느꼈다")), null);
+        var analyzer = analyzer(TimelineEventType.SPEECH);
+        assertThat(analyzer.analyze(context)).isEmpty();
+        var result = analyzer.consumeReviewResult(context).orElseThrow();
+        assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
+        assertThat(result.unassessedSegmentIds()).isEmpty();
+        assertThat(result.evaluations()).hasSize(2);
+        var prompts = ArgumentCaptor.forClass(String.class);
+        verify(client, times(2)).completeAsJson(anyString(), prompts.capture(), eq(LlmResult.class));
+        var retry = tools.jackson.databind.json.JsonMapper.builder().build().readTree(prompts.getAllValues().get(1));
+        assertThat(retry.get("primary").size()).isOne();
+        assertThat(retry.get("primary").get(0).get("id").asString()).isEqualTo("stt-index-1");
+    }
+
+    @Test
+    void repairBudgetIsBoundedAndRemainingSegmentsNeverBecomeImplicitPass() {
+        when(client.completeAsJson(anyString(), anyString(), eq(LlmResult.class)))
+                .thenReturn(Optional.of(new LlmResult(List.of(decision("unknown", "PASS", "대화", null, List.of())))));
+        var context = new AnalysisContext(video, null, IntStream.range(0, 100)
+                .mapToObj(i -> new TranscriptSegment(video, i * 1_000, i * 1_000 + 500, "일반 대화" + i)).toList(), null);
+        var analyzer = analyzer(TimelineEventType.SPEECH);
+        assertThat(analyzer.analyze(context)).isEmpty();
+        var result = analyzer.consumeReviewResult(context).orElseThrow();
+        assertThat(result.status()).isEqualTo(AnalyzerStatus.FAILED);
+        assertThat(result.unassessedSegmentIds()).hasSize(100);
+        assertThat(result.notice()).contains("누락 재검토 6배치", "복구 0구간");
+        verify(client, times(12)).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
+    }
+
+    @Test
+    void overlappingOriginalBatchCanRecoverMissingIdWithoutRedundantRepair() {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        when(client.completeAsJson(anyString(), anyString(), eq(LlmResult.class))).thenAnswer(invocation -> {
+            boolean first = calls.getAndIncrement() == 0;
+            var tree = tools.jackson.databind.json.JsonMapper.builder().build().readTree((String) invocation.getArgument(1));
+            List<LlmDecision> decisions = new ArrayList<>();
+            tree.get("primary").forEach(node -> {
+                String id = node.get("id").asString();
+                if (!(first && id.equals("stt-index-17"))) decisions.add(decision(id, "PASS", "그 집", null, List.of()));
+            });
+            return Optional.of(new LlmResult(decisions));
+        });
+        var context = new AnalysisContext(video, null, IntStream.range(0, 25)
+                .mapToObj(i -> new TranscriptSegment(video, i * 1_000, i * 1_000 + 500, "그 집 음식" + i)).toList(), null);
+        var analyzer = analyzer(TimelineEventType.SPEECH);
+        assertThat(analyzer.analyze(context)).isEmpty();
+        var result = analyzer.consumeReviewResult(context).orElseThrow();
+        assertThat(result.unassessedSegmentIds()).isEmpty();
+        assertThat(result.notice()).contains("누락 재검토 0배치");
+        verify(client, times(2)).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
+    }
+
+    @Test
     void rawOcrAndInferredReadingStaySeparateInIntermediateResult() {
         var item = new LlmDecision("ocr-index-0", "REVIEW_REQUIRED", "아갑다", "소개 중인 가게의 메뉴를 평가하는 대목입니다.",
-                "STRONG_NEGATIVE_REVIEW", "그 집", 0.9, null, "그 집 음식은 돈이 아깝다", List.of());
+                "STRONG_NEGATIVE_REVIEW", "그 집", 0.9, null, "그 집 음식은 돈이 아깝다", List.of(),
+                List.of(new LlmEvidence("ocr-index-0", "아갑다", "PRIMARY"), new LlmEvidence("ocr-index-0", "그 집", "TARGET")),
+                "BUSINESS", "EXPLICIT", "화면의 그 집이라는 지칭이 음식 평가의 대상을 직접 나타냅니다.", null);
         response(item);
         var analyzer = analyzer(TimelineEventType.CAPTION);
         var context = context(TimelineEventType.CAPTION);

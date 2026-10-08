@@ -26,3 +26,6 @@ spring:
 logging:
   level:
     com.example.oops: DEBUG
+oops:
+  analysis:
+    review-diagnostics-enabled: true # 127.0.0.1 로컬 진단 전용

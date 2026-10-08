@@ -73,4 +73,21 @@ class ReviewEvidenceValidatorTest {
                 new ReviewEvaluation("reviewer", ExecutionStatus.SUCCESS, List.of("stt-1"), List.of(observation))))
                 .anyMatch(error -> error.contains("Unreviewed anchor"));
     }
+
+    @Test
+    void suppliedContextCanSupportEvidenceWithoutBeingMarkedReviewed() {
+        var input = new ReviewInput(List.of(
+                new ReviewInput.Segment("a", TimelineEventType.SPEECH, 0, 1, "그 지역 주민", null),
+                new ReviewInput.Segment("b", TimelineEventType.SPEECH, 2, 3, "열등하다", null)));
+        var observation = new Observation("b", Decision.REVIEW_REQUIRED, "주민을 낮춰 부르는 발언",
+                List.of(new EvidenceSpan("b", "열등하다", 0, 4),
+                        new EvidenceSpan("a", "그 지역 주민", 0, 7, EvidenceRole.TARGET)), List.of());
+        var result = new ReviewEvaluation("reviewer", ExecutionStatus.SUCCESS, List.of("b"),
+                List.of(observation), List.of("a", "b"));
+        assertThat(ReviewEvidenceValidator.validate(input, result)).isEmpty();
+        assertThat(result.reviewedSegmentIds()).containsExactly("b");
+        assertThat(ReviewEvidenceValidator.validate(input, new ReviewEvaluation("reviewer", ExecutionStatus.SUCCESS,
+                List.of("b"), List.of(observation), List.of("b"))))
+                .anyMatch(error -> error.contains("Unsupplied evidence"));
+    }
 }

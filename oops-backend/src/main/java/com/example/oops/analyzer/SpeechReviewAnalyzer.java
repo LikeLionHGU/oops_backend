@@ -2,7 +2,6 @@ package com.example.oops.analyzer;
 
 import com.example.oops.client.OpenAiClient;
 import com.example.oops.domain.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -19,13 +18,12 @@ import java.util.List;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
     private static final String SYSTEM_PROMPT = """
             너는 영상을 공개하기 전에 제작팀이 다시 확인할 지점을 짚어주는 검수 보조자다.
 
-            중요한 원칙: 너는 판정하지 않는다.
+            중요한 원칙: 도덕적 옳고 그름이나 논란 확률을 판정하지 않는다. 구체적 근거에 따라 재검토 필요 여부는 분류한다.
             "이 발언은 부적절하다", "논란 가능성 85%" 같은 말은 하지 마라.
             제작자는 이미 영상을 수십 번 봤고, 알면서도 넣은 장면이 있을 수 있다.
             네 역할은 옳고 그름을 정하는 것이 아니라,
@@ -42,7 +40,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
             유형:
             - UNFAMILIAR_CONTEXT: 특정 커뮤니티·역사·사건과 얽힌 표현.
-              화자가 그 맥락을 모르고 썼을 수 있다. **가장 중요한 유형이다.**
+              화자가 그 맥락을 모르고 썼을 수 있다. 일반적인 모욕·불쾌한 비유를 이 유형으로 대체하지 않는다.
 
               한국 온라인 커뮤니티에는 겉보기엔 평범한데 안에서만 다른 뜻으로
               쓰이는 말이 많다. 이런 것을 특히 주의해서 봐라.
@@ -66,7 +64,8 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
               단어만으로 수위를 추정하지 말고 실제 발언을 근거로 삼는다.
             - MOCKERY: 특정 인물이나 집단을 비웃는 대목
             - GENERALIZATION: 집단 전체를 단정하는 대목
-            - SENSITIVE_TOPIC: 다루기 민감한 주제를 언급한 대목
+            - SENSITIVE_TOPIC: 민감한 주제의 구체적인 취급 방식에 검토 이유가 있는 대목.
+              주제 언급 자체나 일반적인 개인 감정 표현은 해당하지 않는다.
             - DISCRIMINATION: 성별·인종·장애·나이와 얽힌 표현
             - HATE_SPEECH: 특정 집단을 향한 혐오 표현
             - PRIVACY: 타인의 신상이 드러나는 대목
@@ -76,11 +75,21 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             - SEXUAL: 성적인 표현 중 공개 전 확인할 가치가 있는 대목
 
             판단 절차 (반드시 이 순서로):
-            1. 이 말이 향하는 대상이 누구/무엇인지 정한다.
-            2. 대상이 없거나, 화자 자신이거나, 관용 표현이면 넘어간다.
+            1. 먼저 각 읽기 창을 시간순으로 읽고 발언들이 같은 대상을 가리키는지 원문으로 확인한다.
+               문장 조각을 따로 정상 처리하기 전에, 앞선 설명과 뒤의 평가를 함께 연결하여 검토한다.
+               연결이 시간상 가깝다는 것만으로 같은 화자·대상이라고 추정하지 않는다.
+               그 뒤 이 말이 향하는 대상이 누구/무엇인지 정한다.
+            2. 개인·집단을 평가하는 후보에서 대상이 없거나, 화자 자신이거나, 관용 표현이면 넘어간다.
+               개인정보 노출·위험한 사실 단정 등 대상 공격이 아닌 유형은 각각의 근거로 검토한다.
                고유명사가 나왔다고 그 대상을 문제 삼은 것이 아니다.
                ("롯데리아 같은 소리 하고 있어" 는 관용 표현이지 브랜드 언급이 아니다)
             3. 평범한 취향 표현인지, 특정 대상을 향한 강한 평가·조롱·모욕인지 구분한다.
+               결핍·선택지 부재를 설명한 뒤 주민/집단이나 그 음식·문화를 열등한 대체재로 취급하는 흐름인지 검토한다.
+               단순히 지역에 매장이 없다는 사실, 집에서 다른 음식을 만드는 설명, 다른 음식에 빗댄 맛 감상은 경고 근거가 아니다.
+               연결된 말에서도 대상의 가치를 낮추는 구체적인 근거가 없으면 PASS다. 소재·비유 단어만으로 비하를 만들지 마라.
+               주민/집단을 낮추면 BELITTLEMENT/MOCKERY, 상품·가게의 강하고 단정적인 평가면 STRONG_NEGATIVE_REVIEW를 구분한다.
+               하나의 발언 창에서 실제 평가 표현을 대표 anchor로 고르고 앞선 대상·상황 발언을 TARGET/CONTEXT로 인용한다.
+               연결된 평가가 후보의 이유라면 reason에 그 관계를 설명하고, 가능한 정상 해석은 alternativeInterpretation에 분리한다.
             4. 남는 것에 대해 "왜 다시 봐야 하는지" 를 한 문장으로 적는다.
 
             넘어가야 할 것:
@@ -92,7 +101,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
             UNFAMILIAR_CONTEXT 를 적을 때는 어떤 맥락인지 반드시 알려줘라.
             "정치적 맥락이 있는 표현입니다" 처럼 뭉뚱그리면 제작자가 확인할 수가 없다.
-            "이 어미는 특정 커뮤니티 말투로 알려져 있습니다" 처럼 구체적으로 적어라.
+            특수 맥락을 특정할 수 없는 일반 어미는 사전 사례가 있다는 이유로 올리지 않는다.
 
             reason 작성 규칙 (가장 중요):
             - 단정하지 마라. "부적절하다", "문제가 있다" 라고 쓰지 마라.
@@ -106,7 +115,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             좋은 예:
             - "특정 세대 전체를 하나로 묶는 표현입니다."
             - "온라인 커뮤니티에서 다른 뜻으로 쓰인 사례가 있는 표현입니다."
-            - "소개 중인 가게의 메뉴를 평가하는 대목입니다. 당사자가 볼 수 있습니다."
+            - "소개 중인 가게의 메뉴 전체가 의미 없다는 단정이 이어져, 단일 취향 평가와 구분해 검토할 대목입니다."
 
             나쁜 예:
             - "부적절한 발언입니다"
@@ -121,6 +130,14 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             """;
 
     private final OpenAiClient openAiClient;
+    private final boolean dialogueEnabled;
+    public SpeechReviewAnalyzer(OpenAiClient client) { this(client, true); }
+    @org.springframework.beans.factory.annotation.Autowired
+    public SpeechReviewAnalyzer(OpenAiClient client,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled) {
+        this.openAiClient = client;
+        this.dialogueEnabled = enabled;
+    }
     private final ThreadLocal<TextReviewEngine.Result> lastResult = new ThreadLocal<>();
 
     @Override
@@ -143,7 +160,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
         TextReviewEngine.Result result = TextReviewEngine.run(openAiClient, context,
-                TimelineEventType.SPEECH, key(), SYSTEM_PROMPT, ALLOWED_CATEGORIES, 3);
+                TimelineEventType.SPEECH, key(), SYSTEM_PROMPT, ALLOWED_CATEGORIES, 3, dialogueEnabled);
         lastResult.set(result);
         log.info("[{}] videoId={} status={} findings={}", key(), context.video().getId(),
                 result.status(), result.findings().size());

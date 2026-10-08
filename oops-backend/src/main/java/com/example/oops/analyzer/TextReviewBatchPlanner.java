@@ -35,7 +35,7 @@ final class TextReviewBatchPlanner {
         return List.copyOf(batches);
     }
 
-    private static Batch withContext(ReviewInput input, List<ReviewInput.Segment> primary) {
+    static Batch withContext(ReviewInput input, List<ReviewInput.Segment> primary) {
         Set<String> primaryIds = new HashSet<>();
         primary.forEach(s -> primaryIds.add(s.id()));
         Map<String, ReviewInput.Segment> nearby = new LinkedHashMap<>();
@@ -47,10 +47,27 @@ final class TextReviewBatchPlanner {
                 for (var s : group) if (!primaryIds.contains(s.id())) nearby.putIfAbsent(s.id(), s);
             }
         }
+        if (!primary.isEmpty() && primary.get(0).type() == TimelineEventType.SPEECH) {
+            long start = primary.stream().mapToLong(ReviewInput.Segment::startMs).min().orElseThrow();
+            long end = primary.stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow();
+            // Short per-segment context can omit the beginning of a chain at a batch boundary.
+            // Select candidates using the same bounded windows, then apply the shared 16/8000 budget.
+            var surrounding = input.segments().stream().filter(s -> s.type() == TimelineEventType.SPEECH
+                    && !primaryIds.contains(s.id()) && s.endMs() >= start - ReviewUnit.MAX_SPAN_MS
+                    && s.startMs() <= end + ReviewUnit.MAX_SPAN_MS).toList();
+            var provisional = new Batch(primary, surrounding, false, false);
+            Set<String> windowIds = new HashSet<>();
+            ReviewUnit.all(provisional).forEach(u -> windowIds.addAll(u.segmentIds()));
+            surrounding.stream().filter(s -> windowIds.contains(s.id())).forEach(s -> nearby.putIfAbsent(s.id(), s));
+        }
         List<ReviewInput.Segment> selected = new ArrayList<>();
         int remaining = MAX_CONTEXT_CODE_POINTS;
         for (var s : nearby.values().stream().sorted(Comparator
-                .comparingLong((ReviewInput.Segment s) -> primary.stream()
+                // Keep the speech chain before dense nearby OCR consumes the bounded context budget.
+                .comparingInt((ReviewInput.Segment s) -> !primary.isEmpty()
+                        && primary.get(0).type() == TimelineEventType.SPEECH
+                        && s.type() != TimelineEventType.SPEECH ? 1 : 0)
+                .thenComparingLong((ReviewInput.Segment s) -> primary.stream()
                         .mapToLong(p -> Math.max(0, Math.max(s.startMs() - p.endMs(), p.startMs() - s.endMs())))
                         .min().orElseThrow()).thenComparingLong(ReviewInput.Segment::startMs)
                 .thenComparing(ReviewInput.Segment::id)).toList()) {

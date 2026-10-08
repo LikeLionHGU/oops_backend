@@ -61,6 +61,7 @@ public class AnalysisPipeline {
     private final OpenAiClient openAiClient;
     private final ReviewReferenceRepository referenceRepository;
     private final AnalysisReportRepository reportRepository;
+    private final ReviewDiagnosticsStore diagnosticsStore;
 
     @Async(AsyncConfig.ANALYSIS_EXECUTOR)
     @Transactional
@@ -178,6 +179,7 @@ public class AnalysisPipeline {
             findingRepository.deleteByVideoId(videoId);
             List<ContentAnalyzer> active = activeAnalyzers();
             List<RiskFinding> candidates = new ArrayList<>();
+            List<com.example.oops.analyzer.ReviewDiagnostics> diagnostics = new ArrayList<>();
 
             int index = 0;
             for (ContentAnalyzer analyzer : active) {
@@ -204,6 +206,9 @@ public class AnalysisPipeline {
                     List<RiskFinding> produced = analyzer.analyze(context);
                     String coverageNotice = analyzer.consumeCoverageNotice(context).orElse(null);
                     var reviewResult = analyzer.consumeReviewResult(context).orElse(null);
+                    if (reviewResult != null && reviewResult.diagnostics() != null) {
+                        diagnostics.add(reviewResult.diagnostics());
+                    }
                     checkNotCancelled(jobId);
 
                     long took = System.currentTimeMillis() - analyzerStart;
@@ -289,6 +294,7 @@ public class AnalysisPipeline {
                     jobId, videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 jobId={} — {}", jobId, formatElapsed(elapsed, total));
             logCost(videoId, video.getDurationSec());
+            diagnosticsStore.recordAfterCommit(videoId, jobId, openAiClient.videoUsage().model(), diagnostics);
 
         } catch (AnalysisCancelledException e) {
             TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();

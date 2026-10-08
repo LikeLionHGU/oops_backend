@@ -70,4 +70,31 @@ class TextReviewBatchPlannerTest {
         assertThatThrownBy(() -> TextReviewBatchPlanner.plan(input, TimelineEventType.SPEECH, 20))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void speechContinuityHasPriorityOverDenseCrossSourceContextWithinSameBudget() {
+        var primary = IntStream.range(30, 50).mapToObj(i -> segment("s" + i,
+                TimelineEventType.SPEECH, i * 1000, "대화" + i)).toList();
+        var all = new ArrayList<>(primary);
+        IntStream.range(25, 30).forEach(i -> all.add(segment("s" + i, TimelineEventType.SPEECH, i * 1000, "앞 대화")));
+        IntStream.range(50, 55).forEach(i -> all.add(segment("s" + i, TimelineEventType.SPEECH, i * 1000, "뒤 대화")));
+        IntStream.range(0, 30).forEach(i -> all.add(segment("ocr" + i, TimelineEventType.CAPTION, 30_000, "화면 글자")));
+        var batch = TextReviewBatchPlanner.withContext(new ReviewInput(all), primary);
+        assertThat(batch.context()).hasSizeLessThanOrEqualTo(16);
+        assertThat(batch.context()).extracting(ReviewInput.Segment::id)
+                .contains("s25", "s26", "s27", "s28", "s29", "s50", "s51", "s52", "s53", "s54");
+        assertThat(batch.contextLimited()).isTrue();
+    }
+
+    @Test
+    void batchBoundaryCanRetainChainStartBeyondLegacyFifteenSecondContext() {
+        var input = new ReviewInput(IntStream.range(0, 45).mapToObj(i -> segment("s" + i,
+                TimelineEventType.SPEECH, i * 1500, "대화" + i)).toList());
+        var batch = TextReviewBatchPlanner.plan(input, TimelineEventType.SPEECH, 3).get(2);
+        assertThat(batch.primary().get(0).id()).isEqualTo("s34");
+        assertThat(batch.context()).extracting(ReviewInput.Segment::id).contains("s24");
+        assertThat(batch.context()).hasSizeLessThanOrEqualTo(16);
+        assertThat(ReviewUnit.all(batch).stream().filter(u -> u.anchorId().equals("s40")))
+                .anySatisfy(u -> assertThat(u.segmentIds()).contains("s24", "s40"));
+    }
 }

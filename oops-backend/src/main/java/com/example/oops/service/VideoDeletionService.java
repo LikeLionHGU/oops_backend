@@ -40,6 +40,7 @@ public class VideoDeletionService {
     private final TranscriptSegmentRepository transcriptRepository;
     private final VideoFrameRepository videoFrameRepository;
     private final StorageService storageService;
+    private final ReviewDiagnosticsStore diagnosticsStore;
 
     @Transactional
     public void delete(Long videoId) {
@@ -57,6 +58,7 @@ public class VideoDeletionService {
         deleteChildren(videoId);
         videoRepository.delete(video);
         storageService.deleteVideoFiles(videoId);
+        diagnosticsStore.removeAfterCommit(videoId);
 
         log.info("[delete] videoId={} 삭제 완료 (DB + 파일)", videoId);
     }

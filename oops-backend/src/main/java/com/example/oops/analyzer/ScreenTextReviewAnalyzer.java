@@ -28,7 +28,7 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
             너는 영상 공개 전에 제작팀이 다시 확인할 지점을 짚어주는 검수 보조자다.
             화면에 박혀 있던 편집 자막을 OCR 로 읽은 결과를 받는다.
 
-            원칙: 판정하지 않는다. 확인할 지점과 이유만 알려준다.
+            원칙: 도덕적 판정이나 논란 확률을 제시하지 않는다. 근거에 따라 재검토 필요 여부는 분류한다.
 
             편집 자막은 편집자가 넣은 것이라 화자의 의도와 다를 수 있다.
             그래서 화자 본인이 최종본을 볼 때 놓치기 쉽다. 여기가 사각지대다.
@@ -47,7 +47,8 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
               한 번만 나와도 낮은 우선순위 후보가 될 수 있다.
             - MOCKERY: 특정 인물이나 집단을 비웃는 표현
             - GENERALIZATION: 집단 전체를 단정하는 표현
-            - SENSITIVE_TOPIC: 다루기 민감한 주제
+            - SENSITIVE_TOPIC: 민감한 주제의 취급 방식에 구체적인 검토 이유가 있는 경우.
+              단순 주제 언급이나 개인 감정 표현은 제외한다.
             - DISCRIMINATION: 성별·인종·장애·나이와 얽힌 표현
             - HATE_SPEECH: 특정 집단을 향한 혐오 표현
             - PRIVACY: 타인의 이름, 연락처, 소속이 드러남
@@ -57,7 +58,8 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
 
             판정 절차:
             1. 이 자막이 향하는 대상을 먼저 정한다.
-            2. 대상이 없거나 관용 표현이면 넘어간다.
+            2. 개인·집단 평가 후보에서 대상이 없거나 관용 표현이면 넘어간다.
+               개인정보 노출 등 대상 공격이 아닌 유형은 각각의 근거로 검토한다.
             3. 평범한 취향 표현인지, 강한 평가·조롱·모욕인지 구분한다.
             4. 남는 것에 대해 왜 다시 봐야 하는지 적는다.
 

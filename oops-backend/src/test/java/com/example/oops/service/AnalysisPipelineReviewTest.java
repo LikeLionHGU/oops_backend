@@ -23,7 +23,7 @@ class AnalysisPipelineReviewTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     void propagatesValidatedCoverageAndDrainsIntermediateResults(AnalyzerStatus expected, boolean simulateApiFailure) {
         var client = mock(OpenAiClient.class);
-        var analyzer = new SpeechReviewAnalyzer(client);
+        var analyzer = new SpeechReviewAnalyzer(client, false); // segment-scope coverage propagation
         var transcripts = mock(TranscriptService.class);
         var screens = mock(ScreenTextService.class);
         var fusion = mock(FindingFusionService.class);
@@ -33,10 +33,12 @@ class AnalysisPipelineReviewTest {
         var coverageRepo = mock(AnalysisCoverageRepository.class);
         var analysisServer = mock(AnalysisServerClient.class);
         var reportRepo = mock(AnalysisReportRepository.class);
+        var diagnosticsStore = mock(ReviewDiagnosticsStore.class);
         var props = new OopsProperties(null, new OopsProperties.Analysis(List.of("speech-review")), null);
         var pipeline = new AnalysisPipeline(List.of(analyzer), props, transcripts, screens, fusion,
                 mock(GenreDetector.class), analysisServer, new ReportBuilder(), progress, videoRepo, findingsRepo,
-                coverageRepo, mock(ReviewActionRepository.class), client, mock(ReviewReferenceRepository.class), reportRepo);
+                coverageRepo, mock(ReviewActionRepository.class), client, mock(ReviewReferenceRepository.class), reportRepo,
+                diagnosticsStore);
         var video = Video.builder().filename("offline.mp4").build();
         video.assignGenre(ContentGenre.GENERAL);
         var input = expected == AnalyzerStatus.PARTIAL && simulateApiFailure
@@ -83,5 +85,7 @@ class AnalysisPipelineReviewTest {
         assertThat(analyzer.consumeReviewResult(new AnalysisContext(video, null, input, null))).isEmpty();
         verify(progress, never()).fail(anyLong(), anyString(), anyString());
         verify(progress).complete(11L);
+        verify(diagnosticsStore).recordAfterCommit(eq(1L), eq(11L), any(), argThat(traces ->
+                traces.size() == 1 && traces.get(0).status() == expected));
     }
 }

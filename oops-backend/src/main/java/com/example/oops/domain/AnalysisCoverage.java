@@ -49,7 +49,15 @@ public class AnalysisCoverage extends BaseTimeEntity {
         this.video = video;
         this.step = step;
         this.status = status;
-        this.message = message;
+        this.message = boundedMessage(message);
+    }
+
+    private static String boundedMessage(String message) {
+        if (message == null || message.length() <= 300) return message;
+        String suffix = "… (일부 생략)";
+        int end = 300 - suffix.length();
+        if (Character.isHighSurrogate(message.charAt(end - 1))) end--;
+        return message.substring(0, end) + suffix;
     }
 
     public static AnalysisCoverage of(Video video, CoverageStep step,
