@@ -160,7 +160,14 @@ public class AnalysisServerClient {
         public record Segment(long startMs, long endMs, String text) {}
     }
 
-    public record OcrResponse(List<Item> items) {
-        public record Item(long startMs, long endMs, String text, Double confidence, String framePath) {}
+    public record OcrResponse(List<Item> items, String formatVersion) {
+        public OcrResponse(List<Item> items) { this(items, null); }
+        public record Item(long startMs, long endMs, String text, Double confidence, String framePath,
+                           Double boxX, Double boxY, Double boxWidth, Double boxHeight,
+                           String trackId, Integer observations, Integer slotTextChanges) {
+            public Item(long startMs, long endMs, String text, Double confidence, String framePath) {
+                this(startMs, endMs, text, confidence, framePath, null, null, null, null, null, null, null);
+            }
+        }
     }
 }

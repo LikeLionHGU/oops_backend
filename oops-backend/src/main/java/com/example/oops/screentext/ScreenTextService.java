@@ -2,6 +2,7 @@ package com.example.oops.screentext;
 
 import com.example.oops.client.AnalysisServerClient;
 import com.example.oops.domain.ScreenText;
+import com.example.oops.domain.OcrRegion;
 import com.example.oops.domain.Video;
 import com.example.oops.domain.VideoFrame;
 import com.example.oops.repository.ScreenTextRepository;
@@ -44,12 +45,16 @@ public class ScreenTextService {
         }
 
         List<ScreenText> texts = new ArrayList<>();
+        java.util.Map<String, VideoFrame> frames = new java.util.HashMap<>();
         for (var item : response.items()) {
             if (item.text() == null || item.text().isBlank()) continue;
 
-            VideoFrame frame = saveFrame(video, item.startMs(), item.framePath());
-            texts.add(new ScreenText(video, item.startMs(), item.endMs(),
-                    item.text().trim(), item.confidence(), frame));
+            String frameKey = item.startMs() + "|" + item.framePath();
+            VideoFrame frame = frames.computeIfAbsent(frameKey, ignored -> saveFrame(video, item.startMs(), item.framePath()));
+            ScreenText text = new ScreenText(video, item.startMs(), item.endMs(), item.text(), item.confidence(), frame);
+            text.attachRegion(new OcrRegion(item.boxX(), item.boxY(), item.boxWidth(), item.boxHeight(),
+                    item.trackId(), item.observations(), item.slotTextChanges()));
+            texts.add(text);
         }
 
         log.info("[ocr] videoId={} 화면 자막 {}건", video.getId(), texts.size());

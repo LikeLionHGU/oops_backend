@@ -68,6 +68,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         coverageNotice.remove();
         List<Line> lines = collectLines(context);
         List<Candidate> allCandidates = new ArrayList<>();
+        int limitedContextCandidates = 0;
 
         // 1단계 — 사전 매칭. 일반 용법 신호와 특수 맥락 신호가 충돌하면 보존한다.
         for (int i = 0; i < lines.size(); i++) {
@@ -83,10 +84,11 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
                 if (match.commonUsageSupported() && !match.contextSupported()) {
                     continue;
                 }
+                ReviewInput.Window window = context.reviewInput().contextFor(line.inputId());
+                if (window.omittedSegments() > 0) limitedContextCandidates++;
                 allCandidates.add(new Candidate(allCandidates.size(), line, match,
-                        contextText(lines, i, line.type(), -1),
-                        contextText(lines, i, line.type(), 1),
-                        relatedText(lines, i)));
+                        contextText(window.before()), contextText(window.after()),
+                        contextText(window.related())));
             }
         }
 
@@ -99,6 +101,10 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         if (candidates.size() < allCandidates.size()) {
             coverageNotice.set("맥락 사전 후보 %d건 중 %d건을 시간대별로 골라 확인했습니다. 나머지 %d건은 확인하지 못했습니다."
                     .formatted(allCandidates.size(), candidates.size(), allCandidates.size() - candidates.size()));
+        }
+        if (limitedContextCandidates > 0) {
+            String notice = "일부 맥락 사전 후보의 주변 문맥이 입력 한도로 제한되었습니다. 그룹별 최대 8구간·4,000코드포인트를 확인합니다.";
+            coverageNotice.set(coverageNotice.get() == null ? notice : coverageNotice.get() + " " + notice);
         }
 
         // 2단계 — 앞뒤 맥락을 봐야 하는 것만 AI 에게 묻는다
@@ -239,43 +245,31 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         return selected;
     }
 
-    private String contextText(List<Line> lines, int index, TimelineEventType type, int direction) {
-        Line current = lines.get(index);
-        for (int i = index + direction; i >= 0 && i < lines.size(); i += direction) {
-            Line neighbor = lines.get(i);
-            if (neighbor.type() != type) continue;
-
-            long gap = direction < 0
-                    ? Math.max(0, current.startMs() - neighbor.endMs())
-                    : Math.max(0, neighbor.startMs() - current.endMs());
-            return gap <= 15_000 ? neighbor.text() : null;
-        }
-        return null;
-    }
-
-    private String relatedText(List<Line> lines, int index) {
-        Line current = lines.get(index);
-        return lines.stream()
-                .filter(line -> line.type() != current.type())
-                .filter(line -> Math.max(0, Math.max(line.startMs() - current.endMs(),
-                        current.startMs() - line.endMs())) <= 2_000)
-                .min(java.util.Comparator.comparingLong(line -> Math.abs(line.startMs() - current.startMs())))
-                .map(Line::text)
-                .orElse(null);
+    private String contextText(List<ReviewInput.Segment> segments) {
+        if (segments.isEmpty()) return null;
+        return segments.stream().map(s -> s.role() == ScreenTextRole.BACKGROUND
+                        ? "[배경 화면 글자] " + s.text() : s.role() == ScreenTextRole.UNCERTAIN
+                        ? "[출처 불확실 화면 글자] " + s.text() : s.text())
+                .collect(java.util.stream.Collectors.joining("\n"));
     }
 
     /** 발언과 화면 글자를 한 목록으로 합친다. 앞뒤 맥락을 잡기 위해 시간순으로 둔다. */
     private List<Line> collectLines(AnalysisContext context) {
         List<Line> lines = new ArrayList<>();
         if (context.hasTranscript()) {
-            for (TranscriptSegment s : context.transcript()) {
-                lines.add(new Line(TimelineEventType.SPEECH,
+            for (int i = 0; i < context.transcript().size(); i++) {
+                TranscriptSegment s = context.transcript().get(i);
+                if (s.getText() == null || s.getText().isBlank()) continue;
+                lines.add(new Line(ReviewInput.id(TimelineEventType.SPEECH, s.getId(), i), TimelineEventType.SPEECH,
                         s.getStartMs(), s.getEndMs(), s.getText(), null));
             }
         }
         if (context.hasScreenText()) {
-            for (ScreenText s : context.screenTexts()) {
-                lines.add(new Line(TimelineEventType.CAPTION,
+            for (int i = 0; i < context.screenTexts().size(); i++) {
+                ScreenText s = context.screenTexts().get(i);
+                if (!s.isEditorial()) continue;
+                if (s.getText() == null || s.getText().isBlank()) continue;
+                lines.add(new Line(ReviewInput.id(TimelineEventType.CAPTION, s.getId(), i), TimelineEventType.CAPTION,
                         s.getStartMs(), s.getEndMs(), s.getText(), s.getFrame()));
             }
         }
@@ -283,7 +277,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         return lines;
     }
 
-    private record Line(TimelineEventType type, long startMs, long endMs,
+    private record Line(String inputId, TimelineEventType type, long startMs, long endMs,
                         String text, VideoFrame frame) {}
 
     private record Candidate(int index, Line line, ContextLexicon.Match match,

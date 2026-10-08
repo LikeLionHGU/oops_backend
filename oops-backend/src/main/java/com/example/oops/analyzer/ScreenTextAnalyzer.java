@@ -44,7 +44,8 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
 
         for (ScreenText screenText : context.screenTexts()) {
-            for (CommunitySlangRules.Hit hit : slangRules.detect(screenText.getText())) {
+            for (CommunitySlangRules.Hit hit : screenText.isEditorial() ? slangRules.detect(screenText.getText())
+                    : List.<CommunitySlangRules.Hit>of()) {
                 findings.add(RiskFinding.builder()
                         .video(context.video())
                         .eventType(TimelineEventType.CAPTION)
@@ -61,6 +62,7 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
             }
 
             for (RiskRuleEngine.Hit hit : ruleEngine.detect(screenText.getText())) {
+                if (!screenText.isEditorial() && hit.category() != com.example.oops.domain.RiskCategory.PRIVACY) continue;
                 findings.add(RiskFinding.builder()
                         .video(context.video())
                         .eventType(TimelineEventType.CAPTION)
@@ -71,12 +73,19 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
                         .endMs(screenText.getEndMs())
                         .captionText(screenText.getText())
                         .frame(screenText.getFrame())
-                        .reason("화면 자막: " + hit.reason())
+                        .reason("화면 텍스트: " + hit.reason())
                         .build());
             }
         }
 
         log.info("[screen-text] videoId={} findings={}", context.video().getId(), findings.size());
         return findings;
+    }
+
+    @Override
+    public java.util.Optional<String> consumeCoverageNotice(AnalysisContext context) {
+        long excluded = context.screenTexts().stream().filter(s -> !s.isEditorial()).count();
+        return excluded == 0 ? java.util.Optional.empty() : java.util.Optional.of(
+                "배경·출처 불확실 화면 글자 %d구간은 개인정보 룰만 확인했습니다. 자막 표현 룰에서는 제외했습니다.".formatted(excluded));
     }
 }

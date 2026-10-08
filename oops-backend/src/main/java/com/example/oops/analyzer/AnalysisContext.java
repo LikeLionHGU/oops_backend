@@ -15,9 +15,21 @@ public record AnalysisContext(
         Video video,
         ContentGenre genre,                   // 영상 유형. 분석기가 자기를 돌릴지 판단하는 데 쓴다
         List<TranscriptSegment> transcript,   // 음성 → STT 대본
-        List<ScreenText> screenTexts          // 화면 → OCR 텍스트
+        List<ScreenText> screenTexts,         // 화면 → OCR 텍스트
+        ReviewInput reviewInput
         // TODO: List<YoutubeComment> comments
 ) {
+    public AnalysisContext(Video video, ContentGenre genre, List<TranscriptSegment> transcript,
+                           List<ScreenText> screenTexts) {
+        this(video, genre, transcript, screenTexts, ReviewInput.from(transcript, screenTexts));
+    }
+
+    public AnalysisContext {
+        transcript = transcript == null ? List.of() : List.copyOf(transcript);
+        screenTexts = screenTexts == null ? List.of() : List.copyOf(screenTexts);
+        java.util.Objects.requireNonNull(reviewInput, "reviewInput");
+    }
+
     public boolean hasTranscript() {
         return transcript != null && !transcript.isEmpty();
     }

@@ -122,6 +122,7 @@ public class CaptionMismatchAnalyzer implements ContentAnalyzer {
 
         for (TranscriptSegment speech : context.transcript()) {
             for (ScreenText caption : context.screenTexts()) {
+                if (!caption.isEditorial()) continue;
                 long overlapStart = Math.max(speech.getStartMs(), caption.getStartMs());
                 long overlapEnd = Math.min(speech.getEndMs(), caption.getEndMs());
                 long overlap = overlapEnd - overlapStart;

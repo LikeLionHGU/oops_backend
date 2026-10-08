@@ -26,6 +26,11 @@ public interface ContentAnalyzer {
 
     List<RiskFinding> analyze(AnalysisContext context);
 
+    /** Internal batch evaluations; consume once to avoid retaining input across pooled-thread reuse. */
+    default Optional<TextReviewEngine.Result> consumeReviewResult(AnalysisContext context) {
+        return Optional.empty();
+    }
+
     /** Consume an optional notice when an analyzer intentionally processed only part of its input. */
     default Optional<String> consumeCoverageNotice(AnalysisContext context) {
         return Optional.empty();

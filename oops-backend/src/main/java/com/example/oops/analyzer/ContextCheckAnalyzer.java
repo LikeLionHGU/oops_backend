@@ -321,6 +321,7 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
         }
         if (context.hasScreenText()) {
             for (ScreenText s : context.screenTexts()) {
+                if (!s.isEditorial()) continue;
                 lines.add(new Line(TimelineEventType.CAPTION,
                         s.getStartMs(), s.getEndMs(), s.getText(), s.getFrame()));
             }

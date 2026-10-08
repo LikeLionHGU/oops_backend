@@ -116,6 +116,7 @@ public class AnalysisPipeline {
             progressService.update(jobId, AnalysisStage.OCR, 35);
             mark = System.currentTimeMillis();
             List<ScreenText> screenTexts = screenTextService.extractAndSave(video);
+            com.example.oops.screentext.ScreenTextClassifier.classify(screenTexts, transcript);
             checkNotCancelled(jobId);
             elapsed.put("OCR", System.currentTimeMillis() - mark);
 
@@ -202,6 +203,7 @@ public class AnalysisPipeline {
 
                     List<RiskFinding> produced = analyzer.analyze(context);
                     String coverageNotice = analyzer.consumeCoverageNotice(context).orElse(null);
+                    var reviewResult = analyzer.consumeReviewResult(context).orElse(null);
                     checkNotCancelled(jobId);
 
                     long took = System.currentTimeMillis() - analyzerStart;
@@ -218,10 +220,13 @@ public class AnalysisPipeline {
                                 .orElse("AI 호출이 실패했습니다.");
                         log.warn("[pipeline] {} AI 호출 {}건 실패 — {}",
                                 analyzer.key(), openAiClient.failureCount(), why);
-                        record(coverage, video, step, AnalyzerStatus.FAILED, why);
+                        record(coverage, video, step,
+                                reviewResult == null ? AnalyzerStatus.FAILED : reviewResult.status(),
+                                coverageNotice == null ? why : coverageNotice + " " + why);
                     } else {
                         record(coverage, video, step,
-                                coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL,
+                                reviewResult != null ? reviewResult.status()
+                                        : coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL,
                                 coverageNotice);
                     }
                 } catch (AnalysisCancelledException e) {
@@ -231,6 +236,9 @@ public class AnalysisPipeline {
                     log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);
                     record(coverage, video, step, AnalyzerStatus.FAILED,
                             "분석 중 오류가 발생했습니다.");
+                } finally {
+                    // Also drain results when cancellation or an exception interrupts the normal consume path.
+                    analyzer.consumeReviewResult(context);
                 }
             }
 
