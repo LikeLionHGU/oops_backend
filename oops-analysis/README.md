@@ -30,6 +30,19 @@ OCR 없이 STT만 먼저 테스트하려면 `pip install`에서 paddle 계열을
 
 ## 긴 영상
 
+### STT 모델 비교: 기본값은 유지
+
+`STT_MODEL`이 비어 있으면 기존 `WHISPER_MODEL`(기본 `whisper-1`)을 사용한다.
+선택 실험용으로 `STT_MODEL=gpt-4o-transcribe-diarize`를 지원한다. 모델 변경은 Python 프로세스에 설정을 적용해 다시 시작해야 반영된다. 자동 재전사나 유료 fallback은 없다.
+
+- Whisper는 기존 구간 시간 요청을 유지한다. Diarize는 `diarized_json`과 `chunking_strategy=auto`를 요청한다.
+- 구간 시간이 없거나 잘못된 응답은 실패 처리한다. 임의로 0초를 붙이거나 원문을 추측해 교정하지 않는다.
+- Python 응답에 `model`, `timestampSource`, 선택적 `speaker`를 제공한다. 청크별 화자 ID는 별개이며 Spring 저장/판정 연결은 아직 구현하지 않았다.
+- `gpt-transcribe` 등 정렬 미지원 모델을 이름만 바꿔 쓰지 않는다. 별도 시간 정렬 설계가 필요하다.
+- Diarize의 방언 정확도 우위는 미검증이다. 실제 비교 전 사람 확인 대본·시간 기준이 필요하고, Spring 비용 추정도 해당 모델 요금에 맞춰 별도로 수정해야 한다.
+
+요청 제약은 [OpenAI 음성 전사 공식 문서](https://developers.openai.com/api/docs/guides/speech-to-text#speaker-diarization)를 따른다. SDK 1.59.6의 실제 요청/응답 처리는 네트워크 없는 모의 HTTP 테스트로 검증했다. 실제 API 접근 가능성·품질을 검증한 것은 아니다.
+
 타깃이 20~60분 롱폼인데 실제로는 70~80분짜리도 흔해서 **90분까지** 받는다.
 
 > 긴 영상은 비용과 시간이 크게 는다.

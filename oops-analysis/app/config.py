@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     openai_org_id: str = ""
     openai_project_id: str = ""
     whisper_model: str = "whisper-1"
+    # 비교 실험용 opt-in. 비어 있으면 기존 WHISPER_MODEL을 유지한다.
+    stt_model: str | None = None
     work_dir: str = "./workdir"
     # Spring 의 storage.location 과 같은 디렉터리. 서버 배포 환경에서는 절대 경로로 지정한다.
     media_storage_root: str = "../oops-backend/uploads"
