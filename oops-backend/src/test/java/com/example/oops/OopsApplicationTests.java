@@ -19,8 +19,30 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 class OopsApplicationTests {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
     @Test
     @DisplayName("애플리케이션 컨텍스트가 뜬다")
     void contextLoads() {
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void regionAndRoleMetadataSurviveDatabaseRoundTrip() {
+        var video = com.example.oops.domain.Video.builder()
+                .sourceType(com.example.oops.domain.SourceType.UPLOAD).filename("test.mp4").build();
+        entityManager.persist(video);
+        var text = new com.example.oops.domain.ScreenText(video, 0, 1_000, "원문", 0.9, null);
+        text.attachRegion(new com.example.oops.domain.OcrRegion(0.1, 0.8, 0.5, 0.05, "region-0", 2, 3));
+        text.classify(com.example.oops.domain.ScreenTextRole.EDITORIAL, "같은 시간대 발언 일치");
+        entityManager.persist(text);
+        entityManager.flush();
+        Long id = text.getId();
+        entityManager.clear();
+        var restored = entityManager.find(com.example.oops.domain.ScreenText.class, id);
+        org.assertj.core.api.Assertions.assertThat(restored.getRegion().getBoxY()).isEqualTo(0.8);
+        org.assertj.core.api.Assertions.assertThat(restored.getRegion().getTrackId()).isEqualTo("region-0");
+        org.assertj.core.api.Assertions.assertThat(restored.roleOrUncertain()).isEqualTo(com.example.oops.domain.ScreenTextRole.EDITORIAL);
     }
 }

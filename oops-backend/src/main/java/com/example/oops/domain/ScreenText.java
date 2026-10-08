@@ -32,6 +32,16 @@ public class ScreenText {
     /** OCR 인식 신뢰도 0.0 ~ 1.0 */
     private Double confidence;
 
+    @Embedded
+    private OcrRegion region;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "text_role", columnDefinition = "varchar(24)")
+    private ScreenTextRole role;
+
+    @Column(length = 200)
+    private String roleReason;
+
     /** 이 텍스트를 읽어낸 화면 캡처 */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "frame_id")
@@ -46,4 +56,14 @@ public class ScreenText {
         this.confidence = confidence;
         this.frame = frame;
     }
+
+    public void attachRegion(OcrRegion region) { this.region = region; }
+
+    public void classify(ScreenTextRole role, String reason) {
+        this.role = java.util.Objects.requireNonNull(role);
+        this.roleReason = reason;
+    }
+
+    public ScreenTextRole roleOrUncertain() { return role == null ? ScreenTextRole.UNCERTAIN : role; }
+    public boolean isEditorial() { return roleOrUncertain() == ScreenTextRole.EDITORIAL; }
 }
