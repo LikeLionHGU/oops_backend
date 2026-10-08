@@ -17,6 +17,8 @@ public record OpenAiProperties(
         String project,
         String baseUrl,
         String model,
+        /** GPT-6 Luna baseline: none; change explicitly only when comparing quality/latency. */
+        String reasoningEffort,
         Duration timeout,
 
         /** 토큰 단가. 비용을 로그로 확인하는 용도다. */
@@ -25,7 +27,7 @@ public record OpenAiProperties(
     /**
      * 1M 토큰당 단가(USD).
      *
-     * 기본값은 gpt-4o-mini 기준이다. 코드에 박아두지 않고 설정으로 뺀 이유는,
+     * 기본값은 GPT-6 Luna Standard 기준이다. 코드에 박아두지 않고 설정으로 뺀 이유는,
      * OpenAI 가 가격을 바꾸면 로그 숫자가 조용히 틀리기 시작하는데
      * 틀린 줄도 모르게 되기 때문이다. 모델을 바꿀 때도 여기만 고치면 된다.
      */
@@ -39,9 +41,9 @@ public record OpenAiProperties(
 
         // record 컴포넌트와 같은 이름을 쓰면 반환 타입(Double)까지 같아야 해서
         // 기본값 처리를 넣을 수 없다. 그래서 이름을 따로 둔다.
-        public double inputUsd()        { return inputPer1m       == null ? 0.15  : inputPer1m; }
-        public double cachedInputUsd()  { return cachedInputPer1m == null ? 0.075 : cachedInputPer1m; }
-        public double outputUsd()       { return outputPer1m      == null ? 0.60  : outputPer1m; }
+        public double inputUsd()        { return inputPer1m       == null ? 0.10  : inputPer1m; }
+        public double cachedInputUsd()  { return cachedInputPer1m == null ? 0.01 : cachedInputPer1m; }
+        public double outputUsd()       { return outputPer1m      == null ? 0.50  : outputPer1m; }
         public double sttUsdPerMinute() { return sttPerMinute     == null ? 0.006 : sttPerMinute; }
         public double krwRate()         { return usdToKrw         == null ? 1400  : usdToKrw; }
     }
@@ -67,7 +69,19 @@ public record OpenAiProperties(
     }
 
     public String modelOrDefault() {
-        return model != null ? model : "gpt-4o-mini";
+        return model != null && !model.isBlank() ? model : "gpt-6-luna";
+    }
+
+    public boolean isLuna() {
+        return modelOrDefault().equals("gpt-6-luna") || modelOrDefault().startsWith("gpt-6-luna-");
+    }
+
+    public String reasoningEffortOrDefault() {
+        String effort = reasoningEffort == null || reasoningEffort.isBlank() ? "none" : reasoningEffort;
+        if (isLuna() && !java.util.Set.of("none", "low", "medium", "high", "xhigh", "max").contains(effort)) {
+            throw new IllegalArgumentException("Unsupported GPT-6 Luna reasoning effort");
+        }
+        return effort;
     }
 
     public Duration timeoutOrDefault() {

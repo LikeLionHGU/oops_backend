@@ -227,15 +227,7 @@ public class OpenAiClient {
             return Optional.empty();
         }
 
-        Map<String, Object> body = Map.of(
-                "model", properties.modelOrDefault(),
-                "temperature", 0.1,
-                "response_format", Map.of("type", "json_object"),
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)
-                )
-        );
+        Map<String, Object> body = requestBody(systemPrompt, userPrompt);
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             throttle();
@@ -250,6 +242,16 @@ public class OpenAiClient {
                 ChatCompletionResponse response = entity.getBody();
                 recordUsage(response);
 
+                if (response == null || response.choices() == null || response.choices().isEmpty()
+                        || response.choices().get(0).message() == null) return fail("AI 응답이 비어 있습니다.");
+                var choice = response.choices().get(0);
+                if (choice.message().refusal() != null && !choice.message().refusal().isBlank()) {
+                    return fail("AI가 이 요청에 대한 응답을 거부했습니다.");
+                }
+                if ("length".equals(choice.finish_reason()) || "content_filter".equals(choice.finish_reason())) {
+                    return fail("AI 응답이 완성되기 전에 중단되었습니다.");
+                }
+
                 String content = Optional.ofNullable(response)
                         .map(ChatCompletionResponse::choices)
                         .filter(choices -> !choices.isEmpty())
@@ -257,7 +259,7 @@ public class OpenAiClient {
                         .orElse(null);
 
                 if (content == null || content.isBlank()) {
-                    return Optional.empty();
+                    return fail("AI 응답 본문이 비어 있습니다.");
                 }
                 return Optional.of(jsonMapper.readValue(content, type));
 
@@ -308,6 +310,23 @@ public class OpenAiClient {
             }
         }
         return Optional.empty();
+    }
+
+    /** Keep the existing endpoint and JSON contract; avoid unsupported sampling parameters with reasoning. */
+    Map<String, Object> requestBody(String systemPrompt, String userPrompt) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("model", properties.modelOrDefault());
+        if (properties.isLuna()) {
+            String effort = properties.reasoningEffortOrDefault();
+            body.put("reasoning_effort", effort);
+            if ("none".equals(effort)) body.put("temperature", 0.1);
+        } else {
+            body.put("temperature", 0.1);
+        }
+        body.put("response_format", Map.of("type", "json_object"));
+        body.put("messages", List.of(Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)));
+        return body;
     }
 
     /**
@@ -431,9 +450,9 @@ public class OpenAiClient {
      */
     record ChatCompletionResponse(String model, List<Choice> choices, Usage usage) {
 
-        record Choice(Message message) {}
+        record Choice(Message message, String finish_reason) {}
 
-        record Message(String content) {}
+        record Message(String content, String refusal) {}
 
         record Usage(long prompt_tokens,
                      long completion_tokens,
