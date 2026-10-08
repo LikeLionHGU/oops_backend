@@ -32,3 +32,4 @@ uploads/       # 업로드 영상, OCR 프레임
 # ===== OS =====
 .DS_Store
 Thumbs.db
+oops-backend/videos/*
