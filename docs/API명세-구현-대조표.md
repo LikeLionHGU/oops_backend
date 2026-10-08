@@ -15,6 +15,7 @@
 - 구간/묶음 판단은 내부 계약이다. 공개 리포트의 전체 status=COMPLETED여도 coverage의 PARTIAL 경고가 있을 수 있다. ID 9는 구간 53개 모두 유효지만 묶음 1개가 탈락했다.
 - 재시도는 현재 실패/취소 상태에만 허용된다. COMPLETED 영상에 동일 retry를 호출해 새 프롬프트를 비교할 수 있다고 안내하지 않는다.
 - HyperFrames export/preview, PostHog 이벤트 전송, 로그인 API는 이번 문서 갱신으로 구현되지 않았다. 상세 차이와 보존 항목은 [브랜치 비교](main-minwook-비교-및-도구-적용-검토.md)를 따른다.
+- ID 9 이후 필드 구조는 유지하되 category/riskTypes에 `GRAPHIC_METAPHOR`(신체 훼손 비유)가 추가됐다. 프론트의 고정 유형 목록/뱃지/알 수 없는 값 fallback을 확인해야 한다. 로컬 묶음 relation에는 `CONNECTED_EXPRESSION`과 세분화된 인용 실패 코드가 추가됐다. 이전 코드로 롤백할 때 신규 enum이 저장된 데이터의 읽기 호환을 점검한다. 실제 새 후보 응답/운영 DB 저장은 아직 검증하지 않았다.
 
 ---
 
