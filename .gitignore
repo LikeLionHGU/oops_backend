@@ -22,7 +22,8 @@ workdir/
 
 # ===== 런타임 데이터 =====
 data/          # H2 DB 파일
-uploads/       # 업로드 영상, OCR 프레임
+# 업로드 영상, OCR 프레임, 비공개 댓글/사례 초안
+uploads/
 
 # ===== IDE =====
 .idea/
