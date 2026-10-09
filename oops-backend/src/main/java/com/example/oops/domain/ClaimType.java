@@ -8,7 +8,7 @@ package com.example.oops.domain;
  */
 public enum ClaimType {
 
-    /** 본인의 생각·의도·경험. "그때 이런 마음이었다" */
+    /** 특정 인물이 공개적으로 생각·의도·경험을 말했다는 주장. 내면의 진실이 아니라 발언을 대조한다. */
     PERSONAL_STATEMENT,
 
     /** 연도·날짜·기간 */

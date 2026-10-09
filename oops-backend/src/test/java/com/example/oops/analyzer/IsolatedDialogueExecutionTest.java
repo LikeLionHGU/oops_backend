@@ -69,7 +69,7 @@ class IsolatedDialogueExecutionTest {
                 return Optional.of(segmentResponse(input));
             }
             assertThat(input.has("primary")).isFalse();
-            assertThat((String) call.getArgument(0)).contains("유효한 JSON 객체", "이미 알려진 문제도 제외하지 않는다");
+            assertThat((String) call.getArgument(0)).contains("유효한 JSON 객체", "소재·장르·제작자의 의도와 관계없이 같은 기준을 적용한다");
             assertThat(input.has("context")).isFalse();
             assertThat(input.get("dialogueReviewUnits").size()).isEqualTo(1);
             assertThat(input.get("requiredUnitIds").size()).isEqualTo(1);
@@ -132,7 +132,7 @@ class IsolatedDialogueExecutionTest {
     }
 
     @Test void sharedEvidenceRulesExcludeSegmentCoverageAndKeepTargetAndQuoteRequirements() {
-        assertThat(dialogueEvidenceContract()).contains("TARGET 인용이 필수", "글자·공백·문장부호", "RESIDENT_GROUP")
+        assertThat(dialogueEvidenceContract()).contains("targetReason과 TARGET 인용을 모두 채운다", "글자·공백·문장부호", "RESIDENT_GROUP")
                 .doesNotContain("모든 segmentId", "후보가 없어도 evaluations", "구간별 결정");
     }
 

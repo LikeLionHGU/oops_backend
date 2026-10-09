@@ -92,6 +92,20 @@ class ContextualComparisonReviewTest {
         assertThat(r.diagnostics().toString()).doesNotContain("원문에 없는 대상");
     }
 
+    @Test void contextGuidancePreservesScopeSpeakerAndIndependentExpressionBoundaries() {
+        assertThat(ContextualComparisonPolicy.PROMPT).contains(
+                "현재 요청에 제공된 발언을 시간순으로 읽는다.",
+                "화자 정보가 없으면 여러 발언을 동일 화자의 주장으로 확정하지 않는다.",
+                "위 관계는 점검 예시이며 필수 패턴이나 키워드 목록이 아니다.",
+                "상황을 설명하는 문장과 대상을 지칭하는 문장을 혼동하지 않는다.",
+                "자동으로 UNCERTAIN을 선택하지 않는다.",
+                "검토 이유가 있으면 비교나 대체 행동의 구조를 요구하지 않는다.",
+                "[강한 리뷰와 집단 평가]", "[제약 설명과 능력 조롱]",
+                "[인용과 동조]", "[연결 정보 부족]");
+        assertThat(ContextualComparisonPolicy.PROMPT).doesNotContain(
+                "선택지 부재 → 대체 행동", "reason", "alternativeInterpretation", "missingInformation");
+    }
+
     @Test void developmentFixturesAreExplicitlyNotAHeldOutAccuracyBenchmark() {
         var d = dataset();
         assertThat(d.status()).isEqualTo("synthetic_development_not_holdout");

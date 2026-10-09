@@ -57,7 +57,7 @@ class DialogueAssessmentTest {
         assertThat(result.diagnostics().segments()).allSatisfy(s -> assertThat(s.state()).isEqualTo(ReviewDiagnostics.State.PASS));
         assertThat(result.diagnostics().dialogue().units().get(0).state()).isEqualTo(ReviewDiagnostics.State.REVIEW_REQUIRED);
         assertThat(result.conflictingSegmentIds()).isEmpty();
-        verify(client).completeAsJson(argThat(s -> s.contains("unitEvaluations")),
+        verify(client).completeAsJson(argThat(s -> s.contains(DIALOGUE_CONTRACT)),
                 argThat(s -> s.contains("requiredUnitIds")), eq(LlmResult.class));
     }
     @Test void missingUnitDecisionIsVisibleNotAnImplicitPassOrAnExtraRepairCall() {

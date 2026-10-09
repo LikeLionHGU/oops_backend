@@ -13,6 +13,29 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class EntityVerificationPromptTest {
+    @Test void verificationReceivesQualificationAndUnconvertedTimeReference() throws Exception {
+        var client = mock(OpenAiClient.class);
+        when(client.completeAsJson(anyString(), anyString(), eq(EntityCheckAnalyzer.Verdict.class)))
+                .thenReturn(Optional.empty());
+        var analyzer = new EntityCheckAnalyzer(client, List.of(), mock(SourceClassifier.class));
+        var method = EntityCheckAnalyzer.class.getDeclaredMethod("verify", String.class,
+                EntityCheckAnalyzer.Claim.class, List.class, String.class);
+        method.setAccessible(true);
+        String raw = "[0] 이 회사 이야기야\n[1] 아마 3년 전에 설립됐을 거야";
+        var claim = new EntityCheckAnalyzer.Claim(1, "이 회사는 아마 3년 전에 설립됐을 거야", "이 회사",
+                "DATE", List.of("회사 설립 연도"), List.of(
+                        new EntityCheckAnalyzer.ClaimEvidence(0, "이 회사"),
+                        new EntityCheckAnalyzer.ClaimEvidence(1, "아마 3년 전에 설립됐을 거야")),
+                "QUALIFIED", "3년 전", "공개 설립 이력 확인");
+        method.invoke(analyzer, "2026-10-08", claim, List.of(), raw);
+        var input = ArgumentCaptor.forClass(String.class);
+        verify(client).completeAsJson(anyString(), input.capture(), eq(EntityCheckAnalyzer.Verdict.class));
+        assertThat(input.getValue()).contains(
+                "원문 사용 방식: QUALIFIED", "원문 시간 표현: 3년 전",
+                "상대 시점을 오늘로 환산하거나 추측/전언을 단정으로 바꾸지 마라",
+                JsonMapper.builder().build().writeValueAsString(raw)).doesNotContain("2023년");
+    }
+
     @Test void verificationSeparatesExactRawTextFromExtractedSummary() throws Exception {
         var client = mock(OpenAiClient.class);
         when(client.completeAsJson(anyString(), anyString(), eq(EntityCheckAnalyzer.Verdict.class)))

@@ -51,8 +51,8 @@ class DialogueReviewTest {
         var result = analyzer.consumeReviewResult(context).orElseThrow();
         assertThat(result.unassessedSegmentIds()).isEmpty();
         assertThat(result.diagnostics().failureCounts()).isEmpty();
-        verify(client).completeAsJson(argThat(s -> s.contains("먼저 각 읽기 창을 시간순으로 읽고")
-                && s.contains("단순히 지역에 매장이 없다는 사실")),
+        verify(client).completeAsJson(argThat(s -> s.contains("제공된 발언을 시간순으로 읽고 대상·상황·평가의 연결을 확인한다")
+                && s.contains("대상 식별 근거, 상황 설명, 문제 표현을 구분한다")),
                 argThat(s -> s.contains("dialogueUnits") && s.contains("TRAILING")), eq(LlmResult.class));
     }
     @Test void cannotCombineOppositeViewsIntoAnOverlongEvidenceChain() {

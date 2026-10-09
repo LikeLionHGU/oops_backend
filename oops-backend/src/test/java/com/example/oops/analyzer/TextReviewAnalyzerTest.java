@@ -52,7 +52,7 @@ class TextReviewAnalyzerTest {
 
     @ParameterizedTest
     @EnumSource(value = TimelineEventType.class, names = {"SPEECH", "CAPTION"})
-    void explicitPassIsRecordedButNotPublishedAndContextComesFromOtherSource(TimelineEventType type) {
+    void explicitPassIsRecordedButNotPublishedAndOcrContextExcludesSpeech(TimelineEventType type) {
         response(decision(id(type), "PASS", "그 집", null, List.of()));
         var analyzer = analyzer(type);
         var context = context(type);
@@ -63,7 +63,12 @@ class TextReviewAnalyzerTest {
         assertThat(analyzer.consumeReviewResult(context)).isEmpty();
         var prompt = ArgumentCaptor.forClass(String.class);
         verify(client).completeAsJson(anyString(), prompt.capture(), eq(LlmResult.class));
-        assertThat(prompt.getValue()).contains("primary", "context", "confidence", "stt-index-0", "ocr-index-0");
+        assertThat(prompt.getValue()).contains("primary", "context", "confidence", "ocr-index-0");
+        if (type == TimelineEventType.SPEECH) {
+            assertThat(prompt.getValue()).contains("stt-index-0");
+        } else {
+            assertThat(prompt.getValue()).doesNotContain("stt-index-0", "함께 들리는 발언");
+        }
     }
 
     @ParameterizedTest

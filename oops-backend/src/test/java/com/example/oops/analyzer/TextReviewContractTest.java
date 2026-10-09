@@ -47,7 +47,7 @@ class TextReviewContractTest {
         assertThat(result.diagnostics().failureCounts()).isEmpty();
         assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         verify(client).completeAsJson(argThat(prompt -> prompt.contains("BUSINESS=가게·기업")
-                && prompt.contains("PRIMARY quote와 글자·공백·문장부호까지 완전히 같아야 한다")),
+                && prompt.contains("evidenceText에 그 quote를 글자·공백·문장부호까지 동일하게 재사용한다")),
                 anyString(), eq(LlmResult.class));
     }
     @Test void rawQuotesThatAreIndividuallyValidButDisagreeStillFailClosed() {

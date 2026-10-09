@@ -33,7 +33,7 @@ class ContextLexiconAnalyzerTest {
     }
 
     @Test
-    void sendsMultipleSpeechNeighborsAndAllNearbyCaptionsWithoutExtraCalls() {
+    void sendsMultipleSameSourceNeighborsWithoutCrossSourceContextOrExtraCalls() {
         matchAnchor();
         var context = new AnalysisContext(video, ContentGenre.GENERAL, List.of(
                 new TranscriptSegment(video, 0, 1_000, "앞1"),
@@ -49,7 +49,7 @@ class ContextLexiconAnalyzerTest {
         var request = requests().get(0);
         assertThat(request.before()).isEqualTo("앞1\n앞2");
         assertThat(request.after()).isEqualTo("뒤1\n뒤2");
-        assertThat(request.relatedText()).isEqualTo("[출처 불확실 화면 글자] 자막1\n[출처 불확실 화면 글자] 자막2");
+        assertThat(request.relatedText()).isNull();
         assertThat(request.line()).isEqualTo("표현");
         assertThat(analyzer.consumeCoverageNotice(context)).isEmpty();
     }
@@ -87,7 +87,8 @@ class ContextLexiconAnalyzerTest {
     void preservesFindingSourceRawTextAndAnchorTime() {
         matchAnchor();
         when(validator.validate(anyList())).thenReturn(Map.of(0,
-                new ContextValidator.Verdict(0, "CONTEXTUAL", "대상", "구체적인 맥락")));
+                new ContextValidator.Verdict(0, "CONTEXTUAL", "", "구체적인 맥락",
+                        "REVIEW_REQUIRED", "표현", "원문에서 확인되는 특수 용법으로 대상을 낮춰 부르는 모의 발언입니다.", List.of())));
         var context = new AnalysisContext(video, null,
                 List.of(new TranscriptSegment(video, 4_000, 5_000, "표현")), null);
         var findings = analyzer.analyze(context);
@@ -96,5 +97,25 @@ class ContextLexiconAnalyzerTest {
         assertThat(findings.get(0).getStartMs()).isEqualTo(4_000);
         assertThat(findings.get(0).getEndMs()).isEqualTo(5_000);
         assertThat(findings.get(0).getEventType()).isEqualTo(TimelineEventType.SPEECH);
+        assertThat(findings.get(0).getReason()).contains("원문에서 확인되는 특수 용법");
+        assertThat(findings.get(0).getTarget()).isNull();
+    }
+
+    @Test void ambiguousMeaningIsCoverageUncertaintyNotARiskCard() {
+        matchAnchor();
+        when(validator.validate(anyList())).thenReturn(Map.of(0,
+                new ContextValidator.Verdict(0, "AMBIGUOUS", "", "필수 문맥 부족",
+                        "UNCERTAIN", "표현", "", List.of("사용 의미를 가르는 문맥"))));
+        assertThat(analyzer.analyze(new AnalysisContext(video, null,
+                List.of(new TranscriptSegment(video, 0, 1000, "표현")), null))).isEmpty();
+        assertThat(analyzer.consumeCoverageNotice(null)).hasValueSatisfying(s -> assertThat(s).contains("1건 보류"));
+    }
+
+    @Test void missingResponseIsVisibleRatherThanSilentlyDropped() {
+        matchAnchor();
+        when(validator.validate(anyList())).thenReturn(Map.of());
+        assertThat(analyzer.analyze(new AnalysisContext(video, null,
+                List.of(new TranscriptSegment(video, 0, 1000, "표현")), null))).isEmpty();
+        assertThat(analyzer.consumeCoverageNotice(null)).hasValueSatisfying(s -> assertThat(s).contains("1건 응답 누락/검증 실패"));
     }
 }
