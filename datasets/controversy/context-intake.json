@@ -1,6 +1,6 @@
 {
   "schemaVersion": "context-intake-1",
-  "version": "2026-10-09-cross-incident-intake-1",
+  "version": "2026-10-09-cross-incident-intake-2",
   "status": "SOURCE_RESEARCH_ONLY",
   "collectionWorkflow": "KNOWN_POINT_THEN_REACTION_MAPPING",
   "counterPolicy": "REFERENCE_ONLY_NO_CANCELLATION",
@@ -58,7 +58,8 @@
       "status": "AWAITING_ORIGINAL_CONTEXT_AND_COMMENTS",
       "sources": [
         {"id": "kmib-report", "url": "https://www.kmib.co.kr/article/view.asp?arcid=0014354936", "publisher": "국민일보", "publishedDate": "2020-03-13", "role": "DISCOVERY_ONLY"},
-        {"id": "sbs-report", "url": "https://ent.sbs.co.kr/news/article.do?article_id=E10009845912", "publisher": "SBS연예뉴스", "publishedDate": "2020-03-13", "role": "DISCOVERY_ONLY"}
+        {"id": "sbs-report", "url": "https://ent.sbs.co.kr/news/article.do?article_id=E10009845912", "publisher": "SBS연예뉴스", "publishedDate": "2020-03-13", "role": "DISCOVERY_ONLY"},
+        {"id": "gobal-news-video", "url": "https://www.youtube.com/watch?v=58k1SJLErMg", "publisher": "고발뉴스TV", "publishedDate": "2020-03-13", "role": "DISCOVERY_ONLY"}
       ],
       "reportedQuotes": [
         {"text": "18개 노무(勞務) 시작", "sourceId": "kmib-report", "kind": "SOURCE_REPORTED_QUOTE_NOT_TRANSCRIPT", "startMs": null, "endMs": null}
@@ -67,10 +68,10 @@
       "contextLayers": ["LOCAL_DIALOGUE", "SCREEN_TEXT", "CULTURAL_ASSOCIATION"],
       "patternHypothesis": "통상 의미가 있는 표현도 자막의 조합·강조·사용 상황에 따라 특정 문화적 비하 표현을 연상시켜 비판받는 경우",
       "boundaries": ["단어 하나로 특정 커뮤니티 사용자나 정치 의도를 단정하지 않는다.", "통상 업무 용어의 사용과 논란 조합을 구별한다.", "문장 어미 ~노를 탐지 대상으로 다시 넣지 않는다.", "자막이 음성으로 발화되었다고 가정하지 않는다.", "과거 용어 의미가 지금도 같다고 검증 없이 가정하지 않는다."],
-      "commentSource": null,
+      "commentSource": {"videoId": "58k1SJLErMg", "url": "https://www.youtube.com/watch?v=58k1SJLErMg", "discoveredFrom": "https://www.youtube.com/watch?v=58k1SJLErMg", "discoveryBasis": "OFFICIAL_SEARCH_RESULT_UNVERIFIED", "watchAccess": "NOT_VIEWED", "originalClipVerified": false, "samplingBias": "편집·논평 성향이 있는 단일 뉴스 채널의 반응 표본이며 전체 여론을 대표하지 않음"},
       "observedSegments": [], "reactions": [], "reactionMappings": [], "collectionRefs": [],
       "humanApproved": false, "datasetUseAuthorized": false,
-      "gaps": ["댓글 수집 대상 뉴스 유튜브 ID 미확보", "원자막·전후 장면 미확보", "기사에 소개된 여론은 실제 댓글로 매핑하지 않음"]
+      "gaps": ["원자막·전후 장면 미확보", "기사에 소개된 여론은 실제 댓글로 매핑하지 않음", "선정 뉴스의 원클립 포함 여부와 편집 효과 미확인"]
     }
   ]
 }

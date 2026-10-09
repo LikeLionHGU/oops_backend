@@ -59,7 +59,7 @@ def validate(intake):
                     and source.get("url") == "https://www.youtube.com/watch?v=" + vid,
                     "COMMENT_VIDEO_REQUIRED")
             require(source.get("discoveredFrom") in source_urls
-                    and source.get("discoveryBasis") == "PUBLISHER_PAGE_YOUTUBE_ID_METADATA"
+                    and source.get("discoveryBasis") in {"PUBLISHER_PAGE_YOUTUBE_ID_METADATA", "OFFICIAL_SEARCH_RESULT_UNVERIFIED"}
                     and source.get("originalClipVerified") is False, "COMMENT_SOURCE_PROVENANCE_REQUIRED")
             if vid not in videos:
                 videos.append(vid)
@@ -79,14 +79,21 @@ def main():
     parser.add_argument("intake")
     parser.add_argument("--mapping", help="Private reported-context reaction draft")
     parser.add_argument("--collection", help="Original temporary comment snapshot")
+    parser.add_argument("--patterns", help="Public context-pattern hypothesis registry")
+    parser.add_argument("--pilot", help="Private timed-context pilot for reference checking only")
     args = parser.parse_args()
     if bool(args.mapping) != bool(args.collection):
         parser.error("MAPPING_AND_COLLECTION_REQUIRED_TOGETHER")
+    if bool(args.patterns) != bool(args.pilot):
+        parser.error("PATTERNS_AND_PILOT_REQUIRED_TOGETHER")
     try:
         intake = parse(read_bytes(args.intake))
         report = validate(intake)
         if args.mapping:
             report["reactionDraft"] = validate_mapping(intake, parse(read_bytes(args.mapping)), read_bytes(args.collection))
+        if args.patterns:
+            report["patternReferences"] = validate_patterns(parse(read_bytes(args.patterns)), intake,
+                                                           parse(read_bytes(args.pilot)))
     except PilotError as error:
         parser.exit(2, str(error) + "\n")
     except (ValueError, KeyError, TypeError, AttributeError, OSError):
@@ -157,6 +164,51 @@ def validate_mapping(intake, draft, collection_bytes, now=None):
     return {"status": "STRUCTURALLY_VALID_REPORTED_CONTEXT_DRAFT", "cases": counts,
             "uniqueSelectedComments": len(unique_comments), "originalVideoVerified": False,
             "semanticMappingVerified": False, "runtimeEligible": False}
+
+
+def validate_patterns(registry, intake, pilot):
+    """Count distinct incident families, not cards, and check reference identities.
+
+    This does not validate pilot source excerpts; use its dedicated validator too.
+    No semantic certification or model performance measurement.
+    """
+    validate(intake)
+    require(registry.get("schemaVersion") == "context-pattern-hypotheses-1"
+            and registry.get("status") == "DRAFT_NOT_RUNTIME_RULES"
+            and registry.get("runtimeEligible") is False and registry.get("humanApproved") is False,
+            "PATTERN_DRAFT_ONLY")
+    require(pilot.get("schemaVersion") == "context-pilot-2" and pilot.get("status") == "ASSISTANT_DRAFT"
+            and pilot.get("humanApproved") is False and pilot.get("split") == "DEVELOPMENT", "PILOT_DRAFT_REQUIRED")
+    refs = {}
+    for case in pilot["cases"]:
+        require(case["id"] not in refs, "DUPLICATE_CASE_REFERENCE")
+        refs[case["id"]] = (pilot["familyId"], "SELECTED_STT_CONTEXT")
+    for case in intake["cases"]:
+        require(case["id"] not in refs, "DUPLICATE_CASE_REFERENCE")
+        refs[case["id"]] = (case["familyId"], "REPORTED_CONTEXT_ONLY")
+    mechanisms, modifiers = registry.get("mechanisms"), registry.get("modifiers")
+    require(isinstance(mechanisms, list) and 1 <= len(mechanisms) <= 12
+            and isinstance(modifiers, list) and len(modifiers) <= 12, "PATTERN_LIMIT")
+    ids, report = set(), []
+    for entry in mechanisms + modifiers:
+        require(text(entry.get("id"), 100) and entry["id"] not in ids and text(entry.get("question")), "PATTERN_ID_REQUIRED")
+        ids.add(entry["id"])
+        require(entry.get("transferStatus") == "HYPOTHESIS_NOT_VALIDATED", "PATTERN_TRANSFER_NOT_VALIDATED")
+        for field in ("requiredEvidence", "boundaries"):
+            require(isinstance(entry.get(field), list) and entry[field] and all(text(v) for v in entry[field]), "PATTERN_EVIDENCE_REQUIRED")
+        require(isinstance(entry.get("cases"), list) and entry["cases"], "PATTERN_CASES_REQUIRED")
+        seen, families = set(), set()
+        for ref in entry["cases"]:
+            cid = ref.get("caseId")
+            require(cid in refs and cid not in seen and refs[cid] == (ref.get("familyId"), ref.get("draftKind")),
+                    "PATTERN_REFERENCE_MISMATCH")
+            require(text(ref.get("conditionHypothesis")) and text(ref.get("gap")), "PATTERN_GAPS_REQUIRED")
+            seen.add(cid)
+            families.add(ref["familyId"])
+        report.append({"patternId": entry["id"], "referencedCards": len(seen), "distinctIncidentFamilies": len(families)})
+    return {"status": "STRUCTURALLY_VALID_HYPOTHESIS_REFERENCES", "patterns": report,
+            "crossIncidentGeneralizationVerified": False, "sourceExcerptsVerifiedByThisCheck": False,
+            "runtimeEligible": False}
 
 
 if __name__ == "__main__":

@@ -127,5 +127,39 @@ class ReceptionMappingTests(unittest.TestCase):
             tool.validate_mapping(intake, draft, raw, now=datetime.datetime(2100, 1, 1, tzinfo=datetime.timezone.utc))
 
 
+class PatternReferenceTests(unittest.TestCase):
+    def fixture(self):
+        pilot = {"schemaVersion": "context-pilot-2", "status": "ASSISTANT_DRAFT", "familyId": "pilot-family",
+                 "split": "DEVELOPMENT", "humanApproved": False, "cases": [{"id": "pilot-a"}, {"id": "pilot-b"}]}
+        registry = {"schemaVersion": "context-pattern-hypotheses-1", "status": "DRAFT_NOT_RUNTIME_RULES",
+                    "runtimeEligible": False, "humanApproved": False, "modifiers": [],
+                    "mechanisms": [{"id": "synthetic", "question": "Synthetic?", "requiredEvidence": ["Context"],
+                                    "boundaries": ["No keyword inference"], "transferStatus": "HYPOTHESIS_NOT_VALIDATED",
+                                    "cases": [{"caseId": cid, "familyId": "pilot-family", "draftKind": "SELECTED_STT_CONTEXT",
+                                               "conditionHypothesis": "Synthetic", "gap": "Unchecked audio"}
+                                              for cid in ("pilot-a", "pilot-b")]}]}
+        return registry, fixture(), pilot
+
+    def test_same_incident_cards_do_not_inflate_generalization(self):
+        registry, intake, pilot = self.fixture()
+        report = tool.validate_patterns(registry, intake, pilot)
+        self.assertEqual(2, report["patterns"][0]["referencedCards"])
+        self.assertEqual(1, report["patterns"][0]["distinctIncidentFamilies"])
+        self.assertFalse(report["crossIncidentGeneralizationVerified"])
+
+    def test_wrong_family_or_unknown_case_is_rejected(self):
+        for field, value in (("familyId", "other"), ("caseId", "missing"), ("draftKind", "VERIFIED_VIDEO")):
+            registry, intake, pilot = self.fixture()
+            registry["mechanisms"][0]["cases"][0][field] = value
+            with self.assertRaises(tool.PilotError):
+                tool.validate_patterns(registry, intake, pilot)
+
+    def test_pattern_cannot_self_approve_runtime_or_transfer(self):
+        registry, intake, pilot = self.fixture()
+        registry["mechanisms"][0]["transferStatus"] = "VALIDATED"
+        with self.assertRaises(tool.PilotError):
+            tool.validate_patterns(registry, intake, pilot)
+
+
 if __name__ == "__main__":
     unittest.main()
