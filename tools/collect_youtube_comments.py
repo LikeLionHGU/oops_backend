@@ -1,6 +1,7 @@
 """Small official-API snapshot for temporary review, not an approved training dataset.
 
-Reads YOUTUBE_API_KEY from this process environment. Never prints keys or comments.
+Reads YOUTUBE_API_KEY from the environment or an explicit private env file.
+Never executes env files or prints keys/comments.
 No scraping, video downloading, model calls, labeling, or production archive updates.
 """
 import argparse
@@ -29,11 +30,51 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise CollectionError("REDIRECT_REFUSED")
 
 
-def fetch_page(key, video_id, order, limit):
-    query = urllib.parse.urlencode({"key": key, "part": "snippet", "videoId": video_id,
-                                   "order": order, "maxResults": limit,
-                                   "textFormat": "plainText", "fields": FIELDS})
-    request = urllib.request.Request("https://www.googleapis.com/youtube/v3/commentThreads?" + query)
+def read_key(env_file=None, environ=None):
+    """Read one literal setting, without shell expansion or sensitive diagnostics."""
+    if env_file is None:
+        value = (os.environ if environ is None else environ).get("YOUTUBE_API_KEY", "")
+    else:
+        try:
+            path = Path(env_file)
+            if path.is_symlink() or not path.is_file():
+                raise CollectionError("ENV_FILE_UNAVAILABLE")
+            if os.name == "posix" and path.stat().st_mode & 0o077:
+                raise CollectionError("ENV_FILE_MUST_BE_PRIVATE")
+            with path.open("rb") as stream:
+                raw = stream.read(65537)
+            if len(raw) > 65536:
+                raise CollectionError("ENV_FILE_TOO_LARGE")
+            lines = raw.decode("utf-8-sig").splitlines()
+        except (OSError, UnicodeError):
+            raise CollectionError("ENV_FILE_UNAVAILABLE") from None
+        values = []
+        for line in lines:
+            match = re.match(r"^\s*(?:export\s+)?YOUTUBE_API_KEY\s*=\s*(.*?)\s*$", line)
+            if not match:
+                continue
+            literal = match[1]
+            if literal.startswith(("'", '"')):
+                quoted = re.fullmatch(r"(['\"])([^'\"]*)\1\s*(?:#.*)?", literal)
+                if not quoted:
+                    raise CollectionError("ENV_KEY_FORMAT_INVALID")
+                literal = quoted[2]
+            else:
+                literal = literal.split("#", 1)[0].strip()
+            values.append(literal)
+        if len(values) != 1:
+            raise CollectionError("ENV_KEY_MISSING_OR_DUPLICATE")
+        value = values[0]
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", value):
+        raise CollectionError("ENV_KEY_FORMAT_INVALID")
+    return value
+
+
+def fetch_json(key, endpoint, parameters):
+    if endpoint not in {"commentThreads", "search"}:
+        raise CollectionError("ENDPOINT_NOT_ALLOWED")
+    query = urllib.parse.urlencode(dict(parameters, key=key))
+    request = urllib.request.Request("https://www.googleapis.com/youtube/v3/" + endpoint + "?" + query)
     try:
         with urllib.request.build_opener(NoRedirect).open(request, timeout=20) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
@@ -59,6 +100,38 @@ def fetch_page(key, video_id, order, limit):
         raise CollectionError("NETWORK_ERROR") from None
     except (ValueError, UnicodeError):
         raise CollectionError("INVALID_JSON") from None
+
+
+def fetch_page(key, video_id, order, limit):
+    return fetch_json(key, "commentThreads", {"part": "snippet", "videoId": video_id, "order": order,
+                      "maxResults": limit, "textFormat": "plainText", "fields": FIELDS})
+
+
+def discover(key, query, fetch=fetch_json):
+    """One official search request; candidates, NOT verified sources."""
+    if not isinstance(query, str) or not 1 <= len(query.strip()) <= 120:
+        raise CollectionError("SEARCH_QUERY_INVALID")
+    result = fetch(key, "search", {"part": "snippet", "type": "video", "q": query, "maxResults": 5,
+                                  "fields": "items(id(videoId),snippet(title,channelTitle,publishedAt))"})
+    try:
+        items = result["items"]
+        if not isinstance(items, list) or len(items) > 5:
+            raise CollectionError("INVALID_SEARCH_RESPONSE")
+        candidates = []
+        for item in items:
+            vid, snippet = item["id"]["videoId"], item["snippet"]
+            if not isinstance(vid, str) or not VIDEO_ID.fullmatch(vid):
+                raise CollectionError("INVALID_SEARCH_RESPONSE")
+            if any(not isinstance(snippet.get(f), str) or len(snippet[f]) > 500
+                   for f in ("title", "channelTitle", "publishedAt")):
+                raise CollectionError("INVALID_SEARCH_RESPONSE")
+            candidates.append({"videoId": vid, "url": "https://www.youtube.com/watch?v=" + vid,
+                               "title": snippet["title"], "publisher": snippet["channelTitle"],
+                               "publishedAt": snippet["publishedAt"], "originalClipVerified": False})
+        return {"status": "DISCOVERY_ONLY", "apiRequests": 1, "quotaBucket": "Search Queries",
+                "commentsCollected": 0, "candidates": candidates}
+    except (KeyError, TypeError, AttributeError):
+        raise CollectionError("INVALID_SEARCH_RESPONSE") from None
 
 
 def collect(key, video_ids, limit=50, fetch=fetch_page, now=None):
@@ -147,10 +220,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--video-id", action="append", help="Repeat for at most 5 video IDs")
     parser.add_argument("--limit-per-order", type=int, default=50)
+    parser.add_argument("--env-file", help="Read only literal YOUTUBE_API_KEY; explicit file takes precedence")
+    parser.add_argument("--discover-query", help="One official video search; no comment collection")
     parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parents[1] / "uploads/comment-collections"))
     args = parser.parse_args()
+    if args.discover_query and args.video_id:
+        parser.error("DISCOVERY_AND_COLLECTION_ARE_SEPARATE")
     try:
-        snapshot = collect(os.environ.get("YOUTUBE_API_KEY", ""), args.video_id or DEFAULT_VIDEOS, args.limit_per_order)
+        key = read_key(args.env_file)
+        if args.discover_query:
+            print(json.dumps(discover(key, args.discover_query), ensure_ascii=False, indent=2))
+            return
+        snapshot = collect(key, args.video_id or DEFAULT_VIDEOS, args.limit_per_order)
         path = save_snapshot(snapshot, args.output_dir)
     except CollectionError as error:
         parser.exit(2, str(error) + "\n")
