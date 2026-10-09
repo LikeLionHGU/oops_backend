@@ -32,7 +32,8 @@ def fixture():
 
 class DatasetTests(unittest.TestCase):
     def test_empty_dataset(self):
-        dataset = tool.read_json(ROOT.parent / "datasets/controversy/curated/dataset.json")
+        dataset = {"schemaVersion": "1", "version": "synthetic-empty", "sources": [],
+                   "cases": [], "reactions": [], "annotations": [], "adjudications": []}
         self.assertTrue(all(not rows for rows in tool.validate(dataset)))
         self.assertEqual([], tool.export_retrieval(dataset, ["pisik-yeongyang"])["cases"])
 
@@ -132,7 +133,11 @@ class DatasetTests(unittest.TestCase):
 
 class BenchmarkTests(unittest.TestCase):
     def setUp(self):
-        self.benchmark = tool.read_json(ROOT.parent / "datasets/controversy/benchmarks/pisik-v1.json")
+        # Local datasets are Git-ignored. Test the contract with synthetic goals only.
+        self.benchmark = {"version": "synthetic-benchmark", "status": "SYNTHETIC_TEST_ONLY",
+                          "goals": [{"id": letter, "required": letter != "A", "needsScene": letter == "A",
+                                     "windowMs": [i * 1000, (i + 1) * 1000]}
+                                    for i, letter in enumerate("ABCD")]}
         self.report = {"data": {"videoId": "synthetic", "status": "COMPLETED", "events": [
             {"id": str(i), "startMs": g["windowMs"][0], "endMs": g["windowMs"][1], "text": "Synthetic original quote"}
             for i, g in enumerate(self.benchmark["goals"])]}}
