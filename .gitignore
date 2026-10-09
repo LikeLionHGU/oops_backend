@@ -24,6 +24,8 @@ workdir/
 data/          # H2 DB 파일
 # 업로드 영상, OCR 프레임, 비공개 댓글/사례 초안
 uploads/
+# 로컬 논란 사례·수집 통계·검수 원장 (코드 저장소와 분리)
+/datasets/
 
 # ===== IDE =====
 .idea/
