@@ -30,11 +30,16 @@ class PromptSnapshotTest {
                 constant(ContextCheckAnalyzer.class, "EXTRACT_PROMPT"),
                 constant(ContextCheckAnalyzer.class, "JUDGE_PROMPT"),
                 constant(GenreDetector.class, "SYSTEM_PROMPT"));
-        String document = Files.readString(Path.of("../docs/현재-AI-요청별-프롬프트-전문.md"));
+        String document = Files.readString(Path.of("../docs/현재-AI-요청별-프롬프트-전문.md"))
+                + "\n" + Files.readString(Path.of("../docs/사례-검색-프롬프트-전문.md"));
         for (int i = 0; i < systems.size(); i++) {
             String actual = (systems.get(i) + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing();
             assertThat(document).as("actual system prompt %s", i + 1)
                     .contains("```text\n" + actual + "\n```");
+        }
+        for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT, VisualContextReviewer.PROMPT,
+                CandidateReviewEngine.DISCOVERY_PROMPT + "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT)) {
+            assertThat(document).contains("```text\n" + (system + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing() + "\n```");
         }
     }
 }

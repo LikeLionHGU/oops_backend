@@ -125,12 +125,41 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
     private final OpenAiClient openAiClient;
     private final boolean dialogueEnabled;
+    private final boolean candidateReviewEnabled;
+    private final int maxCandidates;
+    private VisualContextReviewer visualReviewer;
+    private ReviewCaseLibrary caseLibrary;
     public SpeechReviewAnalyzer(OpenAiClient client) { this(client, true); }
-    @org.springframework.beans.factory.annotation.Autowired
+    /** Legacy constructor retained for existing contract regression tests and baseline comparisons. */
+    public SpeechReviewAnalyzer(OpenAiClient client, boolean enabled) {
+        this(client, enabled, false, 24);
+    }
     public SpeechReviewAnalyzer(OpenAiClient client,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled) {
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-enabled:true}") boolean candidateEnabled,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-max-candidates:24}") int maxCandidates) {
+        if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         this.openAiClient = client;
         this.dialogueEnabled = enabled;
+        this.candidateReviewEnabled = candidateEnabled;
+        this.maxCandidates = maxCandidates;
+    }
+    public SpeechReviewAnalyzer(OpenAiClient client,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-enabled:true}") boolean candidateEnabled,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-max-candidates:24}") int maxCandidates,
+            VisualContextReviewer visualReviewer) {
+        this(client, enabled, candidateEnabled, maxCandidates);
+        this.visualReviewer = visualReviewer;
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public SpeechReviewAnalyzer(OpenAiClient client,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-enabled:true}") boolean candidateEnabled,
+            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-max-candidates:24}") int maxCandidates,
+            VisualContextReviewer visualReviewer, ReviewCaseLibrary caseLibrary) {
+        this(client, enabled, candidateEnabled, maxCandidates, visualReviewer);
+        this.caseLibrary = caseLibrary;
     }
     private final ThreadLocal<TextReviewEngine.Result> lastResult = new ThreadLocal<>();
 
@@ -153,7 +182,8 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
-        TextReviewEngine.Result result = TextReviewEngine.run(openAiClient, context,
+        TextReviewEngine.Result result = candidateReviewEnabled ? CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary)
+                : TextReviewEngine.run(openAiClient, context,
                 TimelineEventType.SPEECH, key(), SYSTEM_PROMPT + "\n" + ContextualComparisonPolicy.PROMPT,
                 ALLOWED_CATEGORIES, 3, dialogueEnabled);
         lastResult.set(result);
@@ -175,7 +205,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         return java.util.Optional.ofNullable(result);
     }
 
-    private static final java.util.Set<RiskCategory> ALLOWED_CATEGORIES = java.util.EnumSet.of(
+    static final java.util.Set<RiskCategory> ALLOWED_CATEGORIES = java.util.EnumSet.of(
             RiskCategory.UNFAMILIAR_CONTEXT, RiskCategory.BELITTLEMENT, RiskCategory.MOCKERY,
             RiskCategory.GENERALIZATION, RiskCategory.SENSITIVE_TOPIC, RiskCategory.DISCRIMINATION,
             RiskCategory.HATE_SPEECH, RiskCategory.PRIVACY, RiskCategory.MISINFORMATION,

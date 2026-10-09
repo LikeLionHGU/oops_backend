@@ -7,16 +7,24 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 /** Bounded diagnostics, not raw model output and not a quality score. */
 public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments,
                                 boolean truncated, Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
-                                DialogueReview.Diagnostics dialogue) {
+                                DialogueReview.Diagnostics dialogue, CandidateReviewDiagnostics candidatePipeline) {
+    public ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments, boolean truncated,
+                             Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
+                             DialogueReview.Diagnostics dialogue) {
+        this(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, null);
+    }
     public ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments, boolean truncated,
                              Map<Failure, Integer> failureCounts, List<SegmentTrace> segments) {
         this(evaluatorId, status, totalSegments, truncated, failureCounts, segments, null);
     }
     ReviewDiagnostics withDialogue(DialogueReview.Diagnostics dialogue) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue);
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline);
+    }
+    ReviewDiagnostics withCandidatePipeline(CandidateReviewDiagnostics pipeline) {
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, pipeline);
     }
     public ReviewDiagnostics { failureCounts = Map.copyOf(failureCounts); segments = List.copyOf(segments); }
-    public enum State { PASS, REVIEW_REQUIRED, UNCERTAIN, REJECTED, CONFLICT, NOT_RETURNED, CALL_FAILED, NOT_SELECTED }
+    public enum State { PASS, REVIEW_REQUIRED, UNCERTAIN, REJECTED, CONFLICT, NOT_RETURNED, CALL_FAILED, NOT_SELECTED, NO_CANDIDATE }
     public enum Failure {
         UNKNOWN_ANCHOR, INVALID_DECISION, MISSING_EVIDENCE, TOO_MANY_EVIDENCE,
         UNKNOWN_EVIDENCE_ID, EVIDENCE_OUTSIDE_WINDOW, MISSING_QUOTE, QUOTE_NOT_IN_RAW,

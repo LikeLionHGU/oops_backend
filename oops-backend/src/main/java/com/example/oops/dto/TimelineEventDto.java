@@ -55,7 +55,9 @@ public record TimelineEventDto(
 
         // ---- CAPTION 전용 ----
         String speechText,
-        String captionText
+        String captionText,
+        /** Optional character-routing hint; not an actual agent's judgement. */
+        ReviewPerspective reviewPerspective
 ) {
     public static TimelineEventDto from(RiskFinding f, ReviewActionType action,
                                         String before, String after) {
@@ -79,7 +81,8 @@ public record TimelineEventDto(
                 caption ? null : after,
                 caption ? null : List.of(f.getCategory().name()),
                 caption ? f.getSpeechText() : null,
-                caption ? f.getCaptionText() : null
+                caption ? f.getCaptionText() : null,
+                ReviewPerspective.from(f.getCategory())
         );
     }
 

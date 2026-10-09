@@ -9,7 +9,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 @lombok.extern.slf4j.Slf4j
 public final class TextReviewEngine {
     private TextReviewEngine() {}
-    public static final String PROMPT_REVISION = "2026-10-08-claim-extraction-11";
+    public static final String PROMPT_REVISION = "2026-10-09-continuation-context-21";
     private static final int MAX_REPAIR_BATCHES = 6;
     private static final int REPAIR_BATCH_SIZE = 8;
     private static final int MAX_DIALOGUE_CALLS = 24;
@@ -442,7 +442,7 @@ public final class TextReviewEngine {
                 diagnostics.finish(evaluatorId, status, assessed, conflicts, decisionsByAnchor).withDialogue(dialogueDiagnostics));
     }
 
-    private static Observation observation(LlmDecision item, ReviewInput.Segment segment,
+    static Observation observation(LlmDecision item, ReviewInput.Segment segment,
                                            TextReviewBatchPlanner.Batch batch, List<ReviewUnit> units) {
         Decision decision;
         try { decision = Decision.valueOf(item.decision()); }
@@ -508,7 +508,7 @@ public final class TextReviewEngine {
                         item.score(), item.context(), item.reading(), grounding, item.alternativeInterpretation()));
     }
 
-    private static ReviewDiagnostics.Failure publicationFailure(Observation observation, Set<RiskCategory> categories) {
+    static ReviewDiagnostics.Failure publicationFailure(Observation observation, Set<RiskCategory> categories) {
         Details d = observation.details();
         RiskCategory category = RiskCategory.fromOrDefault(d.category(), null);
         if (category == null || !categories.contains(category)) return ReviewDiagnostics.Failure.INVALID_CATEGORY;
@@ -523,12 +523,12 @@ public final class TextReviewEngine {
     }
 
     private static RejectedDecision rejected(ReviewDiagnostics.Failure failure) { return new RejectedDecision(failure); }
-    private static final class RejectedDecision extends RuntimeException {
+    static final class RejectedDecision extends RuntimeException {
         final ReviewDiagnostics.Failure failure;
         RejectedDecision(ReviewDiagnostics.Failure failure) { super(failure.name()); this.failure = failure; }
     }
 
-    private static RiskFinding finding(AnalysisContext context, ReviewInput.Segment segment, Observation observation) {
+    static RiskFinding finding(AnalysisContext context, ReviewInput.Segment segment, Observation observation) {
         Details d = observation.details();
         RiskCategory category = RiskCategory.fromOrDefault(d.category(), null);
         double score = ReviewScorePolicy.cap(category, d.score() == null ? 0.5 : Math.max(0, Math.min(1, d.score())));
@@ -640,7 +640,15 @@ public final class TextReviewEngine {
     public record LlmDecision(String segmentId, String decision, String evidenceText, String reason,
                               String category, String target, Double score, String context, String reading,
                               List<String> missingInformation, List<LlmEvidence> evidence, String targetType,
-                              String targetRelation, String targetReason, String alternativeInterpretation) {
+                              String targetRelation, String targetReason, String alternativeInterpretation,
+                              String targetMention) {
+        public LlmDecision(String segmentId, String decision, String evidenceText, String reason,
+                           String category, String target, Double score, String context, String reading,
+                           List<String> missingInformation, List<LlmEvidence> evidence, String targetType,
+                           String targetRelation, String targetReason, String alternativeInterpretation) {
+            this(segmentId, decision, evidenceText, reason, category, target, score, context, reading,
+                    missingInformation, evidence, targetType, targetRelation, targetReason, alternativeInterpretation, null);
+        }
         public LlmDecision(String segmentId, String decision, String evidenceText, String reason,
                            String category, String target, Double score, String context, String reading,
                            List<String> missingInformation) {

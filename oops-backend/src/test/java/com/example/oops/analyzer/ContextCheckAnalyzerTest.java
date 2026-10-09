@@ -27,17 +27,30 @@ class ContextCheckAnalyzerTest {
         when(newsClient.isEnabled()).thenReturn(true);
         when(newsClient.searchRecent(eq(keyword), anyInt())).thenReturn(List.of(news));
         when(client.completeAsJson(anyString(), anyString(), eq(ContextCheckAnalyzer.TopicResult.class)))
-                .thenReturn(Optional.of(new ContextCheckAnalyzer.TopicResult(List.of(
-                        new ContextCheckAnalyzer.Topic(0, keyword, "추출 모델이 만든 사건 관련 맥락")))));
+                .thenAnswer(invocation -> {
+                    var input = tools.jackson.databind.json.JsonMapper.builder().build()
+                            .readTree((String) invocation.getArgument(1));
+                    var line = input.get("lines").get(0);
+                    return Optional.of(new ContextCheckAnalyzer.TopicResult(List.of(
+                            new ContextCheckAnalyzer.Topic(0, keyword, "추출 모델이 만든 사건 관련 맥락",
+                                    line.get("source").asText(),
+                                    List.of(new ContextCheckAnalyzer.TopicEvidence(0, line.get("text").asText())),
+                                    List.of(keyword), "구체적인 사건 단서를 확인한다"))));
+                });
         when(client.completeAsJson(anyString(), anyString(), eq(ContextCheckAnalyzer.Judgement.class)))
                 .thenReturn(Optional.of(judgement));
     }
 
     private ContextCheckAnalyzer.Judgement judgement(String relation, String videoQuote, String newsQuote,
                                                      List<Integer> sources, List<String> terms) {
-        return new ContextCheckAnalyzer.Judgement(true, 0.95, "제공된 기사 제목에 회동 관련 수사가 언급되어 있습니다.",
-                "회동 관련 수사", sources, relation, videoQuote, newsQuote, terms,
-                "영상에서 기사 속 회동 사건을 직접 지칭하며 평가하고 있습니다.");
+        boolean connected = List.of("DIRECT_EVENT", "CONTEXTUAL_EVENT").contains(relation);
+        return new ContextCheckAnalyzer.Judgement(connected ? "NOTICE" : "NO_NOTICE",
+                connected ? 0.95 : null, "제공된 기사 제목에 회동 관련 수사가 언급되어 있습니다.",
+                "회동 관련 수사", sources, relation, 0, videoQuote,
+                sources.isEmpty() ? List.of() : List.of(new ContextCheckAnalyzer.SourceQuote(sources.get(0), newsQuote)),
+                "CURRENT_DEVELOPMENT", "영상에서 기사 속 회동 사건을 직접 지칭하며 평가하고 있습니다.",
+                connected ? "회동 수사의 최근 진행 상황이 영상의 사건 설명에 반영됐는지 확인하세요." : null,
+                List.of());
     }
 
     @Test
@@ -47,15 +60,16 @@ class ContextCheckAnalyzerTest {
     }
 
     @Test
-    void claimedDirectLinkWithOnlySameBrandIsRejected() {
-        stub("롯데리아", article, judgement("DIRECT_EVENT", "롯데리아 없어", "롯데리아 회동", List.of(0), List.of("롯데리아")));
+    void sameBrandMentionIsExplicitNoNoticeNotSourceFailure() {
+        stub("롯데리아", article, judgement("MERE_MENTION", "롯데리아 없어", "롯데리아 회동", List.of(0), List.of("롯데리아")));
         assertThat(analyzer.analyze(context("롯데리아 없어"))).isEmpty();
+        assertThat(analyzer.consumeCoverageNotice(null)).isEmpty();
     }
 
     @Test
     void generalFoodMentionDoesNotBecomeHealthNewsWarning() {
         var news = new NewsSearchClient.NewsItem("패스트푸드 소비 연구", "건강 연구 결과", null, "https://example.com/food");
-        stub("패스트푸드", news, judgement("DIRECT_EVENT", "몸에 안 좋은 패스트푸드", "패스트푸드 소비 연구", List.of(0), List.of("패스트푸드")));
+        stub("패스트푸드", news, judgement("MERE_MENTION", "몸에 안 좋은 패스트푸드", "패스트푸드 소비 연구", List.of(0), List.of("패스트푸드")));
         assertThat(analyzer.analyze(context("몸에 안 좋은 패스트푸드 집에서 먹지 말고"))).isEmpty();
     }
 
@@ -86,15 +100,30 @@ class ContextCheckAnalyzerTest {
 
     @Test
     void nonFiniteScoreAndMissingRelationContractAreRejected() {
+        var base = judgement("DIRECT_EVENT", "롯데리아 회동", "롯데리아 회동", List.of(0), List.of("회동"));
         for (var result : List.of(
-                new ContextCheckAnalyzer.Judgement(true, Double.NaN, "기사에서 회동 관련 수사를 구체적으로 설명합니다.",
-                        "회동 관련 수사", List.of(0), "DIRECT_EVENT", "롯데리아 회동", "롯데리아 회동", List.of("회동"),
-                        "영상이 기사 속 회동 사건을 직접 지칭하고 있습니다."),
-                new ContextCheckAnalyzer.Judgement(true, 0.9, "기사에서 회동 관련 수사를 구체적으로 설명합니다.",
-                        "회동 관련 수사", List.of(0), null, null, null, null, null))) {
+                new ContextCheckAnalyzer.Judgement("NOTICE", Double.NaN, base.reason(), base.issue(),
+                        base.sources(), base.relation(), 0, base.videoEvidence(), base.sourceEvidence(),
+                        base.temporalStatus(), base.linkageReason(), base.reviewAction(), List.of()),
+                new ContextCheckAnalyzer.Judgement("NOTICE", 0.9, base.reason(), base.issue(),
+                        base.sources(), null, 0, base.videoEvidence(), base.sourceEvidence(),
+                        base.temporalStatus(), base.linkageReason(), base.reviewAction(), List.of()))) {
             stub("롯데리아", article, result);
             assertThat(analyzer.analyze(context("롯데리아 회동 관련 수사"))).isEmpty();
         }
+    }
+
+    @Test
+    void speechTopicJudgementDoesNotReceiveAdjacentOcrAsRepairContext() {
+        stub("롯데리아", article, judgement("DIRECT_EVENT", "롯데리아 회동", "롯데리아 회동", List.of(0), List.of("회동")));
+        var caption = new ScreenText(video, 0, 1_000, "다른출처에만있는문구", 0.9, null);
+        caption.classify(ScreenTextRole.EDITORIAL, "편집 글자");
+        var context = new AnalysisContext(video, null,
+                List.of(new TranscriptSegment(video, 0, 1_000, "롯데리아 회동 관련 수사")), List.of(caption));
+        assertThat(analyzer.analyze(context)).hasSize(1);
+        var prompts = ArgumentCaptor.forClass(String.class);
+        verify(client).completeAsJson(anyString(), prompts.capture(), eq(ContextCheckAnalyzer.Judgement.class));
+        assertThat(prompts.getValue()).doesNotContain("다른출처에만있는문구");
     }
 
     @Test

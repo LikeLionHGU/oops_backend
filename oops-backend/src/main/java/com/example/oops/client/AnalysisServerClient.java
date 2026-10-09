@@ -134,6 +134,25 @@ public class AnalysisServerClient {
         }
     }
 
+    /** Bounded upload-only scene extraction, independent of OCR availability. */
+    public Optional<SceneFrames> sceneFrames(Video video, List<Long> timestampsMs) {
+        if (video.getSourceType() != SourceType.UPLOAD || video.getStorageKey() == null
+                || timestampsMs == null || timestampsMs.isEmpty() || timestampsMs.size() > 3) return Optional.empty();
+        try {
+            return Optional.ofNullable(restClient.post().uri("/scene-frames")
+                    .body(new SceneRequest(storageService.resolve(video.getStorageKey()).toString(), timestampsMs))
+                    .retrieve().body(SceneFrames.class));
+        } catch (RestClientException ex) {
+            // Do not log image bytes or raw response bodies.
+            log.warn("[analysis-server] 장면 추출 실패 videoId={}", video.getId());
+            return Optional.empty();
+        }
+    }
+    public record SceneRequest(String filePath, List<Long> timestampsMs) {}
+    public record SceneFrames(List<Frame> frames) {
+        public record Frame(String frameId, long requestedMs, long timestampMs, String jpegBase64) {}
+    }
+
     /** 분석 서버가 돌려준 에러 본문까지 로그에 남긴다. 원인 파악이 훨씬 빨라진다. */
     private String describe(RestClientException e) {
         if (e instanceof RestClientResponseException re) {

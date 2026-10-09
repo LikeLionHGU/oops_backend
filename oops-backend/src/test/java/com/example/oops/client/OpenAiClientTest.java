@@ -11,6 +11,33 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class OpenAiClientTest {
+    @Test void imagesAreSentAsInlineContentAndUsageIsRecorded() {
+        var builder = RestClient.builder().baseUrl("https://example.invalid");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andExpect(jsonPath("$.messages[1].content[0].type").value("text"))
+                .andExpect(jsonPath("$.messages[1].content[1].text").value("frameId=scene-1000; timestampMs=1040"))
+                .andExpect(jsonPath("$.messages[1].content[2].image_url.url").value("data:image/jpeg;base64,/9j/2Q=="))
+                .andExpect(jsonPath("$.messages[1].content[2].image_url.detail").value("low"))
+                .andRespond(withSuccess(mockResponse(), MediaType.APPLICATION_JSON));
+        var client = new OpenAiClient(builder.build(), properties(null, null));
+        client.beginVideo(1L);
+        try {
+            assertThat(client.completeWithImagesAsJson("JSON", "raw", java.util.List.of(
+                    new OpenAiClient.ImageInput("scene-1000", 1040, "/9j/2Q==")), Answer.class)).contains(new Answer(true));
+            assertThat(client.videoUsage().calls()).isOne();
+        } finally { client.endVideo(); }
+        server.verify();
+    }
+    @Test void invalidOrOversizedImagesAreRejectedBeforeHttp() {
+        var client = new OpenAiClient(RestClient.create(), properties(null, null));
+        for (String data : java.util.List.of("invalid", "a".repeat(683_001), "eA==")) {
+            assertThatThrownBy(() -> client.completeWithImagesAsJson("JSON", "raw", java.util.List.of(
+                    new OpenAiClient.ImageInput("scene-0", 0, data)), Answer.class)).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> client.completeWithImagesAsJson("JSON", "raw", java.util.List.of(), Answer.class))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
     private OpenAiProperties properties(String model, String effort) {
         return new OpenAiProperties("offline-test-key", null, null, "https://example.invalid", model,
                 effort, Duration.ofSeconds(2), null);

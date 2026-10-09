@@ -42,3 +42,17 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// No server startup or paid API calls: inspect curated-case eligibility/retrieval on saved text.
+tasks.register('reviewCaseReplay', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReviewCaseReplay'
+    doFirst {
+        def replayInputPath = providers.gradleProperty('replayInput').orNull
+        def caseArchivePath = providers.gradleProperty('caseArchive').orNull
+        if (!replayInputPath || !caseArchivePath) {
+            throw new GradleException('Set -PreplayInput=<input.json> -PcaseArchive=<archive.json>')
+        }
+        args replayInputPath, caseArchivePath
+    }
+}

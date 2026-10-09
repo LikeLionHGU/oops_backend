@@ -218,6 +218,20 @@ public class OpenAiClient {
         return Optional.ofNullable(failureReason.get());
     }
 
+    /** Safe diagnostic code only; never expose provider response bodies or credentials. */
+    public Optional<String> failureCode() {
+        return failureReason().map(reason -> {
+            if (reason.contains("거부")) return "MODEL_REFUSAL";
+            if (reason.contains("중단")) return "INCOMPLETE_RESPONSE";
+            if (reason.contains("해석")) return "JSON_PARSE_FAILED";
+            if (reason.contains("비어")) return "EMPTY_RESPONSE";
+            if (reason.contains("한도")) return "RATE_LIMITED";
+            if (reason.contains("HTTP")) return "HTTP_FAILED";
+            if (reason.contains("연결")) return "CONNECTION_FAILED";
+            return "REQUEST_FAILED";
+        });
+    }
+
     private <T> Optional<T> fail(String reason) {
         failureCount.get()[0]++;
         failureReason.set(reason);
@@ -231,6 +245,36 @@ public class OpenAiClient {
         }
 
         Map<String, Object> body = requestBody(systemPrompt, userPrompt);
+        return executeJson(body, type);
+    }
+
+    public record ImageInput(String id, long timestampMs, String jpegBase64) {}
+
+    /** Inline JPEG only: never send local paths or fetch arbitrary external image URLs. */
+    public <T> Optional<T> completeWithImagesAsJson(String systemPrompt, String userPrompt,
+                                                  java.util.List<ImageInput> images, Class<T> type) {
+        if (!isEnabled()) return Optional.empty();
+        if (images == null || images.isEmpty() || images.size() > 3) throw new IllegalArgumentException("1..3 images required");
+        var content = new java.util.ArrayList<Map<String, Object>>();
+        content.add(Map.of("type", "text", "text", userPrompt));
+        var ids = new java.util.HashSet<String>();
+        for (var image : images) {
+            if (image == null || image.id() == null || !ids.add(image.id()) || image.timestampMs() < 0
+                    || image.jpegBase64() == null || image.jpegBase64().length() > 683_000)
+                throw new IllegalArgumentException("Invalid image metadata");
+            byte[] bytes = java.util.Base64.getDecoder().decode(image.jpegBase64());
+            if (bytes.length < 2 || bytes.length > 512_000 || (bytes[0] & 255) != 255 || (bytes[1] & 255) != 216)
+                throw new IllegalArgumentException("Invalid JPEG");
+            content.add(Map.of("type", "text", "text", "frameId=" + image.id() + "; timestampMs=" + image.timestampMs()));
+            content.add(Map.of("type", "image_url", "image_url", Map.of("url", "data:image/jpeg;base64," + image.jpegBase64(), "detail", "low")));
+        }
+        var body = requestBody(systemPrompt, userPrompt);
+        body.put("messages", java.util.List.of(Map.of("role", "system", "content", systemPrompt + "\n" + JSON_OUTPUT_INSTRUCTION),
+                Map.of("role", "user", "content", content)));
+        return executeJson(body, type);
+    }
+
+    private <T> Optional<T> executeJson(Map<String, Object> body, Class<T> type) {
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             throttle();

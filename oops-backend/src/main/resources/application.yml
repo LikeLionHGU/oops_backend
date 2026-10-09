@@ -117,7 +117,16 @@ oops:
     client-secret: ${NAVER_CLIENT_SECRET:}
 
   analysis:
-    dialogue-review-enabled: true # 묶음별 독립 호출. 구간 검토와 분리하며 영상당 최대 24회 추가 호출.
+    candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
+    candidate-review-max-candidates: 24 # 영상당 검증 후보 상한. 초과는 PARTIAL로 알린다.
+    review-cases-enabled: ${REVIEW_CASES_ENABLED:true} # 검수·권한 확인된 사례만 탐색에 참고. 기본 파일은 비어 있다.
+    review-cases-location: ${REVIEW_CASES_LOCATION:classpath:review-cases.json} # classpath:/file:만 허용, 시작 시 로드.
+    review-cases-max-cases: 2 # 배치당 최대 1~3개. 임베딩/API 호출 없는 로컬 키워드 검색.
+    review-cases-max-code-points: 2400 # 사례 JSON 글자 한도. 실제 토큰/비용 상한은 아님.
+    review-cases-excluded-families: ${REVIEW_CASES_EXCLUDED_FAMILIES:} # 평가 대상 사건 familyId를 쉼표로 제외.
+    visual-context-enabled: ${VISUAL_CONTEXT_ENABLED:true} # 선택적 장면 검증. 포즈/음성/전체 영상 분석은 아님.
+    visual-context-max-candidates: 3 # 영상당 최대 3후보 × 후보당 최대 3프레임. 초과는 PARTIAL.
+    dialogue-review-enabled: true # 기존 방식에서만 적용. candidate-review-enabled=true이면 추가 대화 호출 없음.
     review-diagnostics-enabled: false # 공개 서버에서는 활성화하지 않는다.
     # 실행할 분석기와 순서. 여기 없는 분석기는 빈으로 떠 있어도 실행되지 않는다.
     # 타깃은 편집을 위임하는 토크·인터뷰·팟캐스트 채널이다.
