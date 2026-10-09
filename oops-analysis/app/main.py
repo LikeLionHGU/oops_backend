@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictInt
 
-from . import ocr, stt
+from . import ocr, stt, scene_frames
 from .config import get_settings
 from .media import MediaError, prepare, resolve_storage_path
 
@@ -21,6 +21,26 @@ class MediaRequest(BaseModel):
     intervalSec: float | None = None
     # OCR 에서 텍스트가 잡힌 프레임을 보관할 폴더. Spring 이 지정한다.
     frameDir: str | None = None
+
+
+class SceneRequest(BaseModel):
+    # First version deliberately supports stored uploads only; no repeated URL downloads.
+    filePath: str
+    timestampsMs: list[StrictInt] = Field(min_length=1, max_length=3)
+
+
+@app.post("/scene-frames")
+def scene(request: SceneRequest) -> dict:
+    video = None
+    try:
+        video = prepare(None, request.filePath)
+        _guard_duration(video.duration_sec)
+        return {"frames": scene_frames.sample(video, request.timestampsMs)}
+    except MediaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if video:
+            video.cleanup()
 
 
 @app.get("/health")
