@@ -29,6 +29,32 @@ public final class ContextReferenceAudit {
                 var window = new ArrayList<>(batch.primary()); window.addAll(batch.context());
                 traces.add(library.select(TimelineEventType.SPEECH, window, "discovery-" + (traces.size() + 1)).trace());
             }
+            // Optional fixed raw-only queries. Their presence does not imply model discovery,
+            // source approval, or a reconstruction of a previous hidden proposal.
+            var queries = root.get("candidateQueries");
+            if (queries != null) {
+                if (!queries.isArray() || queries.size() > 24) throw new IllegalArgumentException();
+                for (var query : queries) {
+                    var start = query.get("startMs"); var end = query.get("endMs");
+                    var focusTimes = query.get("focusStartMs");
+                    if (start == null || end == null || !start.isIntegralNumber() || !end.isIntegralNumber()
+                            || start.asLong() < 0 || end.asLong() <= start.asLong() || end.asLong() - start.asLong() > 60000
+                            || focusTimes == null || !focusTimes.isArray() || focusTimes.isEmpty() || focusTimes.size() > 8)
+                        throw new IllegalArgumentException();
+                    var window = raw.stream().filter(s -> s.startMs() >= start.asLong() && s.endMs() <= end.asLong()).toList();
+                    if (window.isEmpty() || window.size() > 48) throw new IllegalArgumentException();
+                    List<ReviewInput.Segment> focus = new ArrayList<>();
+                    Set<Long> times = new HashSet<>();
+                    for (var time : focusTimes) {
+                        if (!time.isIntegralNumber() || !times.add(time.asLong())) throw new IllegalArgumentException();
+                        var matches = window.stream().filter(s -> s.startMs() == time.asLong()).toList();
+                        if (matches.size() != 1) throw new IllegalArgumentException();
+                        focus.add(matches.get(0));
+                    }
+                    traces.add(library.select(TimelineEventType.SPEECH, window, "fixed-candidate-" + times.size()
+                            + "-" + start.asLong() + "-" + end.asLong(), focus).trace());
+                }
+            }
             var previousStyle = archive.guidelines().stream().filter(r -> r.channels().contains("SPEECH"))
                     .map(r -> new ReviewGuidelineLibrary.Example(r.id(), r.axis(), r.condition(), r.normalContrast(),
                             r.requiredEvidence(), r.missingContext(), archive.examples().stream()
