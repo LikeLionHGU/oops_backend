@@ -37,7 +37,9 @@ class PromptSnapshotTest {
             assertThat(document).as("actual system prompt %s", i + 1)
                     .contains("```text\n" + actual + "\n```");
         }
-        for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT, VisualContextReviewer.PROMPT,
+        assertThat(document).contains("```text\n" + CandidateReviewEngine.ID_REPAIR_PROMPT.stripTrailing() + "\n```");
+        for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT,
+                VisualContextReviewer.PROMPT,
                 CandidateReviewEngine.DISCOVERY_PROMPT + "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT)) {
             assertThat(document).contains("```text\n" + (system + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing() + "\n```");
         }
