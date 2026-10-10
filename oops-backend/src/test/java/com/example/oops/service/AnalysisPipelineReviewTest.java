@@ -93,6 +93,11 @@ class AnalysisPipelineReviewTest {
         ArgumentCaptor<Collection<AnalysisCoverage>> captor = ArgumentCaptor.forClass((Class) Collection.class);
         verify(coverageRepo).saveAll(captor.capture());
         var coverage = captor.getValue().stream().filter(c -> c.getStep() == CoverageStep.SPEECH_REVIEW).findFirst().orElseThrow();
+        for (var optional : List.of(CoverageStep.FACT_ENTITY, CoverageStep.CONTEXT_REFERENCE)) {
+            var disabled = captor.getValue().stream().filter(c -> c.getStep() == optional).findFirst().orElseThrow();
+            assertThat(disabled.getStatus()).isEqualTo(AnalyzerStatus.NOT_ENABLED);
+            assertThat(disabled.needsWarning()).isFalse();
+        }
         assertThat(coverage.getStatus()).isEqualTo(expected);
         assertThat(coverage.needsWarning()).isEqualTo(expected != AnalyzerStatus.SUCCESS);
         if (expected != AnalyzerStatus.SUCCESS) assertThat(coverage.getMessage()).isNotBlank();
