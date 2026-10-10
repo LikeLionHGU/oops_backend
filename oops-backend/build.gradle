@@ -69,3 +69,15 @@ tasks.register('reviewGuidelineReplay', JavaExec) {
         args input, report, archive
     }
 }
+
+// Local reference routing/input-size audit; no Spring/media/provider calls.
+tasks.register('contextReferenceAudit', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextReferenceAudit'
+    doFirst {
+        def input = providers.gradleProperty('replayInput').orNull
+        def archive = providers.gradleProperty('guidelineArchive').orNull
+        if (!input || !archive) throw new GradleException('Set replayInput and guidelineArchive local paths')
+        args input, archive
+    }
+}
