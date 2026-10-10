@@ -38,6 +38,7 @@ class PromptSnapshotTest {
                     .contains("```text\n" + actual + "\n```");
         }
         assertThat(document).contains("```text\n" + CandidateReviewEngine.ID_REPAIR_PROMPT.stripTrailing() + "\n```");
+        assertThat(document).contains("```text\n" + CandidateReviewEngine.TARGET_REPAIR_PROMPT.stripTrailing() + "\n```");
         for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT,
                 VisualContextReviewer.PROMPT,
                 CandidateReviewEngine.DISCOVERY_PROMPT + "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT)) {
