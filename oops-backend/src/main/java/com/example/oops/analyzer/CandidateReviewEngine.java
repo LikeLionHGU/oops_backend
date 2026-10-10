@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-candidate-reference-repair-26";
+    static final String REVISION = "2026-10-10-target-grounding-discovery-27";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -38,6 +38,10 @@ final class CandidateReviewEngine {
             후보의 anchorId는 primaryIds에서 실제 검토 표현을 고른다.
             연결된 비판은 anchor 하나에 필요한 상황·대상·평가 원문을 함께 인용한다.
               매장 부재 등 상황 설명만 대표로 고르지 말고 조롱·가치 절하를 구성하는 표현을 찾는다.
+            각 창을 읽은 뒤 평가와 뒤따르는 설명을 함께 재점검한다. 한 문장의 취향 평가와 달리,
+              선택권·서비스·생활 조건을 무가치하거나 감수해야 할 것으로 낮추는 연결이 있는지 본다.
+              문제 연결이 원문으로 설명될 때만 후보로 만든다. 메뉴 불만·판매 조건 안내 자체는 후보 근거가 아니다.
+              주된 평가와 후속 설명이 다른 줄이면 둘을 별도로 인용한다. 뒤의 창도 앞의 후보로 대체하지 않는다.
             evidence는 한 windows 창 안의 원문에서 그대로 복사한 segmentId·quote 목록이다.
               anchorId는 해당 창의 anchorIds에 속해야 한다.
               anchor 인용을 포함하고 서로 떨어진 원문을 붙이거나 교정하지 않는다.
@@ -82,6 +86,10 @@ final class CandidateReviewEngine {
               REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
               targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
               표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
+            출력 순서: 먼저 TARGET 원문을 고르고 그 안의 연속 문자열을 targetMention으로 복사한다.
+              다음에 해석한 대상 target을 적는다. 해석한 대상 이름을 원문 인용으로 바꾸거나 역으로 꾸미지 않는다.
+              같은 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. CONTEXTUAL의 별도 CONTEXT는
+              다른 segmentId에서 복사한다. 실제 대상 연결 근거가 없으면 UNCERTAIN이지 근거 생성이 아니다.
             targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
             targetRelation: EXPLICIT/CONTEXTUAL. targetReason은 300자 이내로 연결을 설명한다.
             category는 검토 이유에 가장 가까운 하나의 태그이며 탐색 기준을 대신하지 않는다:
@@ -102,7 +110,17 @@ final class CandidateReviewEngine {
               "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null}}]}
             """;
     private static final int MAX_TRACES = 200;
-    private static final int MAX_ID_REPAIRS = 2;
+    private static final int MAX_CONTRACT_REPAIRS = 2;
+    static final Set<String> REPAIRABLE_FAILURES = Set.of("DECISION_UNKNOWN_EVIDENCE_ID",
+            "TARGET_REQUIRED", "TARGET_EVIDENCE_REQUIRED", "TARGET_CONTEXT_EVIDENCE_REQUIRED");
+    static final String TARGET_REPAIR_PROMPT = """
+            # 대상 근거 계약 재검증
+            이전 응답은 대상과 실제 원문 인용의 연결 계약을 충족하지 않아 채택되지 않았다.
+            현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
+            TARGET 인용에서 targetMention을 그대로 복사하고 targetReason에 연결을 설명한다.
+            CONTEXTUAL은 다른 줄의 실제 CONTEXT도 필요하다. 대상 이름·인용·관계를 추측해 보충하지 않는다.
+            원문 근거가 부족하면 UNCERTAIN, 구체적인 검토 이유가 없으면 PASS다. 경고로 복구할 의무는 없다.
+            """;
     static final String ID_REPAIR_PROMPT = """
             # 원문 ID 계약 재검증
             이전 응답은 현재 후보에 허용되지 않는 evidence ID를 반환하여 채택되지 않았다.
@@ -216,7 +234,7 @@ final class CandidateReviewEngine {
                 Candidate candidate = candidate(id, proposal, batch, units, response.reviewedSegmentIds(), input);
                 if (candidate == null) {
                     stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true;
-                    stats.trace(id, null, null, "INVALID_PROPOSAL"); continue;
+                    stats.invalidProposal(id, proposal, batch, units, response.reviewedSegmentIds()); continue;
                 }
                 // Deduplicate exact anchored evidence only; different criticisms of a quote are preserved.
                 String fingerprint = needsVisual + "|" + proposal.anchorId() + "|" + proposal.axis() + "|" + proposal.reason()
@@ -266,9 +284,9 @@ final class CandidateReviewEngine {
                         : returned.verifications().stream().filter(v -> v != null && c.candidateId().equals(v.candidateId())).toList();
                 Validation validation = matches.size() == 1 ? validate(c, matches.get(0).assessment(), input)
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
-                if ("DECISION_UNKNOWN_EVIDENCE_ID".equals(validation.failureCode())) {
-                    if (stats.repairCalls < MAX_ID_REPAIRS) {
-                        validation = repairUnknownId(client, c, input, guidelinePrompt, stats);
+                if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
+                    if (stats.repairCalls < MAX_CONTRACT_REPAIRS) {
+                        validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode());
                     } else if (stats.repairs.size() < MAX_TRACES) {
                         stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
                                 validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
@@ -293,16 +311,34 @@ final class CandidateReviewEngine {
         }
         for (var c : visualCandidates) {
             VisualContextReviewer.Result result;
+            String reference = stats.candidateReference(guidelines, c, "visual-" + c.candidateId());
             try {
                 result = visual == null
                     ? new VisualContextReviewer.Result(invalid("VISUAL_NOT_CONFIGURED"),
                     new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", "VISUAL_NOT_CONFIGURED", List.of(), List.of(), null), false)
-                    : visual.review(context, c, stats.candidateReference(guidelines, c, "visual-" + c.candidateId()));
+                    : visual.review(context, c, reference);
             } catch (RuntimeException ex) {
                 result = new VisualContextReviewer.Result(invalid("VISUAL_STAGE_EXCEPTION"),
                         new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", "VISUAL_STAGE_EXCEPTION", List.of(), List.of(), null), false);
             }
             if (result.modelCalled()) stats.verificationCalls++;
+            String initialFailure = result.validation().failureCode();
+            if (visual != null && REPAIRABLE_FAILURES.contains(initialFailure == null ? "" : initialFailure)) {
+                if (stats.repairCalls < MAX_CONTRACT_REPAIRS) {
+                    stats.repairCalls++;
+                    try { result = visual.review(context, c, reference, initialFailure); }
+                    catch (RuntimeException ex) {
+                        result = new VisualContextReviewer.Result(invalid("VISUAL_STAGE_EXCEPTION"),
+                                new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED",
+                                        "VISUAL_STAGE_EXCEPTION", List.of(), List.of(), null), false);
+                    }
+                    if (result.modelCalled()) stats.verificationCalls++;
+                    if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+                            c.candidateId(), initialFailure, result.validation().observation() == null ? "FAILED" : "RECOVERED",
+                            result.validation().failureCode()));
+                } else if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+                        c.candidateId(), initialFailure, "NOT_ATTEMPTED_BUDGET", initialFailure));
+            }
             stats.visualTraces.add(result.trace());
             var o = result.validation().observation();
             if (o == null) {
@@ -369,14 +405,14 @@ final class CandidateReviewEngine {
         if (failure != null) request.put("repair", Map.of("attempt", 1, "failureCode", failure));
         return JSON.writeValueAsString(request);
     }
-    private static Validation repairUnknownId(OpenAiClient client, Candidate c, ReviewInput input,
-                                             String reference, Stats stats) {
-        String initial = "DECISION_UNKNOWN_EVIDENCE_ID";
+    private static Validation repairContract(OpenAiClient client, Candidate c, ReviewInput input,
+                                             String reference, Stats stats, String initial) {
         stats.repairCalls++; stats.verificationCalls++;
         Validation result;
         int failuresBefore = client.failureCount();
         try {
-            var response = client.completeAsJson(VERIFICATION_PROMPT + reference + "\n" + ID_REPAIR_PROMPT,
+            var correction = "DECISION_UNKNOWN_EVIDENCE_ID".equals(initial) ? ID_REPAIR_PROMPT : TARGET_REPAIR_PROMPT;
+            var response = client.completeAsJson(VERIFICATION_PROMPT + reference + "\n" + correction,
                     verificationRequest(List.of(c), initial), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE");
@@ -402,13 +438,7 @@ final class CandidateReviewEngine {
     }
     private static Candidate candidate(String id, Proposal p, TextReviewBatchPlanner.Batch batch,
                                        List<ReviewUnit> units, List<String> reviewed, ReviewInput input) {
-        if (p == null || !reviewed.contains(p.anchorId()) || !Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis())
-                || !useful(p.reason(), 300) || p.evidence() == null || p.evidence().isEmpty() || p.evidence().size() > 8) return null;
-        Map<String, ReviewInput.Segment> supplied = new HashMap<>(); raw(batch).forEach(s -> supplied.put(s.id(), s));
-        if (p.evidence().stream().anyMatch(q -> q == null || !supplied.containsKey(q.segmentId())
-                || q.quote() == null || q.quote().isBlank() || !supplied.get(q.segmentId()).text().contains(q.quote()))
-                || new HashSet<>(p.evidence()).size() != p.evidence().size()
-                || p.evidence().stream().noneMatch(q -> q.segmentId().equals(p.anchorId()))) return null;
+        if (proposalFailure(p, batch, units, reviewed) != null) return null;
         var selected = units.stream().filter(u -> u.anchorId().equals(p.anchorId()) &&
                 u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()))
                 // Dense earlier speech must not win merely by having more segments.
@@ -422,6 +452,26 @@ final class CandidateReviewEngine {
         if (!"TARGET_TREATMENT".equals(p.axis())) return new Candidate(id, p, base, false, false);
         var window = CandidateContextWindow.extend(input, p.anchorId(), base);
         return new Candidate(id, p, window.raw(), window.expanded(), window.limited());
+    }
+    private static String proposalFailure(Proposal p, TextReviewBatchPlanner.Batch batch,
+                                          List<ReviewUnit> units, List<String> reviewed) {
+        if (p == null) return "PROPOSAL_NULL";
+        if (p.anchorId() == null || !reviewed.contains(p.anchorId())) return "PROPOSAL_ANCHOR_NOT_REVIEWED";
+        if (!Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis())) return "PROPOSAL_AXIS";
+        if (!useful(p.reason(), 300)) return "PROPOSAL_REASON";
+        if (p.evidence() == null || p.evidence().isEmpty() || p.evidence().size() > 8) return "PROPOSAL_EVIDENCE_SHAPE";
+        Map<String, ReviewInput.Segment> supplied = new HashMap<>(); raw(batch).forEach(s -> supplied.put(s.id(), s));
+        for (var q : p.evidence()) {
+            if (q == null) return "PROPOSAL_EVIDENCE_SHAPE";
+            if (!supplied.containsKey(q.segmentId())) return "PROPOSAL_UNKNOWN_EVIDENCE_ID";
+            if (q.quote() == null || q.quote().isBlank() || !supplied.get(q.segmentId()).text().contains(q.quote()))
+                return "PROPOSAL_QUOTE_NOT_IN_RAW";
+        }
+        if (new HashSet<>(p.evidence()).size() != p.evidence().size()) return "PROPOSAL_DUPLICATE_EVIDENCE";
+        if (p.evidence().stream().noneMatch(q -> q.segmentId().equals(p.anchorId()))) return "PROPOSAL_ANCHOR_EVIDENCE_REQUIRED";
+        if (units.stream().noneMatch(u -> u.anchorId().equals(p.anchorId())
+                && u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()))) return "PROPOSAL_WINDOW_MISMATCH";
+        return null;
     }
     record Validation(Observation observation, String failureCode) {}
     private static Validation invalid(String code) { return new Validation(null, code); }
@@ -508,6 +558,16 @@ final class CandidateReviewEngine {
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
         ReviewGuidelineLibrary.Trace guidelineReference;
+        void invalidProposal(String id, Proposal p, TextReviewBatchPlanner.Batch batch,
+                             List<ReviewUnit> units, List<String> reviewed) {
+            var anchor = p == null ? null : raw(batch).stream().filter(s -> s.id().equals(p.anchorId())).findFirst().orElse(null);
+            String axis = p != null && Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis()) ? p.axis() : null;
+            traceCount++;
+            if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id,
+                    anchor == null ? null : anchor.id(), axis, "INVALID_PROPOSAL",
+                    anchor == null ? null : anchor.startMs(), anchor == null ? null : anchor.endMs(),
+                    List.of(), false, false, proposalFailure(p, batch, units, reviewed)));
+        }
         String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey) {
             if (library == null) return "";
             var selection = library.select(TimelineEventType.SPEECH, raw, requestKey);

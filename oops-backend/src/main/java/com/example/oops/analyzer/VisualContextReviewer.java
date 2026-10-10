@@ -63,6 +63,9 @@ public class VisualContextReviewer {
         return review(context, c, "");
     }
     Result review(AnalysisContext context, CandidateReviewEngine.Candidate c, String guidelinePrompt) {
+        return review(context, c, guidelinePrompt, null);
+    }
+    Result review(AnalysisContext context, CandidateReviewEngine.Candidate c, String guidelinePrompt, String repairFailure) {
         if (!enabled) return failure(c, "VISUAL_DISABLED", List.of(), false);
         if (context.video().getSourceType() != SourceType.UPLOAD) return failure(c, "VISUAL_UPLOAD_ONLY", List.of(), false);
         Long duration = context.video().durationMs();
@@ -87,14 +90,23 @@ public class VisualContextReviewer {
         Response response;
         int failuresBefore = ai.failureCount();
         try {
-            String input = JsonMapper.builder().build().writeValueAsString(Map.of(
+            Map<String, Object> request = new LinkedHashMap<>(Map.of(
                     "promptRevision", CandidateReviewEngine.REVISION, "candidateId", c.candidateId(),
                     "anchorId", c.proposal().anchorId(), "axis", c.proposal().axis(),
                     "hypothesisNotEvidence", c.proposal().reason(), "segmentIds", c.raw().stream().map(ReviewInput.Segment::id).toList(),
                     "raw", c.raw().stream().map(s -> Map.of("id", s.id(), "startMs", s.startMs(), "endMs", s.endMs(), "text", s.text())).toList(),
                     "frames", frames, "samplingPolicy", "anchor-and-quoted-evidence-max3",
                     "proposedEvidence", c.proposal().evidence()));
-            response = ai.completeWithImagesAsJson(PROMPT + guidelinePrompt, input, images, Response.class).orElse(null);
+            String correction = "";
+            if (repairFailure != null) {
+                if (!CandidateReviewEngine.REPAIRABLE_FAILURES.contains(repairFailure))
+                    return failure(c, "INVALID_REPAIR_CODE", frames, false);
+                request.put("repair", Map.of("attempt", 1, "failureCode", repairFailure));
+                correction = "\n" + ("DECISION_UNKNOWN_EVIDENCE_ID".equals(repairFailure)
+                        ? CandidateReviewEngine.ID_REPAIR_PROMPT : CandidateReviewEngine.TARGET_REPAIR_PROMPT);
+            }
+            String input = JsonMapper.builder().build().writeValueAsString(request);
+            response = ai.completeWithImagesAsJson(PROMPT + guidelinePrompt + correction, input, images, Response.class).orElse(null);
         } catch (IllegalArgumentException ex) { return failure(c, "INVALID_IMAGE_INPUT", frames, false); }
         catch (Exception ex) { return failure(c, "VISUAL_REQUEST_FAILED", frames, true); }
         if (response == null) return failure(c, ai.failureCount() > failuresBefore
