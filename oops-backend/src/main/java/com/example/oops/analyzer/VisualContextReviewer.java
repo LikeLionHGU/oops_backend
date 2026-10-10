@@ -102,8 +102,7 @@ public class VisualContextReviewer {
                 if (!CandidateReviewEngine.REPAIRABLE_FAILURES.contains(repairFailure))
                     return failure(c, "INVALID_REPAIR_CODE", frames, false);
                 request.put("repair", Map.of("attempt", 1, "failureCode", repairFailure));
-                correction = "\n" + ("DECISION_UNKNOWN_EVIDENCE_ID".equals(repairFailure)
-                        ? CandidateReviewEngine.ID_REPAIR_PROMPT : CandidateReviewEngine.TARGET_REPAIR_PROMPT);
+                correction = "\n" + CandidateReviewEngine.repairPrompt(repairFailure);
             }
             String input = JsonMapper.builder().build().writeValueAsString(request);
             response = ai.completeWithImagesAsJson(PROMPT + guidelinePrompt + correction, input, images, Response.class).orElse(null);

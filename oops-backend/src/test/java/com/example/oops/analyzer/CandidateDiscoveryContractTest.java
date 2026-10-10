@@ -23,7 +23,7 @@ class CandidateDiscoveryContractTest {
             assertThat((String) invocation.getArgument(1)).contains("PROPOSAL_ANCHOR_EVIDENCE_REQUIRED", "내 취향은 아니야");
             return Optional.of(new ProposalRepairResult(repaired));
         });
-        f.verification(new Verification("candidate-1", f.assessment(broken.anchorId(), "PASS", "내 취향은 아니야")));
+        f.verification(new Verification("candidate-1", f.linkedPass(broken.anchorId(), "내 취향은 아니야", "stt-index-0", "그 집")));
         var r = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().discoveryRepairCalls()).isOne();
@@ -83,7 +83,7 @@ class CandidateDiscoveryContractTest {
             var tree = JsonMapper.builder().build().readTree((String) invocation.getArgument(1));
             assertThat(tree.get("raw").toString()).contains(lines[0], lines[10], lines[20]);
             assertThat(tree.get("candidates").get(0).get("proposedEvidence").size()).isEqualTo(3);
-            return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", f.assessment(p.anchorId(), "PASS", lines[10])))));
+            return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", f.linkedPass(p.anchorId(), lines[10], "stt-index-20", lines[20])))));
         });
         var c = f.context(lines);
         var first = TextReviewBatchPlanner.plan(c.reviewInput(), TimelineEventType.SPEECH, 3).get(0);

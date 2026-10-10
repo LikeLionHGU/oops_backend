@@ -161,6 +161,12 @@ class CandidateReviewEngineTest {
         when(client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(items))));
     }
+    LlmDecision linkedPass(String anchor, String quote, String contextId, String contextQuote) {
+        return new LlmDecision(anchor, "PASS", quote, "전체 연결은 선택지 설명이며 타인의 생활을 낮추는 평가가 없습니다.",
+                null, null, null, null, null, List.of(),
+                List.of(new LlmEvidence(anchor, quote, "PRIMARY"), new LlmEvidence(contextId, contextQuote, "CONTEXT")),
+                null, null, null, "선택지를 낮춘다는 가설은 가능하지만 제공된 연결에는 낮춤의 실제 비교·평가가 없습니다.");
+    }
     @Test void noCandidatesMeansExploredNotPassAndMakesNoVerificationCalls() {
         discovery(List.of("stt-index-0"));
         var r = run(client, context("맛이 별로다"), 24);

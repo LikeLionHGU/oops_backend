@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-anchor-repair-contract-29";
+    static final String REVISION = "2026-10-10-linked-contrast-contract-30";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -70,6 +70,9 @@ final class CandidateReviewEngine {
               원문을 다시 읽고 정상 해석과 대조한다. 후보의 이유에 동의할 의무가 없다.
             원문에 구체적인 검토 근거가 있으면 REVIEW_REQUIRED, 없으면 PASS,
               전사·대상·문맥의 필수 정보가 부족하면 UNCERTAIN이다.
+            대상 취급은 '상황 → 평가 → 평가 대상'의 연결로 읽는다. 시설 부재·자신의 대체 선택·불만은 정상 해석이다.
+              반면 그 상황을 빌미로 타인의 생활·선택지를 열등하거나 우스운 것으로 취급하는 실제 비교·비유·평가는 검토한다.
+              직접 욕설은 필요하지 않지만, 타인의 동기·억양·열등함을 상상해서 연결을 만들지 않는다.
             대상 취급 후보에서는 매장·시설 부재가 정보 전달/개인 불편인지, 지역·장소·생활을 낮추는 연결인지 대조한다.
               주민 전체 일반화가 없다는 이유만으로 지역 가치 절하·특정 대상 조롱 후보를 PASS 처리하지 않는다.
               반대로 매장이 없거나 대체 음식을 먹는다는 이유만으로 비하를 만들지 않는다.
@@ -81,6 +84,11 @@ final class CandidateReviewEngine {
             각 candidateId에 정확히 하나의 assessment를 반환한다. 새 후보·다른 anchor는 만들지 않는다.
             reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 해석이 설명하는 범위와
               별도의 검토 이유가 남는지를 적는다. REVIEW_REQUIRED에는 대조 해석이 필수다.
+              TARGET_TREATMENT의 proposedEvidence가 서로 다른 두 줄 이상이면 PASS에도 대조 해석이 필수다.
+              이 PASS의 reason에는 전체 연결의 정상 해석을, alternativeInterpretation에는 가장 강한 비판 가설과
+              그 가설을 현재 원문이 뒷받침하지 않는 이유를 적는다. 후보 이유를 사실로 받아들이지 않는다.
+              또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
+              필요한 연결을 확인할 수 없으면 UNCERTAIN이다. 통과·경고 어느 쪽도 강제하지 않는다.
             evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한다.
               PRIMARY는 anchorId의 실제 표현이며 evidenceText와 동일한 연속 인용이다.
               TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
@@ -133,7 +141,22 @@ final class CandidateReviewEngine {
               "evidence":[{"segmentId":"허용 원문 ID","quote":"연속 원문"}]}}
             """;
     static final Set<String> REPAIRABLE_FAILURES = Set.of("DECISION_UNKNOWN_EVIDENCE_ID",
-            "TARGET_REQUIRED", "TARGET_EVIDENCE_REQUIRED", "TARGET_CONTEXT_EVIDENCE_REQUIRED");
+            "TARGET_REQUIRED", "TARGET_EVIDENCE_REQUIRED", "TARGET_CONTEXT_EVIDENCE_REQUIRED",
+            "LINKED_PASS_CONTRAST_REQUIRED", "LINKED_PASS_CONTEXT_REQUIRED");
+    static final String CONTRAST_REPAIR_PROMPT = """
+            # 연결 후보 대조 계약 재검증
+            이전 응답은 여러 줄로 연결된 후보의 PASS 대조 또는 CONTEXT 계약을 충족하지 않아 채택되지 않았다.
+            허용 raw만 다시 읽고 정상 해석과 가장 강한 비판 가설을 대조한다. 가설은 사실이 아니다.
+            PASS이면 전체 연결이 정상인 이유와 비판 가설의 근거 부족을 설명하고 실제 별도 CONTEXT를 인용한다.
+            원문에 구체적인 문제 연결이 있으면 REVIEW_REQUIRED, 필수 정보가 없으면 UNCERTAIN도 가능하다.
+            이전 판정을 유지하거나 경고를 만들 의무가 없다. 원문·대상·동기를 만들어 보충하지 않는다.
+            """;
+    static String repairPrompt(String failure) {
+        if ("DECISION_UNKNOWN_EVIDENCE_ID".equals(failure)) return ID_REPAIR_PROMPT;
+        if ("LINKED_PASS_CONTRAST_REQUIRED".equals(failure) || "LINKED_PASS_CONTEXT_REQUIRED".equals(failure))
+            return CONTRAST_REPAIR_PROMPT;
+        return TARGET_REPAIR_PROMPT;
+    }
     static final String TARGET_REPAIR_PROMPT = """
             # 대상 근거 계약 재검증
             이전 응답은 대상과 실제 원문 인용의 연결 계약을 충족하지 않아 채택되지 않았다.
@@ -476,7 +499,7 @@ final class CandidateReviewEngine {
         Validation result;
         int failuresBefore = client.failureCount();
         try {
-            var correction = "DECISION_UNKNOWN_EVIDENCE_ID".equals(initial) ? ID_REPAIR_PROMPT : TARGET_REPAIR_PROMPT;
+            var correction = repairPrompt(initial);
             var response = client.completeAsJson(VERIFICATION_PROMPT + reference + "\n" + correction,
                     verificationRequest(List.of(c), initial), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
@@ -559,6 +582,15 @@ final class CandidateReviewEngine {
                     || d.targetType() != null || d.targetRelation() != null || d.targetReason() != null || d.targetMention() != null)) return invalid("NON_REVIEW_FIELDS");
             if (d.score() != null && (!Double.isFinite(d.score()) || d.score() < 0 || d.score() > 1)) return invalid("INVALID_SCORE");
             if (decision == Decision.REVIEW_REQUIRED && !useful(d.alternativeInterpretation(), 300)) return invalid("ALTERNATIVE_INTERPRETATION_REQUIRED");
+            if (decision == Decision.PASS && "TARGET_TREATMENT".equals(c.proposal().axis())
+                    && c.proposal().evidence().stream().map(Quote::segmentId).distinct().count() > 1) {
+                if (!useful(d.alternativeInterpretation(), 300)) return invalid("LINKED_PASS_CONTRAST_REQUIRED");
+                Set<String> proposedIds = new HashSet<>();
+                c.proposal().evidence().forEach(q -> proposedIds.add(q.segmentId()));
+                if (d.evidence().stream().noneMatch(e -> e != null && "CONTEXT".equals(e.role())
+                        && !c.proposal().anchorId().equals(e.segmentId()) && proposedIds.contains(e.segmentId())))
+                    return invalid("LINKED_PASS_CONTEXT_REQUIRED");
+            }
             if (d.alternativeInterpretation() != null && d.alternativeInterpretation().length() > 300) return invalid("ALTERNATIVE_INTERPRETATION_LENGTH");
             if (d.target() != null) {
                 String mention = d.targetMention() == null ? d.target() : d.targetMention();
