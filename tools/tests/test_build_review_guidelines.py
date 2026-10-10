@@ -52,5 +52,29 @@ class GuidelineCompilerTests(unittest.TestCase):
             link=Path(directory)/"link.json";link.symlink_to(path)
             with self.assertRaises(tool.PilotError):tool.write_private(link,{})
 
+    def test_comparison_keeps_source_limits_without_raw_comments_or_ids(self):
+        result = tool.compile_guidelines(self.bundle, self.plan, b"source")
+        self.assertEqual("review-guidelines-2", result["schemaVersion"])
+        reference = result["guidelines"][0]["referenceContexts"][0]
+        self.assertEqual(["Synthetic known point"], reference["flow"])
+        self.assertEqual(["Original unavailable"], reference["missingContext"])
+        self.assertEqual(["Synthetic interpretation"], reference["criticismHypotheses"])
+        payload = str(tool.prompt_rules(result, "SPEECH"))
+        for private in ("synthetic-card", "synthetic-family", "sourceCaseId", "가상 반응", "https://"):
+            self.assertNotIn(private, payload)
+
+    def test_incident_counter_and_post_response_do_not_become_example_criticism(self):
+        card = self.bundle["incidents"][0]["cards"][0]
+        card["reactions"][0]["mapping"]["scope"] = "INCIDENT_ONLY"
+        result = tool.compile_guidelines(self.bundle, self.plan, b"source")
+        self.assertEqual([], result["guidelines"][0]["referenceContexts"][0]["criticismHypotheses"])
+
+    def test_sequence_cannot_invent_source_segments(self):
+        card = self.bundle["incidents"][0]["cards"][0]
+        card["context"]["sequenceInterpretations"] = [{"text": "연결 해석", "segmentIds": ["absent"],
+                                                      "status": "ASSISTANT_DRAFT_NOT_VIDEO_FACT"}]
+        with self.assertRaisesRegex(tool.PilotError, "REFERENCE_FLOW_SOURCE_REQUIRED"):
+            tool.compile_guidelines(self.bundle, self.plan, b"source")
+
 
 if __name__=="__main__":unittest.main()

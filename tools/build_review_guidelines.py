@@ -19,6 +19,47 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "datasets/controversy"
 
 
+def reference_context(card):
+    """Keep source limitations and criticism scope; never turn reactions into facts."""
+    context = card["context"]
+    require(context["coverage"] in {"SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT",
+                                    "REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT"}, "REFERENCE_COVERAGE_REQUIRED")
+    segments = {s["id"] for s in card["evidence"]["segments"]}
+    flow = []
+    for step in context["sequenceInterpretations"]:
+        require(step["status"] == "ASSISTANT_DRAFT_NOT_VIDEO_FACT"
+                and step["segmentIds"] and set(step["segmentIds"]) <= segments
+                and text(step["text"], 350), "REFERENCE_FLOW_SOURCE_REQUIRED")
+        flow.append(step["text"])
+    reactions = {r["id"]: r for r in card["reactions"]}
+    criticism = []
+    for hypothesis in card["controversy"]["reasonHypotheses"]:
+        reaction = reactions[hypothesis["reactionId"]]
+        if (reaction["role"] == "CRITICISM_SUPPORT"
+                and reaction["usage"]["purpose"] == "CONTENT_REACTION_RESEARCH"
+                and reaction["mapping"]["scope"] in {"EXACT_POINT", "SCENE_OR_FLOW"}
+                and hypothesis["reactionId"] in card["controversy"]["reasonSupportReactionIds"]):
+            require(hypothesis["status"] == "ASSISTANT_DRAFT_NOT_VIDEO_FACT"
+                    and text(hypothesis["text"], 350), "REFERENCE_CRITICISM_HYPOTHESIS_REQUIRED")
+            criticism.append(hypothesis["text"])
+    result = {"sourceCaseId": card["id"], "coverage": context["coverage"],
+              "flow": flow or [card["knownPoint"]["text"]],
+              "criticismHypotheses": criticism[:1],
+              "missingContext": context["missingInformation"]}
+    require(1 <= len(result["flow"]) <= 8 and all(text(s, 350) for s in result["flow"])
+            and all(text(s, 350) for s in result["criticismHypotheses"])
+            and 1 <= len(result["missingContext"]) <= 8
+            and all(text(s, 350) for s in result["missingContext"]), "REFERENCE_CONTEXT_LIMIT")
+    return result
+
+
+def prompt_rules(archive, channel):
+    return [{**{k: v for k, v in rule.items() if k not in {"channels", "sourceCaseIds", "referenceContexts"}},
+             "referenceContexts": [{k: v for k, v in ref.items() if k != "sourceCaseId"}
+                                   for ref in rule["referenceContexts"]]}
+            for rule in archive["guidelines"] if channel in rule["channels"]]
+
+
 def compile_guidelines(bundle, plan, source_bytes):
     require(plan.get("schemaVersion") == "review-guideline-plan-1"
             and plan.get("status") == "WORKING_REFERENCE_NOT_VALIDATED"
@@ -39,14 +80,15 @@ def compile_guidelines(bundle, plan, source_bytes):
         covered.update(m["sourceCaseIds"])
         for key in ("condition", "normalContrast", "requiredEvidence", "missingContext"):
             require(text(m.get(key), 350), "SHORT_CONTEXT_FIELDS_REQUIRED")
-        rules.append({k: m[k] for k in ("id", "axis", "channels", "condition", "normalContrast",
-                                      "requiredEvidence", "missingContext", "sourceCaseIds")})
+        rule = {k: m[k] for k in ("id", "axis", "channels", "condition", "normalContrast",
+                                  "requiredEvidence", "missingContext", "sourceCaseIds")}
+        rule["referenceContexts"] = [reference_context(cards[cid]) for cid in m["sourceCaseIds"]]
+        rules.append(rule)
     require(covered == set(cards), "NEW_CARDS_REQUIRE_EXPLICIT_MECHANISM_MAPPING")
-    payloads = {channel: [{k: v for k, v in r.items() if k not in {"channels", "sourceCaseIds"}}
-                          for r in rules if channel in r["channels"]] for channel in ("SPEECH", "CAPTION")}
+    payloads = {channel: prompt_rules({"guidelines": rules}, channel) for channel in ("SPEECH", "CAPTION")}
     require(all(len(json.dumps(p, ensure_ascii=False, separators=(",", ":"))) <= 6000
                 for p in payloads.values()), "COMPACT_GUIDELINE_BUDGET_EXCEEDED")
-    return {"schemaVersion": "review-guidelines-1", "version": plan["version"],
+    return {"schemaVersion": "review-guidelines-2", "version": plan["version"],
             "status": "WORKING_REFERENCE_NOT_VALIDATED", "humanValidated": False,
             "usage": "REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED",
             "sourceBundleSha256": hashlib.sha256(source_bytes).hexdigest(),

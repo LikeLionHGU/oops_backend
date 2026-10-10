@@ -18,7 +18,7 @@ from pathlib import Path
 
 from collect_youtube_comments import CollectionError, NoRedirect, read_key
 from controversy_cards import build_bundle, validate_bundle
-from build_review_guidelines import compile_guidelines
+from build_review_guidelines import compile_guidelines, prompt_rules
 from review_context_pilot import PilotError, parse, read_bytes, require
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -213,8 +213,7 @@ def main():
             require(guide == compiled, "GUIDELINE_SOURCE_OR_PLAN_MISMATCH")
             require(datetime.datetime.fromisoformat(guide["refreshOrDeleteBy"]) > datetime.datetime.now(datetime.timezone.utc),
                     "REFRESH_OR_DELETE_REQUIRED")
-            refs = [{k: v for k, v in r.items() if k not in {"channels", "sourceCaseIds"}}
-                    for r in guide["guidelines"] if "SPEECH" in r["channels"]]
+            refs = prompt_rules(guide, "SPEECH")
             java_guide = (ENGINE.parent / "ReviewGuidelineLibrary.java").read_text()
             matches = re.findall(r'public static final String CONTRACT = """\n(.*?)\n\s*""";', java_guide, re.S)
             require(len(matches) == 1, "GUIDELINE_CONTRACT_EXTRACTION_FAILED")
