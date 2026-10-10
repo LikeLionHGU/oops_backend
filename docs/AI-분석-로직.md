@@ -4,6 +4,14 @@
 
 이 절이 아래 과거 개발 기록보다 우선한다. 프론트·포즈 분석·모델 교체·배포 변경은 이번 범위에 포함하지 않는다.
 
+### 10/10 기본 경로 변경: 외부 검색 선택 실행
+
+일반 업로드 분석은 논란 맥락과 표현 원문 검수에 집중한다. `entity-check`(가격·중량·출시일 등 사실 주장 대조)와 `context-check`(최근 뉴스 배경 검색)는 기본 실행 목록에서 제외했다. 기존 구현·DB·응답 타입·과거 리포트는 유지한다. 비활성 단계는 기존 coverage 정책의 NOT_ENABLED이며 성공/PASS나 실패 경고로 표시하지 않는다. 음성 프롬프트 개정은 28 그대로다.
+
+기존 외부 검색을 시험할 때만 `--spring.profiles.active=local,external-review`로 실행한다. 서버 전체 설정이며 사용자별/요청별 스위치가 아니다. 이 프로필은 핵심 분석기와 두 검색 분석기를 함께 지정한다. Spring 목록은 병합이 아니라 교체되므로 환경·명령행·다른 프로필에서 enabled-analyzers를 재정의하면 실제 활성 목록을 확인해야 한다. 뉴스 키가 없어도 RSS 경로가 있어 키 제거로 비활성화를 대신하지 않는다.
+
+선택 프로필은 아직 기존 전체 원문 기반 검색이다. 후속의 **판단에 꼭 필요한 후보만 외부 맥락 확인**과 구분한다. 검색 실패·촬영 날짜 누락·불일치 자료는 논란/거짓으로 변환하지 않는다. 외부 검색 호출은 줄지만 실제 시간·비용 절감량은 다음 실영상으로 측정해야 한다.
+
 ### 데이터 구축 흐름
 
 알려진 논란 포인트 → 발언/보도 인용과 확보 범위 기록 → 논란 해석과 댓글 반응을 별도로 매핑 → 사건 공통의 문제 연결 방식과 정상 적용 경계 정리 → 출처·스냅샷·보존 기한 검증 → 사건 원장/공통 패턴/예시집 분리 → 분석용 작업 참고 파일 생성.
@@ -233,8 +241,9 @@ Signal 발견
 
 | 상태 | 분석기 |
 |---|---|
-| 기본 활성화 | `subtitle`, `speech-review`, `context-lexicon`, `screen-text`, `screen-text-review`, `entity-check`, `context-check` |
-| 기본 비활성화 | `caption-mismatch`, `monetization`, `comment`, `pose` |
+| 기본 활성화 | `subtitle`, `speech-review`, `context-lexicon`, `screen-text`, `screen-text-review` |
+| 선택 프로필 `external-review` | 기본 분석기 + `entity-check`, `context-check` (기존 외부 검색 경로) |
+| 기본 비활성화 | `entity-check`, `context-check`, `caption-mismatch`, `monetization`, `comment`, `pose` |
 
 따라서 현재 결과는 음성 대본과 OCR 화면 텍스트 중심이다. 행동·제스처·댓글 여론·자막과 발언의 불일치를 실제로 분석한다고 설명해서는 안 된다. 해당 기능은 코드에 분석기 형태가 일부 존재하더라도 기본 파이프라인에 포함되지 않은 별도 확장 영역이다.
 
