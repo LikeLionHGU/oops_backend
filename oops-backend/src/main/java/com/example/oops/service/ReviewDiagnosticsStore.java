@@ -13,7 +13,8 @@ import java.util.*;
 @Component
 public class ReviewDiagnosticsStore {
     public record Snapshot(Long videoId, Long analysisJobId, Instant recordedAt,
-                           String configuredModel, List<ReviewDiagnostics> analyzers, String textReviewPromptRevision) {
+                           String configuredModel, List<ReviewDiagnostics> analyzers, String textReviewPromptRevision,
+                           Map<String, String> promptRevisions) {
         public Snapshot { analyzers = List.copyOf(analyzers); }
     }
     private final boolean enabled;
@@ -28,8 +29,12 @@ public class ReviewDiagnosticsStore {
 
     public void recordAfterCommit(Long videoId, Long jobId, String model, List<ReviewDiagnostics> analyzers) {
         if (!enabled) return;
+        Map<String, String> revisions = new LinkedHashMap<>();
+        analyzers.forEach(a -> revisions.put(a.evaluatorId(), a.candidatePipeline() == null
+                ? com.example.oops.analyzer.TextReviewEngine.PROMPT_REVISION : a.candidatePipeline().revision()));
         var snapshot = new Snapshot(videoId, jobId, clock.instant(), model, analyzers,
-                com.example.oops.analyzer.TextReviewEngine.PROMPT_REVISION);
+                revisions.getOrDefault("speech-review", com.example.oops.analyzer.TextReviewEngine.PROMPT_REVISION),
+                Map.copyOf(revisions));
         afterCommit(() -> put(snapshot));
     }
     public void removeAfterCommit(Long videoId) {

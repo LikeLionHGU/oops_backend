@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * OCR 로 읽은 화면 텍스트 자체에 문제가 있는지 본다.
- * 발언에는 없고 편집 자막에만 들어간 욕설/개인정보가 여기서 잡힌다.
+ * 개인정보 노출 후보만 로컬 검사한다. 욕설/맥락 판단은 화면 LLM 검토가 맡는다.
  * 룰 엔진은 SubtitleAnalyzer 것을 그대로 재사용한다.
  */
 @Slf4j
@@ -22,7 +22,6 @@ import java.util.List;
 public class ScreenTextAnalyzer implements ContentAnalyzer {
 
     private final RiskRuleEngine ruleEngine;
-    private final CommunitySlangRules slangRules;
 
     @Override
     public String key() {
@@ -44,23 +43,6 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
         List<RiskFinding> findings = new ArrayList<>();
 
         for (ScreenText screenText : context.screenTexts()) {
-            for (CommunitySlangRules.Hit hit : screenText.isEditorial() ? slangRules.detect(screenText.getText())
-                    : List.<CommunitySlangRules.Hit>of()) {
-                findings.add(RiskFinding.builder()
-                        .video(context.video())
-                        .eventType(TimelineEventType.CAPTION)
-                        .category(hit.category())
-                        .source(EvidenceSource.VISION)
-                        .score(hit.score())
-                        .startMs(screenText.getStartMs())
-                        .endMs(screenText.getEndMs())
-                        .captionText(screenText.getText())
-                        .frame(screenText.getFrame())
-                        .reason("화면 자막: " + hit.reason())
-                        .target(hit.target())
-                        .build());
-            }
-
             for (RiskRuleEngine.Hit hit : ruleEngine.detect(screenText.getText())) {
                 if (!screenText.isEditorial() && hit.category() != com.example.oops.domain.RiskCategory.PRIVACY) continue;
                 findings.add(RiskFinding.builder()

@@ -38,6 +38,7 @@ public class AnalysisService {
     private final TranscriptSegmentRepository transcriptRepository;
     private final ScreenTextRepository screenTextRepository;
     private final ReviewActionRepository actionRepository;
+    private final ExpressionService expressionService;
 
     /**
      * 분석 실행 1회를 새로 만든다. 업로드 직후와 재시도 모두 이 메서드를 쓴다.
@@ -113,14 +114,20 @@ public class AnalysisService {
      */
     @Transactional
     public AnalysisRetryResponse cancel(Long videoId) {
-        AnalysisJob job = latestJob(videoId);
+        videoService.getEntity(videoId);
+        // Load under lock, rather than locking an already-loaded potentially stale job.
+        AnalysisJob job = jobRepository.findFirstByVideoIdOrderByIdDesc(videoId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE, "아직 분석이 시작되지 않았습니다."));
         if (!job.getStatus().isRunning()) {
             throw new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE,
                     "대기 중이거나 진행 중인 분석만 취소할 수 있습니다. (현재 상태: %s)"
                             .formatted(job.getStatus()));
         }
         job.cancel();
-        job.getVideo().updateStatus(AnalysisStatus.CANCELLED);
+        progressService.publishCancellationAfterCommit(job);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() { progressService.syncCancelledVideo(job.getId()); }
+        });
         log.info("[cancel] videoId={} jobId={} 취소", videoId, job.getJobKey());
         return AnalysisRetryResponse.from(job);
     }
@@ -178,7 +185,10 @@ public class AnalysisService {
                         .map(f -> TimelineEventDto.from(f, actions.get(f.getId()),
                                 lineBefore(transcript, f), lineAfter(transcript, f)))
                         .toList(),
-                video.genreOrGeneral()
+                video.genreOrGeneral(),
+                expressionService.find(videoId),
+                coverage.stream().filter(c -> c.getStep() == CoverageStep.EXPRESSION_SCAN)
+                        .map(c -> c.getStatus().name()).findFirst().orElse("NOT_ANALYZED")
         );
     }
 

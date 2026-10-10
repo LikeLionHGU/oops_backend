@@ -10,6 +10,7 @@ package com.example.oops.domain;
 public enum CoverageStep {
 
     STT("음성 인식"),
+    EXPRESSION_SCAN("선택 표현 탐지"),
     OCR("화면 글자 인식"),
     SPEECH_REVIEW("발언 검토"),
     SCREEN_TEXT_REVIEW("화면 글자 검토"),

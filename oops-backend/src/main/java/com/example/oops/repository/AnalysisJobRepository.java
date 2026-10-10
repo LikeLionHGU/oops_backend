@@ -8,6 +8,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AnalysisJobRepository extends JpaRepository<AnalysisJob, Long> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select j from AnalysisJob j where j.id = :id")
+    Optional<AnalysisJob> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Long id);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    Optional<AnalysisJob> findFirstByVideoIdOrderByIdDesc(Long videoId);
 
     Optional<AnalysisJob> findTopByVideoIdOrderByIdDesc(Long videoId);
 

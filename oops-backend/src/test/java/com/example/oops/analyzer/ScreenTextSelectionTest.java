@@ -9,14 +9,12 @@ import static org.mockito.Mockito.*;
 class ScreenTextSelectionTest {
     @Test
     void unknownBackgroundKeepPrivacyChecksButCannotTriggerSlangAndExpressionRules() {
-        var slang = mock(CommunitySlangRules.class);
-        var analyzer = new ScreenTextAnalyzer(new RiskRuleEngine(), slang);
+        var analyzer = new ScreenTextAnalyzer(new RiskRuleEngine());
         var s = new ScreenText(null, 0, 1_000, "선거 메뉴 010-1234-5678", 0.9, null);
         var video = Video.builder().filename("test.mp4").build();
         var context = new AnalysisContext(video, null, null, List.of(s));
         var findings = analyzer.analyze(context);
         assertThat(findings).isNotEmpty().allSatisfy(f -> assertThat(f.getCategory()).isEqualTo(RiskCategory.PRIVACY));
-        verifyNoInteractions(slang);
         assertThat(analyzer.consumeCoverageNotice(context)).hasValueSatisfying(s2 -> assertThat(s2).contains("개인정보 룰만"));
     }
 

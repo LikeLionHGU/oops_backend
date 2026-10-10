@@ -32,5 +32,8 @@ public record AnalysisReportResponse(
         List<TimelineEventDto> events,
 
         // ---- 아래는 내부 확장. 프론트 계약은 아니다 ----
-        ContentGenre genre
+        ContentGenre genre,
+        /** Optional watch-list occurrences, excluded from events, score and reviewSummary. */
+        List<ExpressionOccurrenceDto> expressionOccurrences,
+        String expressionDetectionStatus
 ) {}

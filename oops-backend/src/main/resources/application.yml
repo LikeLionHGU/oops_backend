@@ -139,10 +139,10 @@ oops:
     # 장르와 무관한 게시 전 검수다. 알려진 문제도 원문 근거가 있으면 검토한다.
     # 후보 탐색과 원문 검증이 중심이며 규칙 사전·사실 확인은 보조 경로다.
     enabled-analyzers:
-      - subtitle # 대본 금지어·개인정보 (LLM 불필요, 안전망)
+      - subtitle # 개인정보 노출 후보 안전망. 욕설·은어 등장은 별도 STT 표현 트랙.
       - speech-review # 발언 중 확인할 지점 (낯선 맥락, 대상 평가)
       - context-lexicon # 낯선 맥락 표현 사전 + 앞뒤 확인  ← P0 핵심
-      - screen-text # 화면 자막 금지어 (LLM 불필요)
+      - screen-text # 화면 개인정보 노출 후보 (LLM 불필요)
       - screen-text-review # 화면 자막 중 확인할 지점
       - entity-check # 이름·날짜·수치 확인       ← P0 핵심
       - context-check # 언급된 주제의 최근 배경    ← P0 핵심

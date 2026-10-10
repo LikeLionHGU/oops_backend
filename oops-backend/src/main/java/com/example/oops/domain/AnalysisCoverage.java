@@ -60,6 +60,21 @@ public class AnalysisCoverage extends BaseTimeEntity {
         return message.substring(0, end) + suffix;
     }
 
+    /** Preserve each analyser's warning summary instead of chopping the last warning off at 300 chars. */
+    public static String combineMessages(String existing, String incoming) {
+        if (incoming == null || incoming.isBlank()) return existing;
+        if (existing == null || existing.isBlank()) return boundedMessage(incoming.replaceAll("\\s+", " ").strip());
+        var messages=new java.util.LinkedHashSet<String>(java.util.Arrays.asList(existing.split("\\n")));
+        messages.add(incoming.replaceAll("\\s+", " ").strip());
+        int budget=Math.max(1, (300 - messages.size() + 1) / messages.size());
+        return messages.stream().map(s -> {
+            if (s.length() <= budget) return s;
+            int end=budget-1;
+            if (end > 0 && Character.isHighSurrogate(s.charAt(end-1))) end--;
+            return s.substring(0, end) + "…";
+        }).collect(java.util.stream.Collectors.joining("\n"));
+    }
+
     public static AnalysisCoverage of(Video video, CoverageStep step,
                                       AnalyzerStatus status, String message) {
         return new AnalysisCoverage(video, step, status, message);

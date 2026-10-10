@@ -1,0 +1,789 @@
+{
+  "version": "2026-10-10-user-watchlist-1",
+  "entries": [
+    {
+      "id": "profanity-1-c528bc1c",
+      "category": "PROFANITY",
+      "aliases": [
+        "씨발"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-c2dcbc1c",
+      "category": "PROFANITY",
+      "aliases": [
+        "시발"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-c886",
+      "category": "PROFANITY",
+      "aliases": [
+        "좆"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-bcd1c2e0",
+      "category": "PROFANITY",
+      "aliases": [
+        "병신"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-c0c8b07c",
+      "category": "PROFANITY",
+      "aliases": [
+        "새끼"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-c9c0b784",
+      "category": "PROFANITY",
+      "aliases": [
+        "지랄"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-bbf8ce5cb188",
+      "category": "PROFANITY",
+      "aliases": [
+        "미친놈"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "profanity-1-aebcc838",
+      "category": "PROFANITY",
+      "aliases": [
+        "꺼져"
+      ],
+      "commonUsageNote": "인용·감탄·동물의 새끼 등 일반 용법도 있을 수 있습니다. 등장 사실만 표시합니다."
+    },
+    {
+      "id": "no-mu-b178bb34",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "노무"
+      ],
+      "commonUsageNote": "노무 업무 등 일반 용법 가능. 사용자 지정 확인 표현이며 커뮤니티 소속을 판단하지 않습니다."
+    },
+    {
+      "id": "no-mu-b178bb34b178bb34",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "노무노무"
+      ],
+      "commonUsageNote": "노무 업무 등 일반 용법 가능. 사용자 지정 확인 표현이며 커뮤니티 소속을 판단하지 않습니다."
+    },
+    {
+      "id": "democracy-bbfcc8fcd654",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "민주화"
+      ],
+      "commonUsageNote": "역사·정치의 정상적 언급 가능. 단어만으로 문제라고 판단하지 않습니다."
+    },
+    {
+      "id": "democracy-31413148314e",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "ㅁㅈㅎ"
+      ],
+      "commonUsageNote": "역사·정치의 정상적 언급 가능. 단어만으로 문제라고 판단하지 않습니다."
+    },
+    {
+      "id": "unji-c6b4c9c0",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "운지"
+      ],
+      "commonUsageNote": "악기 운지 등 정상 용법 가능."
+    },
+    {
+      "id": "unji-c6b4c9c0d558b2e4",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "운지하다"
+      ],
+      "commonUsageNote": "악기 운지 등 정상 용법 가능."
+    },
+    {
+      "id": "regional-c774ae30c57c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "이기야"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-d64dc5b4",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "홍어"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-d64dc5b4c871",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "홍어족"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-c804b77cb514c5b8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "전라디언"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-c808b77cb514c5b8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "절라디언"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-ae4cbcf4c804",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "까보전"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-c124b77cb514c5b8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "설라디언"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-b77cb3c4",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "라도"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "regional-37c2dc",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "7시"
+      ],
+      "commonUsageNote": "음식·방언·시간 등 정상 용법 가능. ~노 단독은 제외합니다."
+    },
+    {
+      "id": "gender-community-ba54ac08",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "메갈"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ba54ac08b144",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "메갈년"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c6ccb9c8b4dc",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "워마드"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-d55cb0a8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "한남"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-d55cb0a8cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "한남충"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c539ce58b0a8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "씹치남"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-b0c4c800",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "냄저"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-b0c4c838",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "냄져"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ac1cc800c528",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개저씨"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-d55cb140cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "한녀충"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ac1cc90cb9c8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개줌마"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c544be60cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "아빠충"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c0bcc77cd55c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "삼일한"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c228c274d55c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "숨쉴한"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c7acae30d574",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "재기해"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c8fcba39",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "주먹"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-c8fcc808ba39",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "주절먹"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ac13ce58",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "갓치"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-d0c8ae40ce58",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "탈김치"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ac13c591b0a8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "갓양남"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-cf54b974c14b",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "코르셋"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-d0c8cf54b974c14b",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "탈코르셋"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ae40ce58b140",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "김치녀"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-b41cc7a5b140",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "된장녀"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ae40ce58b0a8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "김치남"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "gender-community-ac15b41cc7a5b0a8",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "강된장남"
+      ],
+      "commonUsageNote": "지명·의복·운동·비판적 인용 등 일반 용법도 있습니다. 목록 등록은 특정 의미의 확정이 아닙니다."
+    },
+    {
+      "id": "age-person-b9d8cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "맘충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-d2c0b531",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "틀딱"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-d2c0b531cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "틀딱충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-ae09c2ddcda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "급식충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-d559c2ddcda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "학식충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-c9c4c9c0cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "진지충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-c120be44cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "선비충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-c124ba85cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "설명충"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-bcd1d06c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "병크"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-bcd1c2e0d06cb9ac",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "병신크리"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-c5f0c560ace0c790",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "연애고자"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-b208ce58ace0c790",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "눈치고자"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-c815ce58ace0c790",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "정치고자"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-c7bcbbfcc774",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "잼민이"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-cd08ae00b9c1",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "초글링"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-ac1ccd08b529",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개초딩"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "age-person-cd08b529",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "초딩"
+      ],
+      "commonUsageNote": "친근한 농담·자기 지칭·인용 가능. 대상 폄하는 별도 맥락 검토입니다."
+    },
+    {
+      "id": "nationality-religion-b625b0a8c544",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "똥남아"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-c678b178c790",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "외노자"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-ac1cc2acb78c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개슬람"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-ac1cc774c2acb78c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개이슬람"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-ac1cc2acb9bc",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개슬림"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-c911afd4",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "중꿔"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-cb5dafd4",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "쭝꿔"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-d751d615",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "흑형"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-d751b204b098",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "흑누나"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-ac1cb3c5",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개독"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-ac1cb3c5ad50",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "개독교"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-c9f1ae68",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "짱깨"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-c9f1ac1c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "짱개"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "nationality-religion-cabdbc14b9ac",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "쪽바리"
+      ],
+      "commonUsageNote": "사용자 지정 확인 표현. 인용·비판 여부와 공격 대상은 맥락 트랙에서 판단합니다."
+    },
+    {
+      "id": "politics-c88cc880",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "좌좀"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "politics-c88cbe68",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "좌빨"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "politics-c885bd81c88cbe68",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "종북좌빨"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "politics-c218af34",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "수꼴"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "politics-c77cbca0cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "일베충"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "politics-bca0cda9c774",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "베충이"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "politics-c6d0cda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "원충"
+      ],
+      "commonUsageNote": "인용·생물 이름 등 일반 용법 가능. 정치적 소재 자체를 문제로 판단하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-c624c870c624c5b5",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "오조오억"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-c624c870c624cc9c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "오조오천"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-d5c8bc84d5c8bc84",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "허버허버"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-b4dcb989b4dcb989",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "드릉드릉"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-c6c5c575c6c5",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "웅앵웅"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-c5bcb808bc8cb808",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "얼레벌레"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-c624b610cf00",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "오또케"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-d53cc2f8ac1c",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "피싸개"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-b625af2ccda9",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "똥꼬충"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-c560c790",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "애자"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    },
+    {
+      "id": "disputed-speech-bcf4c804ae68",
+      "category": "DISPUTED_EXPRESSION",
+      "aliases": [
+        "보전깨"
+      ],
+      "commonUsageNote": "일상 용례·농담·인용 가능. 사용자 지정 확인 목록이며 혐오·악의를 확정하지 않습니다."
+    }
+  ]
+}

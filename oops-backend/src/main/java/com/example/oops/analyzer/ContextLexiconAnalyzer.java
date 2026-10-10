@@ -72,8 +72,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         for (int i = 0; i < lines.size(); i++) {
             Line line = lines.get(i);
             for (ContextLexicon.Match match : lexicon.match(line.text())) {
-                // 맥락을 안 봐도 되는 항목은 CommunitySlangRules 가 맡는다.
-                // 그쪽은 AI 키가 없어도 돌기 때문에 안전망 역할을 한다.
+                // Non-context expressions belong to the independent local expression watch list.
                 if (!match.entry().requiresContextCheck()) {
                     continue;
                 }

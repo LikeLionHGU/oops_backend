@@ -35,14 +35,14 @@ public class JobProgressService {
     /** 분석 시작. 대상 videoId 를 돌려준다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Long begin(Long jobId) {
-        AnalysisJob job = jobRepository.findById(jobId).orElseThrow();
+        AnalysisJob job = jobRepository.findByIdForUpdate(jobId).orElseThrow();
         if (job.getStatus() != AnalysisStatus.PENDING) {
             return null;
         }
         job.start();
         job.getVideo().updateStatus(AnalysisStatus.PROCESSING);
         jobRepository.flush();
-        progressPublisher.publish(job);
+        publishAfterCommit(job);
         return job.getVideo().getId();
     }
 
@@ -53,33 +53,53 @@ public class JobProgressService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void update(Long jobId, AnalysisStage stage, int progress, String message) {
-        jobRepository.findById(jobId).ifPresent(job -> {
+        jobRepository.findByIdForUpdate(jobId).ifPresent(job -> {
             if (job.getStatus() != AnalysisStatus.PROCESSING) return;
             job.updateProgress(stage, progress, message);
             jobRepository.flush();
-            progressPublisher.publish(job);
+            publishAfterCommit(job);
         });
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    // Join the result transaction: completion must not outlive a rolled-back report.
+    @Transactional
     public boolean complete(Long jobId) {
-        return jobRepository.findById(jobId).map(job -> {
+        return jobRepository.findByIdForUpdate(jobId).map(job -> {
             if (job.getStatus() != AnalysisStatus.PROCESSING) return false;
             job.complete();
+            job.getVideo().updateStatus(AnalysisStatus.COMPLETED);
             jobRepository.flush();
-            progressPublisher.publish(job);
+            publishAfterCommit(job);
             return true;
         }).orElse(false);
     }
 
+    private void publishAfterCommit(AnalysisJob job) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() { progressPublisher.publish(job); }
+                    });
+        } else progressPublisher.publish(job);
+    }
+
+    public void publishCancellationAfterCommit(AnalysisJob job) { publishAfterCommit(job); }
+
+    /** Release the job row lock before waiting on the result transaction's video row. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void syncCancelledVideo(Long jobId) {
+        jobRepository.findById(jobId).filter(j -> j.getStatus() == AnalysisStatus.CANCELLED)
+                .ifPresent(j -> j.getVideo().updateStatus(AnalysisStatus.CANCELLED));
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean fail(Long jobId, String errorCode, String message) {
-        return jobRepository.findById(jobId).map(job -> {
+        return jobRepository.findByIdForUpdate(jobId).map(job -> {
             if (!job.getStatus().isRunning()) return false;
             job.fail(errorCode, message);
             job.getVideo().updateStatus(AnalysisStatus.FAILED);
             jobRepository.flush();
-            progressPublisher.publish(job);
+            publishAfterCommit(job);
             return true;
         }).orElse(false);
     }

@@ -18,6 +18,20 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class AnalysisPipelineReviewTest {
+    @org.junit.jupiter.api.Test
+    void retainsIndependentWarningsAtTheSameSeverity() {
+        var pipeline=mock(AnalysisPipeline.class, CALLS_REAL_METHODS);
+        var video=Video.builder().filename("test.mp4").build();
+        Map<CoverageStep, AnalysisCoverage> coverage=new EnumMap<>(CoverageStep.class);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(pipeline, "record", coverage, video,
+                CoverageStep.SPEECH_REVIEW, AnalyzerStatus.PARTIAL, "발언 검증 일부 실패");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(pipeline, "record", coverage, video,
+                CoverageStep.SPEECH_REVIEW, AnalyzerStatus.PARTIAL, "맥락 사전 후보 일부 보류");
+        assertThat(coverage.get(CoverageStep.SPEECH_REVIEW).getMessage())
+                .contains("발언 검증 일부 실패", "맥락 사전 후보 일부 보류");
+        String longMessage=AnalysisCoverage.combineMessages("발언 검증 " + "가".repeat(290), "맥락 사전 보류 " + "나".repeat(290));
+        assertThat(longMessage).hasSizeLessThanOrEqualTo(300).contains("발언 검증", "맥락 사전 보류");
+    }
     @ParameterizedTest
     @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,true"})
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -38,7 +52,7 @@ class AnalysisPipelineReviewTest {
         var pipeline = new AnalysisPipeline(List.of(analyzer), props, transcripts, screens, fusion,
                 mock(GenreDetector.class), analysisServer, new ReportBuilder(), progress, videoRepo, findingsRepo,
                 coverageRepo, mock(ReviewActionRepository.class), client, mock(ReviewReferenceRepository.class), reportRepo,
-                diagnosticsStore);
+                diagnosticsStore, mock(ExpressionService.class));
         var video = Video.builder().filename("offline.mp4").build();
         video.assignGenre(ContentGenre.GENERAL);
         var input = expected == AnalyzerStatus.PARTIAL && simulateApiFailure
