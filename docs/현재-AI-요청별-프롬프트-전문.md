@@ -1,5 +1,20 @@
 # 현재 AI 요청별 프롬프트 전문
 
+> 현재 실행: 개정 `2026-10-10-target-grounding-discovery-27`. 평가와 후속 설명을 함께 탐색하고, 텍스트·이미지 검증에서 ID/대상 근거 계약 오류에만 후보당 1회·영상 전체 합산 최대 2회 재검증한다. 이전 개정 설명은 이 경계보다 우선하지 않는다. 표현 등장 목록은 구현되어 있고 프론트 선택 필터는 후속이다.
+
+## 개정 27: 대상 근거 오류에만 추가하는 지침
+
+출처: `CandidateReviewEngine.TARGET_REPAIR_PROMPT`. 같은 후보·원문·참고를 다시 제공한다. 이미지 후보는 같은 요청 시점으로 프레임을 재추출하고 이미지와 관찰 계약도 다시 검증한다. 이전 응답은 전달하지 않는다. 재추출 실패는 미확인으로 남기며 텍스트 검증으로 우회하지 않는다.
+
+```text
+# 대상 근거 계약 재검증
+이전 응답은 대상과 실제 원문 인용의 연결 계약을 충족하지 않아 채택되지 않았다.
+현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
+TARGET 인용에서 targetMention을 그대로 복사하고 targetReason에 연결을 설명한다.
+CONTEXTUAL은 다른 줄의 실제 CONTEXT도 필요하다. 대상 이름·인용·관계를 추측해 보충하지 않는다.
+원문 근거가 부족하면 UNCERTAIN, 구체적인 검토 이유가 없으면 PASS다. 경고로 복구할 의무는 없다.
+```
+
 > 2026-10-10 최신 경계: 개정 26은 검증 후보의 실제 인용을 우선해 참고를 선별하고 같은 참고 입력의 후보만 최대 4개씩 묶는다. UNKNOWN_EVIDENCE_ID에만 아래 복구 지침을 추가해 후보당 1회/영상당 최대 2회 검증한다. 동적 계약은 `ReviewGuidelineLibrary`, 조합은 `CandidateReviewEngine`/`TextReviewEngine`이다. 정적 전문만으로 전체 요청을 재현할 수 없다. [파이프라인](AI-분석-로직.md)과 [기준집](범용-논란-기준집.md)을 함께 확인한다. 표현 선택 필터는 아직 설계만 있다.
 
 > 최신 실행 경계: 개정 `2026-10-09-continuation-context-21`은 검증 문맥 선택/확장과 요청의 개정 식별값만 변경했다. 아래 시스템 프롬프트 본문은 그대로이며 [실험 기록 47절](AI-분석-실험-기록.md)의 B·C·D 필수/A 보조 평가를 따른다.
@@ -54,6 +69,10 @@ primaryIds의 모든 발언을 검토하고 reviewedSegmentIds에 실제 검토�
 후보의 anchorId는 primaryIds에서 실제 검토 표현을 고른다.
 연결된 비판은 anchor 하나에 필요한 상황·대상·평가 원문을 함께 인용한다.
   매장 부재 등 상황 설명만 대표로 고르지 말고 조롱·가치 절하를 구성하는 표현을 찾는다.
+각 창을 읽은 뒤 평가와 뒤따르는 설명을 함께 재점검한다. 한 문장의 취향 평가와 달리,
+  선택권·서비스·생활 조건을 무가치하거나 감수해야 할 것으로 낮추는 연결이 있는지 본다.
+  문제 연결이 원문으로 설명될 때만 후보로 만든다. 메뉴 불만·판매 조건 안내 자체는 후보 근거가 아니다.
+  주된 평가와 후속 설명이 다른 줄이면 둘을 별도로 인용한다. 뒤의 창도 앞의 후보로 대체하지 않는다.
 evidence는 한 windows 창 안의 원문에서 그대로 복사한 segmentId·quote 목록이다.
   anchorId는 해당 창의 anchorIds에 속해야 한다.
   anchor 인용을 포함하고 서로 떨어진 원문을 붙이거나 교정하지 않는다.
@@ -122,6 +141,10 @@ evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한�
   REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
   targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
   표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
+출력 순서: 먼저 TARGET 원문을 고르고 그 안의 연속 문자열을 targetMention으로 복사한다.
+  다음에 해석한 대상 target을 적는다. 해석한 대상 이름을 원문 인용으로 바꾸거나 역으로 꾸미지 않는다.
+  같은 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. CONTEXTUAL의 별도 CONTEXT는
+  다른 segmentId에서 복사한다. 실제 대상 연결 근거가 없으면 UNCERTAIN이지 근거 생성이 아니다.
 targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
 targetRelation: EXPLICIT/CONTEXTUAL. targetReason은 300자 이내로 연결을 설명한다.
 category는 검토 이유에 가장 가까운 하나의 태그이며 탐색 기준을 대신하지 않는다:
@@ -1789,6 +1812,10 @@ evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한�
   REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
   targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
   표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
+출력 순서: 먼저 TARGET 원문을 고르고 그 안의 연속 문자열을 targetMention으로 복사한다.
+  다음에 해석한 대상 target을 적는다. 해석한 대상 이름을 원문 인용으로 바꾸거나 역으로 꾸미지 않는다.
+  같은 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. CONTEXTUAL의 별도 CONTEXT는
+  다른 segmentId에서 복사한다. 실제 대상 연결 근거가 없으면 UNCERTAIN이지 근거 생성이 아니다.
 targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
 targetRelation: EXPLICIT/CONTEXTUAL. targetReason은 300자 이내로 연결을 설명한다.
 category는 검토 이유에 가장 가까운 하나의 태그이며 탐색 기준을 대신하지 않는다:
