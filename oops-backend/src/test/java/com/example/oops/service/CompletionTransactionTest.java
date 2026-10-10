@@ -40,6 +40,32 @@ class CompletionTransactionTest {
             return jobs.saveAndFlush(job).getId();
         });
     }
+    @Test void validatedFlowMetadataSurvivesDatabaseReloadAndLegacyRowsRemainReadable() {
+        Long jobId = seed();
+        Long findingId = new TransactionTemplate(manager).execute(tx -> {
+            var video = jobs.findById(jobId).orElseThrow().getVideo();
+            var finding = RiskFinding.builder().video(video).eventType(TimelineEventType.SPEECH)
+                    .category(RiskCategory.BELITTLEMENT).source(EvidenceSource.SUBTITLE)
+                    .score(.7).startMs(1000).endMs(2000).text("실제 원문").reason("검토 근거").build();
+            finding.recordValidatedSupports(java.util.List.of(new FindingSupport("stt-test", "REGION",
+                    java.util.List.of(new FindingSupport.Quote("stt-test", TimelineEventType.SPEECH, 1000, 2000, "실제 원문", "PRIMARY")))));
+            finding.recordOccurrenceCount(1); finding.applyFusion(500, false, 2);
+            return findings.saveAndFlush(finding).getId();
+        });
+        new TransactionTemplate(manager).executeWithoutResult(tx -> {
+            var finding = findings.findById(findingId).orElseThrow();
+            var dto = com.example.oops.dto.TimelineEventDto.from(finding, null, null, null);
+            assertThat(dto.occurrences()).isOne(); assertThat(dto.supportCount()).isEqualTo(2);
+            assertThat(dto.relatedEvidence()).singleElement().extracting(FindingSupport.Quote::quote).isEqualTo("실제 원문");
+            var legacy = RiskFinding.builder().video(finding.getVideo()).eventType(TimelineEventType.SPEECH)
+                    .category(RiskCategory.BELITTLEMENT).source(EvidenceSource.SUBTITLE)
+                    .score(.7).startMs(1000).endMs(2000).text("과거 원문").build();
+            legacy.applyFusion(500, false, 3);
+            findings.saveAndFlush(legacy);
+            assertThat(com.example.oops.dto.TimelineEventDto.from(legacy, null, null, null).occurrences()).isEqualTo(3);
+            assertThat(legacy.validatedSupports()).isEmpty();
+        });
+    }
     @Test void completionAndReportRollbackTogetherAndNeverPublishCompletion() {
         Long id=seed(); reset(publisher);
         new TransactionTemplate(manager).executeWithoutResult(tx -> {

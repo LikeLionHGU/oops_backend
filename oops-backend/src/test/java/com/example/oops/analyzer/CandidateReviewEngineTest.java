@@ -57,7 +57,18 @@ class CandidateReviewEngineTest {
         assertThat(validate(candidate, d, c.reviewInput()).observation().details().target()).isEqualTo("방문한 마을");
         discovery(List.of("stt-index-0", "stt-index-1"), p);
         verification(new Verification("candidate-1", d));
-        assertThat(run(client, c, 24).findings()).singleElement().extracting(RiskFinding::getTarget).isEqualTo("방문한 마을");
+        var findings = run(client, c, 24).findings();
+        assertThat(findings).singleElement().extracting(RiskFinding::getTarget).isEqualTo("방문한 마을");
+        assertThat(findings.get(0).validatedSupports()).singleElement().satisfies(s -> {
+            assertThat(s.anchorId()).isEqualTo("stt-index-1");
+            assertThat(s.targetType()).isEqualTo("REGION");
+            assertThat(s.quotes()).extracting(FindingSupport.Quote::role).containsExactly("PRIMARY", "TARGET", "CONTEXT");
+            assertThat(s.quotes()).anySatisfy(q -> {
+                assertThat(q.quote()).isEqualTo("이 마을에 왔어요");
+                assertThat(q.segmentId()).isEqualTo("stt-index-0");
+                assertThat(q.startMs()).isZero();
+            });
+        });
         var explicitMismatch = new LlmDecision(d.segmentId(), d.decision(), d.evidenceText(), d.reason(), d.category(),
                 d.target(), d.score(), null, null, List.of(), d.evidence(), d.targetType(),
                 "EXPLICIT", d.targetReason(), d.alternativeInterpretation(), d.targetMention());
