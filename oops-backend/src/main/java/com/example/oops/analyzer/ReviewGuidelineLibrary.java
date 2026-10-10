@@ -248,16 +248,36 @@ public class ReviewGuidelineLibrary {
         }
         var patterns = patternRows(base);
         var focused = selector.rank(channel, focus, excludedFamilies);
-        var ranked = new ArrayList<>(focused);
-        Set<String> focusedIds = new HashSet<>(); focused.forEach(m -> focusedIds.add(m.example().id()));
+        // Prefer context near the proposed quotations before unrelated material at the far
+        // ends of an expanded 60s validation window. This is lexical routing, not a decision.
+        var near = focus.isEmpty() ? raw : raw.stream().filter(s -> focus.stream().anyMatch(f ->
+                s.startMs() >= f.startMs() - 15000 && s.startMs() <= f.endMs() + 15000)).toList();
+        var contextual = new ArrayList<>(selector.rank(channel, near, excludedFamilies));
+        Set<String> contextIds = new HashSet<>(); contextual.forEach(m -> contextIds.add(m.example().id()));
         selector.rank(channel, raw, excludedFamilies).stream()
-                .filter(m -> !focusedIds.contains(m.example().id())).forEach(ranked::add);
+                .filter(m -> contextIds.add(m.example().id())).forEach(contextual::add);
+        List<ContextExampleSelector.Match> ranked = new ArrayList<>();
+        Set<String> rankedIds = new HashSet<>();
+        // One candidate-focused match, one contextual match, then alternate. A narrow quotation
+        // must not fill every slot before its surrounding conversation gets a chance.
+        int focusedIndex = 0, contextualIndex = 0;
+        while (focusedIndex < focused.size() || contextualIndex < contextual.size()) {
+            while (focusedIndex < focused.size()) {
+                var match = focused.get(focusedIndex++);
+                if (rankedIds.add(match.example().id())) { ranked.add(match); break; }
+            }
+            while (contextualIndex < contextual.size()) {
+                var match = contextual.get(contextualIndex++);
+                if (rankedIds.add(match.example().id())) { ranked.add(match); break; }
+            }
+        }
         List<ContextExample> selected = new ArrayList<>();
         Set<String> families = new HashSet<>(), skipped = new HashSet<>();
-        // Prefer distinct incident families, then fill remaining slots; never duplicate a source card.
+        // Discovery prefers family diversity. Candidate validation preserves the interleaved
+        // relevance order: two different mechanisms from one incident can both be relevant.
         for (int pass = 0; pass < 2; pass++) for (var match : ranked) {
             var e = match.example();
-            if (selected.contains(e) || pass == 0 && families.contains(e.familyId())) continue;
+            if (selected.contains(e) || focus.isEmpty() && pass == 0 && families.contains(e.familyId())) continue;
             if (selected.size() >= maxExamples) continue;
             var proposed = new ArrayList<>(selected); proposed.add(e);
             var contexts = proposed.stream().map(e2 -> new SelectedExample(e2.mechanismIds(), e2.context())).toList();
@@ -268,7 +288,7 @@ public class ReviewGuidelineLibrary {
         String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
         return new Selection("\n" + CONTRACT + "\ncontextReference=" + payload,
                 new SelectionTrace(requestKey, state, focus.isEmpty() ? "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC"
-                        : "CANDIDATE_QUOTE_FIRST_LOCAL_NOT_SEMANTIC",
+                        : "CANDIDATE_NEAR_CONTEXT_INTERLEAVED_LOCAL_NOT_SEMANTIC",
                         trace(channel).availableExampleCount(), ranked.size(), skipped.size(), codePoints(payload),
                         codePoints(payload(patterns, List.of())), selected.stream().map(ContextExample::id).toList(),
                         patterns.stream().map(p -> p.get("id")).toList()));

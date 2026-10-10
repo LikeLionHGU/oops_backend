@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-linked-contrast-contract-30";
+    static final String REVISION = "2026-10-10-context-routing-repair-31";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -141,7 +141,7 @@ final class CandidateReviewEngine {
               "evidence":[{"segmentId":"허용 원문 ID","quote":"연속 원문"}]}}
             """;
     static final Set<String> REPAIRABLE_FAILURES = Set.of("DECISION_UNKNOWN_EVIDENCE_ID",
-            "TARGET_REQUIRED", "TARGET_EVIDENCE_REQUIRED", "TARGET_CONTEXT_EVIDENCE_REQUIRED",
+            "TARGET_REQUIRED", "TARGET_EVIDENCE_REQUIRED", "TARGET_CONTEXT_EVIDENCE_REQUIRED", "TARGET_MENTION_RELATION",
             "LINKED_PASS_CONTRAST_REQUIRED", "LINKED_PASS_CONTEXT_REQUIRED");
     static final String CONTRAST_REPAIR_PROMPT = """
             # 연결 후보 대조 계약 재검증
@@ -682,10 +682,12 @@ final class CandidateReviewEngine {
         String candidateReference(ReviewGuidelineLibrary library, Candidate c, String requestKey) {
             if (library == null) return "";
             // Already-validated proposal quotes are routing text, not the model's reason or an inferred correction.
-            var focus = c.proposal().evidence().stream().map(q -> {
+            var focus = c.proposal().evidence().stream().distinct().map(q -> {
                 var s = c.raw().stream().filter(r -> r.id().equals(q.segmentId())).findFirst().orElseThrow();
                 return new ReviewInput.Segment(s.id(), s.type(), s.startMs(), s.endMs(), q.quote(), s.confidence());
-            }).toList();
+            }).sorted(Comparator.comparingLong(ReviewInput.Segment::startMs)
+                    .thenComparingLong(ReviewInput.Segment::endMs).thenComparing(ReviewInput.Segment::id)
+                    .thenComparing(ReviewInput.Segment::text)).toList();
             var selection = library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();

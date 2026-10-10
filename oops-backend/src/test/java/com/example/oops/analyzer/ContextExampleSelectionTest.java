@@ -12,6 +12,39 @@ import static org.mockito.Mockito.*;
 
 /** Synthetic retrieval/contract tests, not claims of semantic recall or model accuracy. */
 class ContextExampleSelectionTest {
+    @Test void nearbyContextRoutesBeforeFarWindowWhenAnchorHasNoLexicalMatch() {
+        var a = new CandidateReferenceRepairTest().distinctExamples();
+        var l = library(a, 1, 3000, "");
+        var anchor = new ReviewInput.Segment("anchor", TimelineEventType.SPEECH, 20000, 21500, "이걸로 대신하는 거야", null);
+        var nearby = new ReviewInput.Segment("near", TimelineEventType.SPEECH, 18000, 19500, "공공시설이 없는 생활조건", null);
+        var distant = new ReviewInput.Segment("far", TimelineEventType.SPEECH, 65000, 66500, "메뉴 선택권을 무시하는 설명", null);
+        var selection = l.select(TimelineEventType.SPEECH, List.of(nearby, anchor, distant), "candidate", List.of(anchor));
+        assertThat(selection.trace().exampleIds()).containsExactly("source-0");
+        assertThat(selection.prompt()).doesNotContain("메뉴 선택권을 무시하는 설명");
+    }
+    @Test void contextualMatchGetsASlotBeforeSecondFocusedMatchEvenInSameFamily() {
+        var a = archive(3);
+        String focusedText = "음식메뉴 선택권의 의미를 검토한다";
+        String surrounding = "공공시설의 부재와 생활조건의 제약을 말하고 지역주민의 대체선택을 설명하는 연결을 확인한다";
+        List<String> texts = List.of(focusedText, surrounding, focusedText + " 별개의 상품리뷰 해석");
+        var sources = a.sourceCases().stream().map(s -> new SourceCase(s.caseId(), "same-family", s.status())).toList();
+        List<ContextExample> examples = new ArrayList<>();
+        for (int i = 0; i < 3; i++) examples.add(new ContextExample("source-" + i, "same-family", List.of("mechanism-1"),
+                List.of("SPEECH", "CAPTION"), new Comparison("REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT",
+                List.of(texts.get(i)), List.of(), List.of("원문 미확보"), List.of())));
+        var custom = new Archive(a.schemaVersion(), a.version(), a.status(), false, a.usage(), a.sourceBundleSha256(),
+                a.refreshOrDeleteBy(), sources, a.guidelines(), a.contextDictionarySha256(), examples);
+        var l = library(custom, 2, 3000, "");
+        var raw = query(focusedText + " " + surrounding);
+        var selection = l.select(TimelineEventType.SPEECH, raw, "candidate", query(focusedText));
+        assertThat(selection.trace().exampleIds()).containsExactly("source-0", "source-1");
+        assertThat(selection.trace().retrievalMethod()).isEqualTo("CANDIDATE_NEAR_CONTEXT_INTERLEAVED_LOCAL_NOT_SEMANTIC");
+        assertThat(l.select(TimelineEventType.SPEECH, raw, "candidate", query(focusedText))).isEqualTo(selection);
+        assertThat(library(custom, 1, 3000, "").select(TimelineEventType.SPEECH, raw, "candidate", query(focusedText))
+                .trace().exampleIds()).containsExactly("source-0");
+        assertThat(library(custom, 2, 3000, "same-family").select(TimelineEventType.SPEECH, raw, "candidate", query(focusedText))
+                .trace().exampleIds()).isEmpty();
+    }
     Archive archive(int count) {
         var f = new ReviewGuidelineLibraryTest(); var a = f.archive();
         List<SourceCase> sources = new ArrayList<>(); List<ContextExample> examples = new ArrayList<>();

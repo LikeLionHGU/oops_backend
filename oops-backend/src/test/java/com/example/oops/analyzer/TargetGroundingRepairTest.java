@@ -10,6 +10,33 @@ import static org.mockito.Mockito.*;
 
 /** Offline contract regressions, not a model accuracy benchmark. */
 class TargetGroundingRepairTest {
+    @Test void mismatchedTargetRelationCanReassessToPassOrValidReviewWithoutAutomaticRelabeling() {
+        for (String decision : List.of("PASS", "REVIEW_REQUIRED")) {
+            var f = new CandidateReviewEngineTest();
+            f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
+            var goodReview = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
+            var bad = new LlmDecision(goodReview.segmentId(), goodReview.decision(), goodReview.evidenceText(),
+                    goodReview.reason(), goodReview.category(), "그 집 이용자", goodReview.score(), null, null,
+                    List.of(), goodReview.evidence(), "GROUP", "EXPLICIT", goodReview.targetReason(),
+                    goodReview.alternativeInterpretation(), "그 집");
+            var input = f.context("그 집 이용자는 수준이 낮아");
+            assertThat(validate(new Candidate("candidate-1", f.proposal("stt-index-0", "그 집"),
+                    input.reviewInput().segments(), false, false), bad, input.reviewInput()).failureCode())
+                    .isEqualTo("TARGET_MENTION_RELATION");
+            when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
+                    .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", bad)))))
+                    .thenAnswer(invocation -> {
+                        assertThat((String) invocation.getArgument(0)).contains(TARGET_REPAIR_PROMPT);
+                        assertThat((String) invocation.getArgument(1)).contains("TARGET_MENTION_RELATION");
+                        return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
+                                f.assessment("stt-index-0", decision, "그 집")))));
+                    });
+            var result = run(f.client, input, 24);
+            assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
+            assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isZero();
+            assertThat(result.findings()).hasSize(decision.equals("REVIEW_REQUIRED") ? 1 : 0);
+        }
+    }
     @Test void missingProposalAnchorIsDiagnosedWithoutInventingLocationOrCrashing() {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), new Proposal(null, "TARGET_TREATMENT", "문맥 검토 가설",
