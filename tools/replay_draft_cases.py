@@ -2,7 +2,9 @@
 
 Uses current Java discovery/verification prompts, but ONE full-transcript window
 and one verification group, not production batching, continuation or scene review.
-No benchmark labels enter requests. Unreviewed cases are research material only.
+No benchmark labels enter requests. --guidelines DOES use criteria distilled
+from the target family; this is development calibration, not a held-out eval.
+Unreviewed cases and compiled mechanisms are reference material, not training.
 """
 import argparse
 import datetime
@@ -16,6 +18,7 @@ from pathlib import Path
 
 from collect_youtube_comments import CollectionError, NoRedirect, read_key
 from controversy_cards import build_bundle, validate_bundle
+from build_review_guidelines import compile_guidelines
 from review_context_pilot import PilotError, parse, read_bytes, require
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -188,7 +191,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transcript", type=Path, required=True)
     parser.add_argument("--cards", type=Path, required=True)
-    parser.add_argument("--family", action="append", required=True)
+    reference_mode = parser.add_mutually_exclusive_group(required=True)
+    reference_mode.add_argument("--family", action="append")
+    reference_mode.add_argument("--guidelines", type=Path, help="Compiled generic mechanism reference, including target-family-derived criteria")
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--execute", action="store_true", help="Explicitly authorize at most four paid API calls")
     args = parser.parse_args()
@@ -200,10 +205,27 @@ def main():
         expected = build_bundle(dataset_root, ROOT / "uploads/comment-collections",
                                 parse(read_bytes(dataset_root / "research/reaction-classification-plan.json")))
         require(bundle == expected, "BUNDLE_SOURCE_OR_PLAN_MISMATCH")
-        refs = references(bundle, args.family, snapshot["sourceFamily"])
+        guide_prompt = ""
+        guideline_version = None
+        if args.guidelines:
+            guide = parse(read_bytes(args.guidelines))
+            compiled = compile_guidelines(bundle, parse(read_bytes(dataset_root / "guidelines/plan.json")), read_bytes(args.cards))
+            require(guide == compiled, "GUIDELINE_SOURCE_OR_PLAN_MISMATCH")
+            require(datetime.datetime.fromisoformat(guide["refreshOrDeleteBy"]) > datetime.datetime.now(datetime.timezone.utc),
+                    "REFRESH_OR_DELETE_REQUIRED")
+            refs = [{k: v for k, v in r.items() if k not in {"channels", "sourceCaseIds"}}
+                    for r in guide["guidelines"] if "SPEECH" in r["channels"]]
+            java_guide = (ENGINE.parent / "ReviewGuidelineLibrary.java").read_text()
+            matches = re.findall(r'public static final String CONTRACT = """\n(.*?)\n\s*""";', java_guide, re.S)
+            require(len(matches) == 1, "GUIDELINE_CONTRACT_EXTRACTION_FAILED")
+            guide_prompt = "\n" + textwrap.dedent(matches[0]) + "\nreviewGuidelines=" + json.dumps(refs, ensure_ascii=False, separators=(",", ":"))
+            guideline_version = guide["version"]
+        else:
+            refs = references(bundle, args.family, snapshot["sourceFamily"])
         revision, discovery, verification = prompts(ENGINE.read_text())
         if not args.execute:
             print(json.dumps({"status": "DRY_RUN", "segments": len(raw), "referenceCases": len(refs),
+                              "guidelineVersion": guideline_version,
                               "maximumCalls": 4, "model": "gpt-6-luna", "runtimeChanged": False}))
             return
         key = read_key(args.env_file, key_name="OPENAI_API_KEY")
@@ -216,7 +238,9 @@ def main():
                   "promptRevision": revision, "sourceVideoId": snapshot["sourceVideoId"],
                   "transcriptSha256": hashlib.sha256(read_bytes(args.transcript)).hexdigest(),
                   "cardsSha256": hashlib.sha256(read_bytes(args.cards)).hexdigest(),
-                  "referenceFamilies": args.family, "references": refs, "runtimeChanged": False,
+                  "referenceFamilies": args.family or [], "references": refs, "runtimeChanged": False,
+                  "guidelineVersion": guideline_version,
+                  "usesTargetFamilyDerivedGuidelines": bool(args.guidelines),
                   "limitations": ["ONE_FULL_TRANSCRIPT_WINDOW_NOT_PRODUCTION_PIPELINE",
                                   "NO_STT_OCR_SCENE_REANALYSIS", "UNREVIEWED_REFERENCE_HYPOTHESES",
                                   "SINGLE_PAIR_NOT_ACCURACY_ESTIMATE", "PYTHON_QUOTE_CHECK_NOT_JAVA_DOMAIN_VALIDATION"],
@@ -231,19 +255,20 @@ def main():
                 stream.flush()
             checkpoint()
             try:
-                for name, examples in (("baseline", []), ("new_cases", refs)):
+                for name, examples in (("baseline", []), ("working_guidelines" if args.guidelines else "new_cases", refs)):
                     arm = {"name": name, "calls": []}
                     report["arms"].append(arm)
                     payload = {"promptRevision": revision, "primaryIds": ids, "raw": raw,
                                "windows": [{"anchorIds": ids, "segmentIds": ids}], "contextLimited": False}
-                    if examples:
+                    if examples and not args.guidelines:
                         payload["referenceCases"] = examples
-                    response = complete(key, discovery + (RESEARCH_CONTRACT if examples else ""), payload)
+                    supplement = guide_prompt if examples and args.guidelines else RESEARCH_CONTRACT if examples else ""
+                    response = complete(key, discovery + supplement, payload)
                     arm["calls"].append(response)
                     checkpoint()
                     proposed = candidates(response["output"], raw)
                     if proposed:
-                        checked = complete(key, verification, {"promptRevision": revision, "raw": raw,
+                        checked = complete(key, verification + (guide_prompt if examples and args.guidelines else ""), {"promptRevision": revision, "raw": raw,
                                                               "candidates": proposed})
                         arm["calls"].append(checked)
                         checkpoint()
