@@ -14,6 +14,29 @@ final class CandidateContextWindow {
     }
     private CandidateContextWindow() {}
 
+    /** Discovery permissions use only raw already supplied in this batch, never unseen transcript. */
+    static List<ReviewUnit> discoveryUnits(TextReviewBatchPlanner.Batch batch) {
+        List<ReviewInput.Segment> supplied = new ArrayList<>(batch.primary());
+        supplied.addAll(batch.context());
+        var input = new ReviewInput(supplied.stream().filter(s -> s.type() == TimelineEventType.SPEECH).toList());
+        List<ReviewUnit> result = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (var unit : ReviewUnit.all(batch)) {
+            var anchor = input.find(unit.anchorId()).orElse(null);
+            if (anchor == null) continue;
+            var base = input.segments().stream().filter(s -> unit.segmentIds().contains(s.id())).toList();
+            var window = extend(input, unit.anchorId(), base);
+            var ids = window.raw().stream().map(ReviewInput.Segment::id).toList();
+            // Never advertise an oversized legacy singleton as an admissible target window.
+            if (!fits(window.raw()) || hasGap(window.raw())) continue;
+            String key = unit.anchorId() + "|" + String.join(",", ids);
+            if (seen.add(key)) result.add(new ReviewUnit(unit.anchorId(), ids,
+                    window.raw().get(0).startMs(), window.raw().stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow(),
+                    unit.limited() || window.limited(), unit.view()));
+        }
+        return List.copyOf(result);
+    }
+
     static Window extend(ReviewInput input, String anchorId, List<ReviewInput.Segment> base) {
         var source = input.segments().stream().filter(s -> s.type() == TimelineEventType.SPEECH).toList();
         var anchor = input.find(anchorId).orElseThrow();
