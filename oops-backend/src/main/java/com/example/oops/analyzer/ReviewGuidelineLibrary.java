@@ -236,6 +236,10 @@ public class ReviewGuidelineLibrary {
     }
     record Selection(String prompt, SelectionTrace trace) {}
     Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey) {
+        return select(channel, raw, requestKey, List.of());
+    }
+    Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
+                     Collection<ReviewInput.Segment> focus) {
         var base = examples(channel);
         if (!splitArchive() || base.isEmpty() || selector == null) {
             var t = trace(channel);
@@ -243,7 +247,11 @@ public class ReviewGuidelineLibrary {
                     t.availableExampleCount(), 0, 0, t.payloadCodePoints(), t.payloadCodePoints(), List.of(), t.guidelineIds()));
         }
         var patterns = patternRows(base);
-        var ranked = selector.rank(channel, raw, excludedFamilies);
+        var focused = selector.rank(channel, focus, excludedFamilies);
+        var ranked = new ArrayList<>(focused);
+        Set<String> focusedIds = new HashSet<>(); focused.forEach(m -> focusedIds.add(m.example().id()));
+        selector.rank(channel, raw, excludedFamilies).stream()
+                .filter(m -> !focusedIds.contains(m.example().id())).forEach(ranked::add);
         List<ContextExample> selected = new ArrayList<>();
         Set<String> families = new HashSet<>(), skipped = new HashSet<>();
         // Prefer distinct incident families, then fill remaining slots; never duplicate a source card.
@@ -259,7 +267,8 @@ public class ReviewGuidelineLibrary {
         }
         String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
         return new Selection("\n" + CONTRACT + "\ncontextReference=" + payload,
-                new SelectionTrace(requestKey, state, "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC",
+                new SelectionTrace(requestKey, state, focus.isEmpty() ? "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC"
+                        : "CANDIDATE_QUOTE_FIRST_LOCAL_NOT_SEMANTIC",
                         trace(channel).availableExampleCount(), ranked.size(), skipped.size(), codePoints(payload),
                         codePoints(payload(patterns, List.of())), selected.stream().map(ContextExample::id).toList(),
                         patterns.stream().map(p -> p.get("id")).toList()));

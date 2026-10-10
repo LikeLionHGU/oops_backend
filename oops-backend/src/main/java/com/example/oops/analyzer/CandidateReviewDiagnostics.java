@@ -9,12 +9,14 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         int expandedCandidates, int verificationLimitedCandidates,
         boolean truncated, List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
         List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
-        List<ReviewGuidelineLibrary.SelectionTrace> contextSelections) {
+        List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs) {
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
         caseRetrieval = List.copyOf(caseRetrieval);
         contextSelections = List.copyOf(contextSelections);
+        repairs = List.copyOf(repairs);
     }
+    public record RepairTrace(String candidateId, String initialFailureCode, String state, String finalFailureCode) {}
     public record Trace(String candidateId, String anchorId, String axis, String state,
                         Long contextStartMs, Long contextEndMs, List<String> contextSegmentIds,
                         boolean contextExpanded, boolean contextLimited, String failureCode) {
