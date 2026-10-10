@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-09-continuation-context-21";
+    static final String REVISION = "2026-10-10-working-guidelines-22";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -132,10 +132,16 @@ final class CandidateReviewEngine {
     }
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary) {
+        return run(client, context, maxCandidates, visual, caseLibrary, null);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines) {
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
         var stats = new Stats();
+        String guidelinePrompt = guidelines == null ? "" : guidelines.prompt(TimelineEventType.SPEECH);
+        stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
         Set<String> fingerprints = new HashSet<>();
@@ -162,7 +168,7 @@ final class CandidateReviewEngine {
                         "contextLimited", batch.contextLimited()));
                 boolean hasReferences = references != null && !references.examples().isEmpty();
                 if (hasReferences) request.put("referenceCases", references.examples());
-                response = client.completeAsJson(DISCOVERY_PROMPT + (hasReferences ? "\n" + CASE_REFERENCE_CONTRACT : ""),
+                response = client.completeAsJson(DISCOVERY_PROMPT + guidelinePrompt + (hasReferences ? "\n" + CASE_REFERENCE_CONTRACT : ""),
                         JSON.writeValueAsString(request), Discovery.class).orElse(null);
             } catch (RuntimeException ex) { response = null; }
             if (!validDiscovery(response, primaryIds)) {
@@ -228,7 +234,7 @@ final class CandidateReviewEngine {
             String responseFailure = null;
             int failuresBefore = client.failureCount();
             try {
-                response = client.completeAsJson(VERIFICATION_PROMPT, JSON.writeValueAsString(Map.of(
+                response = client.completeAsJson(VERIFICATION_PROMPT + guidelinePrompt, JSON.writeValueAsString(Map.of(
                         "promptRevision", REVISION, "raw", compact(new ArrayList<>(raw.values())),
                         "candidates", group.stream().map(c -> Map.of("candidateId", c.candidateId(),
                                 "anchorId", c.proposal().anchorId(), "axis", c.proposal().axis(),
@@ -445,6 +451,7 @@ final class CandidateReviewEngine {
         final List<CandidateReviewDiagnostics.Trace> traces = new ArrayList<>();
         final List<VisualContextReviewer.Trace> visualTraces = new ArrayList<>();
         final List<ReviewCaseLibrary.Trace> retrievalTraces = new ArrayList<>();
+        ReviewGuidelineLibrary.Trace guidelineReference;
         void trace(String id, String anchor, String axis, String state) {
             traceCount++; if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id, anchor, axis, state));
         }
@@ -462,7 +469,7 @@ final class CandidateReviewEngine {
         CandidateReviewDiagnostics finish(int explored) {
             return new CandidateReviewDiagnostics(REVISION, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
-                    expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces);
+                    expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces, guidelineReference);
         }
     }
 }

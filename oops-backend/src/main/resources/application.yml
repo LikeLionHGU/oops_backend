@@ -117,6 +117,10 @@ oops:
     client-secret: ${NAVER_CLIENT_SECRET:}
 
   analysis:
+    # 원댓글/사건 예시와 별개인 압축 맥락 기준. 로컬 데이터는 Git 제외; 배포 시 파일도 제공한다.
+    guidelines-enabled: ${REVIEW_GUIDELINES_ENABLED:true}
+    guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json}
+    guidelines-max-code-points: 6000 # 요청별 압축 기준 JSON 상한. 단어 일치가 아닌 연결 방식 참고.
     candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
     candidate-review-max-candidates: 24 # 영상당 검증 후보 상한. 초과는 PARTIAL로 알린다.
     review-cases-enabled: ${REVIEW_CASES_ENABLED:true} # 검수·권한 확인된 사례만 탐색에 참고. 기본 파일은 비어 있다.

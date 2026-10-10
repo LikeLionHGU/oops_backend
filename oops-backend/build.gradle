@@ -56,3 +56,16 @@ tasks.register('reviewCaseReplay', JavaExec) {
         args replayInputPath, caseArchivePath
     }
 }
+
+// Saved-response audit with the production evidence validator, without paid calls.
+tasks.register('reviewGuidelineReplay', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReviewGuidelineReplay'
+    doFirst {
+        def input = providers.gradleProperty('replayInput').orNull
+        def report = providers.gradleProperty('replayReport').orNull
+        def archive = providers.gradleProperty('guidelineArchive').orNull
+        if (!input || !report || !archive) throw new GradleException('Set replayInput, replayReport and guidelineArchive local paths')
+        args input, report, archive
+    }
+}

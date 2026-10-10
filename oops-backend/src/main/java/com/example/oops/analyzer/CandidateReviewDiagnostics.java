@@ -8,7 +8,7 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
         int expandedCandidates, int verificationLimitedCandidates,
         boolean truncated, List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-        List<ReviewCaseLibrary.Trace> caseRetrieval) {
+        List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference) {
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
         caseRetrieval = List.copyOf(caseRetrieval);

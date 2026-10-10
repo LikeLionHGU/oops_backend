@@ -129,6 +129,9 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private final int maxCandidates;
     private VisualContextReviewer visualReviewer;
     private ReviewCaseLibrary caseLibrary;
+    private ReviewGuidelineLibrary guidelineLibrary;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setGuidelineLibrary(ReviewGuidelineLibrary library) { this.guidelineLibrary = library; }
     public SpeechReviewAnalyzer(OpenAiClient client) { this(client, true); }
     /** Legacy constructor retained for existing contract regression tests and baseline comparisons. */
     public SpeechReviewAnalyzer(OpenAiClient client, boolean enabled) {
@@ -182,9 +185,10 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
-        TextReviewEngine.Result result = candidateReviewEnabled ? CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary)
+        TextReviewEngine.Result result = candidateReviewEnabled ? CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary)
                 : TextReviewEngine.run(openAiClient, context,
-                TimelineEventType.SPEECH, key(), SYSTEM_PROMPT + "\n" + ContextualComparisonPolicy.PROMPT,
+                TimelineEventType.SPEECH, key(), SYSTEM_PROMPT + "\n" + ContextualComparisonPolicy.PROMPT
+                    + (guidelineLibrary == null ? "" : guidelineLibrary.prompt(TimelineEventType.SPEECH)),
                 ALLOWED_CATEGORIES, 3, dialogueEnabled);
         lastResult.set(result);
         log.info("[{}] videoId={} status={} findings={}", key(), context.video().getId(),
@@ -195,7 +199,10 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     @Override
     public java.util.Optional<String> consumeCoverageNotice(AnalysisContext context) {
         TextReviewEngine.Result result = lastResult.get();
-        return result == null ? java.util.Optional.empty() : java.util.Optional.ofNullable(result.notice());
+        if (result == null) return java.util.Optional.empty();
+        String notice = result.notice();
+        String guidelineNotice = guidelineLibrary == null ? null : guidelineLibrary.unavailableNotice(TimelineEventType.SPEECH).orElse(null);
+        return java.util.Optional.ofNullable(guidelineNotice == null ? notice : notice == null ? guidelineNotice : notice + " " + guidelineNotice);
     }
 
     @Override

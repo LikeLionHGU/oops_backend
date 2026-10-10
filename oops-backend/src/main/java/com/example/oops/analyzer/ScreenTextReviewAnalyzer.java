@@ -177,6 +177,9 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
             """;
 
     private final OpenAiClient openAiClient;
+    private ReviewGuidelineLibrary guidelineLibrary;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setGuidelineLibrary(ReviewGuidelineLibrary library) { this.guidelineLibrary = library; }
     private final ThreadLocal<TextReviewEngine.Result> lastResult = new ThreadLocal<>();
 
     @Override
@@ -199,7 +202,8 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
         TextReviewEngine.Result result = TextReviewEngine.run(openAiClient, context,
-                TimelineEventType.CAPTION, key(), SYSTEM_PROMPT, ALLOWED_CATEGORIES, 2);
+                TimelineEventType.CAPTION, key(), SYSTEM_PROMPT
+                    + (guidelineLibrary == null ? "" : guidelineLibrary.prompt(TimelineEventType.CAPTION)), ALLOWED_CATEGORIES, 2);
         lastResult.set(result);
         log.info("[{}] videoId={} status={} findings={}", key(), context.video().getId(),
                 result.status(), result.findings().size());
@@ -209,7 +213,10 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
     @Override
     public java.util.Optional<String> consumeCoverageNotice(AnalysisContext context) {
         TextReviewEngine.Result result = lastResult.get();
-        return result == null ? java.util.Optional.empty() : java.util.Optional.ofNullable(result.notice());
+        if (result == null) return java.util.Optional.empty();
+        String notice = result.notice();
+        String guidelineNotice = guidelineLibrary == null ? null : guidelineLibrary.unavailableNotice(TimelineEventType.CAPTION).orElse(null);
+        return java.util.Optional.ofNullable(guidelineNotice == null ? notice : notice == null ? guidelineNotice : notice + " " + guidelineNotice);
     }
 
     @Override
