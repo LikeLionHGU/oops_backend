@@ -62,6 +62,18 @@ public class Video extends BaseTimeEntity {
     @Column(columnDefinition = "varchar(40)")
     private ContentGenre genre;
 
+    /**
+     * 편집자가 내보낸 SRT 자막 원문. (2026-10 고도화)
+     *
+     * 자막을 OCR 로 읽던 것을 이 파일로 바꿨다. OCR 은 편집 자막과 화면 속 글자
+     * (간판·메뉴판·로고)를 구분하지 못해 오탐이 많았다.
+     * 원문 그대로 보관하므로 재분석할 때 다시 올릴 필요가 없다.
+     * 60분 영상 자막이 보통 100KB 안쪽이라 파일 저장소 대신 DB 에 둔다.
+     */
+    @Lob
+    @Column(name = "subtitle_srt")
+    private String subtitleSrt;
+
     @Builder
     private Video(SourceType sourceType, String filename, String sourceUrl,
                   String storageKey, String title, String channelName,
@@ -75,6 +87,14 @@ public class Video extends BaseTimeEntity {
         this.durationSec = durationSec;
         this.genre = genre;
         this.status = AnalysisStatus.PENDING;
+    }
+
+    public void attachSubtitle(String srt) {
+        this.subtitleSrt = srt == null || srt.isBlank() ? null : srt;
+    }
+
+    public boolean hasSubtitle() {
+        return subtitleSrt != null && !subtitleSrt.isBlank();
     }
 
     public void assignGenre(ContentGenre genre) {

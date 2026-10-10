@@ -74,8 +74,9 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             - 일반명사, 보통의 상황 묘사
             - 채널 홍보 문구
 
-            주의: 화면 자막은 OCR 결과라 글자가 깨져 있을 수 있다.
-            "재선커", "재신거" 처럼 깨진 글자는 원래 단어를 추론해서 keyword 에 정확히 적어라.
+            주의: 발언은 음성 인식 결과라 글자가 틀릴 수 있다.
+            "재선커", "재신거" 처럼 틀린 글자는 원래 단어를 추론해서 keyword 에 정확히 적어라.
+            자막은 편집자가 입력한 글이라 글자는 정확하다. 고치지 말고 그대로 읽어라.
 
             keyword 작성 규칙 (중요):
             뉴스 검색창에 넣었을 때 "특정 사건" 이 나와야 한다.
@@ -253,7 +254,8 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
         RiskFinding.RiskFindingBuilder builder = RiskFinding.builder()
                 .video(context.video())
                 .eventType(line.type())
-                .category(RiskCategory.TIMING_SENSITIVE)
+                // 2026-10 고도화: 최근 이슈는 8유형 중 '역사·정치·사회적 맥락' 의 한 경로다.
+                .category(RiskCategory.SOCIOPOLITICAL_CONTEXT)
                 .source(line.type() == TimelineEventType.SPEECH
                         ? EvidenceSource.SUBTITLE : EvidenceSource.VISION)
                 .score(score)
@@ -320,7 +322,9 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             }
         }
         if (context.hasScreenText()) {
-            for (ScreenText s : context.screenTexts()) {
+            // 발언을 받아 적은 자막은 빼고, 발언과 다른 자막만 넣는다. (2026-10 고도화)
+            // SRT 는 대부분 받아 적은 자막이라 다 넣으면 같은 내용이 두 번 들어가 토큰이 두 배가 된다.
+            for (ScreenText s : CaptionAlignment.distinctFromSpeech(context.screenTexts(), context.transcript())) {
                 lines.add(new Line(TimelineEventType.CAPTION,
                         s.getStartMs(), s.getEndMs(), s.getText(), s.getFrame()));
             }

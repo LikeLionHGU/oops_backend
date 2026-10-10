@@ -278,23 +278,75 @@ public class OpenAiClient {
         return Optional.empty();
     }
 
+    /** 모델이 거절해서 이후로 보내지 않을 파라미터 이름 */
+    private final java.util.Set<String> droppedParameters = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * 요청 본문. 모델에 따라 보낼 옵션이 다르다. (2026-10 고도화)
+     *
+     *   temperature       설정값이 있으면 보낸다. 없으면 gpt-4 계열에만 0.1 을 보낸다.
+     *                     (판정이 매번 흔들리지 않게 낮게 둔다. 추론 모델은 받지 않을 수 있다)
+     *   reasoning_effort  설정값이 있을 때만 보낸다. GPT-6 Luna 는 none·low·medium(기본)·high 등을 받는다.
+     *                     none 이면 속으로 생각하는 토큰이 없어서 비용이 가장 적다.
+     */
+    Map<String, Object> requestBody(String systemPrompt, String userPrompt) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("model", properties.modelOrDefault());
+        Double temperature = properties.temperatureOrDefault();
+        if (temperature != null && !droppedParameters.contains("temperature")) {
+            body.put("temperature", temperature);
+        }
+        String effort = effortOverride != null ? effortOverride : properties.reasoningEffort();
+        if (effort != null && !effort.isBlank() && !droppedParameters.contains("reasoning_effort")) {
+            body.put("reasoning_effort", effort.trim());
+        }
+        body.put("response_format", Map.of("type", "json_object"));
+        body.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)));
+        return body;
+    }
+
+    /**
+     * reasoning_effort 값을 모델이 거절했을 때 대신 쓸 값.
+     * 'none' 을 못 받는 모델에서 파라미터를 통째로 빼면 기본값(medium)으로 돌아가
+     * 생각 토큰이 붙고 비용이 오른다. 그래서 먼저 가장 낮은 'low' 로 내려 본다.
+     */
+    private volatile String effortOverride;
+
+    /**
+     * 400 응답이 이번 요청에 넣은 파라미터를 거절한 것이면 그 이름을 돌려준다. 아니면 null.
+     *
+     * 이번 요청 본문(sent)에 실제로 있던 파라미터인지로 판단한다. 분석 두 개가 동시에 같은 400 을 받으면
+     * 먼저 처리한 쪽이 이미 목록에 넣어 두므로, "이미 빠졌는지" 로 판단하면 나중 쪽은 재시도 없이 실패한다.
+     */
+    String dropUnsupportedParameter(String errorBody, Map<String, Object> sent) {
+        if (errorBody == null) return null;
+        String lower = errorBody.toLowerCase(java.util.Locale.ROOT);
+        boolean unsupported = lower.contains("unsupported") || lower.contains("not supported")
+                || lower.contains("does not support") || lower.contains("unrecognized");
+        if (!unsupported) return null;
+        for (String name : List.of("temperature", "reasoning_effort")) {
+            if (!lower.contains(name) || sent == null || !sent.containsKey(name)) continue;
+            if (name.equals("reasoning_effort") && lower.contains("value")
+                    && !"low".equals(String.valueOf(sent.get(name)))) {
+                effortOverride = "low";
+                return "reasoning_effort=" + sent.get(name) + " → low";
+            }
+            droppedParameters.add(name);
+            return name;
+        }
+        return null;
+    }
+
     public <T> Optional<T> completeAsJson(String systemPrompt, String userPrompt, Class<T> type) {
         if (!isEnabled()) {
             log.debug("[openai] API 키가 없어 LLM 판정을 건너뜁니다.");
             return Optional.empty();
         }
 
-        Map<String, Object> body = Map.of(
-                "model", properties.modelOrDefault(),
-                "temperature", 0.1,
-                "response_format", Map.of("type", "json_object"),
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)
-                )
-        );
-
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            Map<String, Object> body = requestBody(systemPrompt, userPrompt);
             throttle();
             // 거절당해도 한도는 깎인다. 보내기 전에 센다.
             requestCounts.get()[0]++;
@@ -390,6 +442,22 @@ public class OpenAiClient {
                     return fail("AI 요청 한도 초과로 이 단계를 수행하지 못했습니다.");
                 }
 
+                // 400 인데 모델이 받지 않는 파라미터 때문이면, 그 파라미터를 빼고 한 번 더 보낸다.
+                //
+                // 모델마다 받는 옵션이 다르다. gpt-4o-mini 는 temperature 를 받지만
+                // 추론(reasoning) 모델은 temperature 를 거절하기도 하고, reasoning_effort 는
+                // 반대로 예전 모델이 모른다. 모델을 바꿀 때마다 분석이 통째로 실패하지 않게
+                // 여기서 한 번 걸러 준다. 한 번 빠진 파라미터는 서버를 다시 켤 때까지 안 보낸다.
+                if (status == 400 && attempt < MAX_ATTEMPTS) {
+                    String errorBody = e.getResponseBodyAsString();
+                    String dropped = dropUnsupportedParameter(errorBody, body);
+                    if (dropped != null) {
+                        log.warn("[openai] 모델 {} 이(가) '{}' 를 받지 않아 빼고 다시 보냅니다. "
+                                        + "application.yml 의 oops.openai 설정에서도 지워 두세요. 응답 — {}",
+                                properties.modelOrDefault(), dropped, abbreviate(errorBody));
+                        continue;
+                    }
+                }
                 {
                     log.warn("[openai] 호출 실패 HTTP {} : {}", status,
                             abbreviate(e.getResponseBodyAsString()));

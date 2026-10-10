@@ -1,6 +1,7 @@
 package com.example.oops.screentext;
 
 import com.example.oops.client.AnalysisServerClient;
+import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.ScreenText;
 import com.example.oops.domain.Video;
 import com.example.oops.domain.VideoFrame;
@@ -18,8 +19,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 화면 자막 OCR 결과와 그때 사용된 프레임 이미지를 저장한다.
- * 실패해도 빈 리스트를 돌려주고 분석은 계속된다.
+ * 화면 자막을 저장한다. 실패해도 빈 리스트를 돌려주고 분석은 계속된다.
+ *
+ * 자막을 어디서 가져올지는 oops.analysis.caption-source 가 정한다. (2026-10 고도화)
+ *   srt  업로드 때 함께 받은 SRT 자막 파일을 읽는다. 분석 서버의 OCR 은 부르지 않는다. (기본)
+ *   ocr  예전처럼 분석 서버가 화면을 캡처해 글자를 읽는다. 프레임 이미지도 같이 저장한다.
  */
 @Slf4j
 @Service
@@ -30,12 +34,22 @@ public class ScreenTextService {
     private final ScreenTextRepository screenTextRepository;
     private final VideoFrameRepository videoFrameRepository;
     private final StorageService storageService;
+    private final OopsProperties properties;
+
+    /** 이번 설정이 SRT 자막을 쓰는지. 파이프라인이 단계 보고 문구를 고르는 데 쓴다. */
+    public boolean usesSrt() {
+        return properties.analysis() == null || properties.analysis().useSrtCaptions();
+    }
 
     @Transactional
     public List<ScreenText> extractAndSave(Video video) {
         screenTextRepository.deleteByVideoId(video.getId());
         videoFrameRepository.deleteByVideoId(video.getId());
         storageService.deleteFrames(video.getId());
+
+        if (usesSrt()) {
+            return saveFromSrt(video);
+        }
 
         var response = analysisServerClient.ocr(video).orElse(null);
         if (response == null || response.items() == null || response.items().isEmpty()) {
@@ -53,6 +67,27 @@ public class ScreenTextService {
         }
 
         log.info("[ocr] videoId={} 화면 자막 {}건", video.getId(), texts.size());
+        return screenTextRepository.saveAll(texts);
+    }
+
+    /**
+     * SRT 자막을 화면 자막 자리에 저장한다.
+     *
+     * 화면 자막(ScreenText)과 같은 자리에 두는 이유는, 자막을 쓰는 분석기
+     * (맥락 검토, 발언·자막 비교, 사실 확인)가 출처를 신경 쓰지 않고 그대로 쓰게 하려는 것이다.
+     * 글자를 기계가 읽은 게 아니므로 확신도는 1.0, 프레임은 없다.
+     */
+    private List<ScreenText> saveFromSrt(Video video) {
+        if (!video.hasSubtitle()) {
+            log.info("[srt] 자막 파일 없음 videoId={}", video.getId());
+            return List.of();
+        }
+        List<SrtParser.Cue> cues = SrtParser.parse(video.getSubtitleSrt());
+        List<ScreenText> texts = new ArrayList<>(cues.size());
+        for (SrtParser.Cue cue : cues) {
+            texts.add(new ScreenText(video, cue.startMs(), cue.endMs(), cue.text(), 1.0, null));
+        }
+        log.info("[srt] videoId={} 자막 {}줄", video.getId(), texts.size());
         return screenTextRepository.saveAll(texts);
     }
 

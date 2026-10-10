@@ -3,10 +3,15 @@
 #   .\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4"
 #   .\scripts\smoke-test.ps1 -Url  "https://www.youtube.com/watch?v=..."
 #   .\scripts\smoke-test.ps1 -VideoId 1      # 이미 분석한 영상 결과만 다시 보기 (재분석 안 함)
+#
+#   자막 파일(SRT/VTT)을 같이 넘기면 화면 글자 인식 대신 그 자막으로 발언·자막을 비교한다 (고도화 v2)
+#   .\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4" -Subtitle "C:\경로\영상.srt"
+#   .\scripts\smoke-test.ps1 -Url  "https://www.youtube.com/watch?v=..." -Subtitle "C:\경로\영상.srt"
 
 param(
     [string]$Url,
     [string]$File,
+    [string]$Subtitle,
     [int]$VideoId = 0,
     [string]$Backend = "http://localhost:8080",
     [string]$Analysis = "http://localhost:8000"
@@ -40,6 +45,9 @@ if ($VideoId -eq 0 -and -not $Url -and -not $File) {
     exit 1
 }
 if ($File -and -not (Test-Path $File)) { Fail "파일 없음: $File"; exit 1 }
+if ($Subtitle -and -not (Test-Path $Subtitle)) { Fail "자막 파일 없음: $Subtitle"; exit 1 }
+if ($Subtitle) { Ok "자막 파일: $Subtitle" }
+elseif ($VideoId -eq 0) { Warn "자막 파일 없음 -> 발언·자막 비교와 자막 검토는 건너뜁니다 (-Subtitle 로 넘기세요)" }
 
 if (Get-Command curl.exe -ErrorAction SilentlyContinue) { Ok "curl.exe" }
 else { Fail "curl.exe 없음"; exit 1 }
@@ -57,7 +65,8 @@ if ($VideoId -eq 0) {
     if (-not $health) { Fail "분석 서버 응답 없음. oops-analysis 에서 .\run.ps1 실행"; exit 1 }
     Ok "응답함"
     if ($health.sttAvailable) { Ok "STT 사용 가능" } else { Warn "STT 불가 - .env 의 OPENAI_API_KEY 확인" }
-    if ($health.ocrAvailable) { Ok "OCR 사용 가능" } else { Warn "OCR 불가 - 화면 분석은 건너뜁니다" }
+    if ($Subtitle) { Ok "자막은 SRT 파일을 씁니다 (OCR 은 쓰지 않음)" }
+    elseif ($health.ocrAvailable) { Ok "OCR 사용 가능" } else { Warn "OCR 불가 - 화면 분석은 건너뜁니다" }
 }
 
 Section "2. Spring 백엔드"
@@ -71,12 +80,26 @@ if ($VideoId -eq 0) {
     if ($File) {
         $item = Get-Item $File
         Write-Host ("  업로드 중... ({0} MB)" -f [math]::Round($item.Length / 1MB, 1))
-        $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)"
+        if ($Subtitle) {
+            $sub = (Get-Item $Subtitle).FullName
+            $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)" -F "subtitle=@$sub"
+        } else {
+            $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)"
+        }
     } else {
         # JSON 을 인라인으로 넘기면 PowerShell 이 큰따옴표를 벗겨서
         # 서버가 {url:...} 을 받고 파싱에 실패한다. 임시 파일로 넘긴다.
         $tmp = [IO.Path]::GetTempFileName()
-        @{ url = $Url } | ConvertTo-Json -Compress | Set-Content -Path $tmp -Encoding UTF8 -NoNewline
+        $body = @{ url = $Url }
+        if ($Subtitle) {
+            # 자막 파일은 UTF-8 이 아니면 한글 윈도우(CP949)로 읽는다. 서버도 같은 순서로 읽는다.
+            $bytes = [IO.File]::ReadAllBytes((Get-Item $Subtitle).FullName)
+            try { $srt = [Text.UTF8Encoding]::new($false, $true).GetString($bytes) }
+            catch { $srt = [Text.Encoding]::GetEncoding(949).GetString($bytes) }
+            $body.subtitleSrt = $srt.TrimStart([char]0xFEFF)
+        }
+        # Set-Content -Encoding UTF8 는 5.1 에서 BOM 을 붙여 JSON 파싱이 깨질 수 있어 직접 쓴다.
+        [IO.File]::WriteAllText($tmp, ($body | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
         $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" `
                         -H "Content-Type: application/json" -d "@$tmp"
         Remove-Item $tmp -ErrorAction SilentlyContinue
@@ -147,7 +170,7 @@ if ($tCount -eq 0) {
 }
 
 Write-Host ""
-Write-Host "  화면 자막(OCR): $sCount 건"
+if ($Subtitle) { Write-Host "  자막(SRT)    : $sCount 줄" } else { Write-Host "  화면 자막(OCR): $sCount 건" }
 if ($sCount -eq 0) {
     Warn "화면 자막이 없습니다. -> 화면 관련 분석기가 스킵됩니다."
     Hint "영상에 글자가 안 나오거나, OCR 이 인식하지 못했습니다."
@@ -202,7 +225,7 @@ if ($events.Count -eq 0) {
         Write-Host ("  #{0}  {1}  [{2}]  {3}{4}" -f $rank, $ts, $e.type, $e.severity, $rep) -ForegroundColor $color
         if ($e.type -eq "SPEECH") {
             Write-Host ("      발언: {0}" -f $e.text)
-            Write-Host ("      유형: {0}" -f ($e.riskTypes -join ", "))
+            if ($e.title) { Write-Host ("      유형: {0}" -f $e.title) }
         } else {
             Write-Host ("      발언: {0}" -f $e.speechText)
             Write-Host ("      자막: {0}" -f $e.captionText)

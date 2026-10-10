@@ -100,6 +100,15 @@ public class FindingFusionService {
 
         MERGE_GROUP.put(RiskCategory.HATE_SPEECH, "HATE");
         MERGE_GROUP.put(RiskCategory.DISCRIMINATION, "HATE");
+
+        // 고도화 8유형은 뜻이 같은 예전 묶음에 넣는다.
+        // 룰 안전망(예전 유형)과 맥락 검토(새 유형)가 같은 줄을 잡으면 한 장으로 합쳐진다.
+        MERGE_GROUP.put(RiskCategory.INSULT, "PUTDOWN");
+        MERGE_GROUP.put(RiskCategory.PROFANITY, "PUTDOWN");
+        MERGE_GROUP.put(RiskCategory.PREJUDICE, "HATE");
+        MERGE_GROUP.put(RiskCategory.SOCIOPOLITICAL_CONTEXT, "SENSITIVE");
+        MERGE_GROUP.put(RiskCategory.SEXUAL_HARASSMENT, "SEXUAL");
+        MERGE_GROUP.put(RiskCategory.SEXUAL, "SEXUAL");
     }
 
     /** 묶음에 속하지 않으면 카테고리 자체가 그룹이 된다. */
@@ -126,7 +135,9 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.MISINFORMATION, 72);
         CATEGORY_WEIGHT.put(RiskCategory.UNVERIFIED_CLAIM, 68);
         CATEGORY_WEIGHT.put(RiskCategory.UNFAMILIAR_CONTEXT, 85);
-        CATEGORY_WEIGHT.put(RiskCategory.CAPTION_MISMATCH, 82);
+        // 발언·자막 차이는 후순위. (2026-10 고도화 · 1차 테스트 후)
+        // 큰 의미 차이만 남기도록 분석기에서 걸렀지만, 그래도 발언 자체의 문제보다는 뒤에 둔다.
+        CATEGORY_WEIGHT.put(RiskCategory.CAPTION_MISMATCH, 45);
         CATEGORY_WEIGHT.put(RiskCategory.GENERALIZATION, 65);
         CATEGORY_WEIGHT.put(RiskCategory.VIOLENCE, 60);
         CATEGORY_WEIGHT.put(RiskCategory.SEXUAL, 55);
@@ -135,6 +146,17 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.SCREEN_TEXT, 40);
         CATEGORY_WEIGHT.put(RiskCategory.ADVERTISING, 30);
         CATEGORY_WEIGHT.put(RiskCategory.COMMENT_BACKLASH, 25);
+
+        // 고도화 8유형. 겹칠 때의 주 유형 순서와 같게 둔다.
+        //   피해자 조롱 > 성적 대상화 > 집단·속성 > 사생활 > 위험 행동 > 역사·정치 > 모욕 > 커뮤니티 말투
+        CATEGORY_WEIGHT.put(RiskCategory.VICTIM_BLAMING, 100);
+        CATEGORY_WEIGHT.put(RiskCategory.SEXUAL_HARASSMENT, 98);
+        CATEGORY_WEIGHT.put(RiskCategory.PREJUDICE, 95);
+        // PRIVACY 는 위에서 90
+        CATEGORY_WEIGHT.put(RiskCategory.DANGEROUS_ACT, 88);
+        CATEGORY_WEIGHT.put(RiskCategory.SOCIOPOLITICAL_CONTEXT, 86);
+        CATEGORY_WEIGHT.put(RiskCategory.INSULT, 78);
+        CATEGORY_WEIGHT.put(RiskCategory.COMMUNITY_SLANG, 60);
     }
 
     public List<RiskFinding> fuse(List<RiskFinding> candidates) {
@@ -264,10 +286,33 @@ public class FindingFusionService {
         boolean accepts(RiskFinding candidate) {
             if (members.isEmpty()) return true;
 
+            // 0) 발언·자막 차이 카드는 자막 줄마다 따로 둔다. (2026-10 고도화)
+            //    대상(target)이 없어서 아래 3번 갈래(같은 유형 + 3초 이내)로 이어 붙으면
+            //    16초~26초 자막 네 줄이 "4회 반복" 한 장으로 뭉쳐 무엇이 달라졌는지 안 보였다.
+            //    같은 자막 글이 바로 붙어서 다시 잡힌 경우만 묶는다.
+            boolean candidateMismatch = candidate.getCategory() == RiskCategory.CAPTION_MISMATCH;
+            boolean clusterMismatch = members.get(0).getCategory() == RiskCategory.CAPTION_MISMATCH;
+            if (candidateMismatch || clusterMismatch) {
+                return candidateMismatch && clusterMismatch
+                        && gapTo(candidate) <= MERGE_WINDOW_MS
+                        && members.stream().anyMatch(m -> strip(m.getCaptionText()).equals(strip(candidate.getCaptionText()))
+                                && !strip(candidate.getCaptionText()).isEmpty());
+            }
+
             // 1) 같은 대상을 지적한 것이면 유형이 달라도 한 건이다.
             //    "패스트푸드" 를 두고 한쪽은 BELITTLEMENT, 다른 쪽은 GENERALIZATION 으로
             //    보고하는 일이 흔하다. 사용자에게는 같은 지적이다.
-            if (sharesTarget(candidate)) return true;
+            //
+            //    **단, 유형 묶음이 다르면 시간도 붙어 있어야 한다.** (2026-10 고도화)
+            //    사실 확인은 검색어("아이유 데뷔 연도")를 대상으로 적고, 맥락 검토는 "아이유" 를 적는다.
+            //    시간 조건이 없으면 40분 떨어진 사실 확인 카드와 성희롱 카드가 한 장으로 합쳐져
+            //    한쪽이 통째로 사라지고 카드의 시간 범위도 영상 전체로 늘어난다.
+            //    같은 유형 묶음이면 예전처럼 떨어져 있어도 묶는다 ("등장: 00:26, 00:44").
+            if (sharesTarget(candidate)
+                    && (groupOf(members.get(0).getCategory()).equals(groupOf(candidate.getCategory()))
+                        || gapTo(candidate) <= MERGE_WINDOW_MS)) {
+                return true;
+            }
 
             // 2) 문장이 사실상 같으면 한 건이다.
             //    영상 내내 떠 있는 자막이 프레임마다 다시 잡히는 경우가 여기 해당한다.
@@ -312,10 +357,14 @@ public class FindingFusionService {
             // 여기까지 온 것 중 대상이 다른 건 정말 다른 지적이다.
             if (hasDifferentTarget(candidate)) return false;
 
-            long gap = Math.max(
+            return gapTo(candidate) <= MERGE_WINDOW_MS;
+        }
+
+        /** 묶음 구간과 후보 사이 빈 시간(ms). 겹치면 0 이하. */
+        private long gapTo(RiskFinding candidate) {
+            return Math.max(
                     candidate.getStartMs() - maxEndMs(),
                     minStartMs() - candidate.getEndMs());
-            return gap <= MERGE_WINDOW_MS;
         }
 
         /**

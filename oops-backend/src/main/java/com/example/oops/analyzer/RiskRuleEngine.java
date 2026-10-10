@@ -21,37 +21,33 @@ public class RiskRuleEngine {
 
     private static final Map<RiskCategory, List<String>> KEYWORDS = new LinkedHashMap<>();
 
-    static {
-        KEYWORDS.put(RiskCategory.PROFANITY,
-                List.of("병신", "씨발", "시발", "좆", "새끼", "지랄", "미친놈", "꺼져"));
-        KEYWORDS.put(RiskCategory.HATE_SPEECH,
-                List.of("한남", "김치녀", "틀딱", "급식충", "맘충", "짱깨", "쪽바리", "흑형"));
-        KEYWORDS.put(RiskCategory.DISCRIMINATION,
-                List.of("여자들은 원래", "남자들은 원래", "장애인 같", "촌놈", "못배운", "여자가 무슨", "남자가 무슨"));
-        KEYWORDS.put(RiskCategory.GENERALIZATION,
-                List.of("다 그렇다", "다 똑같", "원래 다", "하나같이", "죄다"));
-        KEYWORDS.put(RiskCategory.VIOLENCE,
-                List.of("죽여버", "때려", "패버", "칼로", "밟아버"));
-        KEYWORDS.put(RiskCategory.SEXUAL,
-                List.of("야한", "벗고", "19금"));
-        KEYWORDS.put(RiskCategory.ADVERTISING,
-                List.of("광고 아니", "협찬 아니", "내돈내산", "제 돈 주고"));
+    /**
+     * 욕처럼 보이지만 욕이 아닌 단어. 여기 걸리면 그 위치의 욕설 매칭을 무시한다.
+     * "시발점", "개나리" 처럼 소리만 같은 단어가 카드가 되는 걸 막는다.
+     */
+    private static final List<String> PROFANITY_EXCEPTIONS = List.of(
+            "시발점", "시발역", "시발택시", "좆밥이 아니", "지랄탄");
 
-        // 민감 주제는 단어 자체가 문제인 게 아니라, 다루는 순간 반응이 갈리는 영역이다.
-        // 점수를 낮게 줘서 "확인해 보라"는 신호로만 쓴다. 판단은 LLM 분석기가 맡는다.
-        // API 키가 없을 때의 안전망 역할이므로, 팀에서 계속 채워 넣으면 된다.
-        KEYWORDS.put(RiskCategory.SENSITIVE_TOPIC,
-                List.of("선거", "재선거", "대선", "총선", "보궐", "투표", "탄핵", "정당",
-                        "여당", "야당", "좌파", "우파", "친일", "반일", "위안부",
-                        "세월호", "이태원", "참사", "코로나", "백신",
-                        "페미", "군대", "장애인", "성소수자", "난민"));
+    static {
+        // 2026-10 고도화: 맥락 검토 8유형으로만 낸다.
+        //
+        // 예전에는 여기서 민감 주제("선거", "코로나", "군대"…), 일반화("죄다"), 폭력("때려"),
+        // 선정("19금"), 광고("내돈내산") 단어까지 잡았다. 단어가 나왔다는 것만으로는
+        // 논란이 아니고("군대 다녀왔어요"), 8유형에도 없는 분류라 뺐다. 판단은 맥락 검토가 한다.
+        // 멸칭("한남", "틀딱"…)도 뺐다. 맥락 사전이 일반 용법('한남동')을 걸러가며 잡는다.
+        //
+        // 남긴 것은 단어만으로 확실한 것들이다. API 키가 없어도 도는 안전망이다.
+        KEYWORDS.put(RiskCategory.INSULT,
+                List.of("병신", "씨발", "시발", "좆", "지랄", "미친놈"));
+        KEYWORDS.put(RiskCategory.PREJUDICE,
+                List.of("여자들은 원래", "남자들은 원래", "장애인 같", "여자가 무슨", "남자가 무슨"));
     }
 
     private static final List<PrivacyRule> PRIVACY_RULES = List.of(
-            new PrivacyRule(Pattern.compile("01[016789]-?\\d{3,4}-?\\d{4}"), "전화번호"),
-            new PrivacyRule(Pattern.compile("\\d{6}-?[1-4]\\d{6}"), "주민등록번호"),
+            new PrivacyRule(Pattern.compile("(?<!\\d)01[016789]-?\\d{3,4}-?\\d{4}(?!\\d)"), "전화번호"),
+            new PrivacyRule(Pattern.compile("(?<!\\d)\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])-?[1-4]\\d{6}(?!\\d)"), "주민등록번호"),
             new PrivacyRule(Pattern.compile("[\\w.+-]+@[\\w-]+\\.[\\w.]{2,}"), "이메일 주소"),
-            new PrivacyRule(Pattern.compile("\\d{2,3}-\\d{2,6}-\\d{2,6}"), "계좌번호로 보이는 숫자")
+            new PrivacyRule(Pattern.compile("(?<![\\d-])\\d{2,6}-\\d{2,6}-\\d{2,7}(?:-\\d{1,3})?(?![\\d-])(?<!\\d{4}-\\d{2}-\\d{2})"), "계좌번호로 보이는 숫자")
     );
 
     public List<Hit> detect(String text) {
@@ -60,14 +56,20 @@ public class RiskRuleEngine {
             return hits;
         }
 
+        String scrubbed = text;
+        for (String exception : PROFANITY_EXCEPTIONS) {
+            scrubbed = scrubbed.replace(exception, " ");
+        }
+        final String target = scrubbed;
         KEYWORDS.forEach((category, words) -> words.stream()
-                .filter(text::contains)
+                .filter(target::contains)
                 .findFirst()
                 .ifPresent(word -> hits.add(new Hit(
                         category,
                         scoreOf(category),
-                        "'" + word + "' 표현이 있습니다. " + category.getLabel()
-                                + " 관점에서 확인해 보세요."
+                        category == RiskCategory.INSULT
+                                ? "'" + word + "' 같은 욕설이 들어 있습니다."
+                                : "'" + word + "' 처럼 속성을 판단의 근거로 삼는 표현이 들어 있습니다."
                 ))));
 
         for (PrivacyRule rule : PRIVACY_RULES) {
@@ -77,7 +79,7 @@ public class RiskRuleEngine {
                         RiskCategory.PRIVACY,
                         0.85,
                         rule.label() + "로 보이는 값(" + matcher.group() + ")이 나옵니다. "
-                                + "공개해도 되는 정보인지 확인해 보세요."
+                                + "공개해도 되는 정보인지가 관건입니다."
                 ));
                 break; // 한 문장에서 개인정보는 한 건만 보고한다
             }
@@ -88,13 +90,10 @@ public class RiskRuleEngine {
 
     private double scoreOf(RiskCategory category) {
         return switch (category) {
-            case HATE_SPEECH, DISCRIMINATION -> 0.85;
-            case VIOLENCE, PRIVACY -> 0.75;
-            case PROFANITY, SEXUAL -> 0.55;
-            // 룰만으로는 일반화인지 단순 관찰인지 구분할 수 없다. 약한 신호로만 남긴다.
-            case GENERALIZATION -> 0.3;
-            // 민감 주제는 그 자체로 잘못이 아니라 "검토 필요" 신호다. 낮게 잡는다.
-            case SENSITIVE_TOPIC -> 0.35;
+            // 욕설은 감탄형인지 대상이 있는지 단어만으로는 모른다. 낮게 두고 맥락 검토가 올려 준다.
+            case INSULT -> 0.3;
+            case PREJUDICE -> 0.6;
+            case PRIVACY -> 0.75;
             default -> 0.35;
         };
     }

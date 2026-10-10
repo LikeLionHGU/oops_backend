@@ -17,5 +17,10 @@ public record VideoRegisterRequest(
          * TALK_PODCAST / GENERAL
          * 비워두면 분석 중에 대본을 보고 자동으로 판별한다.
          */
-        String genre
+        String genre,
+        /**
+         * SRT 자막 원문 (선택). 파일 내용을 그대로 넣는다.
+         * 비워두면 자막 없이 발언만 분석한다. (2026-10 고도화)
+         */
+        String subtitleSrt
 ) {}

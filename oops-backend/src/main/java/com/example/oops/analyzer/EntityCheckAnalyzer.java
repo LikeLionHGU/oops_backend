@@ -161,16 +161,16 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             """;
 
     private static final String VERIFY_PROMPT = """
-            너는 검수 보조자다. 영상에서 나온 내용과, 그것으로 검색한 기사를 받는다.
-            기사와 대조해서 제작자가 다시 확인해야 하는지만 알려준다.
+            너는 검수 보조자다. 영상에서 나온 내용과, 그것으로 검색한 자료를 받는다.
+            자료와 대조해서 제작자가 다시 확인해야 하는지만 알려준다.
 
             원칙: 옳고 그름을 선언하지 마라. 무엇이 어떻게 다른지 사실로 적어라.
 
             판정 값:
-            - FACT_ERROR: 기사와 명확히 어긋난다. 이름, 날짜, 숫자가 다르다.
+            - FACT_ERROR: 자료와 명확히 어긋난다. 이름, 날짜, 숫자가 다르다.
             - MISINFORMATION: 틀리진 않았지만 맥락이 빠져 오해를 부를 수 있다.
-            - UNVERIFIED_CLAIM: 기사에서 뒷받침할 내용을 찾지 못했다.
-            - OK: 기사와 부합한다. 보고하지 않는다.
+            - UNVERIFIED_CLAIM: 자료에서 뒷받침할 내용을 찾지 못했다.
+            - OK: 자료와 부합한다. 보고하지 않는다.
 
             각 자료에는 유형이 붙어 있다. 이걸 판단에 반영해라.
             - 당사자 자료 / 인터뷰·직접 인용
@@ -187,8 +187,8 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               4. 신뢰도 높은 언론
               5. 그 밖의 2차 자료
 
-            다만 지금 검색은 뉴스 중심이라 1~3번이 잘 안 나온다.
-            뉴스만 보고 "공식 기록과 다르다" 고 단정하지 마라.
+            검색 결과에 1~3번이 없을 수도 있다.
+            언론 보도만 보고 "공식 기록과 다르다" 고 단정하지 마라.
             자료에서 확인되는 것만 적고, 부족하면 UNVERIFIED_CLAIM 을 써라.
 
             **역사 이야기에서 특히 조심할 것.**
@@ -199,25 +199,29 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               나쁜 예: "역사적 사실을 왜곡하고 있습니다."
 
             **자료끼리 다른 말을 하면 한쪽을 임의로 진실로 정하지 마라.**
-            예를 들어 본인 인터뷰와 요약 기사가 다르면,
+            예를 들어 본인 인터뷰와 요약 자료가 다르면,
             "어느 쪽이 맞다" 가 아니라 "자료에 따라 설명이 다릅니다" 라고 적고
             각각 무엇이라 하는지 쓴다. 그게 제작자가 판단할 재료다.
             이 경우 verdict 는 UNVERIFIED_CLAIM 을 쓴다.
 
+            **누구나 쓸 수 있는 곳(블로그, 카페, 커뮤니티, 위키, 영상 플랫폼)의 글만으로는 FACT_ERROR 를 내지 마라.**
+            그런 자료는 유형이 "2차 자료" 로 표시된다. 공식 자료나 언론 보도가 함께 뒷받침할 때만 근거로 쓴다.
+            2차 자료뿐이면 UNVERIFIED_CLAIM 을 쓰거나 OK 를 골라라.
+
             판정 원칙:
-            - **기사가 다른 사안을 다루고 있으면 OK 를 반환해라.**
+            - **자료가 다른 사안을 다루고 있으면 OK 를 반환해라.**
               검색어가 같아도 내용이 무관하면 대조할 수 없다.
               예: 영상에서 "여기 롯데리아 없나?" 라고 했는데
-              기사가 "롯데리아 싱가포르 2호점 오픈" 이면 서로 무관하다.
+              자료가 "롯데리아 싱가포르 2호점 오픈" 이면 서로 무관하다.
               이런 경우 절대 FACT_ERROR 로 판정하지 마라.
-            - **특정 가게의 값을 일반 시세 기사와 비교하지 마라.**
-              영상에 "김치찌개 8000원" 이 나오고 기사에 "평균 9000원" 이 있어도
+            - **특정 가게의 값을 일반 시세 자료와 비교하지 마라.**
+              영상에 "김치찌개 8000원" 이 나오고 자료에 "평균 9000원" 이 있어도
               그건 틀린 것이 아니다. 가게마다 값이 다른 게 당연하다.
               개별 업소의 가격·메뉴·영업시간은 항상 OK 다.
-            - 기사에 없다고 틀린 것은 아니다.
+            - 자료에 없다고 틀린 것은 아니다.
               뒷받침할 내용이 없으면서 영상에서 단정적으로 말했을 때만
               UNVERIFIED_CLAIM 을 쓴다. 그냥 안 나온다고 쓰지 마라.
-            - 기사끼리 엇갈리면 UNVERIFIED_CLAIM 이다.
+            - 자료끼리 엇갈리면 UNVERIFIED_CLAIM 이다.
             - 반올림이나 표현 차이는 넘어간다. 의미가 달라질 때만 잡는다.
             - **화면에 박힌 글자는 기계가 읽은 것이라 오탈자가 섞인다.**
               원문이 깨져 보이면 OK 를 반환해라.
@@ -228,16 +232,16 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               "틀렸다" 고 했는데 틀리지 않았으면 제작자가 도구 자체를 안 믿게 된다.
 
             반드시 이 JSON 형식으로만 답한다:
-            {"verdict":"FACT_ERROR","score":0.85,"reason":"무엇이 어떻게 다른지 한 문장","correction":"기사에 나온 내용","sources":[0,2]}
+            {"verdict":"FACT_ERROR","score":0.85,"reason":"무엇이 어떻게 다른지 한 문장","correction":"자료에 나온 내용","sources":[0,2]}
 
-            reason 은 "틀렸습니다" 가 아니라 "영상에서는 A 라고 했는데 기사에는 B 로 나옵니다" 형태로 쓴다.
-            correction 은 기사에서 확인된 내용을 적는다. 제작자가 판단할 재료다.
+            reason 은 "틀렸습니다" 가 아니라 "영상에서는 A 라고 했는데 자료에는 B 로 나옵니다" 형태로 쓴다.
+            correction 은 자료에서 확인된 내용을 적는다. 제작자가 판단할 재료다.
 
-            sources 는 **네 판단의 근거가 된 기사 번호**다.
+            sources 는 **네 판단의 근거가 된 자료 번호**다.
             제작자가 직접 열어서 확인할 자료이므로 반드시 채워라.
-            - 실제로 대조에 쓴 기사만 넣는다. 관련 없는 기사는 넣지 마라.
-            - 판단에 쓴 기사가 여럿이면 여러 개를 넣는다. 최대 3개.
-            - 뒷받침할 기사를 못 찾아 UNVERIFIED_CLAIM 으로 판정했다면 빈 배열로 둔다.
+            - 실제로 대조에 쓴 자료만 넣는다. 관련 없는 자료는 넣지 마라.
+            - 판단에 쓴 자료가 여럿이면 여러 개를 넣는다. 최대 3개.
+            - 뒷받침할 자료를 못 찾아 UNVERIFIED_CLAIM 으로 판정했다면 빈 배열로 둔다.
 
             한국어로 쓴다.
             """;
@@ -431,7 +435,11 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             Set<String> seen = new HashSet<>();
             int added = 0;
             int menuSkipped = 0;
-            for (ScreenText s : context.screenTexts()) {
+            // 발언을 받아 적은 자막은 발언 줄로 이미 들어가 있다. 같은 주장을 두 번 검색하지 않게 뺀다.
+            // (SRT 자막은 대부분 받아 적은 것이라 이 한 줄로 검색 횟수가 크게 준다)
+            List<ScreenText> captions = CaptionAlignment.distinctFromSpeech(
+                    context.screenTexts(), context.hasTranscript() ? context.transcript() : List.of());
+            for (ScreenText s : captions) {
                 if (added >= MAX_SCREEN_LINES) break;
 
                 String text = s.getText() == null ? "" : s.getText().trim();
@@ -526,6 +534,16 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         return result == null || result.claims() == null ? List.of() : result.claims();
     }
 
+    private static String hostOf(String url) {
+        if (url == null || url.isBlank()) return "출처미상";
+        try {
+            String host = java.net.URI.create(url).getHost();
+            return host == null ? "출처미상" : host.replaceFirst("^www\\.", "");
+        } catch (IllegalArgumentException e) {
+            return "출처미상";
+        }
+    }
+
     private Verdict verify(String today, Claim claim, FactLine line, List<Evidence> evidence) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("오늘 날짜: ").append(today).append("\n\n");
@@ -542,9 +560,11 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         for (int i = 0; i < evidence.size(); i++) {
             Evidence e = evidence.get(i);
             NewsSearchClient.NewsItem item = e.item();
-            prompt.append("[%d] (%s · %s) %s%n    %s%n".formatted(
+            // 출처 주소도 같이 준다. 웹 검색 결과에는 공식 사이트와 블로그가 섞여 있다.
+            prompt.append("[%d] (%s · %s · %s) %s%n    %s%n".formatted(
                     i,
                     e.sourceType().getLabel(),
+                    hostOf(item.link()),
                     item.pubDate() == null || item.pubDate().isBlank() ? "날짜미상" : item.pubDate(),
                     item.title(),
                     item.description() == null ? "" : item.description()));
@@ -561,11 +581,13 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
 
         /** 검색에 쓸 말. 여러 개면 첫 번째가 당사자 자료를 노린 검색어다. */
         List<String> queriesOrFallback() {
-            if (searchQueries != null && !searchQueries.isEmpty()) {
-                return searchQueries.stream()
+            if (searchQueries != null) {
+                List<String> queries = searchQueries.stream()
                         .filter(q -> q != null && !q.isBlank())
                         .limit(2)
                         .toList();
+                // 검색어가 전부 빈 칸이면 주장 문장으로 대신 찾는다
+                if (!queries.isEmpty()) return queries;
             }
             return claim == null || claim.isBlank() ? List.of() : List.of(claim);
         }

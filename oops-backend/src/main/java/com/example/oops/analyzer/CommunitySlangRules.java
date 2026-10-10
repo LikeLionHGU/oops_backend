@@ -40,8 +40,10 @@ public class CommunitySlangRules {
             if (match.entry().requiresContextCheck()) {
                 continue;
             }
+            // 사전 항목마다 보낼 유형이 정해져 있다 (2026-10 고도화).
+            // '틀딱' 은 커뮤니티 은어가 아니라 나이 멸칭이므로 PREJUDICE 로 나간다.
             hits.add(new Hit(
-                    RiskCategory.UNFAMILIAR_CONTEXT,
+                    match.entry().taxonomyType().category(),
                     match.score(),
                     match.entry().reason(),
                     match.matchedText()));

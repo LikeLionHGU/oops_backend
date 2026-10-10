@@ -44,6 +44,8 @@ public class VideoController {
                       비워두면 대본을 보고 자동으로 판별한다.
                     - 응답의 `jobId` 는 이번 분석 실행의 식별자다. 재시도하면 새로 발급된다.
                     - `streamUrl` 로 영상을 재생할 수 있다.
+                    - `subtitle` (선택): 편집 툴에서 내보낸 **SRT 자막 파일**. 함께 올리면 자막도 검토하고
+                      발언과 자막의 의미 차이를 비교한다. 없으면 발언만 분석한다.
 
                     실패 코드: `UNSUPPORTED_VIDEO_FORMAT`(415), `MAX_UPLOAD_SIZE_EXCEEDED`(413),
                     `WORKER_UNAVAILABLE`(503, 분석 서버가 꺼져 있음)
@@ -51,9 +53,10 @@ public class VideoController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<VideoUploadResponse>> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestPart(value = "genre", required = false) String genre) {
+            @RequestPart(value = "genre", required = false) String genre,
+            @RequestPart(value = "subtitle", required = false) MultipartFile subtitle) {
 
-        Video video = videoService.createFromUpload(file, genre);
+        Video video = videoService.createFromUpload(file, genre, subtitle);
         AnalysisJob job = analysisService.startAnalysis(video.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -63,6 +66,8 @@ public class VideoController {
     @Operation(summary = "유튜브 링크로 등록",
             description = """
                     파일 대신 링크로 등록한다. 응답 형태는 업로드와 같다.
+
+                    `subtitleSrt` (선택): SRT 자막 파일 내용을 문자열 그대로 넣는다.
 
                     주의: 로컬에 영상 파일이 없으므로 `GET /stream` 은 동작하지 않는다.
                     재생이 필요하면 프론트에서 유튜브 임베드를 쓴다.
@@ -125,6 +130,21 @@ public class VideoController {
     public ResponseEntity<ApiResponse<AnalysisRetryResponse>> retry(@PathVariable String videoId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.ok(analysisService.retry(Ids.parse(videoId))));
+    }
+
+    @Operation(summary = "자막 파일 붙이기·바꾸기",
+            description = """
+                    이미 등록한 영상에 SRT 자막 파일을 붙이거나 바꾼다.
+                    분석은 다시 돌리지 않는다. 바꾼 자막으로 보려면 `POST /{videoId}/analysis/retry` 를 부른다.
+
+                    실패 코드: `INVALID_REQUEST`(400, SRT 형식이 아님), `VIDEO_NOT_FOUND`(404)
+                    """)
+    @PutMapping(value = "/{videoId}/subtitle", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<java.util.Map<String, Object>> attachSubtitle(
+            @PathVariable String videoId,
+            @RequestPart("subtitle") MultipartFile subtitle) {
+        int lines = videoService.attachSubtitle(Ids.parse(videoId), subtitle);
+        return ApiResponse.ok(java.util.Map.of("videoId", videoId, "subtitleLines", lines));
     }
 
     @Operation(summary = "검수 이력",

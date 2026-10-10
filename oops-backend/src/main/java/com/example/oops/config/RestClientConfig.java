@@ -93,6 +93,41 @@ public class RestClientConfig {
                 .build();
     }
 
+    /** Perplexity Search API 용. (2026-10 고도화) */
+    @Bean
+    public RestClient perplexityRestClient(SearchApiProperties properties) {
+        String key = properties.perplexityOrEmpty().apiKey();
+        return RestClient.builder()
+                .baseUrl("https://api.perplexity.ai")
+                .requestFactory(searchRequestFactory())
+                .defaultHeader("Authorization", "Bearer " + (key == null ? "" : key))
+                .defaultHeader("Content-Type", "application/json")
+                .build();
+    }
+
+    /** Serper(구글 검색) 용. (2026-10 고도화) */
+    @Bean
+    public RestClient serperRestClient(SearchApiProperties properties) {
+        String key = properties.serperOrEmpty().apiKey();
+        return RestClient.builder()
+                .baseUrl("https://google.serper.dev")
+                .requestFactory(searchRequestFactory())
+                .defaultHeader("X-API-KEY", key == null ? "" : key)
+                .defaultHeader("Content-Type", "application/json")
+                .build();
+    }
+
+    /** 검색 API 공통. 웹 검색은 뉴스 RSS 보다 느릴 수 있어 읽기 시간을 넉넉히 둔다. */
+    private JdkClientHttpRequestFactory searchRequestFactory() {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(20));
+        return factory;
+    }
+
     /** 네이버 검색 API 용. 인증 헤더를 기본값으로 붙여둔다. */
     @Bean
     public RestClient naverRestClient(NaverProperties properties) {

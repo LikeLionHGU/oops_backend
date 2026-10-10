@@ -15,7 +15,9 @@ import java.util.Locale;
  * 그러면 정작 중요한 검증이 못 돈다.
  *
  * **한계를 분명히 해둔다:**
- * 지금 검색은 뉴스 RSS 뿐이라 인터뷰 전문이나 공식 홈페이지가 거의 안 나온다.
+ * (2026-10) 웹 검색(Perplexity·Serper)으로 바꾸면서 공식 홈페이지·인터뷰 전문이 나오기 시작했다.
+ * 대신 블로그·커뮤니티 글도 섞여 들어와서 USER_GENERATED_HOSTS 로 2차 자료로 내린다.
+ * 키가 없으면 여전히 뉴스 RSS 뿐이라 인터뷰 전문이나 공식 홈페이지가 거의 안 나온다.
  * 그래서 실제로는 대부분 DIRECT_QUOTE_SOURCE 아니면 REPUTABLE_MEDIA 로 갈린다.
  * 당사자 자료를 제대로 찾으려면 일반 웹 검색이 필요하다.
  * 그건 새 API 키와 비용이 붙는 일이라 지금 범위 밖이다.
@@ -29,6 +31,17 @@ public class SourceClassifier {
     /** 공식 자료로 볼 도메인 */
     private static final List<String> OFFICIAL_HOSTS = List.of(
             ".go.kr", ".or.kr", ".gov", ".ac.kr", ".edu", ".int");
+
+    /**
+     * 누구나 쓸 수 있는 곳. 웹 검색으로 바꾸면서 생겼다. (2026-10 고도화)
+     * 블로그·카페·커뮤니티·위키·영상 플랫폼은 그것만으로 사실의 근거가 되기 어렵다.
+     * 2차 자료로 내려 두고, 대조 프롬프트도 이걸 근거로 단정하지 않게 막았다.
+     */
+    private static final List<String> USER_GENERATED_HOSTS = List.of(
+            "blog.", "tistory.com", "cafe.", "post.naver.com", "brunch.co.kr", "namu.wiki", "wikipedia.org",
+            "youtube.com", "youtu.be", "instagram.com", "facebook.com", "x.com", "twitter.com", "threads.net",
+            "reddit.com", "dcinside.com", "fmkorea.com", "theqoo.net", "ruliweb.com", "clien.net", "inven.co.kr",
+            "kin.naver.com", "velog.io", "medium.com");
 
     /** 기관·공공 성격의 매체명 */
     private static final List<String> OFFICIAL_NAMES = List.of(
@@ -52,6 +65,16 @@ public class SourceClassifier {
      * 확신이 없으면 아래쪽(REPUTABLE_MEDIA)으로 둔다.
      * 잘못 올려서 "당사자 자료" 라고 표시하는 게 더 나쁘다.
      */
+    /**
+     * 호스트가 그 도메인이거나 하위 도메인인지. 점 경계까지 본다.
+     * 그냥 endsWith 로 보면 "netflix.com" 이 "x.com" 으로 잡힌다.
+     */
+    static boolean matchesDomain(String host, String domain) {
+        if (host == null || host.isEmpty() || domain == null || domain.isEmpty()) return false;
+        String d = domain.startsWith(".") ? domain.substring(1) : domain;
+        return host.equals(d) || host.endsWith("." + d);
+    }
+
     public ReferenceSourceType classify(NewsSearchClient.NewsItem item) {
         if (item == null) {
             return ReferenceSourceType.SECONDARY_SOURCE;
@@ -61,7 +84,11 @@ public class SourceClassifier {
         String host = lower(hostOf(item.link()));
         String publisher = lower(item.publisher());
 
-        if (OFFICIAL_HOSTS.stream().anyMatch(host::endsWith)
+        if (USER_GENERATED_HOSTS.stream().anyMatch(h -> h.endsWith(".") ? host.startsWith(h) || host.contains("." + h) : matchesDomain(host, h))) {
+            return ReferenceSourceType.SECONDARY_SOURCE;
+        }
+
+        if (OFFICIAL_HOSTS.stream().anyMatch(h -> matchesDomain(host, h))
                 || OFFICIAL_NAMES.stream().anyMatch(publisher::contains)) {
             return ReferenceSourceType.OFFICIAL_SOURCE;
         }

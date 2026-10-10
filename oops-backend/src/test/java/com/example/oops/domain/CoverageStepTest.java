@@ -18,6 +18,14 @@ class CoverageStepTest {
     }
 
     @Test
+    @DisplayName("고도화 분석기: 맥락 검토는 발언 검토, 발언·자막 비교는 자막 검토 단계로 보고한다")
+    void upgradeAnalyzers() {
+        // 자막을 SRT 로 받으면서 발언·자막 비교를 다시 켰다. 돌았는지 사용자에게 알려야 한다.
+        assertThat(CoverageStep.of("context-review")).isEqualTo(CoverageStep.SPEECH_REVIEW);
+        assertThat(CoverageStep.of("caption-mismatch")).isEqualTo(CoverageStep.SCREEN_TEXT_REVIEW);
+    }
+
+    @Test
     @DisplayName("외부 검색을 쓰는 분석기는 각자 단계를 가진다")
     void externalSearchAnalyzers() {
         assertThat(CoverageStep.of("entity-check")).isEqualTo(CoverageStep.FACT_ENTITY);
@@ -29,7 +37,6 @@ class CoverageStepTest {
     void unreportedAnalyzers() {
         // 꺼져 있거나 사용자에게 알릴 필요가 없는 것들.
         // null 을 받으면 파이프라인이 기록을 건너뛴다.
-        assertThat(CoverageStep.of("caption-mismatch")).isNull();
         assertThat(CoverageStep.of("monetization")).isNull();
         assertThat(CoverageStep.of("처음보는키")).isNull();
     }

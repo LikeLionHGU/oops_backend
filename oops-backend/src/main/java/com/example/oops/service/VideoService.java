@@ -44,6 +44,16 @@ public class VideoService {
      */
     @Transactional
     public Video createFromUpload(MultipartFile file, String genre) {
+        return createFromUpload(file, genre, null);
+    }
+
+    /**
+     * 파일 업로드 + (선택) SRT 자막 파일.
+     * 자막을 먼저 검사한다. 영상까지 저장한 뒤에 자막 형식 오류로 거절하면 파일이 남는다.
+     */
+    @Transactional
+    public Video createFromUpload(MultipartFile file, String genre, MultipartFile subtitle) {
+        String srt = readSubtitle(subtitle);
         storageService.validateVideoFile(file);
         requireAnalysisServer();
 
@@ -55,6 +65,7 @@ public class VideoService {
                 .build());
 
         video.assignStorageKey(storageService.storeVideo(video.getId(), file));
+        video.attachSubtitle(srt);
         enforceDurationLimit(video);
         return video;
     }
@@ -62,14 +73,75 @@ public class VideoService {
     /** 유튜브 링크 등록 (명세 외 확장) */
     @Transactional
     public Video createFromUrl(VideoRegisterRequest request) {
+        String srt = validateSubtitleText(request.subtitleSrt());
         requireAnalysisServer();
-        return videoRepository.save(Video.builder()
+        Video video = videoRepository.save(Video.builder()
                 .sourceType(SourceType.YOUTUBE)
                 .sourceUrl(request.url())
                 .title(request.title())
                 .channelName(request.channelName())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
+        video.attachSubtitle(srt);
+        return video;
+    }
+
+    /**
+     * 이미 등록한 영상에 SRT 자막을 붙이거나 바꾼다.
+     * 분석은 다시 돌리지 않는다. 재분석(retry)을 부르면 새 자막으로 분석한다.
+     *
+     * @return 읽은 자막 줄 수
+     */
+    @Transactional
+    public int attachSubtitle(Long videoId, MultipartFile subtitle) {
+        Video video = getEntity(videoId);
+        // 분석 중에 바꾸면 분석이 끝날 때 영상 행 전체를 다시 쓰면서 새 자막이 옛 값으로 덮인다.
+        // 그래서 분석이 끝난 뒤에만 받는다. (retry 와 같은 기준)
+        if (jobRepository.existsByVideoIdAndStatusIn(
+                videoId, List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING))) {
+            throw new BusinessException(ErrorCode.ANALYSIS_IN_PROGRESS,
+                    "분석이 진행 중이라 자막을 바꿀 수 없습니다. 분석이 끝난 뒤 다시 올려 주세요.");
+        }
+        String srt = readSubtitle(subtitle);
+        if (srt == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "자막 파일이 비어 있습니다.");
+        }
+        video.attachSubtitle(srt);
+        return com.example.oops.screentext.SrtParser.parse(srt).size();
+    }
+
+    /** 자막 파일 최대 크기. 90분 영상 자막도 보통 200KB 안쪽이다. */
+    private static final long MAX_SUBTITLE_BYTES = 5L * 1024 * 1024;
+
+    /** 업로드된 자막 파일을 글로 읽고 형식을 검사한다. 파일이 없으면 null. */
+    private String readSubtitle(MultipartFile subtitle) {
+        if (subtitle == null || subtitle.isEmpty()) {
+            return null;
+        }
+        if (subtitle.getSize() > MAX_SUBTITLE_BYTES) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "자막 파일이 너무 큽니다 (최대 5MB).");
+        }
+        try {
+            return validateSubtitleText(com.example.oops.screentext.SrtParser.decode(subtitle.getBytes()));
+        } catch (java.io.IOException e) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "자막 파일을 읽지 못했습니다.");
+        }
+    }
+
+    /**
+     * 자막 글이 SRT 형식인지 본다. 비어 있으면 null (자막 없이 진행).
+     * 시간 정보가 하나도 없으면 거절한다. 발언과 시간을 맞출 수 없어서 쓸 수가 없다.
+     */
+    private String validateSubtitleText(String srt) {
+        if (srt == null || srt.isBlank()) {
+            return null;
+        }
+        if (com.example.oops.screentext.SrtParser.parse(srt).isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "자막 파일에서 시간 정보가 있는 자막을 찾지 못했습니다. "
+                            + "SRT 형식(번호 / 00:00:01,000 --> 00:00:03,000 / 자막)인지 확인하세요.");
+        }
+        return srt;
     }
 
     /**

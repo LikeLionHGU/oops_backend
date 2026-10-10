@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * OCR 로 읽은 화면 텍스트 자체에 문제가 있는지 본다.
+ * 화면 자막(SRT 자막 파일 또는 OCR) 자체에 문제가 있는지 본다.
  * 발언에는 없고 편집 자막에만 들어간 욕설/개인정보가 여기서 잡힌다.
  * 룰 엔진은 SubtitleAnalyzer 것을 그대로 재사용한다.
  */
@@ -43,7 +43,12 @@ public class ScreenTextAnalyzer implements ContentAnalyzer {
     public List<RiskFinding> analyze(AnalysisContext context) {
         List<RiskFinding> findings = new ArrayList<>();
 
-        for (ScreenText screenText : context.screenTexts()) {
+        // 발언을 받아 적은 자막은 발언 쪽(subtitle)에서 이미 본다. 같은 카드가 두 장 나오지 않게 뺀다.
+        // OCR 로 읽은 화면 글자는 발언과 거의 겹치지 않으므로 예전과 똑같이 전부 본다.
+        List<ScreenText> targets = CaptionAlignment.distinctFromSpeech(
+                context.screenTexts(), context.hasTranscript() ? context.transcript() : List.of());
+
+        for (ScreenText screenText : targets) {
             for (CommunitySlangRules.Hit hit : slangRules.detect(screenText.getText())) {
                 findings.add(RiskFinding.builder()
                         .video(context.video())

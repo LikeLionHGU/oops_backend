@@ -32,7 +32,26 @@ public record OopsProperties(Storage storage, Analysis analysis) {
     }
 
     /** enabled-analyzers 에 적힌 키를 가진 분석기만 파이프라인에서 실행된다. */
-    public record Analysis(List<String> enabledAnalyzers, Boolean factCheckScreenText) {
+    public record Analysis(List<String> enabledAnalyzers, Boolean factCheckScreenText,
+                           String captionSource, ContextReview contextReview) {
+
+        /**
+         * 자막을 어디서 가져올지. (2026-10 고도화)
+         *
+         *   srt  편집자가 내보낸 SRT 자막 파일을 쓴다. OCR 은 돌리지 않는다. (기본)
+         *   ocr  예전처럼 화면을 캡처해 글자를 읽는다.
+         *
+         * OCR 은 편집 자막과 화면 속 글자(간판·메뉴판·로고)를 구분하지 못해 오탐이 많았다.
+         * SRT 는 편집 자막만 정확한 글자와 시간으로 들어온다.
+         * OCR 코드는 지우지 않았다. 여기를 ocr 로 바꾸면 그대로 돌아간다.
+         */
+        public boolean useSrtCaptions() {
+            return captionSource == null || !"ocr".equalsIgnoreCase(captionSource.trim());
+        }
+
+        public ContextReview contextReviewOrDefault() {
+            return contextReview != null ? contextReview : new ContextReview(null, null, null, null);
+        }
 
         /**
          * 사실 확인이 **화면 글자까지** 볼지. 기본은 발언만 본다.
@@ -51,6 +70,36 @@ public record OopsProperties(Storage storage, Analysis analysis) {
          */
         public boolean factCheckScreenTextOrDefault() {
             return factCheckScreenText != null && factCheckScreenText;
+        }
+    }
+
+    /**
+     * 맥락 검토(2단계) 설정.
+     *
+     * @param windowSize       1차 선별에 한 번에 넣는 줄 수. 크면 호출이 줄고(지시문 반복이 줄어 토큰도 준다)
+     *                         작으면 한 줄 한 줄을 더 꼼꼼히 본다. 기본 30.
+     * @param overlap          창 사이에 겹치는 줄 수. 경계에서 문맥이 끊기는 걸 막는다. 기본 3.
+     * @param verifyBatchSize  2차 검증에서 한 번에 판단할 후보 수. 기본 6.
+     * @param maxCandidatesPerWindow 1차 선별이 한 창에서 올릴 수 있는 최대 후보 수.
+     *                         모델이 폭주했을 때 2차 호출이 터지는 걸 막는 안전장치다. 기본 8.
+     */
+    public record ContextReview(Integer windowSize, Integer overlap,
+                                Integer verifyBatchSize, Integer maxCandidatesPerWindow) {
+        public int windowSizeOrDefault() {
+            return windowSize == null || windowSize < 5 ? 30 : windowSize;
+        }
+
+        public int overlapOrDefault() {
+            int o = overlap == null || overlap < 0 ? 3 : overlap;
+            return Math.min(o, windowSizeOrDefault() - 1);
+        }
+
+        public int verifyBatchSizeOrDefault() {
+            return verifyBatchSize == null || verifyBatchSize < 1 ? 6 : verifyBatchSize;
+        }
+
+        public int maxCandidatesPerWindowOrDefault() {
+            return maxCandidatesPerWindow == null || maxCandidatesPerWindow < 1 ? 8 : maxCandidatesPerWindow;
         }
     }
 }

@@ -102,6 +102,7 @@ public class AnalysisPipeline {
         try {
             video.updateStatus(AnalysisStatus.PROCESSING);
             openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
+            com.example.oops.news.SearchUsage.begin();   // 검색 API 호출 수 누적 시작
 
             // 지난 분석 결과를 먼저 지운다. **OCR 보다 앞이어야 한다.**
             //
@@ -151,7 +152,10 @@ public class AnalysisPipeline {
             // 여기가 제일 오래 걸린다. 10분짜리 영상에 6분씩 걸린 적도 있다.
             // 그 사이 진행률을 한 번도 안 올리면 화면이 멈춘 것처럼 보여서
             // 사용자가 취소를 누르게 된다. 도는 동안 조금씩 올려준다.
-            progressService.update(jobId, AnalysisStage.OCR, 35, "화면 글자를 읽고 있습니다");
+            // 2026-10 고도화: 자막을 SRT 파일로 받으면 OCR 을 돌리지 않는다. 몇 초면 끝난다.
+            boolean srt = screenTextService.usesSrt();
+            progressService.update(jobId, AnalysisStage.OCR, 35,
+                    srt ? "자막 파일을 읽고 있습니다" : "화면 글자를 읽고 있습니다");
             mark = System.currentTimeMillis();
             List<ScreenText> screenTexts;
             try (var ticker = new ProgressTicker(jobId, AnalysisStage.OCR, 35, 55)) {
@@ -160,9 +164,24 @@ public class AnalysisPipeline {
             elapsed.put("OCR", System.currentTimeMillis() - mark);
             stopIfCancelled(jobId);
 
+            // SRT 모드: 분석 서버를 부르지 않았으므로 lastFailureDetail 을 보면 안 된다.
+            // 거기 남은 건 음성 인식 쪽 사유라서, 자막 실패로 잘못 보고하게 된다.
+            if (srt) {
+                if (!video.hasSubtitle()) {
+                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SKIPPED,
+                            "자막 파일(SRT)이 없어 자막 검토와 발언·자막 비교를 건너뛰었습니다. "
+                                    + "영상을 올릴 때 자막 파일을 함께 올리면 자막도 검토합니다.");
+                } else if (screenTexts.isEmpty()) {
+                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
+                            "자막 파일을 읽지 못했습니다. SRT 형식(번호, 시간, 자막)인지 확인하세요.");
+                } else {
+                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS,
+                            "자막 파일(SRT) %d줄을 사용했습니다.".formatted(screenTexts.size()));
+                }
+            }
             // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
             // 분석 서버가 사유를 남겼을 때만 실패로 본다.
-            if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
+            else if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
                 record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
                         analysisServerClient.lastFailureDetail().orElse(null));
             } else if (screenTexts.isEmpty()) {
@@ -439,7 +458,9 @@ public class AnalysisPipeline {
         if (durationSec != null && durationSec > 0) {
             sttUsd = durationSec / 60.0 * usage.pricing().sttUsdPerMinute();
         }
-        double totalUsd = usage.costUsd() + sttUsd;
+        var search = com.example.oops.news.SearchUsage.snapshot();
+        double searchUsd = search.costUsd();
+        double totalUsd = usage.costUsd() + sttUsd + searchUsd;
         double krw = totalUsd * usage.pricing().krwRate();
 
         // 한도 사용량은 비용보다 먼저 남긴다.
@@ -447,7 +468,13 @@ public class AnalysisPipeline {
         // 아래 조기 반환 뒤에 두면 바로 그때 안 찍힌다.
         logRequestBudget(videoId, durationSec, transcriptLines, usage);
 
-        if (usage.isEmpty() && sttUsd == 0) {
+        // 검색은 사실 확인·배경 확인이 검색할 거리를 찾았을 때만 돈다. 0회면 "주장이 없었다" 는 뜻이다.
+        log.info("[search-cost] videoId={} Perplexity {}회(실패 {} · 결과 {}건) · Serper {}회(실패 {} · 결과 {}건) · 뉴스 대체 {}회 · ${}",
+                videoId, search.perplexityCalls(), search.perplexityFailures(), search.perplexityResults(),
+                search.serperCalls(), search.serperFailures(), search.serperResults(),
+                search.newsFallbackCalls(), "%.4f".formatted(searchUsd));
+
+        if (usage.isEmpty() && sttUsd == 0 && searchUsd == 0) {
             return;
         }
 
@@ -455,10 +482,11 @@ public class AnalysisPipeline {
                 videoId, usage.calls(), usage.promptTokens(),
                 usage.cachedTokens(), usage.completionTokens());
 
-        log.info("[openai-cost] videoId={} 분석 ${} + 음성인식 ${} = ${} (약 {}원)",
+        log.info("[openai-cost] videoId={} 분석 ${} + 음성인식 ${} + 검색 ${} = ${} (약 {}원)",
                 videoId,
                 "%.5f".formatted(usage.costUsd()),
                 "%.5f".formatted(sttUsd),
+                "%.4f".formatted(searchUsd),
                 "%.5f".formatted(totalUsd),
                 Math.round(krw));
 
@@ -522,7 +550,12 @@ public class AnalysisPipeline {
                 .collect(java.util.stream.Collectors.toSet());
 
         long linesAt60 = Math.round(transcriptLines / minutes * 60);
-        long windowsAt60 = Math.max(1, (long) Math.ceil(linesAt60 / (double) SPEECH_WINDOW_STRIDE));
+        // 2026-10 고도화: 창 크기를 설정으로 뺐다. 예전 발언 검토(17줄 보폭)가 꺼져 있으면 맥락 검토 보폭을 쓴다.
+        OopsProperties.ContextReview review = properties.analysis().contextReviewOrDefault();
+        int stride = properties.analysis().enabledAnalyzers().contains("speech-review")
+                ? SPEECH_WINDOW_STRIDE
+                : Math.max(1, review.windowSizeOrDefault() - review.overlapOrDefault());
+        long windowsAt60 = Math.max(1, (long) Math.ceil(linesAt60 / (double) stride));
 
         long fixed = 0;
         long scaled = 0;

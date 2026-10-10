@@ -6,7 +6,21 @@ package com.example.oops.domain;
  */
 public enum RiskCategory {
 
-    // 발언 리스크
+    // ── 맥락 검토 8유형 (2026-10 고도화) ──────────────────────────────
+    //
+    // 고도화 버전의 맥락 검토는 이 여덟 가지로만 결과를 낸다.
+    // 아래 예전 유형들은 지난 분석 결과와 룰 기반 안전망 때문에 남겨 두었다.
+    // 어떤 발언이 어느 유형인지, 겹치면 무엇이 우선인지는 TaxonomyType 이 정한다.
+    INSULT("욕설·모욕·폄하·조롱"),
+    PREJUDICE("집단·속성 편견·차별·혐오"),
+    SEXUAL_HARASSMENT("성적 대상화·성희롱"),
+    VICTIM_BLAMING("피해자 조롱·피해 축소"),
+    SOCIOPOLITICAL_CONTEXT("역사·정치·사회적 맥락"),
+    COMMUNITY_SLANG("커뮤니티 말투·밈"),
+    // PRIVACY 는 아래 예전 유형을 그대로 쓴다 (라벨만 8유형에 맞춤)
+    DANGEROUS_ACT("위험·불법 행동 미화"),
+
+    // 발언 리스크 (예전 분류)
     MOCKERY("조롱"),
     BELITTLEMENT("비하"),
     GENERALIZATION("과도한 일반화"),
@@ -21,7 +35,7 @@ public enum RiskCategory {
     MISINFORMATION("사실관계 논란"),
     FACT_ERROR("사실과 다름"),              // 기사와 대조해 어긋나는 것으로 확인됨
     UNVERIFIED_CLAIM("근거 확인 필요"),      // 뒷받침할 자료를 찾지 못함
-    PRIVACY("개인정보 노출"),
+    PRIVACY("사생활·신상 노출"),
     ADVERTISING("광고/협찬 미표기"),
 
     // 유튜브 수익화 (광고주 친화 가이드라인)

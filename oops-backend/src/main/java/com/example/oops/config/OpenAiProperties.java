@@ -17,6 +17,10 @@ public record OpenAiProperties(
         String project,
         String baseUrl,
         String model,
+        /** 비우면 gpt-4 계열에만 0.1 을 보낸다. 추론 모델은 temperature 를 받지 않을 수 있다. */
+        Double temperature,
+        /** 추론 강도 (GPT-6 Luna: none·low·medium·high…). 비우면 보내지 않는다. */
+        String reasoningEffort,
         Duration timeout,
 
         /**
@@ -90,6 +94,11 @@ public record OpenAiProperties(
 
     public String modelOrDefault() {
         return model != null ? model : "gpt-4o-mini";
+    }
+
+    public Double temperatureOrDefault() {
+        if (temperature != null) return temperature;
+        return modelOrDefault().startsWith("gpt-4") ? Double.valueOf(0.1) : null;
     }
 
     public Duration timeoutOrDefault() {

@@ -18,6 +18,10 @@
     "  needsContext  true 면 AI 에게 앞뒤 맥락을 확인시킵니다",
     "  reason        사용자에게 보여줄 설명. 판정하지 말고 사실만 적습니다",
     "  reviewedAt    마지막 점검일. 표현의 쓰임은 몇 년 사이에도 바뀝니다",
+    "  riskType      걸리면 맥락 검토의 어느 유형으로 보낼지 (2026-10 고도화)",
+    "                INSULT / PREJUDICE / SEXUAL_HARASSMENT / VICTIM_BLAMING /",
+    "                SOCIOPOLITICAL_CONTEXT / COMMUNITY_SLANG / PRIVACY / DANGEROUS_ACT",
+    "                사전은 유형이 아니라 탐지 도구입니다. 대상이 있는 멸칭은 그 대상 유형으로 보냅니다.",
     "",
     "triggerMode:",
     "  CONTEXT_REQUIRED  일반 의미와 특수 의미가 함께 있음",
@@ -68,7 +72,8 @@
       ],
       "needsContext": true,
       "reason": "문장 끝의 '~노' 어미입니다. 경상도 사투리로도 쓰이지만 특정 커뮤니티 말투로 읽히기도 해 시청자 반응이 갈릴 수 있습니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "COMMUNITY_SLANG"
     },
     {
       "id": "CTX_002",
@@ -89,7 +94,8 @@
       ],
       "needsContext": true,
       "reason": "경상도 사투리로도 쓰이지만 특정 커뮤니티 말투로 알려진 표현이기도 합니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_003",
@@ -97,7 +103,8 @@
         "민주화시키",
         "민주화당하",
         "민주화됐",
-        "민주화된다"
+        "민주화된다",
+        "ㅁㅈㅎ"
       ],
       "triggerMode": "CONTEXT_REQUIRED",
       "contextHints": [
@@ -119,7 +126,8 @@
       ],
       "needsContext": true,
       "reason": "민주화 운동을 뜻하는 일반적 의미 외에, 온라인에서 '집단으로 깎아내리다' 라는 반대 뜻으로 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_004",
@@ -146,7 +154,8 @@
       ],
       "needsContext": true,
       "reason": "경제·산업 맥락의 일반적 의미 외에, 온라인에서 '민주화' 의 반대 뜻으로 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_005",
@@ -182,7 +191,8 @@
       ],
       "needsContext": true,
       "reason": "일반적인 시간 표현 외에, 특정 지역을 가리키는 온라인 은어로 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_006",
@@ -212,7 +222,8 @@
       ],
       "needsContext": true,
       "reason": "음식 이름이지만 특정 지역 출신을 비하하는 은어로 쓰인 사례가 보도된 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_007",
@@ -237,7 +248,8 @@
       ],
       "needsContext": true,
       "reason": "의약품 이름이지만 특정 지역과 엮인 은어로 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_008",
@@ -260,7 +272,8 @@
       ],
       "needsContext": true,
       "reason": "특정 지역을 가리키는 축약 은어로 알려진 표현입니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_009",
@@ -292,7 +305,8 @@
       ],
       "needsContext": true,
       "reason": "과일 이름이지만 5·18 관련 은어로 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_010",
@@ -318,7 +332,8 @@
       ],
       "needsContext": true,
       "reason": "'너무너무' 의 말놀이로 쓰이기도 하지만, 특정 인물의 성을 비하 접두사처럼 쓰는 용례가 알려져 방송인이 뜻을 모르고 썼다가 논란이 된 사례가 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_011",
@@ -343,19 +358,22 @@
       ],
       "needsContext": true,
       "reason": "악기 운지법 등 일반적 쓰임도 있지만, 특정 인물의 죽음을 조롱하는 뜻으로 쓰인 사례가 보도된 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_012",
       "patterns": [
-        "전라디언"
+        "전라디언",
+        "절라디언"
       ],
       "triggerMode": "SAFETY_NET",
       "contextHints": [],
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 지역 출신을 비하하는 은어입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_013",
@@ -384,7 +402,8 @@
       ],
       "needsContext": true,
       "reason": "음식 표현이지만 대구 지하철 참사와 엮어 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "VICTIM_BLAMING"
     },
     {
       "id": "CTX_014",
@@ -408,7 +427,8 @@
       ],
       "needsContext": true,
       "reason": "일반적인 구령이지만 5·18 관련 맥락에서 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_015",
@@ -431,7 +451,8 @@
       ],
       "needsContext": true,
       "reason": "특정 세대·정치 세력을 낮춰 부르는 표현으로 쓰입니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_016",
@@ -447,7 +468,8 @@
       ],
       "needsContext": true,
       "reason": "한 유튜버의 인사말에서 나온 표현입니다. 여성혐오 표현이라는 주장이 있었으나 법원은 표현 자체가 그렇다고 보기 어렵다고 판단했습니다. 논쟁이 있었다는 사실만 참고하세요.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "COMMUNITY_SLANG"
     },
     {
       "id": "CTX_017",
@@ -470,12 +492,14 @@
       ],
       "needsContext": true,
       "reason": "급하게 먹는 모습을 나타내는 의태어로 쓰이지만, 기원을 두고 젠더 논쟁이 있었던 표현입니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "COMMUNITY_SLANG"
     },
     {
       "id": "CTX_018",
       "patterns": [
-        "오조오억"
+        "오조오억",
+        "오조오천"
       ],
       "triggerMode": "DISPUTED_CONTEXT",
       "contextHints": [
@@ -496,7 +520,8 @@
       ],
       "needsContext": true,
       "reason": "'아주 많다' 는 과장 표현으로 쓰이지만, 기원을 두고 젠더 논쟁이 있었던 표현입니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "COMMUNITY_SLANG"
     },
     {
       "id": "CTX_019",
@@ -514,7 +539,8 @@
       ],
       "needsContext": true,
       "reason": "기계 소리 등을 나타내는 일상 표현이지만, 특정 커뮤니티 용법을 두고 논쟁이 있었던 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "COMMUNITY_SLANG"
     },
     {
       "id": "CTX_020",
@@ -540,7 +566,8 @@
       ],
       "needsContext": true,
       "reason": "'다시 일어서다' 라는 일반적 의미가 있지만, 특정 인물의 사망을 빗대는 은어로 쓰인 사례가 있는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "VICTIM_BLAMING"
     },
     {
       "id": "CTX_021",
@@ -568,7 +595,8 @@
       ],
       "needsContext": true,
       "reason": "지명 축약으로도 쓰이지만 한국 남성 전체를 낮춰 부르는 표현으로 쓰인 사례가 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_022",
@@ -586,7 +614,8 @@
       "suppressHints": [],
       "needsContext": true,
       "reason": "한국 여성 전체를 낮춰 부르는 표현으로 쓰인 사례가 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_023",
@@ -603,7 +632,8 @@
       ],
       "needsContext": true,
       "reason": "결혼·젠더 담론에서 특정 남성상을 조롱하는 뜻으로 쓰이는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_024",
@@ -629,7 +659,8 @@
       ],
       "needsContext": true,
       "reason": "집안일 이야기가 아니라, 온라인 젠더 담론에서 결혼을 두고 쓰이는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_025",
@@ -641,7 +672,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 집단을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_026",
@@ -674,7 +706,8 @@
       ],
       "needsContext": true,
       "reason": "과일 이름이지만 정치 맥락에서 특정 계파를 가리키는 표현으로 쓰인 사례가 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_027",
@@ -698,7 +731,8 @@
       ],
       "needsContext": true,
       "reason": "특정 정치인 지지층을 가리키는 표현입니다. 지지자들이 스스로 쓰기도 하고 비판적으로 쓰이기도 합니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_028",
@@ -748,7 +782,8 @@
       ],
       "needsContext": true,
       "reason": "음식 이름이지만 정치 맥락에서 특정 인물을 가리키는 표현으로 쓰인 사례가 있습니다.",
-      "reviewedAt": "2026-08-21"
+      "reviewedAt": "2026-08-21",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_029",
@@ -775,7 +810,8 @@
       ],
       "needsContext": true,
       "reason": "곤충 이름이지만 정치 맥락에서 특정 집단을 가리키는 표현으로 쓰인 사례가 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_030",
@@ -789,7 +825,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치 흐름을 나타내는 구호입니다. 비하 표현이 아니라 정치적 입장 표시이므로, 영상의 성격과 맞는지만 확인하세요.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_031",
@@ -801,7 +838,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인 지지층을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_032",
@@ -813,7 +851,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인 지지층을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_033",
@@ -825,7 +864,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인 지지층을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_034",
@@ -844,7 +884,8 @@
       "suppressHints": [],
       "needsContext": true,
       "reason": "특정 후보에게 투표한 유권자를 낮춰 부르는 표현입니다. 정치인이 사용한 뒤 사과한 사례가 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_035",
@@ -856,7 +897,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_036",
@@ -881,7 +923,8 @@
       ],
       "needsContext": true,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_037",
@@ -893,7 +936,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_038",
@@ -905,7 +949,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_039",
@@ -917,7 +962,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_040",
@@ -930,7 +976,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 정치인을 낮춰 부르는 별칭입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_041",
@@ -958,7 +1005,8 @@
       ],
       "needsContext": true,
       "reason": "처음에는 젊은 감각의 40대를 뜻하는 말이었지만, 최근에는 특정 40대를 조롱하는 뜻으로 쓰인다는 분석이 있습니다. 의도한 쪽이 맞는지 확인하세요.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_042",
@@ -983,7 +1031,8 @@
       ],
       "needsContext": true,
       "reason": "라이프스타일을 뜻하는 말로 시작했지만 세대 조롱으로 쓰이기도 합니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_043",
@@ -1000,7 +1049,8 @@
       "suppressHints": [],
       "needsContext": true,
       "reason": "친근한 밈으로도 쓰이지만 어린이를 낮춰 부르는 말로 받아들여지기도 합니다. 어린이 대상 조사에서 비하 표현으로 인식된다는 응답이 있었습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_044",
@@ -1012,7 +1062,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "청소년을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_045",
@@ -1025,7 +1076,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "노년층을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_046",
@@ -1037,7 +1089,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 행동에 대한 비판을 넘어 부모 집단 전체를 낮춰 부르는 표현으로 읽힐 수 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_047",
@@ -1061,7 +1114,8 @@
       ],
       "needsContext": true,
       "reason": "길고양이를 돌보는 사람을 가리키는 중립적 표현이지만, 조롱하는 뜻으로 쓰이기도 합니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_048",
@@ -1073,7 +1127,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "특정 식습관을 가진 사람들을 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_049",
@@ -1085,7 +1140,8 @@
       "suppressHints": [],
       "needsContext": false,
       "reason": "문신을 한 사람 전체를 낮춰 부르는 표현입니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_050",
@@ -1115,7 +1171,8 @@
       ],
       "needsContext": true,
       "reason": "초등학생을 가리키는 말이지만, 미숙함을 빗대는 비유로 쓰면 비하로 받아들여질 수 있습니다.",
-      "reviewedAt": "2026-08-17"
+      "reviewedAt": "2026-08-17",
+      "riskType": "PREJUDICE"
     },
     {
       "id": "CTX_051",
@@ -1145,7 +1202,8 @@
       ],
       "needsContext": true,
       "reason": "영토 주권과 얽힌 표현입니다. 한국에서 가장 민감하게 받아들여지는 주제 중 하나라, 농담이나 인용이라도 그 문장만 잘려 퍼지면 채널 전체가 문제가 됩니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_052",
@@ -1170,7 +1228,8 @@
       ],
       "needsContext": true,
       "reason": "동해 표기를 두고 오래 논쟁이 있는 주제입니다. 자막이나 지도 표기가 의도와 다르게 읽힐 수 있습니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_053",
@@ -1196,7 +1255,8 @@
       ],
       "needsContext": true,
       "reason": "역사적 강제성을 부정하는 서술로 읽힐 수 있는 표현입니다. 학계와 정부 공식 입장과 다르게 해석될 수 있어 확인이 필요합니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     },
     {
       "id": "CTX_054",
@@ -1221,7 +1281,657 @@
       ],
       "needsContext": true,
       "reason": "식민지 근대화론과 연결되는 표현입니다. 학술적 논쟁과 별개로 짧은 자막으로 나가면 역사관 논란으로 번진 사례가 여러 번 있습니다.",
-      "reviewedAt": "2026-08-20"
+      "reviewedAt": "2026-08-20",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
+    },
+    {
+      "id": "CTX_055",
+      "patterns": [
+        "설라디언"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "특정 지역(서울) 출신을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_056",
+      "patterns": [
+        "~라도"
+      ],
+      "regex": "(?<![가-힣])라도(?![가-힣])",
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "전라",
+        "호남",
+        "광주",
+        "사람",
+        "것들",
+        "홍어",
+        "출신"
+      ],
+      "needsContext": true,
+      "reason": "조사 '~라도'와 별개로, 특정 지역(전라도)을 낮춰 부르는 은어로 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_057",
+      "patterns": [
+        "메갈"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "년",
+        "같은",
+        "여자",
+        "페미"
+      ],
+      "needsContext": true,
+      "reason": "특정 커뮤니티 이름에서 나와 여성을 낮춰 부르는 말로 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_058",
+      "patterns": [
+        "워마드"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "needsContext": true,
+      "reason": "특정 커뮤니티 이름이지만 여성을 낮춰 부르는 말로 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_059",
+      "patterns": [
+        "씹치남"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "한국 남성을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_060",
+      "patterns": [
+        "냄저",
+        "냄져"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "남성을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_061",
+      "patterns": [
+        "개저씨"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "중년 남성을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_062",
+      "patterns": [
+        "개줌마"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "중년 여성을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_063",
+      "patterns": [
+        "아빠충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "아버지를 벌레에 빗대 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_064",
+      "patterns": [
+        "삼일한",
+        "숨쉴한"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "여성에 대한 폭력을 암시하는 여성 비하 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_065",
+      "patterns": [
+        "주절먹"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "여성을 낮춰 부르는 커뮤니티 은어로 알려진 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_066",
+      "patterns": [
+        "주먹"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "김치녀",
+        "한녀",
+        "여자들",
+        "여자는",
+        "패야"
+      ],
+      "suppressHints": [
+        "주먹밥",
+        "주먹다짐",
+        "주먹으로",
+        "주먹을",
+        "주먹구구",
+        "주먹만",
+        "주먹이",
+        "주먹질",
+        "쥐"
+      ],
+      "needsContext": true,
+      "reason": "일반 단어지만 여성 비하 은어로 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_067",
+      "patterns": [
+        "갓치"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "한국",
+        "국민",
+        "김치",
+        "조선"
+      ],
+      "needsContext": true,
+      "reason": "한국인을 비꼬아 낮춰 부르는 은어로 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_068",
+      "patterns": [
+        "탈김치",
+        "갓양남"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "한국(인)을 낮추고 외국을 치켜세우는 맥락에서 쓰이는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_069",
+      "patterns": [
+        "탈코르셋",
+        "탈코",
+        "코르셋"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "suppressHints": [
+        "드레스",
+        "속옷",
+        "허리",
+        "의상",
+        "패션",
+        "입었",
+        "입고",
+        "체형"
+      ],
+      "needsContext": true,
+      "reason": "원래 뜻이나 사회운동 용어로도 쓰이지만, 성별 갈등 맥락에서 조롱으로 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "COMMUNITY_SLANG"
+    },
+    {
+      "id": "CTX_070",
+      "patterns": [
+        "김치녀",
+        "된장녀"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "여성을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_071",
+      "patterns": [
+        "김치남",
+        "강된장남"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "suppressHints": [
+        "남았",
+        "남아",
+        "남은",
+        "남겨",
+        "남기",
+        "남는"
+      ],
+      "needsContext": true,
+      "reason": "남성을 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_072",
+      "patterns": [
+        "학식충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "대학생을 벌레에 빗대 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_073",
+      "patterns": [
+        "진지충",
+        "선비충",
+        "설명충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "진지하거나 설명하는 사람을 벌레에 빗대 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "INSULT"
+    },
+    {
+      "id": "CTX_074",
+      "patterns": [
+        "병크",
+        "병신크리"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "장애 비하 어원을 가진 욕설 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "INSULT"
+    },
+    {
+      "id": "CTX_075",
+      "patterns": [
+        "연애고자",
+        "눈치고자",
+        "정치고자",
+        "패션고자"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "신체·장애 비하 어원을 가진 '고자'를 붙여 낮춰 부르는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_076",
+      "patterns": [
+        "똥남아"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "동남아시아 사람을 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_077",
+      "patterns": [
+        "외노자"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "needsContext": true,
+      "reason": "외국인 노동자를 줄인 말이지만 낮춰 부르는 뜻으로 쓰이는 경우가 많은 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_078",
+      "patterns": [
+        "개슬람",
+        "개이슬람",
+        "개슬림"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "이슬람교와 신자를 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_079",
+      "patterns": [
+        "중꿔",
+        "쭝꿔"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "중국(인)을 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_080",
+      "patterns": [
+        "짱깨",
+        "짱개"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "중국인을 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_081",
+      "patterns": [
+        "쪽바리"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "일본인을 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_082",
+      "patterns": [
+        "흑형",
+        "흑누나"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "피부색으로 사람을 부르는 표현입니다. 친근하게 쓰더라도 인종 비하로 받아들여질 수 있습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_083",
+      "patterns": [
+        "개독교",
+        "개독"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "기독교와 신자를 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_084",
+      "patterns": [
+        "종북좌빨",
+        "좌빨",
+        "좌좀"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "정치 성향이 다른 집단을 낮춰 부르는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_085",
+      "patterns": [
+        "수꼴"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "정치 성향이 다른 집단을 낮춰 부르는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_086",
+      "patterns": [
+        "일베충",
+        "베충이"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "특정 커뮤니티 이용자나 정치 성향을 낮춰 부르는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_087",
+      "patterns": [
+        "원충"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "suppressHints": [
+        "원생",
+        "기생",
+        "생물",
+        "세포",
+        "말라리아"
+      ],
+      "needsContext": true,
+      "reason": "특정 커뮤니티 이용자를 낮춰 부르는 표현으로 쓰인 사례가 있습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_088",
+      "patterns": [
+        "웅앵웅",
+        "웅앵"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "needsContext": true,
+      "reason": "말을 얼버무리는 소리를 흉내 내는 표현이지만, 성별 갈등 맥락에서 조롱으로 쓰인 사례가 있습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "COMMUNITY_SLANG"
+    },
+    {
+      "id": "CTX_089",
+      "patterns": [
+        "얼레벌레"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "needsContext": true,
+      "reason": "일상적인 의태어로 쓰이지만, 특정 커뮤니티 용법을 두고 논쟁이 있었던 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "COMMUNITY_SLANG"
+    },
+    {
+      "id": "CTX_090",
+      "patterns": [
+        "오또케"
+      ],
+      "triggerMode": "DISPUTED_CONTEXT",
+      "needsContext": true,
+      "reason": "'어떡해'를 흉내 낸 말로, 여성을 조롱하는 맥락에서 쓰인 사례가 있는 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "COMMUNITY_SLANG"
+    },
+    {
+      "id": "CTX_091",
+      "patterns": [
+        "피싸개"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "여성을 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_092",
+      "patterns": [
+        "똥꼬충"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "성소수자를 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_093",
+      "patterns": [
+        "애자"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "장애",
+        "새끼",
+        "병신",
+        "같은",
+        "같이",
+        "냐"
+      ],
+      "suppressHints": [
+        "전기",
+        "전선",
+        "전봇대",
+        "절연",
+        "송전"
+      ],
+      "needsContext": true,
+      "reason": "장애인을 낮춰 부르는 멸칭으로 쓰이는 표현입니다. 전기 부품 이름 등 다른 뜻도 있습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_094",
+      "patterns": [
+        "초글링",
+        "개초딩"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "어린이를 낮춰 부르는 은어입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_095",
+      "patterns": [
+        "보전깨"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "여성을 성적으로 낮춰 부르는 멸칭입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "PREJUDICE"
+    },
+    {
+      "id": "CTX_096",
+      "patterns": [
+        "어묵"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "세월호",
+        "배",
+        "바다",
+        "학생",
+        "유족",
+        "단원고",
+        "참사",
+        "노란",
+        "이나 먹어"
+      ],
+      "suppressHints": [
+        "국물",
+        "떡볶이",
+        "꼬치",
+        "탕",
+        "맛있",
+        "부산",
+        "분식",
+        "포장마차",
+        "볶음",
+        "우동",
+        "반찬"
+      ],
+      "needsContext": true,
+      "reason": "음식 이름이지만 세월호 참사 희생자와 유족을 조롱하는 은어로 쓰인 사례가 보도된 표현입니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "VICTIM_BLAMING"
+    },
+    {
+      "id": "CTX_097",
+      "patterns": [
+        "물고기 밥",
+        "물고기밥"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "세월호",
+        "참사",
+        "학생",
+        "바다",
+        "배"
+      ],
+      "suppressHints": [
+        "사료",
+        "어항",
+        "줬",
+        "주기",
+        "먹이",
+        "수족관"
+      ],
+      "needsContext": true,
+      "reason": "참사 희생자를 조롱하는 표현으로 쓰인 사례가 있습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "VICTIM_BLAMING"
+    },
+    {
+      "id": "CTX_098",
+      "patterns": [
+        "기모띠",
+        "기모딱",
+        "앙 김옥"
+      ],
+      "triggerMode": "SAFETY_NET",
+      "needsContext": false,
+      "reason": "일본 성인물 대사에서 나왔다는 지적과 함께 성적 함의가 있다는 비판을 받은 인터넷 유행어입니다. 바꿔 말한 표현도 같은 비판을 받았습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "SEXUAL_HARASSMENT"
+    },
+    {
+      "id": "CTX_099",
+      "patterns": [
+        "긴또깡"
+      ],
+      "triggerMode": "CONTEXT_REQUIRED",
+      "contextHints": [
+        "안중근",
+        "의사",
+        "독립",
+        "사진",
+        "누구",
+        "역사"
+      ],
+      "needsContext": true,
+      "reason": "드라마 인물의 일본식 별명으로, 독립운동가를 이 이름으로 부른 장면이 역사 인식 논란이 된 사례가 있습니다.",
+      "reviewedAt": "2026-10-10",
+      "riskType": "SOCIOPOLITICAL_CONTEXT"
     }
   ]
 }
