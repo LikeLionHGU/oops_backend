@@ -54,6 +54,9 @@ def reference_context(card):
 
 
 def prompt_rules(archive, channel):
+    if archive.get("schemaVersion") == "review-guidelines-4":
+        return [{k: rule[k] for k in ("id", "axis", "condition", "normalContrast", "requiredEvidence", "missingContext")}
+                for rule in archive["guidelines"] if channel in rule["channels"]]
     return [{**{k: v for k, v in rule.items() if k not in {"channels", "sourceCaseIds", "referenceContexts"}},
              "referenceContexts": [{k: v for k, v in ref.items() if k != "sourceCaseId"}
                                    for ref in rule["referenceContexts"]]}
@@ -117,11 +120,24 @@ def compile_guidelines(bundle, plan, source_bytes, dictionary=None):
                         "DICTIONARY_REFERENCE_LIMIT")
         rules.append(rule)
     require(covered == set(cards), "NEW_CARDS_REQUIRE_EXPLICIT_MECHANISM_MAPPING")
-    payloads = {channel: prompt_rules({"guidelines": rules}, channel) for channel in ("SPEECH", "CAPTION")}
-    require(all(len(json.dumps(p, ensure_ascii=False, separators=(",", ":"))) <= (8000 if dictionary else 6000)
+    examples = []
+    if dictionary is not None:
+        # Store one example per source card, outside the pattern definitions.
+        for cid, card in cards.items():
+            mapped = [r for r in rules if cid in r["sourceCaseIds"]]
+            ref = next(ref for ref in mapped[0]["referenceContexts"] if ref["sourceCaseId"] == cid)
+            examples.append({"id": cid, "familyId": card["familyId"],
+                             "mechanismIds": [r["id"] for r in mapped],
+                             "channels": sorted({c for r in mapped for c in r["channels"]}),
+                             "context": {k: v for k, v in ref.items() if k != "sourceCaseId"}})
+        rules = [{k: v for k, v in r.items() if k != "referenceContexts"} for r in rules]
+    schema = "review-guidelines-4" if dictionary else "review-guidelines-2"
+    payloads = {channel: prompt_rules({"schemaVersion": schema, "guidelines": rules}, channel)
+                for channel in ("SPEECH", "CAPTION")}
+    require(all(len(json.dumps(p, ensure_ascii=False, separators=(",", ":"))) <= 6000
                 for p in payloads.values()), "COMPACT_GUIDELINE_BUDGET_EXCEEDED")
-    result = {"schemaVersion": "review-guidelines-3" if dictionary else "review-guidelines-2",
-            "version": plan["version"] + ("-dictionary-3" if dictionary else ""),
+    result = {"schemaVersion": schema,
+            "version": plan["version"] + ("-patterns-4" if dictionary else ""),
             "status": "WORKING_REFERENCE_NOT_VALIDATED", "humanValidated": False,
             "usage": "REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED",
             "sourceBundleSha256": hashlib.sha256(source_bytes).hexdigest(),
@@ -130,6 +146,7 @@ def compile_guidelines(bundle, plan, source_bytes, dictionary=None):
             "sourceCases": [{"caseId": c["id"], "familyId": c["familyId"], "status": c["status"]}
                             for c in cards.values()], "guidelines": rules}
     if dictionary is not None:
+        result["examples"] = examples
         result["contextDictionarySha256"] = hashlib.sha256(
             json.dumps(dictionary, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     return result
@@ -181,9 +198,17 @@ def main():
                 datetime.datetime.now(datetime.timezone.utc), "REFRESH_OR_DELETE_REQUIRED")
         output = root / "guidelines/runtime.json"
         if args.write:
+            metadata = {k: result[k] for k in ("version", "status", "humanValidated", "usage",
+                        "sourceBundleSha256", "contextDictionarySha256", "refreshOrDeleteBy")}
+            write_private(root / "guidelines/patterns.json", {**metadata, "schemaVersion": "context-patterns-1",
+                "patterns": [{k: v for k, v in r.items() if k != "sourceCaseIds"} for r in result["guidelines"]]})
+            write_private(root / "guidelines/context-examples.json", {**metadata, "schemaVersion": "context-examples-1",
+                "examples": result["examples"]})
+            # Runtime reads only this final atomic envelope, never independently replaced projections.
             write_private(output, result)
         print(json.dumps({"status": result["status"], "version": result["version"],
                           "sourceCases": len(result["sourceCases"]), "mechanisms": len(result["guidelines"]),
+                          "examples": len(result["examples"]), "runtimeSchema": result["schemaVersion"],
                           "written": args.write, "output": str(output) if args.write else None,
                           "humanValidated": False, "trainingPerformed": False}, ensure_ascii=False))
     except PilotError as error:

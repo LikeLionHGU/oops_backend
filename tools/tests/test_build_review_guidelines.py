@@ -86,16 +86,39 @@ class GuidelineCompilerTests(unittest.TestCase):
             unit = copy.deepcopy(units[0]); unit["interpretation"]["reason"] = f"독립 비판 {index}"
             units.append(unit)
         result = tool.compile_guidelines(self.bundle, self.plan, b"source", dictionary)
-        self.assertEqual("review-guidelines-3", result["schemaVersion"])
-        ref = result["guidelines"][0]["referenceContexts"][0]
+        self.assertEqual("review-guidelines-4", result["schemaVersion"])
+        self.assertNotIn("referenceContexts", result["guidelines"][0])
+        ref = result["examples"][0]["context"]
         self.assertEqual(4, len(ref["criticismHypotheses"]))
         self.assertEqual([], ref["sourceInterpretations"])
         self.assertEqual(64, len(result["contextDictionarySha256"]))
         for private in ("counterReferenceOnly", "incidentOrOtherReactions", "rawExcerptLocation", "sourceCaseId"):
             self.assertNotIn(private, str(tool.prompt_rules(result, "SPEECH")))
+        self.assertNotIn("독립 비판", str(tool.prompt_rules(result, "SPEECH")))
+        self.assertEqual(["mechanism"], result["examples"][0]["mechanismIds"])
         dictionary["sourceBundleSha256"] = "0" * 64
         with self.assertRaisesRegex(tool.PilotError, "DICTIONARY_PROVENANCE_REQUIRED"):
             tool.compile_guidelines(self.bundle, self.plan, b"source", dictionary)
+
+    def test_more_cases_do_not_expand_the_common_pattern_prompt(self):
+        import build_context_dictionary as dictionary_tool
+        import hashlib
+        plan = {"schemaVersion": "context-dictionary-plan-1", "status": "ASSISTANT_DRAFT", "humanApproved": False,
+                "cards": {"synthetic-card": {"topicTags": ["합성"], "mechanismIds": ["mechanism"], "documents": []}}}
+        dictionary = dictionary_tool.compile_dictionary(self.bundle, plan, self.plan, b"source")
+        first = tool.compile_guidelines(self.bundle, self.plan, b"source", dictionary)
+        for i in range(100):
+            cid = f"synthetic-extra-{i}"
+            card = copy.deepcopy(self.bundle["incidents"][0]["cards"][0]); card["id"] = cid
+            self.bundle["incidents"][0]["cards"].append(card)
+            self.plan["mechanisms"][0]["sourceCaseIds"].append(cid)
+            entry = copy.deepcopy(dictionary["entries"][0]); entry["id"] = cid
+            dictionary["entries"].append(entry)
+        dictionary["guidelinePlanSha256"] = hashlib.sha256(
+            tool.json.dumps(self.plan, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        expanded = tool.compile_guidelines(self.bundle, self.plan, b"source", dictionary)
+        self.assertEqual(101, len(expanded["examples"]))
+        self.assertEqual(tool.prompt_rules(first, "SPEECH"), tool.prompt_rules(expanded, "SPEECH"))
 
 
 if __name__=="__main__":unittest.main()
