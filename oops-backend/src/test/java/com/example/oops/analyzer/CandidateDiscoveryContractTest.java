@@ -12,6 +12,60 @@ import static org.mockito.Mockito.*;
 
 /** Routing/contract tests with synthetic raw and mocked responses, not controversy accuracy. */
 class CandidateDiscoveryContractTest {
+    @Test void missingAnchorQuoteCanRecoverThenIndependentlyPass() {
+        var f = new CandidateReviewEngineTest();
+        var broken = new Proposal("stt-index-1", "TARGET_TREATMENT", "두 문장의 연결 확인",
+                List.of(new Quote("stt-index-0", "그 집")));
+        f.discovery(List.of("stt-index-0", "stt-index-1"), broken);
+        var repaired = new Proposal(broken.anchorId(), broken.axis(), broken.reason(),
+                List.of(new Quote("stt-index-0", "그 집"), new Quote("stt-index-1", "내 취향은 아니야")));
+        when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class))).thenAnswer(invocation -> {
+            assertThat((String) invocation.getArgument(1)).contains("PROPOSAL_ANCHOR_EVIDENCE_REQUIRED", "내 취향은 아니야");
+            return Optional.of(new ProposalRepairResult(repaired));
+        });
+        f.verification(new Verification("candidate-1", f.assessment(broken.anchorId(), "PASS", "내 취향은 아니야")));
+        var r = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
+        assertThat(r.findings()).isEmpty();
+        assertThat(r.diagnostics().candidatePipeline().discoveryRepairCalls()).isOne();
+        assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isZero();
+        verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
+    }
+    @Test void missingAnchorRepairCannotInventQuotesOrLoopIfStillMissing() {
+        for (String quote : List.of("허구 발언", "그 집")) {
+            var f = new CandidateReviewEngineTest();
+            var broken = new Proposal("stt-index-1", "TARGET_TREATMENT", "두 문장의 연결 확인",
+                    List.of(new Quote("stt-index-0", "그 집")));
+            f.discovery(List.of("stt-index-0", "stt-index-1"), broken);
+            var response = quote.equals("그 집") ? broken : new Proposal(broken.anchorId(), broken.axis(), broken.reason(),
+                    List.of(new Quote("stt-index-1", quote)));
+            when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
+                    .thenReturn(Optional.of(new ProposalRepairResult(response)));
+            var r = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
+            assertThat(r.findings()).isEmpty();
+            assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isOne();
+            assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement()
+                    .extracting(CandidateReviewDiagnostics.RepairTrace::state).isEqualTo("FAILED");
+            verify(f.client, times(1)).completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class));
+            verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
+        }
+    }
+    @Test void multipleMissingAnchorsStillShareOneDiscoveryRepairBudget() {
+        var f = new CandidateReviewEngineTest();
+        var first = new Proposal("stt-index-1", "TARGET_TREATMENT", "첫 연결 확인",
+                List.of(new Quote("stt-index-0", "그 집")));
+        var second = new Proposal("stt-index-2", "TARGET_TREATMENT", "다음 연결 확인",
+                List.of(new Quote("stt-index-0", "그 집")));
+        f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"), first, second);
+        when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
+                .thenReturn(Optional.of(new ProposalRepairResult(null)));
+        var d = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야", "다른 것도 있어"), 24)
+                .diagnostics().candidatePipeline();
+        assertThat(d.discoveryRepairCalls()).isOne();
+        assertThat(d.invalidProposals()).isEqualTo(2);
+        assertThat(d.repairs()).hasSize(2).last().extracting(CandidateReviewDiagnostics.RepairTrace::state)
+                .isEqualTo("NOT_ATTEMPTED_BUDGET");
+        verify(f.client, times(1)).completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class));
+    }
     void batchDiscovery(CandidateReviewEngineTest f, Proposal p) {
         when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(invocation -> {
             var tree = JsonMapper.builder().build().readTree((String) invocation.getArgument(1));

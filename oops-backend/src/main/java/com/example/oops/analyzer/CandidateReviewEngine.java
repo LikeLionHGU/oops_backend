@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-discovery-window-contract-28";
+    static final String REVISION = "2026-10-10-anchor-repair-contract-29";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -118,7 +118,8 @@ final class CandidateReviewEngine {
     private static final int MAX_TRACES = 200;
     private static final int MAX_CONTRACT_REPAIRS = 2;
     private static final int MAX_DISCOVERY_REPAIRS = 1;
-    static final Set<String> REPAIRABLE_PROPOSALS = Set.of("PROPOSAL_EVIDENCE_SHAPE", "PROPOSAL_WINDOW_MISMATCH");
+    static final Set<String> REPAIRABLE_PROPOSALS = Set.of("PROPOSAL_EVIDENCE_SHAPE", "PROPOSAL_WINDOW_MISMATCH",
+            "PROPOSAL_ANCHOR_EVIDENCE_REQUIRED");
     static final String DISCOVERY_REPAIR_PROMPT = POLICY + """
             # 단일 후보 인용 계약 재탐색
             앞 후보는 인용 목록 형식 또는 허용 창을 충족하지 못했다. 검토 필요 판정이 아니다.
