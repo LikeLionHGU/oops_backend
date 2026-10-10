@@ -61,7 +61,17 @@ def test_contrast_only_changes_one_block_preserving_target_contract():
         tool.neutralize(old, "unknown")
 
 
-def test_contrast_only_plan_includes_raw_expression_control_without_calls(tmp_path):
+def test_contrast_33_preserves_format_examples_and_only_changes_contrast():
+    source = subprocess.check_output(["git", "show", tool.CURRENT_33 + ":" + tool.ENGINE], cwd=tool.ROOT, text=True)
+    old = tool.prompts(source)[2]
+    new = tool.neutralize(old, "contrast-33")
+    assert new.replace(tool.NEW_CONTRAST, tool.OLD_CONTRAST) == old
+    assert "# 대상 필드 형식 예시 — 판정 예시가 아니다" in new
+    assert tool.OLD_TARGET in new
+
+
+@pytest.mark.parametrize("profile,pinned", [("contrast-only", tool.CURRENT), ("contrast-33", tool.CURRENT_33)])
+def test_contrast_only_plan_includes_raw_expression_control_without_calls(tmp_path, profile, pinned):
     paths = inputs(tmp_path)
     snapshot = json.loads(paths[0].read_text())
     snapshot["transcript"].extend([
@@ -70,11 +80,11 @@ def test_contrast_only_plan_includes_raw_expression_control_without_calls(tmp_pa
     ])
     paths[0].write_text(json.dumps(snapshot))
     with mock.patch.object(tool, "read_key") as key, mock.patch.object(tool, "complete") as complete:
-        result = tool.run(paths[0], paths[1], tmp_path / "contrast" / "run.json", profile="contrast-only")
+        result = tool.run(paths[0], paths[1], tmp_path / "contrast" / "run.json", profile=profile)
     key.assert_not_called(); complete.assert_not_called()
     assert result["plannedCalls"] == 22
-    assert result["previousCommit"] == tool.CURRENT
-    assert result["profile"] == "contrast-only"
+    assert result["previousCommit"] == pinned
+    assert result["profile"] == profile
     case = result["cases"][-1]
     assert case["name"] == "D"
     assert case["payload"]["candidates"][0]["axis"] == "EXPRESSION_CONTENT"

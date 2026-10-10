@@ -17,6 +17,7 @@ from replay_draft_cases import complete, prompts
 
 PREVIOUS = "4e4e3fb"
 CURRENT = "3d15941"
+CURRENT_33 = "a1cd646"
 OLD_CONTRAST = """reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 해석이 설명하는 범위와
   별도의 검토 이유가 남는지를 적는다. REVIEW_REQUIRED에는 대조 해석이 필수다.
   TARGET_TREATMENT의 proposedEvidence가 서로 다른 두 줄 이상이면 PASS에도 대조 해석이 필수다.
@@ -60,7 +61,7 @@ NEW_TARGET = """대상 평가로 REVIEW_REQUIRED를 반환하면 target과 실�
 
 
 def neutralize(system, profile="combined"):
-    if profile not in {"combined", "contrast-only"}:
+    if profile not in {"combined", "contrast-only", "contrast-33"}:
         raise ValueError("PROFILE_REQUIRED")
     blocks = [(OLD_CONTRAST, NEW_CONTRAST)]
     if profile == "combined":
@@ -105,7 +106,7 @@ def schedule(cases, arms, repeats):
 
 
 def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="combined"):
-    if profile not in {"combined", "contrast-only"}:
+    if profile not in {"combined", "contrast-only", "contrast-33"}:
         raise ValueError("PROFILE_REQUIRED")
     output = Path(output)
     if output.exists() or any(output.parent.glob("ablation-*-report.json")):
@@ -114,16 +115,16 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="
     cases, reference = prepare(snapshot, json.loads(Path(archive_path).read_text()), b_anchor=23500)
     controls = boundary_cases(cases)[1:]
     cases = cases[:2] + controls
-    previous = CURRENT if profile == "contrast-only" else PREVIOUS
-    if profile == "contrast-only":
+    previous = {"combined": PREVIOUS, "contrast-only": CURRENT, "contrast-33": CURRENT_33}[profile]
+    if profile != "combined":
         cases.append(expression_case(snapshot))
     source = subprocess.check_output(["git", "show", previous + ":" + ENGINE], cwd=ROOT, text=True)
     old = prompts(source)[2]
     library = (ROOT / "oops-backend/src/main/java/com/example/oops/analyzer/ReviewGuidelineLibrary.java").read_text()
     contract = textwrap.dedent(re.search(r'String CONTRACT = """\n(.*?)\n\s*""";', library, re.S)[1]) + "\n"
     suffix = "\n" + contract + "\ncontextReference=" + json.dumps(reference, ensure_ascii=False)
-    arms = [("current-32" if profile == "contrast-only" else "previous-31", old + suffix),
-            (profile + "-proposal" if profile == "contrast-only" else "neutral-proposal", neutralize(old, profile) + suffix)]
+    arms = [({"combined": "previous-31", "contrast-only": "current-32", "contrast-33": "current-33"}[profile], old + suffix),
+            (profile + "-proposal" if profile != "combined" else "neutral-proposal", neutralize(old, profile) + suffix)]
     planned = schedule(cases, arms, repeats)
     report = {"schemaVersion": "neutral-contract-comparison-1", "scope": "FIXED_CANDIDATE_DEVELOPMENT_CALIBRATION",
               "previousCommit": previous, "profile": profile, "model": "gpt-6-luna", "plannedCalls": len(planned), "execute": execute,
@@ -153,7 +154,7 @@ if __name__ == "__main__":
         parser.add_argument(arg)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--profile", choices=["combined", "contrast-only"], default="combined")
+    parser.add_argument("--profile", choices=["combined", "contrast-only", "contrast-33"], default="combined")
     args = parser.parse_args()
     result = run(args.snapshot, args.archive, args.output, args.execute, args.repeats, args.profile)
     print(json.dumps({"plannedCalls": result["plannedCalls"], "executedCalls": len(result["calls"])}))
