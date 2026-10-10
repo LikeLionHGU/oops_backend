@@ -63,20 +63,51 @@ public class VideoController {
                 .body(ApiResponse.ok(VideoUploadResponse.of(video, job)));
     }
 
-    @Operation(summary = "유튜브 링크로 등록",
+    @Operation(summary = "유튜브 영상을 스크립트 글로 등록",
             description = """
-                    파일 대신 링크로 등록한다. 응답 형태는 업로드와 같다.
+                    유튜브 "스크립트 표시"에서 복사한 글로 등록한다. 응답 형태는 업로드와 같다.
+                    영상을 내려받지 않고, 음성 인식·자막 읽기 없이 이 글을 대본으로 바로 분석한다.
+                    (서버에서 유튜브 다운로드가 막혀 링크 방식 대신 쓴다)
 
-                    `subtitleSrt` (선택): SRT 자막 파일 내용을 문자열 그대로 넣는다.
+                    ```json
+                    { "script": "0:00 첫 줄\n0:03 둘째 줄 ...", "url": "https://youtu.be/... (선택)", "title": "(선택)" }
+                    ```
 
-                    주의: 로컬에 영상 파일이 없으므로 `GET /stream` 은 동작하지 않는다.
-                    재생이 필요하면 프론트에서 유튜브 임베드를 쓴다.
+                    - `script` 필수. 시각(0:00)이 있으면 그대로, 없으면 글자 수로 추정한다.
+                    - `url` 선택. 리포트 임베드용으로만 쓰고 내려받지 않는다.
+                      `script` 없이 `url` 에 스크립트를 넣어 보내도 받는다 (기존 프론트 호환).
+                    - 파일로 올리려면 `POST /api/v1/videos/script` (multipart) 를 쓴다.
+
+                    실패 코드: `INVALID_REQUEST`(400, 스크립트 없음·너무 김·읽을 문장 없음)
                     """)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<VideoUploadResponse>> registerByUrl(
             @Valid @RequestBody VideoRegisterRequest request) {
 
         Video video = videoService.createFromUrl(request);
+        AnalysisJob job = analysisService.startAnalysis(video.getId());
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(VideoUploadResponse.of(video, job)));
+    }
+
+    @Operation(summary = "유튜브 영상을 스크립트 파일(txt)로 등록",
+            description = """
+                    유튜브 스크립트를 저장한 txt 파일로 등록한다. 응답 형태는 업로드와 같다.
+                    음성 인식·자막 읽기 없이 파일 내용을 대본으로 바로 분석한다.
+
+                    - `script` (파일, 필수): 스크립트 txt. UTF-8·UTF-16·CP949(메모장 ANSI) 모두 읽는다.
+                    - `url` (선택): 유튜브 링크. 리포트 임베드용으로만 쓴다.
+                    - `title`, `genre` (선택)
+                    """)
+    @PostMapping(value = "/script", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<VideoUploadResponse>> registerByScriptFile(
+            @RequestPart("script") MultipartFile script,
+            @RequestPart(value = "url", required = false) String url,
+            @RequestPart(value = "title", required = false) String title,
+            @RequestPart(value = "genre", required = false) String genre) {
+
+        Video video = videoService.createFromScriptFile(script, url, title, genre);
         AnalysisJob job = analysisService.startAnalysis(video.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)

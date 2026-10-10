@@ -70,20 +70,87 @@ public class VideoService {
         return video;
     }
 
-    /** 유튜브 링크 등록 (명세 외 확장) */
+    /** 스크립트 최대 길이(글자). 3시간 분량 자동 생성 스크립트도 20만 자 안쪽이다. */
+    static final int MAX_SCRIPT_CHARS = 500_000;
+    /** 스크립트 파일 최대 크기 */
+    private static final long MAX_SCRIPT_BYTES = 5L * 1024 * 1024;
+
+    /**
+     * 유튜브 영상을 스크립트 글(JSON)로 등록한다. (2026-10 고도화)
+     *
+     * 유튜브 다운로드가 서버에서 막혀서 링크 대신 스크립트를 받는다.
+     * 음성 인식·자막 읽기 없이 이 글을 대본으로 바로 분석하므로 분석 서버(파이썬)가 꺼져 있어도 된다.
+     * 프론트가 링크 칸에 스크립트를 붙여넣어 url 로 보내도 받는다.
+     */
     @Transactional
     public Video createFromUrl(VideoRegisterRequest request) {
-        String srt = validateSubtitleText(request.subtitleSrt());
-        requireAnalysisServer();
+        String url = request.url() == null ? null : request.url().strip();
+        String script = request.script();
+        if ((script == null || script.isBlank()) && url != null && !url.isEmpty() && !looksLikeUrl(url)) {
+            script = url;
+            url = null;
+        }
+        return createFromScript(script, url, request.title(), request.channelName(), request.genre());
+    }
+
+    /**
+     * 유튜브 영상을 스크립트 파일(txt)로 등록한다. (2026-10 고도화)
+     * 인코딩은 UTF-8 → UTF-16(BOM) → CP949(메모장 ANSI) 순으로 알아서 읽는다.
+     */
+    @Transactional
+    public Video createFromScriptFile(MultipartFile file, String url, String title, String genre) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "스크립트 파일이 비어 있습니다.");
+        }
+        if (file.getSize() > MAX_SCRIPT_BYTES) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "스크립트 파일이 너무 큽니다 (최대 5MB).");
+        }
+        String script;
+        try {
+            script = com.example.oops.screentext.SrtParser.decode(file.getBytes()).replace("\uFEFF", "");
+        } catch (java.io.IOException e) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "스크립트 파일을 읽지 못했습니다.");
+        }
+        String fallbackTitle = file.getOriginalFilename() == null ? null
+                : file.getOriginalFilename().replaceFirst("\\.[^.]+$", "");
+        return createFromScript(script, url, title == null || title.isBlank() ? fallbackTitle : title, null, genre);
+    }
+
+    private Video createFromScript(String script, String url, String title, String channelName, String genre) {
+        if (script == null || script.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "지금은 유튜브 링크만으로는 분석할 수 없습니다. 유튜브의 '스크립트 표시'에서 복사한 글(또는 txt 파일)을 넣어 주세요.");
+        }
+        if (script.length() > MAX_SCRIPT_CHARS) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "스크립트가 너무 깁니다 (최대 %,d자).".formatted(MAX_SCRIPT_CHARS));
+        }
+        com.example.oops.transcript.ScriptParser.Result parsed = com.example.oops.transcript.ScriptParser.parse(script);
+        if (parsed.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "스크립트에서 읽을 수 있는 문장이 없습니다.");
+        }
+
+        // 링크는 리포트 임베드용으로만 남긴다. 내려받지 않는다. 유튜브 링크가 아니면 버린다.
+        String embedUrl = url != null && !url.isBlank() && com.example.oops.common.YouTubeUrls.isYouTube(url.strip())
+                ? url.strip() : null;
+
         Video video = videoRepository.save(Video.builder()
                 .sourceType(SourceType.YOUTUBE)
-                .sourceUrl(request.url())
-                .title(request.title())
-                .channelName(request.channelName())
-                .genre(ContentGenre.fromOrDefault(request.genre(), null))
+                .sourceUrl(embedUrl)
+                .title(title == null || title.isBlank() ? "유튜브 스크립트" : title)
+                .channelName(channelName)
+                .durationSec(parsed.durationSec())
+                .genre(ContentGenre.fromOrDefault(genre, null))
                 .build());
-        video.attachSubtitle(srt);
+        video.attachScript(script);
         return video;
+    }
+
+    /** 링크처럼 보이는지. 공백·줄바꿈 없이 http 로 시작하거나 youtu 가 들어간 한 덩어리 */
+    static boolean looksLikeUrl(String value) {
+        String v = value.strip();
+        if (v.contains("\n") || v.contains(" ")) return false;
+        return v.startsWith("http://") || v.startsWith("https://") || v.contains("youtu");
     }
 
     /**

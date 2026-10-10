@@ -55,7 +55,8 @@ public class AnalysisService {
             throw new BusinessException(ErrorCode.ANALYSIS_IN_PROGRESS);
         }
 
-        if (!analysisServerClient.isHealthy()) {
+        // 스크립트로 분석하는 영상은 분석 서버(음성·화면 인식)를 쓰지 않는다
+        if (!video.hasScript() && !analysisServerClient.isHealthy()) {
             throw new BusinessException(ErrorCode.WORKER_UNAVAILABLE,
                     "분석 서버에 연결할 수 없습니다. oops-analysis 가 실행 중인지 확인하세요.");
         }

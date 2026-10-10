@@ -1,17 +1,18 @@
 ﻿# 영상 하나를 끝까지 돌려보는 확인 스크립트 (API 명세 v1 기준)
 #
 #   .\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4"
-#   .\scripts\smoke-test.ps1 -Url  "https://www.youtube.com/watch?v=..."
+#   .\scripts\smoke-test.ps1 -Script "C:\경로\스크립트.txt"   # 유튜브: 스크립트 txt 로 분석 (음성·자막 인식 없음)
+#   .\scripts\smoke-test.ps1 -Script "C:\경로\스크립트.txt" -Url "https://www.youtube.com/watch?v=..."  # 링크는 임베드용(선택)
 #   .\scripts\smoke-test.ps1 -VideoId 1      # 이미 분석한 영상 결과만 다시 보기 (재분석 안 함)
 #
 #   자막 파일(SRT/VTT)을 같이 넘기면 화면 글자 인식 대신 그 자막으로 발언·자막을 비교한다 (고도화 v2)
 #   .\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4" -Subtitle "C:\경로\영상.srt"
-#   .\scripts\smoke-test.ps1 -Url  "https://www.youtube.com/watch?v=..." -Subtitle "C:\경로\영상.srt"
 
 param(
     [string]$Url,
     [string]$File,
     [string]$Subtitle,
+    [string]$Script,
     [int]$VideoId = 0,
     [string]$Backend = "http://localhost:8080",
     [string]$Analysis = "http://localhost:8000"
@@ -40,26 +41,29 @@ function Get-Json($url) {
 # ---------------------------------------------------------- 0. 사전 점검
 Section "0. 준비물 확인"
 
-if ($VideoId -eq 0 -and -not $Url -and -not $File) {
-    Fail "-File, -Url, -VideoId 중 하나는 필요합니다."
+if ($VideoId -eq 0 -and -not $Script -and -not $File) {
+    Fail "-File, -Script, -VideoId 중 하나는 필요합니다."
+    if ($Url) { Hint "유튜브 링크만으로는 분석하지 않습니다. 유튜브 '스크립트 표시'를 txt 로 저장해 -Script 로 넘기세요." }
     exit 1
 }
+if ($Script -and -not (Test-Path $Script)) { Fail "스크립트 파일 없음: $Script"; exit 1 }
 if ($File -and -not (Test-Path $File)) { Fail "파일 없음: $File"; exit 1 }
 if ($Subtitle -and -not (Test-Path $Subtitle)) { Fail "자막 파일 없음: $Subtitle"; exit 1 }
-if ($Subtitle) { Ok "자막 파일: $Subtitle" }
+if ($Script) { Ok "스크립트 파일: $Script (음성 인식·자막 읽기 없이 분석)" }
+elseif ($Subtitle) { Ok "자막 파일: $Subtitle" }
 elseif ($VideoId -eq 0) { Warn "자막 파일 없음 -> 발언·자막 비교와 자막 검토는 건너뜁니다 (-Subtitle 로 넘기세요)" }
 
 if (Get-Command curl.exe -ErrorAction SilentlyContinue) { Ok "curl.exe" }
 else { Fail "curl.exe 없음"; exit 1 }
 
-if ($VideoId -eq 0) {
+if ($VideoId -eq 0 -and -not $Script) {
     if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { Ok "ffmpeg" }
     else { Fail "ffmpeg 없음 -> winget install Gyan.FFmpeg"; exit 1 }
 }
 Ok "PowerShell $($PSVersionTable.PSVersion)"
 
 # ---------------------------------------------------------- 1~2. 서버 확인
-if ($VideoId -eq 0) {
+if ($VideoId -eq 0 -and -not $Script) {
     Section "1. Python 분석 서버"
     $health = Get-Json "$Analysis/health"
     if (-not $health) { Fail "분석 서버 응답 없음. oops-analysis 에서 .\run.ps1 실행"; exit 1 }
@@ -87,22 +91,14 @@ if ($VideoId -eq 0) {
             $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)"
         }
     } else {
-        # JSON 을 인라인으로 넘기면 PowerShell 이 큰따옴표를 벗겨서
-        # 서버가 {url:...} 을 받고 파싱에 실패한다. 임시 파일로 넘긴다.
-        $tmp = [IO.Path]::GetTempFileName()
-        $body = @{ url = $Url }
-        if ($Subtitle) {
-            # 자막 파일은 UTF-8 이 아니면 한글 윈도우(CP949)로 읽는다. 서버도 같은 순서로 읽는다.
-            $bytes = [IO.File]::ReadAllBytes((Get-Item $Subtitle).FullName)
-            try { $srt = [Text.UTF8Encoding]::new($false, $true).GetString($bytes) }
-            catch { $srt = [Text.Encoding]::GetEncoding(949).GetString($bytes) }
-            $body.subtitleSrt = $srt.TrimStart([char]0xFEFF)
+        # 스크립트 txt 를 파일로 올린다. 인코딩(UTF-8 / CP949)은 서버가 알아서 읽는다.
+        $scriptPath = (Get-Item $Script).FullName
+        Write-Host "  스크립트 업로드 중... ($((Get-Item $Script).Length) bytes)"
+        if ($Url) {
+            $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos/script" -F "script=@$scriptPath;type=text/plain" -F "url=$Url"
+        } else {
+            $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos/script" -F "script=@$scriptPath;type=text/plain"
         }
-        # Set-Content -Encoding UTF8 는 5.1 에서 BOM 을 붙여 JSON 파싱이 깨질 수 있어 직접 쓴다.
-        [IO.File]::WriteAllText($tmp, ($body | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
-        $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" `
-                        -H "Content-Type: application/json" -d "@$tmp"
-        Remove-Item $tmp -ErrorAction SilentlyContinue
     }
     if (-not $raw) { Fail "업로드 응답이 비었습니다."; exit 1 }
     try { $res = $raw | ConvertFrom-Json } catch { Fail "응답 해석 실패:"; Write-Host $raw; exit 1 }
@@ -144,7 +140,7 @@ if ($VideoId -eq 0) {
         exit 1
     }
     Ok "분석 완료 (소요 $elapsed 초)"
-    if ($elapsed -lt 10) {
+    if ($elapsed -lt 10 -and -not $Script) {
         Warn "너무 빨리 끝났습니다. STT/OCR 이 실제로 돌지 않았을 가능성이 큽니다."
     }
 }
