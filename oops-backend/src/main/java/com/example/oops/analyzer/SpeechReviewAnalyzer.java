@@ -130,6 +130,9 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private VisualContextReviewer visualReviewer;
     private ReviewCaseLibrary caseLibrary;
     private ReviewGuidelineLibrary guidelineLibrary;
+    private com.example.oops.service.ReviewRequestTraceStore requestTraces;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setRequestTraces(com.example.oops.service.ReviewRequestTraceStore store) { this.requestTraces = store; }
     @org.springframework.beans.factory.annotation.Autowired
     void setGuidelineLibrary(ReviewGuidelineLibrary library) { this.guidelineLibrary = library; }
     public SpeechReviewAnalyzer(OpenAiClient client) { this(client, true); }
@@ -185,7 +188,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
-        TextReviewEngine.Result result = candidateReviewEnabled ? CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary)
+        TextReviewEngine.Result result = candidateReviewEnabled ? runCandidates(context)
                 : TextReviewEngine.run(openAiClient, context,
                 TimelineEventType.SPEECH, key(), SYSTEM_PROMPT + "\n" + ContextualComparisonPolicy.PROMPT
                     + (guidelineLibrary == null ? "" : guidelineLibrary.select(TimelineEventType.SPEECH,
@@ -195,6 +198,12 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         log.info("[{}] videoId={} status={} findings={}", key(), context.video().getId(),
                 result.status(), result.findings().size());
         return result.findings();
+    }
+
+    private TextReviewEngine.Result runCandidates(AnalysisContext context) {
+        try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
+            return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary, trace);
+        }
     }
 
     @Override

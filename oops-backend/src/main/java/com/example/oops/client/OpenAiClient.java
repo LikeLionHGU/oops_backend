@@ -360,6 +360,11 @@ public class OpenAiClient {
     }
 
     /** Keep the existing endpoint and JSON contract; avoid unsupported sampling parameters with reasoning. */
+    public Map<String, Object> replayRequestBody(String systemPrompt, String userPrompt) {
+        // Body only: no RestClient, API key, organization/project headers or endpoint credentials.
+        return Map.copyOf(requestBody(systemPrompt, userPrompt));
+    }
+
     Map<String, Object> requestBody(String systemPrompt, String userPrompt) {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("model", properties.modelOrDefault());

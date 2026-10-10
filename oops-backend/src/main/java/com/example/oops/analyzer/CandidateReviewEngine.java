@@ -245,6 +245,11 @@ final class CandidateReviewEngine {
     }
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines) {
+        return run(client, context, maxCandidates, visual, caseLibrary, guidelines, null);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace) {
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
@@ -361,10 +366,20 @@ final class CandidateReviewEngine {
             VerificationResult response;
             String responseFailure = null;
             int failuresBefore = client.failureCount();
+            String requestSystem = VERIFICATION_PROMPT + guidelinePrompt;
+            String requestInput = verificationRequest(group, null);
             try {
-                response = client.completeAsJson(VERIFICATION_PROMPT + guidelinePrompt, verificationRequest(group, null),
+                response = client.completeAsJson(requestSystem, requestInput,
                         VerificationResult.class).orElse(null);
             } catch (RuntimeException ex) { response = null; responseFailure = "REQUEST_EXCEPTION"; }
+            if (requestTrace != null && requestTrace.enabled()) {
+                try {
+                    requestTrace.record(requestSystem, requestInput, client.replayRequestBody(requestSystem, requestInput), response,
+                            response == null ? "NO_PARSED_RESPONSE" : "PARSED_RESPONSE_NOT_YET_VALIDATED");
+                } catch (RuntimeException ignored) {
+                    requestTrace.record(requestSystem, requestInput, response, "PROVIDER_BODY_UNAVAILABLE");
+                }
+            }
             if (response == null && responseFailure == null) responseFailure = client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE";
             Set<String> expected = new HashSet<>(group.stream().map(Candidate::candidateId).toList());

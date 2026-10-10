@@ -11,6 +11,13 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class OpenAiClientTest {
+    @Test void replayBodyMatchesActualPayloadWithoutCredentialOrHeaders() {
+        var client = new OpenAiClient(RestClient.create(), properties(null, null));
+        var replay = client.replayRequestBody("JSON system", "input");
+        assertThat(replay).isEqualTo(client.requestBody("JSON system", "input"));
+        assertThat(replay.toString()).contains(OpenAiClient.JSON_OUTPUT_INSTRUCTION, "gpt-6-luna")
+                .doesNotContain("offline-test-key", "Authorization", "https://example.invalid");
+    }
     @Test void imagesAreSentAsInlineContentAndUsageIsRecorded() {
         var builder = RestClient.builder().baseUrl("https://example.invalid");
         var server = MockRestServiceServer.bindTo(builder).build();

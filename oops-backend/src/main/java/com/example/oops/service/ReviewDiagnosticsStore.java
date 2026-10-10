@@ -19,6 +19,9 @@ public class ReviewDiagnosticsStore {
     }
     private final boolean enabled;
     private final Clock clock;
+    private ReviewRequestTraceStore requestTraces;
+    @Autowired(required = false)
+    void setRequestTraces(ReviewRequestTraceStore requestTraces) { this.requestTraces = requestTraces; }
     private final LinkedHashMap<Long, Snapshot> snapshots = new LinkedHashMap<>();
 
     @Autowired
@@ -39,6 +42,7 @@ public class ReviewDiagnosticsStore {
     }
     public void removeAfterCommit(Long videoId) {
         if (enabled) afterCommit(() -> remove(videoId));
+        if (requestTraces != null) afterCommit(() -> requestTraces.remove(videoId));
     }
     public synchronized Optional<Snapshot> find(Long videoId) {
         expire();

@@ -7,6 +7,13 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ReviewDiagnosticsStoreTest {
+    @Test void deletionClearsRequestMaterialEvenWhenOrdinaryDiagnosticsAreDisabled() {
+        var store = new ReviewDiagnosticsStore(false);
+        var traces = org.mockito.Mockito.mock(ReviewRequestTraceStore.class);
+        store.setRequestTraces(traces);
+        store.removeAfterCommit(1L);
+        org.mockito.Mockito.verify(traces).remove(1L);
+    }
     @Test void reportsActualSpeechPipelineRevisionAndSeparateOcrRevision() {
         var candidate=org.mockito.Mockito.mock(com.example.oops.analyzer.CandidateReviewDiagnostics.class);
         org.mockito.Mockito.when(candidate.revision()).thenReturn("candidate-revision-test");

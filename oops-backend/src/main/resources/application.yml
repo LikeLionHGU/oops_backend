@@ -135,6 +135,8 @@ oops:
     visual-context-max-candidates: 3 # 영상당 최대 3후보 × 후보당 최대 3프레임. 초과는 PARTIAL.
     dialogue-review-enabled: true # 기존 방식에서만 적용. candidate-review-enabled=true이면 추가 대화 호출 없음.
     review-diagnostics-enabled: false # 공개 서버에서는 활성화하지 않는다.
+    review-request-trace-enabled: false # 민감 원문 포함: 로컬에서만 명시적으로 활성화
+    review-request-trace-token: ${REVIEW_TRACE_TOKEN:}
     # 실행할 분석기와 순서. 여기 없는 분석기는 빈으로 떠 있어도 실행되지 않는다.
     # 장르와 무관한 게시 전 검수다. 알려진 문제도 원문 근거가 있으면 검토한다.
     # 후보 탐색과 원문 검증이 중심이다. 전체 영상의 외부 검색은 기본에서 실행하지 않는다.
