@@ -22,18 +22,33 @@ public class ReviewGuidelineLibrary {
             기준·과거 사건·댓글의 표현을 evidence로 복사하거나 현재 원문을 교정하지 않는다.
             화자·억양·악의·외부 사건·문화적 의미를 상상하지 않는다. 필수 누락 정보는 명시한다.
             대상 평가를 반환할 때 TARGET 인용과 지칭 연결을 확인한다. CONTEXT 인용으로 대체하지 않는다.
+            referenceContexts는 과거 사례의 흐름·비판 해석·자료 한계다. flow는 작성된 해석 또는 보도 맥락이지 확정 전사가 아니다.
+            각 흐름을 현재 대화와 비교해 무엇이 같고 다른지 확인한다. 같은 단어·사건 이름으로 판정하지 않는다.
+            criticismHypotheses는 비판을 이해하는 참고 가설이며 여론의 대표성·발생 확률·발화 사실을 보증하지 않는다.
+            missingContext의 누락 사실을 새 영상에 채워 넣지 않는다. 같은 상황 속 다른 비판 흐름은 독립적으로 검토한다.
+            표현 자체 문제에는 공격 대상을 억지로 만들지 않는다. 참고 자료의 인용·대상·ID는 현재 evidence에 사용하지 않는다.
             """;
     static final JsonMapper JSON = JsonMapper.builder().build();
     public record Rule(String id, String axis, List<String> channels, String condition,
-                       String normalContrast, String requiredEvidence, String missingContext, List<String> sourceCaseIds) {}
+                       String normalContrast, String requiredEvidence, String missingContext, List<String> sourceCaseIds,
+                       List<ReferenceContext> referenceContexts) {
+        public Rule(String id, String axis, List<String> channels, String condition, String normalContrast,
+                    String requiredEvidence, String missingContext, List<String> sourceCaseIds) {
+            this(id, axis, channels, condition, normalContrast, requiredEvidence, missingContext, sourceCaseIds, null);
+        }
+    }
+    public record ReferenceContext(String sourceCaseId, String coverage, List<String> flow,
+                                   List<String> criticismHypotheses, List<String> missingContext) {}
+    public record Comparison(String coverage, List<String> flow, List<String> criticismHypotheses,
+                             List<String> missingContext) {}
     public record Archive(String schemaVersion, String version, String status, Boolean humanValidated,
                           String usage, String sourceBundleSha256, String refreshOrDeleteBy,
                           List<SourceCase> sourceCases, List<Rule> guidelines) {}
     public record SourceCase(String caseId, String familyId, String status) {}
     public record Example(String id, String axis, String condition, String normalContrast,
-                          String requiredEvidence, String missingContext) {}
+                          String requiredEvidence, String missingContext, List<Comparison> referenceContexts) {}
     public record Trace(String version, String state, String sourceBundleSha256, int payloadCodePoints,
-                        List<String> guidelineIds) { public Trace { guidelineIds = List.copyOf(guidelineIds); } }
+                        List<String> guidelineIds, int referenceContextCount) { public Trace { guidelineIds = List.copyOf(guidelineIds); } }
     private final ResourceLoader resources;
     private final boolean enabled;
     private final String location;
@@ -71,7 +86,7 @@ public class ReviewGuidelineLibrary {
         } catch (Exception ex) { archive = null; state = "UNAVAILABLE_OR_INVALID"; }
     }
     private static boolean valid(Archive a) {
-        if (a == null || !"review-guidelines-1".equals(a.schemaVersion()) || !text(a.version(), 64)
+        if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
                 || !"WORKING_REFERENCE_NOT_VALIDATED".equals(a.status()) || !Boolean.FALSE.equals(a.humanValidated())
                 || !"REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED".equals(a.usage())
                 || a.sourceBundleSha256() == null || !a.sourceBundleSha256().matches("[0-9a-f]{64}")
@@ -89,6 +104,17 @@ public class ReviewGuidelineLibrary {
                     || !text(r.requiredEvidence(), 350) || !text(r.missingContext(), 350)
                     || r.sourceCaseIds() == null || r.sourceCaseIds().isEmpty() || !sources.containsAll(r.sourceCaseIds())) return false;
             covered.addAll(r.sourceCaseIds());
+            if ("review-guidelines-2".equals(a.schemaVersion()) && r.referenceContexts() == null) return false;
+            if (r.referenceContexts() != null) {
+                Set<String> references = new HashSet<>();
+                for (var ref : r.referenceContexts()) {
+                    if (ref == null || !r.sourceCaseIds().contains(ref.sourceCaseId()) || !references.add(ref.sourceCaseId())
+                            || !Set.of("SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT").contains(ref.coverage() == null ? "" : ref.coverage())
+                            || !texts(ref.flow(), 1, 8) || !texts(ref.criticismHypotheses(), 0, 2)
+                            || !texts(ref.missingContext(), 1, 8)) return false;
+                }
+                if (!references.equals(new HashSet<>(r.sourceCaseIds()))) return false;
+            }
         }
         return covered.equals(sources);
     }
@@ -96,12 +122,15 @@ public class ReviewGuidelineLibrary {
     List<Example> examples(TimelineEventType channel) {
         if (archive == null || expired() || !"READY_WORKING_REFERENCE".equals(state)) return List.of();
         return archive.guidelines().stream().filter(r -> r.channels().contains(channel.name()))
-                .map(r -> new Example(r.id(), r.axis(), r.condition(), r.normalContrast(), r.requiredEvidence(), r.missingContext())).toList();
+                .map(r -> new Example(r.id(), r.axis(), r.condition(), r.normalContrast(), r.requiredEvidence(), r.missingContext(),
+                        r.referenceContexts() == null ? List.of() : r.referenceContexts().stream()
+                                .map(ref -> new Comparison(ref.coverage(), ref.flow(), ref.criticismHypotheses(), ref.missingContext())).toList())).toList();
     }
     Trace trace(TimelineEventType channel) {
         var examples = examples(channel);
         return new Trace(archive == null ? null : archive.version(), expired() ? "EXPIRED" : state,
-                archive == null ? null : archive.sourceBundleSha256(), size(examples), examples.stream().map(Example::id).toList());
+                archive == null ? null : archive.sourceBundleSha256(), size(examples), examples.stream().map(Example::id).toList(),
+                examples.stream().mapToInt(e -> e.referenceContexts().size()).sum());
     }
     String prompt(TimelineEventType channel) {
         var examples = examples(channel);
@@ -114,5 +143,8 @@ public class ReviewGuidelineLibrary {
     }
     private static int size(List<Example> values) { String s = JSON.writeValueAsString(values); return s.codePointCount(0, s.length()); }
     private static boolean text(String s, int max) { return s != null && !s.isBlank() && s.codePointCount(0, s.length()) <= max; }
+    private static boolean texts(List<String> values, int min, int max) {
+        return values != null && values.size() >= min && values.size() <= max && values.stream().allMatch(s -> text(s, 350));
+    }
     private static boolean id(String s) { return s != null && s.matches("[a-zA-Z0-9_-]{1,64}"); }
 }

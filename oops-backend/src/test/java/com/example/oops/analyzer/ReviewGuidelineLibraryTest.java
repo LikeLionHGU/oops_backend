@@ -15,6 +15,16 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
 class ReviewGuidelineLibraryTest {
+    Archive enrichedArchive() {
+        var rule = archive().guidelines().get(0);
+        var reference = new ReferenceContext("case-1", "SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT",
+                List.of("선택지 부재", "대체 생활을 낮추는 비교"), List.of("생활을 하대한다는 비판 가설"), List.of("억양 미확인"));
+        var enriched = new Rule(rule.id(), rule.axis(), rule.channels(), rule.condition(), rule.normalContrast(),
+                rule.requiredEvidence(), rule.missingContext(), rule.sourceCaseIds(), List.of(reference));
+        Map<String,Object> map = JSON.readValue(JSON.writeValueAsString(archive()), Map.class);
+        map.put("schemaVersion", "review-guidelines-2"); map.put("guidelines", List.of(enriched));
+        return JSON.readValue(JSON.writeValueAsString(map), Archive.class);
+    }
     Archive archive() {
         return new Archive("review-guidelines-1", "synthetic-v1", "WORKING_REFERENCE_NOT_VALIDATED", false,
                 "REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED", "a".repeat(64), OffsetDateTime.now().plusDays(10).toString(),
@@ -80,10 +90,28 @@ class ReviewGuidelineLibraryTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0","그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0","PASS","그 집")));
-        var result = run(f.client,f.context("그 집은 조용하다"),24,null,null,library(archive()));
+        var result = run(f.client,f.context("그 집은 조용하다"),24,null,null,library(enrichedArchive()));
         var systems = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(f.client,times(2)).completeAsJson(systems.capture(),anyString(),any());
-        assertThat(systems.getAllValues()).allSatisfy(s -> assertThat(s).contains("reviewGuidelines", "mechanism-1"));
+        assertThat(systems.getAllValues()).allSatisfy(s -> assertThat(s).contains("reviewGuidelines", "mechanism-1",
+                "대체 생활을 낮추는 비교", "생활을 하대한다는 비판 가설", "억양 미확인").doesNotContain("case-1", "family-1"));
         assertThat(result.diagnostics().candidatePipeline().guidelineReference().state()).isEqualTo("READY_WORKING_REFERENCE");
+    }
+    @Test void enrichedReferencesMustMatchSourcesAndPreserveUnknowns() {
+        var a = enrichedArchive(); var l = library(a);
+        assertThat(l.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
+        assertThat(l.examples(SPEECH).get(0).referenceContexts()).hasSize(1);
+        assertThat(l.trace(SPEECH).referenceContextCount()).isEqualTo(1);
+        Map<String,Object> map = JSON.readValue(JSON.writeValueAsString(a), Map.class);
+        var rule = a.guidelines().get(0);
+        for (var refs : List.of(List.<ReferenceContext>of(), List.of(new ReferenceContext("absent",
+                "SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", List.of("流れ"), List.of(), List.of("未確認"))),
+                List.of(new ReferenceContext("case-1", "CONFIRMED", List.of("流れ"), List.of(), List.of("未確認"))))) {
+            map.put("guidelines", List.of(new Rule(rule.id(), rule.axis(), rule.channels(), rule.condition(),
+                    rule.normalContrast(), rule.requiredEvidence(), rule.missingContext(), rule.sourceCaseIds(), refs)));
+            assertThat(library(JSON.readValue(JSON.writeValueAsString(map), Archive.class)).trace(SPEECH).state()).isEqualTo("INVALID_ARCHIVE");
+        }
+        map.put("guidelines", archive().guidelines());
+        assertThat(library(JSON.readValue(JSON.writeValueAsString(map), Archive.class)).prompt(SPEECH)).isEmpty();
     }
 }

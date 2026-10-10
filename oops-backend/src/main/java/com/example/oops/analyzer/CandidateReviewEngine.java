@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-working-guidelines-22";
+    static final String REVISION = "2026-10-10-reference-context-23";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
