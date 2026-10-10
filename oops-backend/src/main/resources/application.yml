@@ -120,7 +120,7 @@ oops:
     # 원댓글/사건 예시와 별개인 압축 맥락 기준. 로컬 데이터는 Git 제외; 배포 시 파일도 제공한다.
     guidelines-enabled: ${REVIEW_GUIDELINES_ENABLED:true}
     guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json}
-    guidelines-max-code-points: 6000 # 요청별 압축 기준 JSON 상한. 단어 일치가 아닌 연결 방식 참고.
+    guidelines-max-code-points: 8000 # 맥락·비판 이유·출처 해석 JSON 상한. 토큰 수 자체는 아님.
     candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
     candidate-review-max-candidates: 24 # 영상당 검증 후보 상한. 초과는 PARTIAL로 알린다.
     review-cases-enabled: ${REVIEW_CASES_ENABLED:true} # 검수·권한 확인된 사례만 탐색에 참고. 기본 파일은 비어 있다.
@@ -133,9 +133,8 @@ oops:
     dialogue-review-enabled: true # 기존 방식에서만 적용. candidate-review-enabled=true이면 추가 대화 호출 없음.
     review-diagnostics-enabled: false # 공개 서버에서는 활성화하지 않는다.
     # 실행할 분석기와 순서. 여기 없는 분석기는 빈으로 떠 있어도 실행되지 않는다.
-    # 타깃은 편집을 위임하는 토크·인터뷰·팟캐스트 채널이다.
-    # 제작자가 이미 아는 장면을 다시 알려주는 것은 가치가 없다.
-    # 그들이 놓치기 쉬운 곳만 본다.
+    # 장르와 무관한 게시 전 검수다. 알려진 문제도 원문 근거가 있으면 검토한다.
+    # 후보 탐색과 원문 검증이 중심이며 규칙 사전·사실 확인은 보조 경로다.
     enabled-analyzers:
       - subtitle # 대본 금지어·개인정보 (LLM 불필요, 안전망)
       - speech-review # 발언 중 확인할 지점 (낯선 맥락, 대상 평가)

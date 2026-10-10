@@ -15,6 +15,34 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
 class ReviewGuidelineLibraryTest {
+    @Test void localCompiledArchiveLoadsWithinProductionBudgetWhenPresent() throws Exception {
+        var path = java.nio.file.Path.of("../datasets/controversy/guidelines/runtime.json");
+        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(path));
+        var l = library(java.nio.file.Files.readAllBytes(path), 8000);
+        for (var channel : List.of(SPEECH, CAPTION)) {
+            assertThat(l.trace(channel).state()).isEqualTo("READY_WORKING_REFERENCE");
+            assertThat(l.trace(channel).contextDictionarySha256()).matches("[0-9a-f]{64}");
+            assertThat(l.trace(channel).payloadCodePoints()).isLessThanOrEqualTo(8000);
+        }
+    }
+    @Test void dictionaryArchiveRequiresFingerprintAndKeepsTypedInterpretations() {
+        var a = enrichedArchive(); var rule = a.guidelines().get(0); var old = rule.referenceContexts().get(0);
+        var ref = new ReferenceContext(old.sourceCaseId(), old.coverage(), old.flow(),
+                List.of("독립 비판 하나", "독립 비판 둘", "독립 비판 셋"), old.missingContext(),
+                List.of(new SourceInterpretation("AUTHOR_INTERPRETATION", "합성 기사 해석")));
+        var updated = new Rule(rule.id(), rule.axis(), rule.channels(), rule.condition(), rule.normalContrast(),
+                rule.requiredEvidence(), rule.missingContext(), rule.sourceCaseIds(), List.of(ref));
+        var dictionary = new Archive("review-guidelines-3", "synthetic-dictionary", a.status(), false,
+                a.usage(), a.sourceBundleSha256(), a.refreshOrDeleteBy(), a.sourceCases(), List.of(updated), "b".repeat(64));
+        var l = library(dictionary);
+        assertThat(l.trace(SPEECH).contextDictionarySha256()).isEqualTo("b".repeat(64));
+        assertThat(l.prompt(SPEECH)).contains("독립 비판 셋", "AUTHOR_INTERPRETATION", "합성 기사 해석")
+                .doesNotContain("case-1", "family-1");
+        var invalid = new Archive(dictionary.schemaVersion(), dictionary.version(), dictionary.status(), false,
+                dictionary.usage(), dictionary.sourceBundleSha256(), dictionary.refreshOrDeleteBy(),
+                dictionary.sourceCases(), dictionary.guidelines(), null);
+        assertThat(library(invalid).prompt(SPEECH)).isEmpty();
+    }
     Archive enrichedArchive() {
         var rule = archive().guidelines().get(0);
         var reference = new ReferenceContext("case-1", "SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT",

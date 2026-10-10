@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-reference-context-23";
+    static final String REVISION = "2026-10-10-dictionary-pipeline-24";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -79,6 +79,8 @@ final class CandidateReviewEngine {
               EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
               별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
               시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
+              REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
+              targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
               표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
             targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
             targetRelation: EXPLICIT/CONTEXTUAL. targetReason은 300자 이내로 연결을 설명한다.
@@ -279,7 +281,7 @@ final class CandidateReviewEngine {
                 result = visual == null
                     ? new VisualContextReviewer.Result(invalid("VISUAL_NOT_CONFIGURED"),
                     new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", "VISUAL_NOT_CONFIGURED", List.of(), List.of(), null), false)
-                    : visual.review(context, c);
+                    : visual.review(context, c, guidelinePrompt);
             } catch (RuntimeException ex) {
                 result = new VisualContextReviewer.Result(invalid("VISUAL_STAGE_EXCEPTION"),
                         new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", "VISUAL_STAGE_EXCEPTION", List.of(), List.of(), null), false);

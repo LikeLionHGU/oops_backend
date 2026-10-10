@@ -12,6 +12,18 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class VisualContextReviewerTest {
+    @Test void candidatePipelinePassesSameReferenceToActualImageRequest() {
+        when(ai.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(
+                new Discovery(List.of("stt-index-0"), List.of(), List.of(), false,
+                        List.of(fixture.proposal("stt-index-0", "그 집")))));
+        frames(); response("PASS", "scene-0");
+        var references = new ReviewGuidelineLibraryTest();
+        CandidateReviewEngine.run(ai, context(), 24, reviewer, null, references.library(references.enrichedArchive()));
+        var system = ArgumentCaptor.forClass(String.class);
+        verify(ai).completeWithImagesAsJson(system.capture(), anyString(), anyList(), any());
+        assertThat(system.getValue()).contains("reviewGuidelines", "생활을 하대한다는 비판 가설")
+                .doesNotContain("case-1", "family-1");
+    }
     @Test void selectsQuotedContextFramesInsteadOfOnlyAnchorNeighboursWithoutIncreasingImageBudget() {
         var c = new AnalysisContext(video, ContentGenre.GENERAL, List.of(
                 new TranscriptSegment(video, 1000, 2000, "이곳에 도착했어"),

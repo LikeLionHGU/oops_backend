@@ -60,6 +60,9 @@ public class VisualContextReviewer {
                 new Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", code, frames, List.of(), null), called);
     }
     Result review(AnalysisContext context, CandidateReviewEngine.Candidate c) {
+        return review(context, c, "");
+    }
+    Result review(AnalysisContext context, CandidateReviewEngine.Candidate c, String guidelinePrompt) {
         if (!enabled) return failure(c, "VISUAL_DISABLED", List.of(), false);
         if (context.video().getSourceType() != SourceType.UPLOAD) return failure(c, "VISUAL_UPLOAD_ONLY", List.of(), false);
         Long duration = context.video().durationMs();
@@ -91,7 +94,7 @@ public class VisualContextReviewer {
                     "raw", c.raw().stream().map(s -> Map.of("id", s.id(), "startMs", s.startMs(), "endMs", s.endMs(), "text", s.text())).toList(),
                     "frames", frames, "samplingPolicy", "anchor-and-quoted-evidence-max3",
                     "proposedEvidence", c.proposal().evidence()));
-            response = ai.completeWithImagesAsJson(PROMPT, input, images, Response.class).orElse(null);
+            response = ai.completeWithImagesAsJson(PROMPT + guidelinePrompt, input, images, Response.class).orElse(null);
         } catch (IllegalArgumentException ex) { return failure(c, "INVALID_IMAGE_INPUT", frames, false); }
         catch (Exception ex) { return failure(c, "VISUAL_REQUEST_FAILED", frames, true); }
         if (response == null) return failure(c, ai.failureCount() > failuresBefore

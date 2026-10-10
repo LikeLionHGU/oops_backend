@@ -104,6 +104,8 @@ evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한�
   EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
   별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
   시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
+  REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
+  targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
   표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
 targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
 targetRelation: EXPLICIT/CONTEXTUAL. targetReason은 300자 이내로 연결을 설명한다.
@@ -1769,6 +1771,8 @@ evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한�
   EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
   별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
   시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
+  REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
+  targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
   표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
 targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
 targetRelation: EXPLICIT/CONTEXTUAL. targetReason은 300자 이내로 연결을 설명한다.

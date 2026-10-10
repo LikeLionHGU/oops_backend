@@ -137,7 +137,7 @@ public class AnalysisPipeline {
                 record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS, null);
             }
             record(coverage, video, CoverageStep.VISUAL, AnalyzerStatus.NOT_ENABLED,
-                    "화면 자료 확인은 아직 제공하지 않습니다.");
+                    "영상 전체 장면 분석은 제공하지 않습니다. 발언 후보에 대한 선택적 프레임 확인은 별도로 수행할 수 있습니다.");
 
             // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
             // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
