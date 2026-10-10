@@ -155,7 +155,10 @@ oops:
   search:
     perplexity:
       api-key: ${PERPLEXITY_API_KEY:}
-      search-type: web # 사실 확인용. web(넓게, 1,000건당 $5) / fast(얇게, $1)
+      # 사실 확인용. web(넓게, 1,000건당 $5) / fast(얇게, $1)
+      # 2026-10 서버 테스트: 28분 영상에서 검색비가 AI 분석비의 6~9배라 fast 로 바꿔 비교 중.
+      # 근거가 부족해지면 web 으로 되돌린다.
+      search-type: fast
       recent-search-type: fast # 최근 이슈 확인용. "지금 진행 중인가" 만 보면 돼서 fast 로 충분
       country: KR
       max-tokens-per-page: 256 # 페이지 하나에서 가져올 본문 양. 작을수록 싸고 빠르다

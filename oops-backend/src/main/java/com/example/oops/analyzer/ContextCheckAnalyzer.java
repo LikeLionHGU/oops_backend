@@ -46,6 +46,15 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
     private static final int NEWS_PER_TOPIC = 8;
 
     /**
+     * 이 점수 아래는 버린다. (2026-10 고도화 · 서버 테스트 후)
+     * 배우 인터뷰 영상에서 "언급된 배우의 캐스팅 기사" 같은 무관한 근황이 0.7 언저리로 올라왔다.
+     */
+    static final double MIN_SCORE = 0.75;
+
+    /** 판정할 때 함께 보여줄 앞뒤 줄 수 */
+    private static final int CONTEXT_LINES = 2;
+
+    /**
      * 이런 검색어로는 "지금 논란인가" 를 판단할 수 없다.
      * LLM 이 프롬프트를 어겨도 여기서 한 번 더 거른다.
      */
@@ -62,9 +71,9 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             - 선거, 정치, 정당, 정치인
             - 사건사고, 재난, 범죄
             - 사회적으로 논쟁 중인 이슈 (젠더, 노동, 부동산, 세금, 교육 등)
-            - 특정 기업, 브랜드, 유명인의 실명
             - 종교, 역사, 국제 분쟁
-            - 화자가 언급한 특정 인물의 이름과, 그 인물에 대한 평가·언급
+            - 특정 인물·기업에 대해 **평가하거나 사건·논란을 언급한 대목**
+              (이름이 나왔다는 것만으로는 뽑지 마라. 그 사람에 대해 무슨 말을 했는지가 있어야 한다)
             - 특정 커뮤니티에서 쓰이는 말투나 은어로 보이는 표현.
               그 표현이 과거에 논란이 된 사례가 있는지 찾아볼 가치가 있다.
               이 경우 keyword 는 "표현 + 논란" 형태로 만든다. 예: "노 어미 논란"
@@ -73,6 +82,10 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             - 일상 대화, 인사말, 감탄사
             - 일반명사, 보통의 상황 묘사
             - 채널 홍보 문구
+            - **영상에 나온 출연자 본인(진행자·게스트)의 프로필·경력·출연작·근황**
+              본명, 데뷔작, 나이, 출연 드라마, 본인이 겪은 일 이야기는 시사 주제가 아니다.
+            - 작품·방송·캐스팅·컴백·공연 일정 같은 일반 연예 소식
+            - 이름만 스쳐 지나간 인물 ("OO 배우랑 같이 찍었어요")
 
             주의: 발언은 음성 인식 결과라 글자가 틀릴 수 있다.
             "재선커", "재신거" 처럼 틀린 글자는 원래 단어를 추론해서 keyword 에 정확히 적어라.
@@ -108,20 +121,30 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
             제작자가 이 주제를 다뤄도 되는지는 제작자가 정한다.
             네가 할 일은 **제작자가 모를 수 있는 최근 상황을 알려주는 것**이다.
 
-            알려줄 만한 경우:
-            - 그 주제가 지금 진행 중인 사건이다 (재판, 수사, 선거 기간 등)
-            - 최근 기사에서 여론이 갈리거나 갈등이 보도되고 있다
-            - 피해자나 유족이 있는 사건이다
-            - 언급된 인물이 최근 구설에 올라 있다
+            **먼저 확인할 것: 영상에서 한 말이 그 최근 이슈와 직접 관련이 있는가.**
+            영상의 원문 줄과 앞뒤 대화를 함께 준다. 그 말이 이슈를 건드리지 않으면 risky 는 false 다.
+              예: 영상에서 "OO 배우랑 드라마 찍었어요" 라고만 했고, 기사가 "OO 차기작 캐스팅 논의" 면 무관하다.
+              예: 출연자가 자기 근황을 이야기했고, 기사가 그 출연자의 다른 근황이면 무관하다.
+
+            알려줄 만한 경우 (영상의 말과 관련이 있을 때만):
+            - 지금 진행 중인 수사·재판·선거와 관련된 말이다
+            - 범죄·사고·참사처럼 피해자나 유족이 있는 사건을 언급했다
+            - 언급된 인물이 최근 범죄 의혹, 사과, 은퇴·자숙, 큰 사회적 논란에 휘말려 있고
+              영상이 그 인물을 평가하거나 그 일을 건드린다
+            - 최근 사회적 갈등(젠더·지역·세대·정치)이 보도되는 주제에 대해 의견을 말했다
             - 과거에는 평범했던 표현인데 최근 사건 때문에 다르게 읽히게 됐다
 
             알릴 필요 없는 경우:
+            - 캐스팅·출연 검토·작품 공개·컴백·공연·열애·결혼·근황 같은 일반 연예 소식
+            - 출연자 본인의 프로필·경력·근황
             - 오래전에 마무리된 사안이고 최근 기사가 없다
             - 기사들이 단순 정보 전달이고 갈등 요소가 없다
             - 주제가 일반적이라 특정 사건과 무관하다
 
             반드시 이 JSON 형식으로만 답한다:
-            {"risky":true,"score":0.8,"reason":"제작자가 알아야 할 최근 상황을 두 문장 이내로","issue":"관련된 현재 이슈를 한 줄로","sources":[1,3]}
+            {"related":true,"risky":true,"score":0.8,"reason":"제작자가 알아야 할 최근 상황을 두 문장 이내로","issue":"관련된 현재 이슈를 한 줄로","sources":[1,3]}
+
+            related 는 영상에서 한 말이 그 이슈를 직접 건드리는지다. false 면 risky 도 false 다.
 
             risky 는 "알릴 가치가 있는가" 라는 뜻이지 "위험하다" 는 판정이 아니다.
             score 는 확인 우선순위다. 근거가 약하면 낮게 준다.
@@ -201,6 +224,15 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
                 continue;
             }
 
+            // LLM 이 줄 번호를 자주 틀린다. 키워드가 실제로 등장한 줄을 다시 찾는다.
+            // 판정할 때 그 줄과 앞뒤 대화를 보여줘야 하므로 검색보다 먼저 찾는다.
+            int lineIndex = locate(lines, keyword, topic.index());
+            if (lineIndex < 0) {
+                log.info("[timeliness] '{}' 가 등장한 줄을 못 찾아 건너뜁니다", keyword);
+                continue;
+            }
+            Line line = lines.get(lineIndex);
+
             // 2단계 — 최근 뉴스 검색
             List<NewsSearchClient.NewsItem> news =
                     newsClient.searchRecent(keyword, NEWS_PER_TOPIC);
@@ -209,22 +241,20 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
                 continue;
             }
 
-            // 3단계 — 오늘 기준으로 위험한지 판정
-            Judgement judgement = judge(today, context.genreOrGeneral(), topic, news);
-            if (judgement == null || !Boolean.TRUE.equals(judgement.risky())) {
+            // 3단계 — 영상의 말과 관련 있는 최근 이슈인지 판정
+            Judgement judgement = judge(today, context.genreOrGeneral(), topic, news,
+                    contextAround(lines, lineIndex));
+            if (judgement == null || !Boolean.TRUE.equals(judgement.risky())
+                    || Boolean.FALSE.equals(judgement.related())) {
                 continue;
             }
 
-            // LLM 이 줄 번호를 자주 틀린다. 키워드가 실제로 등장한 줄을 다시 찾는다.
-            int lineIndex = locate(lines, keyword, topic.index());
-            if (lineIndex < 0) {
-                log.info("[timeliness] '{}' 가 등장한 줄을 못 찾아 건너뜁니다", keyword);
-                continue;
-            }
-
-            Line line = lines.get(lineIndex);
             double score = judgement.score() == null
                     ? 0.6 : Math.max(0.0, Math.min(1.0, judgement.score()));
+            if (score < MIN_SCORE) {
+                log.info("[timeliness] '{}' 점수 {} 가 기준({}) 미만이라 건너뜁니다", keyword, score, MIN_SCORE);
+                continue;
+            }
 
             RiskFinding finding = build(context, line, topic, judgement, score);
 
@@ -349,8 +379,19 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
         return result == null || result.topics() == null ? List.of() : result.topics();
     }
 
+    /** 그 줄과 앞뒤 대화. 판정할 때 "영상에서 실제로 뭐라고 했는지" 를 보여준다. */
+    private static String contextAround(List<Line> lines, int index) {
+        StringBuilder sb = new StringBuilder();
+        for (int j = Math.max(0, index - CONTEXT_LINES); j <= Math.min(lines.size() - 1, index + CONTEXT_LINES); j++) {
+            sb.append(j == index ? "  ▶ " : "    ")
+              .append(lines.get(j).type() == TimelineEventType.SPEECH ? "(발언) " : "(자막) ")
+              .append(lines.get(j).text()).append('\n');
+        }
+        return sb.toString();
+    }
+
     private Judgement judge(String today, ContentGenre genre, Topic topic,
-                           List<NewsSearchClient.NewsItem> news) {
+                           List<NewsSearchClient.NewsItem> news, String around) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("오늘 날짜: ").append(today).append("\n");
         prompt.append("영상 유형: ").append(genre.getLabel())
@@ -359,6 +400,7 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
         if (topic.context() != null) {
             prompt.append("영상에서의 맥락: ").append(topic.context()).append("\n");
         }
+        prompt.append("영상 원문 (▶ 가 그 줄):\n").append(around);
         prompt.append("\n최근 뉴스 (최신순):\n");
         prompt.append(NewsReferenceSupport.format(news));
 
@@ -375,6 +417,6 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
     record Topic(Integer index, String keyword, String context) {}
 
     /** sources 는 판단 근거가 된 기사 번호. 참고 자료로 저장한다. */
-    record Judgement(Boolean risky, Double score, String reason,
+    record Judgement(Boolean related, Boolean risky, Double score, String reason,
                      String issue, List<Integer> sources) {}
 }

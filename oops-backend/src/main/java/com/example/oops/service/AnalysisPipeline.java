@@ -490,8 +490,8 @@ public class AnalysisPipeline {
         logRequestBudget(videoId, durationSec, transcriptLines, usage);
 
         // 검색은 사실 확인·배경 확인이 검색할 거리를 찾았을 때만 돈다. 0회면 "주장이 없었다" 는 뜻이다.
-        log.info("[search-cost] videoId={} Perplexity {}회(실패 {} · 결과 {}건) · Serper {}회(실패 {} · 결과 {}건) · 뉴스 대체 {}회 · ${}",
-                videoId, search.perplexityCalls(), search.perplexityFailures(), search.perplexityResults(),
+        log.info("[search-cost] videoId={} Perplexity {}회(fast {} · 실패 {} · 결과 {}건) · Serper {}회(실패 {} · 결과 {}건) · 뉴스 대체 {}회 · ${}",
+                videoId, search.perplexityCalls(), search.perplexityFastCalls(), search.perplexityFailures(), search.perplexityResults(),
                 search.serperCalls(), search.serperFailures(), search.serperResults(),
                 search.newsFallbackCalls(), "%.4f".formatted(searchUsd));
 

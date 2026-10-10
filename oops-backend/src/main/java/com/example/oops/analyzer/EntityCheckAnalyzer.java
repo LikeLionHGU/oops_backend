@@ -60,6 +60,17 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
     private static final int TOP_EVIDENCE = 4;
 
     /**
+     * 카드로 올리는 최소 점수. (2026-10 고도화 · 서버 테스트 후)
+     * 사실 확인은 잘못 잡으면 신뢰를 크게 잃는다. 자료와 분명히 다를 때(FACT_ERROR)만,
+     * 근거 자료 번호와 자료 내용이 있고 점수가 이 이상일 때만 올린다.
+     * "확인 불가(UNVERIFIED)" 와 "맥락 부족(MISINFORMATION)" 은 기준이 느슨해서 오탐이 대부분이었다.
+     */
+    static final double MIN_SCORE = 0.75;
+
+    /** 대조할 때 함께 보여줄 앞뒤 줄 수 */
+    private static final int CONTEXT_LINES = 2;
+
+    /**
      * 프롬프트에 넣을 화면 글자 줄 수 상한.
      *
      * OCR 은 같은 자막을 프레임마다 다시 읽기 때문에 중복을 걷어내도 양이 많다.
@@ -110,9 +121,17 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             - 확인 가능한 원인·결과 주장
             - 역사적 수치                  "그때 O만 명이 참여했다"
 
+            **발언은 음성 인식 결과라 이름·숫자가 틀리게 적혀 있을 수 있다.**
+            소리가 비슷한 다른 이름("호원대"↔"후원대")이나 뜻이 안 통하는 글자는 음성 인식 오류다.
+            그런 것을 "이름이 틀렸다" 는 주장으로 뽑지 마라.
+
             뽑지 말아야 하는 것:
             - 의견, 감상, 추측 ("제 생각엔", "아마도")
             - 검증할 수 없는 개인 경험
+            - **출연자 본인의 경험·생각·인터뷰 이야기** ("제가 그 인터뷰에서", "그때 저는")
+            - **출연자 본인의 앞으로의 일정·예고** (앨범 발매일, 공연, 방영 예정)
+              촬영 시점의 예고라 기사 날짜에 따라 다르게 보일 뿐이다.
+            - 대화 중의 대략적인 숫자 ("10명 중에 세네 명", "한 5대5")
             - 상식 수준의 일반론
             - 진행 멘트, 인사말
             - **지금 있는 자리나 눈앞의 상황에 대한 말**
@@ -228,6 +247,10 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
               글자를 잘못 읽은 것을 "사실이 틀렸다" 로 올리면
               제작자는 고칠 것이 없는 카드를 받게 된다.
               화면 글자는 **숫자나 연도가 자료와 분명히 다를 때만** 잡는다.
+            - **발언은 음성 인식 결과라 이름·숫자가 틀리게 적혀 있을 수 있다.**
+              소리가 비슷한 이름이나 뜻이 안 통하는 글자 차이는 OK 다.
+              앞뒤 대화를 함께 주니, 그 말이 무엇을 가리키는지 맥락으로 판단해라.
+            - 출연자 본인의 경험·생각·일정에 대한 말은 OK 다.
             - 애매하면 OK 를 골라라. 이 유형은 잘못 잡으면 신뢰를 크게 잃는다.
               "틀렸다" 고 했는데 틀리지 않았으면 제작자가 도구 자체를 안 믿게 된다.
 
@@ -330,7 +353,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             }
 
             List<NewsSearchClient.NewsItem> news = evidence.stream().map(Evidence::item).toList();
-            Verdict verdict = verify(today, claim, lines.get(claim.index()), evidence);
+            Verdict verdict = verify(today, claim, lines, claim.index(), evidence);
             if (verdict == null || verdict.verdict() == null || "OK".equalsIgnoreCase(verdict.verdict())) {
                 continue;
             }
@@ -338,7 +361,18 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             RiskCategory category = RiskCategory.fromOrDefault(
                     verdict.verdict(), RiskCategory.UNVERIFIED_CLAIM);
             double score = verdict.score() == null
-                    ? 0.6 : Math.max(0.0, Math.min(1.0, verdict.score()));
+                    ? 0.0 : Math.max(0.0, Math.min(1.0, verdict.score()));
+
+            // 자료와 분명히 다를 때만 올린다 (2026-10 고도화)
+            if (category != RiskCategory.FACT_ERROR) {
+                log.info("[fact-check] '{}' {} 판정은 카드로 올리지 않습니다", query, category);
+                continue;
+            }
+            if (score < MIN_SCORE || verdict.sources() == null || verdict.sources().isEmpty()) {
+                log.info("[fact-check] '{}' 근거가 약해(score={}, 자료 {}건) 건너뜁니다", query, score,
+                        verdict.sources() == null ? 0 : verdict.sources().size());
+                continue;
+            }
 
             FactLine line = lines.get(claim.index());
             String reason = verdict.reason() == null
@@ -350,8 +384,8 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             boolean hasEvidence = correction != null && !correction.isBlank()
                     && !correction.contains("없습니다") && !correction.contains("없음");
 
-            if (category == RiskCategory.UNVERIFIED_CLAIM && !hasEvidence) {
-                log.info("[entity-check] '{}' 근거가 없어 건너뜁니다", query);
+            if (!hasEvidence) {
+                log.info("[fact-check] '{}' 자료에서 확인된 내용이 없어 건너뜁니다", query);
                 continue;
             }
             if (hasEvidence) {
@@ -544,7 +578,8 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         }
     }
 
-    private Verdict verify(String today, Claim claim, FactLine line, List<Evidence> evidence) {
+    private Verdict verify(String today, Claim claim, List<FactLine> lines, int index, List<Evidence> evidence) {
+        FactLine line = lines.get(index);
         StringBuilder prompt = new StringBuilder();
         prompt.append("오늘 날짜: ").append(today).append("\n\n");
         prompt.append("영상에서 나온 주장: ").append(claim.claim()).append("\n");
@@ -554,7 +589,14 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
         if (claim.subject() != null && !claim.subject().isBlank()) {
             prompt.append("주장의 대상: ").append(claim.subject()).append("\n");
         }
-        prompt.append("주장의 성격: ").append(claim.type()).append("\n\n");
+        prompt.append("주장의 성격: ").append(claim.type()).append("\n");
+        prompt.append("앞뒤 대화 (▶ 가 그 줄):\n");
+        for (int j = Math.max(0, index - CONTEXT_LINES); j <= Math.min(lines.size() - 1, index + CONTEXT_LINES); j++) {
+            prompt.append(j == index ? "  ▶ " : "    ")
+                  .append('(').append(lines.get(j).sourceLabel()).append(") ")
+                  .append(lines.get(j).text()).append('\n');
+        }
+        prompt.append('\n');
         prompt.append("찾은 자료 (적합한 순):\n");
 
         for (int i = 0; i < evidence.size(); i++) {

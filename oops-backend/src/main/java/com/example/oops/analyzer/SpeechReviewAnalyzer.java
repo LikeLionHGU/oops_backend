@@ -133,7 +133,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         String t = target.trim();
         if (t.isEmpty()) return true;
         if (GENERIC_TARGETS.contains(t)) return true;
-        if (t.startsWith("특정") || t.startsWith("어떤")) return true;
+        if (t.startsWith("특정") || t.startsWith("어떤") || t.startsWith("해당")) return true;
         return PLACEHOLDER_WORDS.contains(t);
     }
 

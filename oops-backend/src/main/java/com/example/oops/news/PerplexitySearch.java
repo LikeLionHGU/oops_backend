@@ -45,7 +45,9 @@ public class PerplexitySearch {
         body.put("query", query);
         body.put("max_results", Math.max(1, Math.min(20, max)));
         body.put("max_tokens_per_page", cfg.maxTokensPerPageOrDefault());
-        body.put("search_type", recent ? cfg.recentSearchTypeOrDefault() : cfg.searchTypeOrDefault());
+        String searchType = recent ? cfg.recentSearchTypeOrDefault() : cfg.searchTypeOrDefault();
+        boolean fast = "fast".equalsIgnoreCase(searchType);
+        body.put("search_type", searchType);
         body.put("country", cfg.countryOrDefault());
         if (cfg.languages() != null && !cfg.languages().isEmpty()) {
             body.put("search_language_filter", cfg.languages());
@@ -61,7 +63,7 @@ public class PerplexitySearch {
                     .retrieve()
                     .body(Response.class);
             if (response == null || response.results() == null) {
-                SearchUsage.perplexity(true, 0);
+                SearchUsage.perplexity(true, 0, fast);
                 return List.of();
             }
 
@@ -75,11 +77,11 @@ public class PerplexitySearch {
                             r.url(),
                             null))
                     .toList();
-            SearchUsage.perplexity(true, items.size());
+            SearchUsage.perplexity(true, items.size(), fast);
             log.info("[search:perplexity] {} query='{}' → {}건", recent ? "최근" : "전체", query, items.size());
             return items;
         } catch (RestClientException e) {
-            SearchUsage.perplexity(false, 0);
+            SearchUsage.perplexity(false, 0, fast);
             log.warn("[search:perplexity] 검색 실패 query={} : {}", query, e.getMessage());
             return List.of();
         }
