@@ -158,6 +158,32 @@ def verify(output, proposed, raw):
     return rows
 
 
+def target_contract_audit(rows, proposed):
+    """Subset of Java target guards, not full publication/domain validation."""
+    axes = {p["candidateId"]: p["axis"] for p in proposed}
+    audits = []
+    for row in rows:
+        a = row["assessment"]
+        error = None
+        target = a.get("target")
+        if a["decision"] == "REVIEW_REQUIRED" and axes[row["candidateId"]] == "TARGET_TREATMENT" and not target:
+            error = "TARGET_REQUIRED"
+        elif target:
+            mention = a.get("targetMention") or target
+            target_quotes = [q for q in a["evidence"] if q["role"] == "TARGET" and mention in q["quote"]]
+            if not target_quotes or not a.get("targetReason"):
+                error = "TARGET_EVIDENCE_REQUIRED"
+            elif mention != target:
+                if a.get("targetRelation") != "CONTEXTUAL":
+                    error = "TARGET_MENTION_RELATION"
+                elif not any(q["role"] == "CONTEXT" and q["segmentId"] not in
+                             {t["segmentId"] for t in target_quotes} for q in a["evidence"]):
+                    error = "TARGET_CONTEXT_EVIDENCE_REQUIRED"
+        audits.append({"candidateId": row["candidateId"], "errorCode": error,
+                       "targetGuardPassed": error is None, "fullJavaValidationPerformed": False})
+    return audits
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transcript", type=Path, required=True)
@@ -224,6 +250,7 @@ def main():
                         arm["verifications"] = verify(checked["output"], proposed, raw)
                     else:
                         arm["verifications"] = []
+                    arm["targetContractAudit"] = target_contract_audit(arm["verifications"], proposed)
                     arm["status"] = "COMPLETE_TEXT_REPLAY"
                     checkpoint()
                 report["status"] = "COMPLETE_TEXT_REPLAY"

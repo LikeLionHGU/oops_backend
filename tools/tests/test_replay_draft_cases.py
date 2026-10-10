@@ -79,6 +79,27 @@ class ReplayTests(unittest.TestCase):
             with self.assertRaises(tool.CollectionError):
                 tool.read_key(path, key_name="UNRELATED_SECRET")
 
+    def test_target_missing_role_is_not_a_usable_discovery_gain(self):
+        proposed = [{"candidateId": "c", "axis": "TARGET_TREATMENT"}]
+        a = {"decision": "REVIEW_REQUIRED", "target": "가상 장소", "targetMention": "여기",
+             "targetReason": "가상 연결", "targetRelation": "CONTEXTUAL",
+             "evidence": [{"segmentId": "s1", "quote": "여기", "role": "CONTEXT"}]}
+        rows = [{"candidateId": "c", "assessment": a}]
+        audit = tool.target_contract_audit(rows, proposed)[0]
+        self.assertEqual("TARGET_EVIDENCE_REQUIRED", audit["errorCode"])
+        self.assertFalse(audit["targetGuardPassed"])
+        a["evidence"][0]["role"] = "TARGET"
+        self.assertEqual("TARGET_CONTEXT_EVIDENCE_REQUIRED", tool.target_contract_audit(rows, proposed)[0]["errorCode"])
+        a["evidence"].append({"segmentId": "s2", "quote": "가상 평가", "role": "CONTEXT"})
+        self.assertTrue(tool.target_contract_audit(rows, proposed)[0]["targetGuardPassed"])
+
+    def test_target_axis_requires_target_but_expression_does_not(self):
+        rows = [{"candidateId": "c", "assessment": {"decision": "REVIEW_REQUIRED", "target": None}}]
+        self.assertEqual("TARGET_REQUIRED", tool.target_contract_audit(rows, [{"candidateId": "c", "axis": "TARGET_TREATMENT"}])[0]["errorCode"])
+        audit = tool.target_contract_audit(rows, [{"candidateId": "c", "axis": "EXPRESSION_CONTENT"}])[0]
+        self.assertTrue(audit["targetGuardPassed"])
+        self.assertFalse(audit["fullJavaValidationPerformed"])
+
     def test_provider_errors_never_echo_keys_or_response(self):
         opener = mock.Mock()
         opener.open.side_effect = urllib.error.HTTPError("https://example.org/synthetic-key", 401,
