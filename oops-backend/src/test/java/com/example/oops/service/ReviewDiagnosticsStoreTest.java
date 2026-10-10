@@ -7,6 +7,20 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ReviewDiagnosticsStoreTest {
+    @Test void reportsActualSpeechPipelineRevisionAndSeparateOcrRevision() {
+        var candidate=org.mockito.Mockito.mock(com.example.oops.analyzer.CandidateReviewDiagnostics.class);
+        org.mockito.Mockito.when(candidate.revision()).thenReturn("candidate-revision-test");
+        var speech=new com.example.oops.analyzer.ReviewDiagnostics("speech-review",
+                com.example.oops.domain.AnalyzerStatus.SUCCESS, 1, false, java.util.Map.of(), List.of(), null, candidate);
+        var ocr=new com.example.oops.analyzer.ReviewDiagnostics("screen-text-review",
+                com.example.oops.domain.AnalyzerStatus.SUCCESS, 1, false, java.util.Map.of(), List.of());
+        var store=new ReviewDiagnosticsStore(true);
+        store.recordAfterCommit(1L, 2L, "test", List.of(speech, ocr));
+        var snapshot=store.find(1L).orElseThrow();
+        assertThat(snapshot.textReviewPromptRevision()).isEqualTo("candidate-revision-test");
+        assertThat(snapshot.promptRevisions()).containsEntry("speech-review", "candidate-revision-test")
+                .containsEntry("screen-text-review", com.example.oops.analyzer.TextReviewEngine.PROMPT_REVISION);
+    }
     @Test void disabledDoesNotRetainData() {
         var store = new ReviewDiagnosticsStore(false);
         store.recordAfterCommit(1L, 2L, "test", List.of());
