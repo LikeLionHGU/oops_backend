@@ -1,5 +1,7 @@
 # API 명세 ↔ 구현 대조표
 
+> 2026-10-10 후속 계약: 리포트에 expressionOccurrences와 expressionDetectionStatus를 추가했다. 선택 표현은 기존 events/summary/reviewSummary에서 제외하며 옛 리포트의 미분석 상태는 NOT_ANALYZED다. STT 적중만 수집하고 프론트 필터/OCR 적중/relatedEventIds는 미구현이다. 진단 snapshot은 분석기별 promptRevisions를 추가하고 최상위 버전은 실제 발언 엔진 버전을 우선한다. 결과와 COMPLETED는 같은 트랜잭션에서 확정한다. [표현 API·스키마·배포 경계](표현-탐지-및-선택-필터-설계.md)를 따른다.
+
 > 명세 v2.1 · 최초 대조·영상 검증 기록: 2026-08-18 · 문서 정리: 2026-10-06
 > 초기 계약 대조를 보존하며 아래에 후속 변경을 명시한다. 이번 문서 정리는 운영 API 재검증 결과가 아니다.
 
