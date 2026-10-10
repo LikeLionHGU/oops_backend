@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-context-routing-repair-31";
+    static final String REVISION = "2026-10-11-target-role-repair-32";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -161,8 +161,13 @@ final class CandidateReviewEngine {
             # 대상 근거 계약 재검증
             이전 응답은 대상과 실제 원문 인용의 연결 계약을 충족하지 않아 채택되지 않았다.
             현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
-            TARGET 인용에서 targetMention을 그대로 복사하고 targetReason에 연결을 설명한다.
-            CONTEXTUAL은 다른 줄의 실제 CONTEXT도 필요하다. 대상 이름·인용·관계를 추측해 보충하지 않는다.
+            대상 평가로 REVIEW_REQUIRED를 반환하면 evidence에 실제 TARGET 역할 인용을 반드시 포함한다.
+            지칭어를 CONTEXT로만 적거나 targetMention 필드만 채우는 것은 TARGET 인용을 대신하지 않는다.
+            먼저 TARGET.quote에서 targetMention을 그대로 복사하고, 다음에 해석한 대상 target을 적는다.
+            같은 원문 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. targetReason에 실제 연결을 설명한다.
+            EXPLICIT은 target과 targetMention이 동일할 때만 사용한다. 서로 다르면 CONTEXTUAL과
+            TARGET 인용과 다른 segmentId의 실제 CONTEXT 및 연결 설명이 필요하다.
+            반환 전 TARGET 역할·지칭어 포함·관계 조건을 점검한다. 대상 이름·인용·관계를 추측해 보충하지 않는다.
             원문 근거가 부족하면 UNCERTAIN, 구체적인 검토 이유가 없으면 PASS다. 경고로 복구할 의무는 없다.
             """;
     static final String ID_REPAIR_PROMPT = """

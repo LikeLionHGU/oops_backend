@@ -10,6 +10,41 @@ import static org.mockito.Mockito.*;
 
 /** Offline contract regressions, not a model accuracy benchmark. */
 class TargetGroundingRepairTest {
+    @Test void targetRoleRepairClarifiesEvidenceWithoutChangingDecisionOrQuoteRules() {
+        assertThat(TARGET_REPAIR_PROMPT).contains("실제 TARGET 역할 인용", "CONTEXT로만", "targetMention 필드만",
+                "PRIMARY와 TARGET", "동일할 때만", "다른 segmentId", "PASS", "UNCERTAIN", "경고로 복구할 의무는 없다");
+        assertThat(TARGET_REPAIR_PROMPT).doesNotContain("롯데리아", "영양", "피식대학");
+        assertThat(repairPrompt("TARGET_EVIDENCE_REQUIRED")).isEqualTo(TARGET_REPAIR_PROMPT);
+        assertThat(repairPrompt("TARGET_MENTION_RELATION")).isEqualTo(TARGET_REPAIR_PROMPT);
+    }
+
+    @Test void contextualQuoteTaggedOnlyAsContextIsRejectedUntilModelReturnsTargetRole() {
+        var f = new CandidateReviewEngineTest();
+        var input = f.context("그 집 이용자는 수준이 낮아");
+        var p = f.proposal("stt-index-0", "그 집");
+        var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
+        var misTagged = new LlmDecision(good.segmentId(), good.decision(), good.evidenceText(),
+                good.reason(), good.category(), good.target(), good.score(), null, null, List.of(),
+                good.evidence().stream().map(e -> "TARGET".equals(e.role())
+                        ? new LlmEvidence(e.segmentId(), e.quote(), "CONTEXT") : e).toList(),
+                good.targetType(), good.targetRelation(), good.targetReason(), good.alternativeInterpretation(), good.targetMention());
+        var candidate = new Candidate("candidate-1", p, input.reviewInput().segments(), false, false);
+        assertThat(validate(candidate, misTagged, input.reviewInput()).failureCode()).isEqualTo("TARGET_EVIDENCE_REQUIRED");
+        f.discovery(List.of("stt-index-0"), p);
+        when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
+                .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", misTagged)))))
+                .thenAnswer(invocation -> {
+                    assertThat((String) invocation.getArgument(0)).contains("지칭어를 CONTEXT로만");
+                    assertThat((String) invocation.getArgument(1)).contains("TARGET_EVIDENCE_REQUIRED");
+                    return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", good))));
+                });
+        var result = run(f.client, input, 24);
+        assertThat(result.findings()).hasSize(1);
+        assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
+        assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isZero();
+        assertThat(validate(candidate, misTagged, input.reviewInput()).failureCode()).isEqualTo("TARGET_EVIDENCE_REQUIRED");
+    }
+
     @Test void mismatchedTargetRelationCanReassessToPassOrValidReviewWithoutAutomaticRelabeling() {
         for (String decision : List.of("PASS", "REVIEW_REQUIRED")) {
             var f = new CandidateReviewEngineTest();
