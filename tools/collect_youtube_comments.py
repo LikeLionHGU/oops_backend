@@ -30,10 +30,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise CollectionError("REDIRECT_REFUSED")
 
 
-def read_key(env_file=None, environ=None):
+def read_key(env_file=None, environ=None, *, key_name="YOUTUBE_API_KEY"):
     """Read one literal setting, without shell expansion or sensitive diagnostics."""
+    if key_name not in {"YOUTUBE_API_KEY", "OPENAI_API_KEY"}:
+        raise CollectionError("ENV_KEY_NOT_ALLOWED")
     if env_file is None:
-        value = (os.environ if environ is None else environ).get("YOUTUBE_API_KEY", "")
+        value = (os.environ if environ is None else environ).get(key_name, "")
     else:
         try:
             path = Path(env_file)
@@ -50,7 +52,7 @@ def read_key(env_file=None, environ=None):
             raise CollectionError("ENV_FILE_UNAVAILABLE") from None
         values = []
         for line in lines:
-            match = re.match(r"^\s*(?:export\s+)?YOUTUBE_API_KEY\s*=\s*(.*?)\s*$", line)
+            match = re.match(r"^\s*(?:export\s+)?" + key_name + r"\s*=\s*(.*?)\s*$", line)
             if not match:
                 continue
             literal = match[1]
