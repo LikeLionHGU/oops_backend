@@ -24,7 +24,9 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def prepare(snapshot, archive):
+def prepare(snapshot, archive, b_anchor=40500):
+    if b_anchor not in {23500, 40500}:
+        raise ValueError("B_ANCHOR_LIMIT")
     rows = snapshot["transcript"]
     if not 1 <= len(rows) <= 100:
         raise ValueError("TRANSCRIPT_LIMIT")
@@ -60,9 +62,10 @@ def prepare(snapshot, archive):
                    "candidates": [{"candidateId": "candidate-1", "anchorId": quotes[0]["segmentId"],
                        "axis": "TARGET_TREATMENT", "hypothesisNotEvidence": hypothesis,
                        "proposedEvidence": quotes, "contextExpanded": False,
-                       "contextLimited": name in {"B", "C"}, "segmentIds": [r["id"] for r in raw]}]}
+                       "contextLimited": name in {"B", "B-23.5", "C"}, "segmentIds": [r["id"] for r in raw]}]}
         cases.append({"name": name, "payload": payload, "inputSha256": digest(payload)})
-    add("B", rows, 1500, 61500, [40500, 35000, 36500, 39000],
+    add("B" if b_anchor == 40500 else "B-23.5", rows, 1500, 61500,
+        [40500, 35000, 36500, 39000] if b_anchor == 40500 else [23500, 14500, 21000, 24500, 26000, 36500, 39000, 40500],
         "매장 부재·사연·타인의 대체 음식 설명의 연결에 별도 대상 평가가 있는지 검토한다.")
     add("C", rows, 30500, 90500, [70500, 69500, 72000],
         "메뉴 의미 평가와 주어진 대로 먹는다는 연결에 별도 대상 평가가 있는지 검토한다.")
