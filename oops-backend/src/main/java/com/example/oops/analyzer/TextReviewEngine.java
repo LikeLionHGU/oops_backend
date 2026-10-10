@@ -552,7 +552,7 @@ public final class TextReviewEngine {
         }
         if (d.context() != null && !d.context().isBlank()) reason += " 참고: " + d.context();
         if (observation.evidence().stream().anyMatch(s -> s.role() != EvidenceRole.PRIMARY)) {
-            // Supporting quotes stay inspectable in the existing reason field, without a DB/API migration.
+            // Compact display only; all validated quotes are also persisted as structured supports below.
             reason += " 연결 근거: " + observation.evidence().stream()
                     .filter(s -> s.role() != EvidenceRole.PRIMARY).limit(4)
                     .map(s -> {
@@ -579,13 +579,20 @@ public final class TextReviewEngine {
                 }
             }
         }
-        return RiskFinding.builder().video(context.video()).eventType(segment.type()).category(category)
+        var finding = RiskFinding.builder().video(context.video()).eventType(segment.type()).category(category)
                 .source(speech ? EvidenceSource.SUBTITLE : EvidenceSource.VISION).score(score)
                 .startMs(segment.startMs()).endMs(segment.endMs()).text(speech ? segment.text() : null)
                 .captionText(speech ? null : caption).frame(frame).reason(displayReason(reason)).target(d.target()).build();
+        var quotes = observation.evidence().stream().map(e -> {
+            var raw = context.reviewInput().find(e.segmentId()).orElseThrow();
+            return new com.example.oops.domain.FindingSupport.Quote(raw.id(), raw.type(), raw.startMs(), raw.endMs(), e.quote(), e.role().name());
+        }).toList();
+        finding.recordValidatedSupports(List.of(new com.example.oops.domain.FindingSupport(segment.id(),
+                d.targetGrounding() == null ? null : d.targetGrounding().type().name(), quotes)));
+        return finding;
     }
 
-    /** Existing DB column is varchar(1000). Full evidence remains unchanged in the internal evaluation. */
+    /** Existing reason column is varchar(1000); structured validated supports retain the full quote list. */
     private static String displayReason(String reason) {
         if (reason.length() <= 1000) return reason;
         String suffix = "… [설명 일부 생략]";

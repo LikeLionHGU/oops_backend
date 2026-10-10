@@ -110,6 +110,38 @@ public class RiskFinding extends BaseTimeEntity {
     @Column(nullable = false)
     private int mergedCount;
 
+    /** Null on historical reports: retain legacy API semantics there. */
+    private Integer occurrenceCount;
+
+    @Column(columnDefinition = "text")
+    private String validatedSupportJson;
+
+    public List<FindingSupport> validatedSupports() {
+        if (validatedSupportJson == null) return List.of();
+        try {
+            return List.of(tools.jackson.databind.json.JsonMapper.builder().build()
+                    .readValue(validatedSupportJson, FindingSupport[].class));
+        } catch (RuntimeException ex) { return List.of(); }
+    }
+
+    public void recordValidatedSupports(List<FindingSupport> supports) {
+        this.validatedSupportJson = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(supports);
+    }
+
+    public void recordOccurrenceCount(int count) { this.occurrenceCount = Math.max(1, count); }
+
+    public long representativeStartMs() {
+        return validatedSupports().stream().findFirst().stream().flatMap(s -> s.quotes().stream()
+                .filter(q -> q.segmentId().equals(s.anchorId()) && "PRIMARY".equals(q.role())))
+                .mapToLong(FindingSupport.Quote::startMs).findFirst().orElse(startMs);
+    }
+
+    public long representativeEndMs() {
+        return validatedSupports().stream().findFirst().stream().flatMap(s -> s.quotes().stream()
+                .filter(q -> q.segmentId().equals(s.anchorId()) && "PRIMARY".equals(q.role())))
+                .mapToLong(FindingSupport.Quote::endMs).findFirst().orElse(endMs);
+    }
+
     /**
      * AI 가 실제로 본 참고 자료. 사용자가 직접 확인할 수 있게 남긴다.
      *

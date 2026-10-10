@@ -1,6 +1,7 @@
 package com.example.oops.fusion;
 
 import com.example.oops.domain.EvidenceSource;
+import com.example.oops.domain.FindingSupport;
 import com.example.oops.domain.RiskCategory;
 import com.example.oops.domain.RiskFinding;
 import com.example.oops.service.ReportBuilder;
@@ -25,35 +26,19 @@ import java.util.stream.Collectors;
  * 그대로 두면 프론트에 중복 카드가 쌓이고 어느 게 중요한지 알 수 없다.
  *
  * 처리 순서:
- *   1. 시간이 겹치고 카테고리가 같은 후보를 한 묶음으로 만든다
- *   2. 묶음마다 대표 1건을 뽑고 나머지는 버린다
- *   3. 음성과 화면 양쪽에서 잡힌 묶음은 근거가 강하므로 점수를 올린다 (교차 검증)
+ *   1. 검증된 anchor·공유 인용 연결로 보수적으로 묶는다
+ *   2. 대표 1건에 원문 근거와 분석 지원을 보존한다
+ *   3. 복수 분석 지원만으로 점수나 등장 횟수를 올리지 않는다
  *   4. 우선순위 점수를 매겨 정렬한다
  */
 @Slf4j
 @Service
 public class FindingFusionService {
 
+    public static final String REVISION = "2026-10-10-validated-flow-fusion-1";
+
     /** 이 시간(ms) 안에 있으면 같은 장면으로 본다 */
     private static final long MERGE_WINDOW_MS = 3000;
-
-    /**
-     * 시간이 떨어져 있어도 내용이 이만큼 같으면 같은 논란으로 본다.
-     *
-     * 영상 내내 떠 있는 고정 자막은 OCR 이 프레임마다 다시 읽어서
-     * 같은 문구가 6초 간격으로 5번, 10번 잡힌다.
-     * 시간만 보고 묶으면 똑같은 카드가 그만큼 쌓인다.
-     */
-    private static final double SAME_ISSUE_THRESHOLD = 0.7;
-
-    /**
-     * 대상 이름이 이만큼 겹치면 같은 대상으로 본다.
-     *
-     * 같은 것을 두고 분석기마다 다른 유형으로 보고하는 일이 흔하다.
-     * "패스트푸드" 를 한쪽은 비하로, 다른 쪽은 일반화로 잡는 식이다.
-     * 사용자에게는 같은 지적이므로 카드 하나로 합친다.
-     */
-    private static final double SAME_TARGET_THRESHOLD = 0.5;
 
     /**
      * 뜻이 겹치는 카테고리 묶음.
@@ -137,10 +122,18 @@ public class FindingFusionService {
             RiskFinding representative = cluster.pickRepresentative();
             boolean crossModal = cluster.isCrossModal();
 
+            // Compute before mutating ranges or adopting supports.
+            int occurrences = cluster.occurrenceCount();
+            String occurrenceTimes = cluster.occurrenceTimes();
+            var support = new ArrayList<>(representative.validatedSupports());
+            for (var member : cluster.members) if (member != representative) support.addAll(member.validatedSupports());
+            if (!support.isEmpty()) representative.recordValidatedSupports(support);
+            representative.recordOccurrenceCount(occurrences);
+
             // 여러 번 등장했다면 카드 하나로 합치고 구간을 처음~끝으로 넓힌다
             representative.expandRange(cluster.minStartMs(), cluster.maxEndMs());
-            if (cluster.size() > 1) {
-                representative.recordOccurrences(cluster.occurrenceTimes());
+            if (occurrences > 1) {
+                representative.recordOccurrences(occurrenceTimes);
             }
 
             // 버려지는 후보가 들고 있던 참고 자료를 대표에게 넘긴다.
@@ -164,14 +157,14 @@ public class FindingFusionService {
         result.sort(FindingOrder.byPriority());
 
         long repeated = result.stream().filter(f -> f.getMergedCount() > 1).count();
-        log.info("[fusion] 후보 {}건 → 최종 {}건 (교차검증 {}건, 반복 병합 {}건, 제거 {}건)",
-                candidates.size(), result.size(),
+        log.info("[fusion] revision={} 후보 {}건 → 최종 {}건 (교차출처 {}건, 병합 {}건, 제거 {}건)",
+                REVISION, candidates.size(), result.size(),
                 result.stream().filter(RiskFinding::isCrossModal).count(),
                 repeated, candidates.size() - result.size());
         return result;
     }
 
-    /** 카테고리가 같고 시간이 가까운 것끼리 묶는다. */
+    /** Stable chronological order, conservative complete-link validated-flow grouping. */
     private List<Cluster> cluster(List<RiskFinding> candidates) {
         List<RiskFinding> sorted = new ArrayList<>(candidates);
         sorted.sort(FindingOrder.byTime());
@@ -211,31 +204,59 @@ public class FindingFusionService {
 
         boolean accepts(RiskFinding candidate) {
             if (members.isEmpty()) return true;
-
-            // 같은 대상을 말했더라도 시간대가 다르면 별도 후보로 남긴다.
-            long gap = Math.max(
-                    candidate.getStartMs() - maxEndMs(),
-                    minStartMs() - candidate.getEndMs());
-            if (gap > MERGE_WINDOW_MS) return false;
-
-            boolean compatibleCategory = members.stream()
-                    .allMatch(m -> groupOf(m.getCategory()).equals(groupOf(candidate.getCategory())));
-            if (!compatibleCategory) return false;
-
-            // 같은 장면 안에서도 대상 또는 원문이 이어지는 후보만 묶는다.
-            return sharesTarget(candidate) || members.stream().anyMatch(m ->
-                    similarity(m.primaryText(), candidate.primaryText()) >= SAME_ISSUE_THRESHOLD);
+            // Exact legacy repeated text retains adjacent deduplication; never target-name-only merging.
+            if (candidate.validatedSupports().isEmpty() && members.stream().allMatch(m -> m.validatedSupports().isEmpty())) {
+                long gap = Math.max(candidate.getStartMs() - maxEndMs(), minStartMs() - candidate.getEndMs());
+                return gap <= MERGE_WINDOW_MS && members.stream().allMatch(m ->
+                        groupOf(m.getCategory()).equals(groupOf(candidate.getCategory()))
+                        && targetMatches(m, candidate)
+                        && m.primaryText() != null && !m.primaryText().isBlank()
+                        && m.primaryText().equals(candidate.primaryText()));
+            }
+            // Complete-link, not A~B~C transitive closure. Every member must justify the same flow.
+            return members.stream().allMatch(m -> sameValidatedFlow(m, candidate));
         }
 
-        /** 대상 이름이 겹치는지. "할머니" 와 "할머니 맛" 은 같은 대상으로 본다. */
-        private boolean sharesTarget(RiskFinding candidate) {
-            String candidateTarget = candidate.getTarget();
-            if (candidateTarget == null || candidateTarget.isBlank()) return false;
+        private boolean sameValidatedFlow(RiskFinding a, RiskFinding b) {
+            if (a.getCategory() != b.getCategory() || a.getEventType() != b.getEventType()) return false;
+            var x = a.validatedSupports(); var y = b.validatedSupports();
+            if (x.isEmpty() || y.isEmpty()) return false;
+            var p = x.get(0); var q = y.get(0);
+            if (!targetMatches(a, b) || !java.util.Objects.equals(p.targetType(), q.targetType())) return false;
+            if (p.anchorId().equals(q.anchorId())) {
+                return p.quotes().stream().filter(e -> "PRIMARY".equals(e.role()) && e.segmentId().equals(p.anchorId()))
+                        .anyMatch(e -> q.quotes().stream().anyMatch(f -> "PRIMARY".equals(f.role()) && sameQuote(e, f)));
+            }
+            if (p.targetType() == null) return false;
+            long start = Math.min(a.getStartMs(), b.getStartMs()), end = Math.max(a.getEndMs(), b.getEndMs());
+            if (end - start > 60000) return false;
+            boolean linkedAnchor = p.quotes().stream().anyMatch(e -> "CONTEXT".equals(e.role()) && e.segmentId().equals(q.anchorId())
+                    && q.quotes().stream().anyMatch(f -> "PRIMARY".equals(f.role()) && sameQuote(e, f)))
+                    || q.quotes().stream().anyMatch(e -> "CONTEXT".equals(e.role()) && e.segmentId().equals(p.anchorId())
+                    && p.quotes().stream().anyMatch(f -> "PRIMARY".equals(f.role()) && sameQuote(e, f)));
+            long shared = p.quotes().stream().filter(e -> "CONTEXT".equals(e.role()))
+                    .filter(e -> q.quotes().stream().anyMatch(f -> "CONTEXT".equals(f.role()) && sameQuote(e, f)))
+                    .map(FindingSupport.Quote::segmentId).distinct().count();
+            return linkedAnchor && shared >= 2;
+        }
 
-            return members.stream()
-                    .map(RiskFinding::getTarget)
-                    .filter(t -> t != null && !t.isBlank())
-                    .anyMatch(t -> similarity(t, candidateTarget) >= SAME_TARGET_THRESHOLD);
+        private boolean targetMatches(RiskFinding a, RiskFinding b) {
+            return a.getTarget() == null && b.getTarget() == null
+                    || a.getTarget() != null && b.getTarget() != null && similarity(a.getTarget(), b.getTarget()) >= 0.85;
+        }
+
+        private boolean sameQuote(FindingSupport.Quote a, FindingSupport.Quote b) {
+            return a.segmentId().equals(b.segmentId()) && a.type() == b.type()
+                    && a.startMs() == b.startMs() && a.endMs() == b.endMs() && a.quote().equals(b.quote());
+        }
+
+        int occurrenceCount() {
+            // Evaluator support duplicates at one raw anchor are one occurrence.
+            var speech = members.stream().flatMap(m -> m.validatedSupports().stream())
+                    .flatMap(s -> s.quotes().stream().filter(q -> q.segmentId().equals(s.anchorId()) && "PRIMARY".equals(q.role())))
+                    .filter(q -> q.type() == com.example.oops.domain.TimelineEventType.SPEECH).toList();
+            if (!speech.isEmpty()) return (int) speech.stream().map(FindingSupport.Quote::segmentId).distinct().count();
+            return (int) members.stream().map(m -> m.getStartMs() + ":" + m.getEndMs() + ":" + m.primaryText()).distinct().count();
         }
 
         void add(RiskFinding finding) {

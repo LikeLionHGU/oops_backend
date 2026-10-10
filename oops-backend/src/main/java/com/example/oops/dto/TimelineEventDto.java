@@ -40,8 +40,8 @@ public record TimelineEventDto(
         Severity severity,
 
         /**
-         * 같은 후보가 영상에서 몇 번 등장했는지. 1 이면 한 번.
-         * 2 이상이면 startMs~endMs 가 그 전체 구간을 뜻한다.
+         * 새 분석: 검토 후보의 고유 원문 anchor 수. 분석 지원 수는 supportCount로 분리한다.
+         * 실제 동일 발언 반복 횟수나 논란 수는 아니다. 과거 행은 legacy mergedCount를 유지한다.
          */
         int occurrences,
 
@@ -57,7 +57,11 @@ public record TimelineEventDto(
         String speechText,
         String captionText,
         /** Optional character-routing hint; not an actual agent's judgement. */
-        ReviewPerspective reviewPerspective
+        ReviewPerspective reviewPerspective,
+        /** Merged analysis findings, not utterance repetitions. */
+        int supportCount,
+        /** Validated quote roles/times; empty on historical reports. */
+        List<FindingSupport.Quote> relatedEvidence
 ) {
     public static TimelineEventDto from(RiskFinding f, ReviewActionType action,
                                         String before, String after) {
@@ -75,14 +79,18 @@ public record TimelineEventDto(
                 references(f),
                 action,
                 f.getSeverity(),
-                f.getMergedCount(),
+                f.getOccurrenceCount() == null ? f.getMergedCount() : f.getOccurrenceCount(),
                 caption ? null : f.getText(),
                 caption ? null : before,
                 caption ? null : after,
                 caption ? null : List.of(f.getCategory().name()),
                 caption ? f.getSpeechText() : null,
                 caption ? f.getCaptionText() : null,
-                ReviewPerspective.from(f.getCategory())
+                ReviewPerspective.from(f.getCategory()),
+                f.getMergedCount(),
+                f.validatedSupports().stream().flatMap(s -> s.quotes().stream()).distinct()
+                        .sorted(java.util.Comparator.comparingLong(FindingSupport.Quote::startMs)
+                                .thenComparing(FindingSupport.Quote::segmentId).thenComparing(FindingSupport.Quote::role)).toList()
         );
     }
 

@@ -202,7 +202,7 @@ public class AnalysisService {
     private String lineBefore(List<TranscriptSegment> transcript, RiskFinding f) {
         TranscriptSegment found = null;
         for (TranscriptSegment s : transcript) {
-            if (s.getStartMs() >= f.getStartMs()) break;
+            if (s.getStartMs() >= f.representativeStartMs()) break;
             found = s;
         }
         return found == null ? null : found.getText();
@@ -210,7 +210,7 @@ public class AnalysisService {
 
     private String lineAfter(List<TranscriptSegment> transcript, RiskFinding f) {
         for (TranscriptSegment s : transcript) {
-            if (s.getStartMs() > f.getStartMs() && s.getStartMs() >= f.getEndMs()) {
+            if (s.getStartMs() > f.representativeStartMs() && s.getStartMs() >= f.representativeEndMs()) {
                 return s.getText();
             }
         }
