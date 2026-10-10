@@ -188,7 +188,8 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         TextReviewEngine.Result result = candidateReviewEnabled ? CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary)
                 : TextReviewEngine.run(openAiClient, context,
                 TimelineEventType.SPEECH, key(), SYSTEM_PROMPT + "\n" + ContextualComparisonPolicy.PROMPT
-                    + (guidelineLibrary == null ? "" : guidelineLibrary.prompt(TimelineEventType.SPEECH)),
+                    + (guidelineLibrary == null ? "" : guidelineLibrary.select(TimelineEventType.SPEECH,
+                        context.reviewInput().segments(), "legacy-speech-review").prompt()),
                 ALLOWED_CATEGORIES, 3, dialogueEnabled);
         lastResult.set(result);
         log.info("[{}] videoId={} status={} findings={}", key(), context.video().getId(),

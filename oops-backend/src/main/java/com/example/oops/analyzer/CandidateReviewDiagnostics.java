@@ -8,10 +8,12 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
         int expandedCandidates, int verificationLimitedCandidates,
         boolean truncated, List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-        List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference) {
+        List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+        List<ReviewGuidelineLibrary.SelectionTrace> contextSelections) {
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
         caseRetrieval = List.copyOf(caseRetrieval);
+        contextSelections = List.copyOf(contextSelections);
     }
     public record Trace(String candidateId, String anchorId, String axis, String state,
                         Long contextStartMs, Long contextEndMs, List<String> contextSegmentIds,

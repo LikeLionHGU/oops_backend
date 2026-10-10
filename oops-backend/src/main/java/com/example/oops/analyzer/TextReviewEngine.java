@@ -253,6 +253,12 @@ public final class TextReviewEngine {
 
     static Result run(OpenAiClient client, AnalysisContext context, TimelineEventType type,
                       String evaluatorId, String systemPrompt, Set<RiskCategory> categories, int overlap, boolean dialogueEnabled) {
+        return run(client, context, type, evaluatorId, systemPrompt, categories, overlap, dialogueEnabled, null);
+    }
+    static Result run(OpenAiClient client, AnalysisContext context, TimelineEventType type,
+                      String evaluatorId, String systemPrompt, Set<RiskCategory> categories, int overlap,
+                      boolean dialogueEnabled, ReviewGuidelineLibrary guidelines) {
+        List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
         List<ReviewEvaluation> evaluations = new ArrayList<>();
         Map<String, RiskFinding> findings = new LinkedHashMap<>();
         Set<String> assessed = new HashSet<>();
@@ -302,7 +308,14 @@ public final class TextReviewEngine {
                 dialogue.consume(new DialogueReview.Plan(List.of(), dialoguePlan.unselectedAnchors()), null, false,
                         ignored -> { throw new IllegalStateException(); });
             }
-            LlmResult response = client.completeAsJson(systemPrompt + "\n" + CONTRACT,
+            String referencePrompt = "";
+            if (guidelines != null) {
+                List<ReviewInput.Segment> raw = new ArrayList<>(batch.primary()); raw.addAll(batch.context());
+                var selection = guidelines.select(type, raw, evaluatorId + "-" + (contextSelections.size() + 1));
+                referencePrompt = selection.prompt();
+                if (contextSelections.size() < 200) contextSelections.add(selection.trace());
+            }
+            LlmResult response = client.completeAsJson(systemPrompt + referencePrompt + "\n" + CONTRACT,
                     prompt(batch, context.genreOrGeneral()), LlmResult.class).orElse(null);
             if (response == null || response.evaluations() == null || response.evaluations().isEmpty()) {
                 failed++;
@@ -439,7 +452,8 @@ public final class TextReviewEngine {
         }
         return new Result(List.copyOf(findings.values()), List.copyOf(evaluations), status, notice,
                 unassessed, conflicts.stream().sorted().toList(),
-                diagnostics.finish(evaluatorId, status, assessed, conflicts, decisionsByAnchor).withDialogue(dialogueDiagnostics));
+                diagnostics.finish(evaluatorId, status, assessed, conflicts, decisionsByAnchor)
+                        .withDialogue(dialogueDiagnostics).withContextSelections(contextSelections));
     }
 
     static Observation observation(LlmDecision item, ReviewInput.Segment segment,

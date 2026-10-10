@@ -18,11 +18,11 @@ class ReviewGuidelineLibraryTest {
     @Test void localCompiledArchiveLoadsWithinProductionBudgetWhenPresent() throws Exception {
         var path = java.nio.file.Path.of("../datasets/controversy/guidelines/runtime.json");
         org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(path));
-        var l = library(java.nio.file.Files.readAllBytes(path), 8000);
+        var l = library(java.nio.file.Files.readAllBytes(path), 6000);
         for (var channel : List.of(SPEECH, CAPTION)) {
             assertThat(l.trace(channel).state()).isEqualTo("READY_WORKING_REFERENCE");
             assertThat(l.trace(channel).contextDictionarySha256()).matches("[0-9a-f]{64}");
-            assertThat(l.trace(channel).payloadCodePoints()).isLessThanOrEqualTo(8000);
+            assertThat(l.trace(channel).payloadCodePoints()).isLessThanOrEqualTo(6000);
         }
     }
     @Test void dictionaryArchiveRequiresFingerprintAndKeepsTypedInterpretations() {

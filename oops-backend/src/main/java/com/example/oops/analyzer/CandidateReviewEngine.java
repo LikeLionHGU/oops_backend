@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-10-dictionary-pipeline-24";
+    static final String REVISION = "2026-10-10-pattern-context-selection-25";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -142,7 +142,6 @@ final class CandidateReviewEngine {
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
         var stats = new Stats();
-        String guidelinePrompt = guidelines == null ? "" : guidelines.prompt(TimelineEventType.SPEECH);
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
@@ -159,6 +158,7 @@ final class CandidateReviewEngine {
             if (batch.oversizedPrimary()) { unresolved.addAll(primaryIds); partial = true; continue; }
             List<ReviewUnit> units = ReviewUnit.all(batch);
             List<ReviewInput.Segment> raw = raw(batch);
+            String guidelinePrompt = stats.reference(guidelines, raw, "discovery-" + (stats.discoveryCalls + 1));
             var references = caseLibrary == null ? null : caseLibrary.select(raw, sourceFingerprint);
             if (references != null && stats.retrievalTraces.size() < MAX_TRACES) stats.retrievalTraces.add(references.trace());
             stats.discoveryCalls++;
@@ -231,6 +231,7 @@ final class CandidateReviewEngine {
             List<Candidate> group = candidates.subList(start, Math.min(start + 4, candidates.size()));
             Map<String, ReviewInput.Segment> raw = new LinkedHashMap<>();
             group.forEach(c -> c.raw().forEach(s -> raw.put(s.id(), s)));
+            String guidelinePrompt = stats.reference(guidelines, raw.values(), "verification-" + (stats.verificationCalls + 1));
             stats.verificationCalls++;
             VerificationResult response;
             String responseFailure = null;
@@ -281,7 +282,7 @@ final class CandidateReviewEngine {
                 result = visual == null
                     ? new VisualContextReviewer.Result(invalid("VISUAL_NOT_CONFIGURED"),
                     new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", "VISUAL_NOT_CONFIGURED", List.of(), List.of(), null), false)
-                    : visual.review(context, c, guidelinePrompt);
+                    : visual.review(context, c, stats.reference(guidelines, c.raw(), "visual-" + c.candidateId()));
             } catch (RuntimeException ex) {
                 result = new VisualContextReviewer.Result(invalid("VISUAL_STAGE_EXCEPTION"),
                         new VisualContextReviewer.Trace(c.candidateId(), c.proposal().anchorId(), "NOT_ASSESSED", "VISUAL_STAGE_EXCEPTION", List.of(), List.of(), null), false);
@@ -453,7 +454,14 @@ final class CandidateReviewEngine {
         final List<CandidateReviewDiagnostics.Trace> traces = new ArrayList<>();
         final List<VisualContextReviewer.Trace> visualTraces = new ArrayList<>();
         final List<ReviewCaseLibrary.Trace> retrievalTraces = new ArrayList<>();
+        final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
         ReviewGuidelineLibrary.Trace guidelineReference;
+        String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey) {
+            if (library == null) return "";
+            var selection = library.select(TimelineEventType.SPEECH, raw, requestKey);
+            if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
+            return selection.prompt();
+        }
         void trace(String id, String anchor, String axis, String state) {
             traceCount++; if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id, anchor, axis, state));
         }
@@ -471,7 +479,7 @@ final class CandidateReviewEngine {
         CandidateReviewDiagnostics finish(int explored) {
             return new CandidateReviewDiagnostics(REVISION, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
-                    expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces, guidelineReference);
+                    expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces, guidelineReference, contextSelections);
         }
     }
 }

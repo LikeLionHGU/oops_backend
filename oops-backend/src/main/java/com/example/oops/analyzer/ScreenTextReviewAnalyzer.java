@@ -202,8 +202,7 @@ public class ScreenTextReviewAnalyzer implements ContentAnalyzer {
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
         TextReviewEngine.Result result = TextReviewEngine.run(openAiClient, context,
-                TimelineEventType.CAPTION, key(), SYSTEM_PROMPT
-                    + (guidelineLibrary == null ? "" : guidelineLibrary.prompt(TimelineEventType.CAPTION)), ALLOWED_CATEGORIES, 2);
+                TimelineEventType.CAPTION, key(), SYSTEM_PROMPT, ALLOWED_CATEGORIES, 2, false, guidelineLibrary);
         lastResult.set(result);
         log.info("[{}] videoId={} status={} findings={}", key(), context.video().getId(),
                 result.status(), result.findings().size());

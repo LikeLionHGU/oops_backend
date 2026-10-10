@@ -7,7 +7,13 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 /** Bounded diagnostics, not raw model output and not a quality score. */
 public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments,
                                 boolean truncated, Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
-                                DialogueReview.Diagnostics dialogue, CandidateReviewDiagnostics candidatePipeline) {
+                                DialogueReview.Diagnostics dialogue, CandidateReviewDiagnostics candidatePipeline,
+                                List<ReviewGuidelineLibrary.SelectionTrace> contextSelections) {
+    public ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments, boolean truncated,
+                             Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
+                             DialogueReview.Diagnostics dialogue, CandidateReviewDiagnostics candidatePipeline) {
+        this(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, List.of());
+    }
     public ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments, boolean truncated,
                              Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
                              DialogueReview.Diagnostics dialogue) {
@@ -18,12 +24,18 @@ public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int t
         this(evaluatorId, status, totalSegments, truncated, failureCounts, segments, null);
     }
     ReviewDiagnostics withDialogue(DialogueReview.Diagnostics dialogue) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline);
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, contextSelections);
     }
     ReviewDiagnostics withCandidatePipeline(CandidateReviewDiagnostics pipeline) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, pipeline);
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, pipeline, contextSelections);
     }
-    public ReviewDiagnostics { failureCounts = Map.copyOf(failureCounts); segments = List.copyOf(segments); }
+    ReviewDiagnostics withContextSelections(List<ReviewGuidelineLibrary.SelectionTrace> selections) {
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, selections);
+    }
+    public ReviewDiagnostics {
+        failureCounts = Map.copyOf(failureCounts); segments = List.copyOf(segments);
+        contextSelections = List.copyOf(contextSelections);
+    }
     public enum State { PASS, REVIEW_REQUIRED, UNCERTAIN, REJECTED, CONFLICT, NOT_RETURNED, CALL_FAILED, NOT_SELECTED, NO_CANDIDATE }
     public enum Failure {
         UNKNOWN_ANCHOR, INVALID_DECISION, MISSING_EVIDENCE, TOO_MANY_EVIDENCE,
