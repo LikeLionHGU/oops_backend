@@ -2,6 +2,45 @@
 
 2026-10-10 · 스키마 `controversy-cards-1`
 
+## 최신 정제 단계: 세 층의 맥락 사전
+
+기존 공통 카드/원댓글은 그대로 보존하고 `build_context_dictionary.py`로 별도 `context-dictionary-1` 초안을 생성한다. 자료 간 역할을 명확히 하기 위한 연구용 정리본이며 운영 프롬프트·검색·승인 데이터로 자동 연결하지 않는다.
+
+| 층 | 필드 | 확인할 내용 |
+| --- | --- | --- |
+| 실제 표현 자료 | `utteranceEvidence` | 기존 STT 발췌와 보도 직접 인용. 원음 확인 여부와 보도 인용의 시간 미확인을 그대로 유지 |
+| 논란 해석 자료 | `interpretationMaterial` | 알려진 포인트, 흐름 해석 초안, 기사/위키/정리글 링크와 별도 원문 발췌. 링크만 있는 자료를 해석 근거로 세지 않음 |
+| 시청자 반응 | `audienceReception` | 포인트·흐름·시점에 연결된 비판, 사건 전체/사후 대응/미분류, 참고 반론을 분리 |
+
+현재 6사건·9카드·30반응을 변환했다. 포인트/흐름/시점 비판 단위 **15개**, 사건 전체·사후 대응·미분류 **9개**, 참고 반론 **6개**다. 모두 기존의 미검수 매핑이며 추가 수집·사람 승인·원댓글 518개 전체 정제를 뜻하지 않는다. 비판 이유를 상위 3개로 요약하거나 첫 1개만 남기지 않는다. 반응 단위와 ID를 모두 보존하고 댓글 발췌 원문은 기존 카드에서 참조하여 중복 복사를 줄인다. 의미가 같은 비판을 묶는 작업은 별도 검수로 남긴다.
+
+기사 두 건을 직접 열어 짧은 발췌 **2개**를 추가했다. [동아일보의 뉴스1 기사](https://www.donga.com/news/Society/article/all/20240624/125587672/1)는 기자의 조롱 평가를 `AUTHOR_INTERPRETATION`으로, [아이뉴스24 기사](https://www.inews24.com/view/1742206)는 기사에 인용된 절차 관련 반응을 `REPORTED_AUDIENCE_REACTION`으로 기록했다. 기사 인용 반응은 YouTube API 원댓글 표본이나 기자 본인 평가가 아니다. 기사 전체를 저장하지 않았으며 짧은 발췌의 전후 문맥 검수는 PENDING이다. 위키·커뮤니티 정리글은 이번에 추가하지 않았다.
+
+동아일보 기사의 뉴스1 표기와 말미 출처를 확인해 기존 뉴스1 링크와 같은 `originGroupId` 후보로 묶었다. 링크 수를 독립 근거 수로 세지 않으며 `independentEvidenceCount`는 검수 전 `null`이다. 원문 스냅샷 SHA-256과 Unicode 발췌 위치 일치는 출처/내용의 무결성 검사이지 사실 검증·사용 권한 승인·정답지 확보가 아니다.
+
+`taxonomy.topicTags`는 지역·음식·군 복무 등의 검색 주제이며 위험 라벨이 아니다. `mechanismIds`는 기존 기준집의 상황→대상→낮추는 연결과 출처 카드 관계를 보존한다. `normalComparison`에는 적용 경계만 있고 실제 정상 대조 사례는 **0개**다. 반론이나 작성자 가상 예문을 정상 영상으로 계산하지 않는다. 모든 카드에 검수 공백을 남겼고 정식 승인 사례도 **0개**다.
+
+### 파일과 갱신 방법
+
+- `drafts/context-dictionary.json`: 세 층으로 분리한 파생 초안.
+- `research/context-dictionary-plan.json`: 카드별 주제·연결 방식·외부 자료 발췌/동일 출처 후보 계획.
+- `research/source-snapshots/`: 최소한의 짧은 기사 발췌. 전체 기사 아카이브가 아님.
+
+모두 Git 제외다. 저장소에는 도구·합성 테스트·설명만 둔다. 파생 사전의 점검 기한은 원댓글 수집본의 가장 이른 **2026-11-08 11:01:53 UTC**를 그대로 따른다. 새 파일 생성일로 연장하지 않는다.
+
+```sh
+python3 tools/build_context_dictionary.py          # 무료 준비/구조 검사
+python3 tools/build_context_dictionary.py --write  # 로컬 정리본 갱신
+python3 tools/build_context_dictionary.py --verify # 저장 결과와 원본/계획 일치 확인
+python3 -m unittest discover -s tools/tests -q
+```
+
+새 기사·위키·정리글은 카드 계획의 `additionalResearchSources`에 `id`, `url`, `publisher`, `role: DISCOVERY_ONLY`를 먼저 기록한다. 원발언 층의 출처는 덮어쓰지 않는다. 짧은 원문을 비공개 스냅샷으로 저장하고 `documents`에 `sourceId`, `materialKind`(NEWS_BODY/EDITORIAL/WIKI/COMMUNITY_SUMMARY), `snapshot`, `sha256`, `startCodePoint`, `endCodePoint`, `excerpt`, `statementKind`, `locationHint`, `retrievedOn`, `snapshotCoverage: SHORT_EXTRACT_NOT_FULL_ARTICLE`, `originGroupId`(미확인은 null)를 등록한다. `statementKind`는 보도 발언/작성자 해석/보도된 반응을 구별한다. 문맥과 출처 사용 범위는 사람 검수로 확인한다.
+
+도구는 승인·자동 크롤링·모델 호출·벡터 DB 저장·런타임 파일 재생성을 하지 않는다. 31번의 대상 근거 검증 오류 수정도 이번 범위가 아니다. 도구 Python **93개** 테스트와 로컬 원본/계획 일치 검사를 통과했으며 Java/Python 분석 서버는 변경하지 않았다.
+
+다음은 B/C/D부터 기사 해석 자료의 부족을 보강하고, 각 연결 방식에 대응하는 실제 정상 영상과 다른 사건을 확보한 뒤 사람 검수하는 것이다. 개발 사례 참고 재현과 타 사건 범용 평가를 분리한다. 근거·검색 유사도를 논란 확률로 표시하지 않는다.
+
 > 후속 변경: [범용 논란 기준집](범용-논란-기준집.md)에서 현재 전체 사례의 압축 맥락 기준을 실제 분석에 연결했다. 아래 새 3사례만 사용한 대조 실험은 이전 실행 기록이며, 최신 기준 참고 비교에서는 C/D가 Java 근거 계약을 통과했다. 원사례의 승인 상태는 변경하지 않았다.
 
 하나의 논란 포인트가 카드 하나다. 사건은 여러 카드를 포함하고 각 카드는 표현·전후 맥락·논란 이유의 해석 초안·관련 댓글을 연결한다. 사건별 키워드 금지 목록이나 댓글을 이용한 제작 의도 단정으로 바꾸지 않는다.
