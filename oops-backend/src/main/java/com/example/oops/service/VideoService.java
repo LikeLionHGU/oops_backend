@@ -21,6 +21,8 @@ import com.example.oops.repository.ReviewActionRepository;
 import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
 import com.example.oops.storage.StorageService;
+import com.example.oops.common.YouTubeUrls;
+import com.example.oops.transcript.ScriptParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,17 +61,59 @@ public class VideoService {
         return video;
     }
 
-    /** 유튜브 링크 등록 (명세 외 확장) */
+    /** 붙여넣은 스크립트 최대 길이(글자). 3시간 분량 자동 생성 스크립트도 20만 자 안쪽이다. */
+    static final int MAX_SCRIPT_CHARS = 500_000;
+
+    /**
+     * 유튜브 영상을 스크립트 텍스트로 등록한다. (명세 외 확장)
+     *
+     * 영상을 내려받지 않으므로 분석 서버(파이썬)가 꺼져 있어도 된다.
+     * 대본은 분석할 때 ScriptTranscriptProvider 가 이 글에서 만든다.
+     */
     @Transactional
     public Video createFromUrl(VideoRegisterRequest request) {
-        requireAnalysisServer();
-        return videoRepository.save(Video.builder()
+        String url = request.url() == null ? null : request.url().strip();
+        String script = request.script();
+
+        // 프론트가 링크 칸에 스크립트를 붙여넣어 보낸 경우
+        if ((script == null || script.isBlank()) && url != null && !url.isEmpty() && !looksLikeUrl(url)) {
+            script = url;
+            url = null;
+        }
+        if (script == null || script.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "지금은 유튜브 링크만으로는 분석할 수 없습니다. 유튜브의 '스크립트 표시'에서 복사한 글을 붙여넣어 주세요.");
+        }
+        if (script.length() > MAX_SCRIPT_CHARS) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "스크립트가 너무 깁니다 (최대 %,d자).".formatted(MAX_SCRIPT_CHARS));
+        }
+
+        ScriptParser.Result parsed = ScriptParser.parse(script);
+        if (parsed.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "스크립트에서 읽을 수 있는 문장이 없습니다.");
+        }
+
+        // 링크는 임베드용으로만 남긴다. 유튜브 링크가 아니면 버린다.
+        String embedUrl = url != null && YouTubeUrls.isYouTube(url) ? url : null;
+
+        Video video = videoRepository.save(Video.builder()
                 .sourceType(SourceType.YOUTUBE)
-                .sourceUrl(request.url())
-                .title(request.title())
+                .sourceUrl(embedUrl)
+                .title(request.title() == null || request.title().isBlank() ? "붙여넣은 스크립트" : request.title())
                 .channelName(request.channelName())
+                .durationSec(parsed.durationSec())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
                 .build());
+        video.attachScript(script);
+        return video;
+    }
+
+    /** 링크처럼 보이는지. 공백·줄바꿈 없이 http 로 시작하거나 youtu 가 들어간 한 덩어리 */
+    static boolean looksLikeUrl(String value) {
+        String v = value.strip();
+        if (v.contains("\n") || v.contains(" ")) return false;
+        return v.startsWith("http://") || v.startsWith("https://") || v.contains("youtu");
     }
 
     /**

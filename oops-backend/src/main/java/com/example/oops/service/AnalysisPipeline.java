@@ -129,7 +129,11 @@ public class AnalysisPipeline {
             //     알고 있어서 UPLOAD 를 받으면 목록에서 찾지 못했다
             //
             // 목적(시작을 즉시 보여주기)은 begin() 의 STT 5% 로 이미 달성된다.
-            progressService.update(jobId, AnalysisStage.STT, 5, "음성 인식 중");
+            // 붙여넣은 스크립트로 분석하는 영상은 음성·화면 인식을 하지 않는다.
+            // 대본은 ScriptTranscriptProvider 가 스크립트에서 만들고, 화면 자막은 없는 것으로 진행한다.
+            boolean fromScript = video.hasScript();
+            progressService.update(jobId, AnalysisStage.STT, 5,
+                    fromScript ? "스크립트를 읽고 있습니다" : "음성 인식 중");
             long mark = System.currentTimeMillis();
             List<TranscriptSegment> transcript = transcriptService.extractAndSave(video);
             elapsed.put("STT", System.currentTimeMillis() - mark);
@@ -140,8 +144,12 @@ public class AnalysisPipeline {
             if (transcript.isEmpty()) {
                 log.warn("[pipeline] 대본이 비었습니다. videoId={}", videoId);
                 record(coverage, video, CoverageStep.STT, AnalyzerStatus.FAILED,
-                        analysisServerClient.lastFailureDetail()
+                        fromScript ? "붙여넣은 스크립트에서 문장을 읽지 못했습니다."
+                                : analysisServerClient.lastFailureDetail()
                                 .orElse("음성을 글자로 옮기지 못했습니다."));
+            } else if (fromScript) {
+                record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS,
+                        "붙여넣은 스크립트 %d줄로 분석했습니다. (음성 인식은 하지 않았습니다)".formatted(transcript.size()));
             } else {
                 record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS, null);
             }
@@ -151,18 +159,26 @@ public class AnalysisPipeline {
             // 여기가 제일 오래 걸린다. 10분짜리 영상에 6분씩 걸린 적도 있다.
             // 그 사이 진행률을 한 번도 안 올리면 화면이 멈춘 것처럼 보여서
             // 사용자가 취소를 누르게 된다. 도는 동안 조금씩 올려준다.
-            progressService.update(jobId, AnalysisStage.OCR, 35, "화면 글자를 읽고 있습니다");
-            mark = System.currentTimeMillis();
             List<ScreenText> screenTexts;
-            try (var ticker = new ProgressTicker(jobId, AnalysisStage.OCR, 35, 55)) {
-                screenTexts = screenTextService.extractAndSave(video);
+            if (fromScript) {
+                // 영상을 받지 않았으니 화면을 볼 수 없다. 화면 자막 분석기들은 자막이 없어서 건너뛴다.
+                screenTexts = List.of();
+            } else {
+                progressService.update(jobId, AnalysisStage.OCR, 35, "화면 글자를 읽고 있습니다");
+                mark = System.currentTimeMillis();
+                try (var ticker = new ProgressTicker(jobId, AnalysisStage.OCR, 35, 55)) {
+                    screenTexts = screenTextService.extractAndSave(video);
+                }
+                elapsed.put("OCR", System.currentTimeMillis() - mark);
             }
-            elapsed.put("OCR", System.currentTimeMillis() - mark);
             stopIfCancelled(jobId);
 
             // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
             // 분석 서버가 사유를 남겼을 때만 실패로 본다.
-            if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
+            if (fromScript) {
+                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SKIPPED,
+                        "스크립트로 분석해서 화면 글자는 확인하지 않았습니다.");
+            } else if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
                 record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
                         analysisServerClient.lastFailureDetail().orElse(null));
             } else if (screenTexts.isEmpty()) {
@@ -198,7 +214,9 @@ public class AnalysisPipeline {
             // 사용자에게는 "검수했는데 문제없다" 로 읽히지만 실제로는
             // 아무것도 보지 못한 것이다. 이건 거짓말이다.
             if (transcript.isEmpty() && screenTexts.isEmpty()) {
-                String detail = analysisServerClient.lastFailureDetail()
+                String detail = fromScript
+                        ? "붙여넣은 스크립트에서 분석할 문장을 찾지 못했습니다."
+                        : analysisServerClient.lastFailureDetail()
                         .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.");
                 log.error("[pipeline] videoId={} 분석 불가: {}", videoId, detail);
 
@@ -304,7 +322,7 @@ public class AnalysisPipeline {
             log.info("[pipeline] 완료 videoId={} score={} events={} 총 {}초",
                     videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 — {}", formatElapsed(elapsed, total));
-            logCost(videoId, video.getDurationSec(), transcript.size());
+            logCost(videoId, video.getDurationSec(), transcript.size(), !fromScript);
 
         } catch (Cancelled e) {
             // 사용자가 취소를 눌렀다. 실패가 아니므로 사유를 남기지 않는다.
@@ -432,11 +450,12 @@ public class AnalysisPipeline {
      * 긴 영상에서는 LLM 비용보다 음성 인식이 훨씬 크다.
      * LLM 만 보여주면 "생각보다 싸네" 라고 잘못 판단하게 된다.
      */
-    private void logCost(Long videoId, Integer durationSec, int transcriptLines) {
+    private void logCost(Long videoId, Integer durationSec, int transcriptLines, boolean usedStt) {
         OpenAiClient.TokenUsage usage = openAiClient.videoUsage();
 
         double sttUsd = 0;
-        if (durationSec != null && durationSec > 0) {
+        // 스크립트로 분석한 영상은 음성 인식을 안 했으니 그 비용도 없다
+        if (usedStt && durationSec != null && durationSec > 0) {
             sttUsd = durationSec / 60.0 * usage.pricing().sttUsdPerMinute();
         }
         double totalUsd = usage.costUsd() + sttUsd;

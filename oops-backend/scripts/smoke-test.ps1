@@ -1,12 +1,14 @@
 ﻿# 영상 하나를 끝까지 돌려보는 확인 스크립트 (API 명세 v1 기준)
 #
 #   .\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4"
-#   .\scripts\smoke-test.ps1 -Url  "https://www.youtube.com/watch?v=..."
+#   .\scripts\smoke-test.ps1 -Script "C:\경로\스크립트.txt"   # 유튜브 스크립트를 붙여넣은 텍스트 파일
+#   .\scripts\smoke-test.ps1 -Script "C:\경로\스크립트.txt" -Url "https://www.youtube.com/watch?v=..."  # 링크는 임베드용(선택)
 #   .\scripts\smoke-test.ps1 -VideoId 1      # 이미 분석한 영상 결과만 다시 보기 (재분석 안 함)
 
 param(
     [string]$Url,
     [string]$File,
+    [string]$Script,
     [int]$VideoId = 0,
     [string]$Backend = "http://localhost:8080",
     [string]$Analysis = "http://localhost:8000"
@@ -35,23 +37,25 @@ function Get-Json($url) {
 # ---------------------------------------------------------- 0. 사전 점검
 Section "0. 준비물 확인"
 
-if ($VideoId -eq 0 -and -not $Url -and -not $File) {
-    Fail "-File, -Url, -VideoId 중 하나는 필요합니다."
+if ($VideoId -eq 0 -and -not $Script -and -not $File) {
+    Fail "-File, -Script, -VideoId 중 하나는 필요합니다."
+    if ($Url) { Hint "유튜브 링크만으로는 분석하지 않습니다. 유튜브 '스크립트 표시'를 복사해 txt 로 저장하고 -Script 로 넘기세요." }
     exit 1
 }
 if ($File -and -not (Test-Path $File)) { Fail "파일 없음: $File"; exit 1 }
+if ($Script -and -not (Test-Path $Script)) { Fail "스크립트 파일 없음: $Script"; exit 1 }
 
 if (Get-Command curl.exe -ErrorAction SilentlyContinue) { Ok "curl.exe" }
 else { Fail "curl.exe 없음"; exit 1 }
 
-if ($VideoId -eq 0) {
+if ($VideoId -eq 0 -and -not $Script) {
     if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { Ok "ffmpeg" }
     else { Fail "ffmpeg 없음 -> winget install Gyan.FFmpeg"; exit 1 }
 }
 Ok "PowerShell $($PSVersionTable.PSVersion)"
 
 # ---------------------------------------------------------- 1~2. 서버 확인
-if ($VideoId -eq 0) {
+if ($VideoId -eq 0 -and -not $Script) {
     Section "1. Python 분석 서버"
     $health = Get-Json "$Analysis/health"
     if (-not $health) { Fail "분석 서버 응답 없음. oops-analysis 에서 .\run.ps1 실행"; exit 1 }
@@ -76,7 +80,13 @@ if ($VideoId -eq 0) {
         # JSON 을 인라인으로 넘기면 PowerShell 이 큰따옴표를 벗겨서
         # 서버가 {url:...} 을 받고 파싱에 실패한다. 임시 파일로 넘긴다.
         $tmp = [IO.Path]::GetTempFileName()
-        @{ url = $Url } | ConvertTo-Json -Compress | Set-Content -Path $tmp -Encoding UTF8 -NoNewline
+        # Get-Content -Raw 는 5.1 에서 PSPath 같은 속성이 붙은 객체를 돌려줘서
+        # ConvertTo-Json 이 {"script":{"value":...,"PSPath":...}} 로 만든다. 순수 문자열로 읽는다.
+        $scriptText = [IO.File]::ReadAllText((Resolve-Path $Script).Path, [Text.Encoding]::UTF8)
+        $body = @{ script = $scriptText }
+        if ($Url) { $body.url = $Url }
+        # Set-Content -Encoding UTF8 는 5.1 에서 BOM 을 붙여 JSON 파싱이 깨질 수 있어 직접 쓴다
+        [IO.File]::WriteAllText($tmp, ($body | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
         $raw = curl.exe -s -S -X POST "$Backend/api/v1/videos" `
                         -H "Content-Type: application/json" -d "@$tmp"
         Remove-Item $tmp -ErrorAction SilentlyContinue
@@ -121,7 +131,7 @@ if ($VideoId -eq 0) {
         exit 1
     }
     Ok "분석 완료 (소요 $elapsed 초)"
-    if ($elapsed -lt 10) {
+    if ($elapsed -lt 10 -and -not $Script) {
         Warn "너무 빨리 끝났습니다. STT/OCR 이 실제로 돌지 않았을 가능성이 큽니다."
     }
 }

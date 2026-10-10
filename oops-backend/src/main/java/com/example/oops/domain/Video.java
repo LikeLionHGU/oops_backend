@@ -46,6 +46,17 @@ public class Video extends BaseTimeEntity {
 
     private Integer durationSec;
 
+    /**
+     * 붙여넣은 유튜브 스크립트 원문.
+     *
+     * 서버에서 유튜브를 내려받지 못해서(데이터센터 IP 차단) 링크 대신 스크립트를 받는다.
+     * 이 값이 있으면 음성 인식과 화면 글자 인식을 하지 않고 이 글로 분석한다.
+     * 재분석할 때도 다시 쓰므로 원문 그대로 둔다.
+     */
+    @Lob
+    @Column(name = "script_text")
+    private String scriptText;
+
     @Enumerated(EnumType.STRING)
     // columnDefinition 을 명시하면 Hibernate 가 enum 체크 제약(CHECK ... IN (...))을 만들지 않는다.
     // 제약이 생기면 나중에 enum 값을 추가했을 때 기존 DB 에서 저장이 거부된다.
@@ -75,6 +86,16 @@ public class Video extends BaseTimeEntity {
         this.durationSec = durationSec;
         this.genre = genre;
         this.status = AnalysisStatus.PENDING;
+    }
+
+    /** 스크립트를 붙인다. 스크립트 입력 영상은 등록할 때 한 번만 쓴다. */
+    public void attachScript(String scriptText) {
+        this.scriptText = scriptText;
+    }
+
+    /** 붙여넣은 스크립트로 분석하는 영상인지 */
+    public boolean hasScript() {
+        return scriptText != null && !scriptText.isBlank();
     }
 
     public void assignGenre(ContentGenre genre) {

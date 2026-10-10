@@ -60,12 +60,22 @@ public class VideoController {
                 .body(ApiResponse.ok(VideoUploadResponse.of(video, job)));
     }
 
-    @Operation(summary = "유튜브 링크로 등록",
+    @Operation(summary = "유튜브 영상을 스크립트로 등록",
             description = """
-                    파일 대신 링크로 등록한다. 응답 형태는 업로드와 같다.
+                    유튜브 "스크립트 표시"에서 복사한 글로 등록한다. 응답 형태는 업로드와 같다.
+                    영상을 내려받지 않고 이 글을 대본으로 써서 기존과 같은 분석을 돌린다.
+                    (서버에서 유튜브 다운로드가 막혀 링크 방식 대신 쓴다)
 
-                    주의: 로컬에 영상 파일이 없으므로 `GET /stream` 은 동작하지 않는다.
-                    재생이 필요하면 프론트에서 유튜브 임베드를 쓴다.
+                    ```json
+                    { "script": "0:00 첫 줄\n0:03 둘째 줄 ...", "url": "https://youtu.be/... (선택)", "title": "(선택)" }
+                    ```
+
+                    - `script` 필수. 시각(0:00)이 있으면 그대로, 없으면 글자 수로 추정한다.
+                    - `url` 선택. 리포트 임베드용으로만 쓰고 내려받지 않는다.
+                      `script` 없이 `url` 에 스크립트를 넣어 보내도 받는다 (기존 프론트 호환).
+                    - 음성 인식·화면 글자 인식을 하지 않으므로 분석 서버(파이썬)가 꺼져 있어도 된다.
+
+                    실패 코드: `INVALID_REQUEST`(400, 스크립트 없음·너무 김·읽을 문장 없음)
                     """)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<VideoUploadResponse>> registerByUrl(
