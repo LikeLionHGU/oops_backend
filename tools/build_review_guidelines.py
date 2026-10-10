@@ -60,11 +60,25 @@ def prompt_rules(archive, channel):
             for rule in archive["guidelines"] if channel in rule["channels"]]
 
 
-def compile_guidelines(bundle, plan, source_bytes):
+def compile_guidelines(bundle, plan, source_bytes, dictionary=None):
     require(plan.get("schemaVersion") == "review-guideline-plan-1"
             and plan.get("status") == "WORKING_REFERENCE_NOT_VALIDATED"
             and plan.get("humanValidated") is False and text(plan.get("version"), 64), "WORKING_PLAN_REQUIRED")
     cards = {c["id"]: c for i in bundle["incidents"] for c in i["cards"]}
+    entries = {}
+    if dictionary is not None:
+        require(dictionary.get("schemaVersion") == "context-dictionary-1"
+                and dictionary.get("status") == "UNREVIEWED_DRAFT"
+                and dictionary.get("humanApproved") is False
+                and dictionary.get("runtimeEligible") is False
+                and dictionary.get("trainingUseAuthorized") is False
+                and dictionary.get("sourceBundleSha256") == hashlib.sha256(source_bytes).hexdigest()
+                and dictionary.get("guidelinePlanSha256") == hashlib.sha256(
+                    json.dumps(plan, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+                "DICTIONARY_PROVENANCE_REQUIRED")
+        entries = {e["id"]: e for e in dictionary["entries"]}
+        require(set(entries) == set(cards) and len(entries) == len(dictionary["entries"]),
+                "DICTIONARY_CARD_COVERAGE_MISMATCH")
     mechanisms = plan.get("mechanisms")
     require(isinstance(mechanisms, list) and 1 <= len(mechanisms) <= 16, "MECHANISM_LIMIT")
     ids, covered, rules = set(), set(), []
@@ -83,12 +97,31 @@ def compile_guidelines(bundle, plan, source_bytes):
         rule = {k: m[k] for k in ("id", "axis", "channels", "condition", "normalContrast",
                                   "requiredEvidence", "missingContext", "sourceCaseIds")}
         rule["referenceContexts"] = [reference_context(cards[cid]) for cid in m["sourceCaseIds"]]
+        if dictionary is not None:
+            for ref in rule["referenceContexts"]:
+                entry = entries[ref["sourceCaseId"]]
+                require(m["id"] in entry["taxonomy"]["mechanismIds"], "DICTIONARY_MECHANISM_MISMATCH")
+                # Keep every mapped content reason, not the most popular/first comment.
+                # Timing reactions require a separate current-publication check.
+                ref["criticismHypotheses"] = list(dict.fromkeys(
+                    u["interpretation"]["reason"] for u in entry["audienceReception"]["pointReasonUnits"]
+                    if u["stage"] == "CONTENT" and u["scope"] in {"EXACT_POINT", "SCENE_OR_FLOW"}))
+                ref["sourceInterpretations"] = [
+                    {"statementKind": s["statementKind"], "excerpt": s["excerpt"]}
+                    for s in entry["interpretationMaterial"]["sourceExtracts"]
+                    if s["statementKind"] in {"AUTHOR_INTERPRETATION", "REPORTED_AUDIENCE_REACTION"}]
+                require(len(ref["criticismHypotheses"]) <= 16
+                        and all(text(s, 350) for s in ref["criticismHypotheses"])
+                        and len(ref["sourceInterpretations"]) <= 16
+                        and all(text(s["excerpt"], 350) for s in ref["sourceInterpretations"]),
+                        "DICTIONARY_REFERENCE_LIMIT")
         rules.append(rule)
     require(covered == set(cards), "NEW_CARDS_REQUIRE_EXPLICIT_MECHANISM_MAPPING")
     payloads = {channel: prompt_rules({"guidelines": rules}, channel) for channel in ("SPEECH", "CAPTION")}
-    require(all(len(json.dumps(p, ensure_ascii=False, separators=(",", ":"))) <= 6000
+    require(all(len(json.dumps(p, ensure_ascii=False, separators=(",", ":"))) <= (8000 if dictionary else 6000)
                 for p in payloads.values()), "COMPACT_GUIDELINE_BUDGET_EXCEEDED")
-    return {"schemaVersion": "review-guidelines-2", "version": plan["version"],
+    result = {"schemaVersion": "review-guidelines-3" if dictionary else "review-guidelines-2",
+            "version": plan["version"] + ("-dictionary-3" if dictionary else ""),
             "status": "WORKING_REFERENCE_NOT_VALIDATED", "humanValidated": False,
             "usage": "REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED",
             "sourceBundleSha256": hashlib.sha256(source_bytes).hexdigest(),
@@ -96,6 +129,10 @@ def compile_guidelines(bundle, plan, source_bytes):
                                       for c in bundle["collections"])).isoformat(),
             "sourceCases": [{"caseId": c["id"], "familyId": c["familyId"], "status": c["status"]}
                             for c in cards.values()], "guidelines": rules}
+    if dictionary is not None:
+        result["contextDictionarySha256"] = hashlib.sha256(
+            json.dumps(dictionary, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    return result
 
 
 def write_private(path, data):
@@ -126,7 +163,20 @@ def main():
         expected = build_bundle(root, args.private_root, parse(read_bytes(root / "research/reaction-classification-plan.json")))
         require(bundle == expected, "BUNDLE_SOURCE_OR_PLAN_MISMATCH")
         plan = parse(read_bytes(root / "guidelines/plan.json"))
-        result = compile_guidelines(bundle, plan, source_bytes)
+        # Import here: the research builder reuses this module's atomic writer.
+        from build_context_dictionary import compile_dictionary
+        from review_dataset_catalog import inside
+        dictionary_plan = parse(read_bytes(root / "research/context-dictionary-plan.json"))
+        snapshots = {}
+        for config in dictionary_plan["cards"].values():
+            for document in config["documents"]:
+                name = document["snapshot"]
+                require(name.startswith("research/source-snapshots/"), "PRIVATE_SOURCE_SNAPSHOT_PATH_REQUIRED")
+                snapshots[name] = read_bytes(inside(root, name))
+        dictionary = compile_dictionary(bundle, dictionary_plan, plan, source_bytes, snapshots)
+        require(dictionary == parse(read_bytes(root / "drafts/context-dictionary.json")),
+                "DICTIONARY_SOURCE_OR_PLAN_MISMATCH")
+        result = compile_guidelines(bundle, plan, source_bytes, dictionary)
         require(datetime.datetime.fromisoformat(result["refreshOrDeleteBy"]) >
                 datetime.datetime.now(datetime.timezone.utc), "REFRESH_OR_DELETE_REQUIRED")
         output = root / "guidelines/runtime.json"

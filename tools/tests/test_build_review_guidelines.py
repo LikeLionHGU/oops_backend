@@ -76,5 +76,26 @@ class GuidelineCompilerTests(unittest.TestCase):
         with self.assertRaisesRegex(tool.PilotError, "REFERENCE_FLOW_SOURCE_REQUIRED"):
             tool.compile_guidelines(self.bundle, self.plan, b"source")
 
+    def test_dictionary_connection_preserves_all_content_reasons_not_background(self):
+        import build_context_dictionary as dictionary_tool
+        plan = {"schemaVersion": "context-dictionary-plan-1", "status": "ASSISTANT_DRAFT", "humanApproved": False,
+                "cards": {"synthetic-card": {"topicTags": ["합성"], "mechanismIds": ["mechanism"], "documents": []}}}
+        dictionary = dictionary_tool.compile_dictionary(self.bundle, plan, self.plan, b"source")
+        units = dictionary["entries"][0]["audienceReception"]["pointReasonUnits"]
+        for index in range(3):
+            unit = copy.deepcopy(units[0]); unit["interpretation"]["reason"] = f"독립 비판 {index}"
+            units.append(unit)
+        result = tool.compile_guidelines(self.bundle, self.plan, b"source", dictionary)
+        self.assertEqual("review-guidelines-3", result["schemaVersion"])
+        ref = result["guidelines"][0]["referenceContexts"][0]
+        self.assertEqual(4, len(ref["criticismHypotheses"]))
+        self.assertEqual([], ref["sourceInterpretations"])
+        self.assertEqual(64, len(result["contextDictionarySha256"]))
+        for private in ("counterReferenceOnly", "incidentOrOtherReactions", "rawExcerptLocation", "sourceCaseId"):
+            self.assertNotIn(private, str(tool.prompt_rules(result, "SPEECH")))
+        dictionary["sourceBundleSha256"] = "0" * 64
+        with self.assertRaisesRegex(tool.PilotError, "DICTIONARY_PROVENANCE_REQUIRED"):
+            tool.compile_guidelines(self.bundle, self.plan, b"source", dictionary)
+
 
 if __name__=="__main__":unittest.main()
