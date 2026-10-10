@@ -10,7 +10,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-from compare_review_prompts import ROOT, ENGINE, BASELINE, digest, prepare
+from compare_review_prompts import ROOT, ENGINE, BASELINE, FROZEN_CURRENT, digest, prepare
 from replay_draft_cases import prompts, complete
 from collect_youtube_comments import read_key
 from build_review_guidelines import write_private
@@ -113,11 +113,11 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="
     contract = textwrap.dedent(re.search(r'String CONTRACT = """\n(.*?)\n\s*""";', library, re.S)[1]) + "\n"
     suffix = "\n" + contract + "\ncontextReference=" + json.dumps(reference, ensure_ascii=False)
     arms = [(name, system + suffix) for name, system in ablation_arms(
-        prompts(old_source)[2], prompts((ROOT / ENGINE).read_text())[2])]
+        prompts(old_source)[2], prompts(subprocess.check_output(
+            ["git", "show", FROZEN_CURRENT + ":" + ENGINE], cwd=ROOT, text=True))[2])]
     planned = schedule(cases, arms, repeats, profile)
     report = {"schemaVersion": "fixed-prompt-ablation-1", "scope": "DEVELOPMENT_CALIBRATION_NOT_HISTORICAL_REPLAY",
-              "baselineCommit": BASELINE, "currentCommit": subprocess.check_output(
-                  ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+              "baselineCommit": BASELINE, "currentCommit": FROZEN_CURRENT,
               "profile": profile, "model": "gpt-6-luna", "plannedCalls": len(planned), "execute": execute,
               "referenceSha256": digest(reference), "sourceTranscriptSha256": digest(snapshot["transcript"]),
               "armPromptSha256": {name: digest(system) for name, system in arms}, "cases": cases, "calls": []}

@@ -39,6 +39,7 @@ class PromptSnapshotTest {
         }
         assertThat(document).contains("```text\n" + CandidateReviewEngine.ID_REPAIR_PROMPT.stripTrailing() + "\n```");
         assertThat(document).contains("```text\n" + CandidateReviewEngine.TARGET_REPAIR_PROMPT.stripTrailing() + "\n```");
+        assertThat(document).contains("```text\n" + CandidateReviewEngine.EVIDENCE_BUDGET_REPAIR_PROMPT.stripTrailing() + "\n```");
         assertThat(document).contains("```text\n" + CandidateReviewEngine.CONTRAST_REPAIR_PROMPT.stripTrailing() + "\n```");
         for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT,
                 CandidateReviewEngine.DISCOVERY_REPAIR_PROMPT,

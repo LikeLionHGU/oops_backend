@@ -18,6 +18,7 @@ from replay_draft_cases import prompts, complete
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = "oops-backend/src/main/java/com/example/oops/analyzer/CandidateReviewEngine.java"
 BASELINE = "870dd72"
+FROZEN_CURRENT = "3d15941"  # Historical revision-31 judgment; later runtime changes do not alter this experiment.
 
 
 def digest(value):
@@ -84,7 +85,7 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
     archive = json.loads(Path(archive_path).read_text())
     cases, reference = prepare(snapshot, archive)
     baseline_source = subprocess.check_output(["git", "show", BASELINE + ":" + ENGINE], cwd=ROOT, text=True)
-    current_source = (ROOT / ENGINE).read_text()
+    current_source = subprocess.check_output(["git", "show", FROZEN_CURRENT + ":" + ENGINE], cwd=ROOT, text=True)
     library = (ROOT / "oops-backend/src/main/java/com/example/oops/analyzer/ReviewGuidelineLibrary.java").read_text()
     contract = textwrap.dedent(re.search(r'String CONTRACT = """\n(.*?)\n\s*""";', library, re.S)[1]) + "\n"
     suffix = "\n" + contract + "\ncontextReference=" + json.dumps(reference, ensure_ascii=False)
@@ -93,7 +94,7 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
     if planned > 16:
         raise ValueError("CALL_LIMIT")
     report = {"schemaVersion": "fixed-prompt-comparison-1", "scope": "TEXT_ONLY_FIXED_CANDIDATE_DEVELOPMENT_CALIBRATION",
-              "baselineCommit": BASELINE, "currentCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+              "baselineCommit": BASELINE, "currentCommit": FROZEN_CURRENT,
               "model": "gpt-6-luna", "plannedCalls": planned, "execute": execute,
               "referenceSha256": digest(reference), "sourceTranscriptSha256": digest(snapshot["transcript"]),
               "armPromptSha256": {name: digest(system) for name, system in arms}, "cases": cases, "calls": []}

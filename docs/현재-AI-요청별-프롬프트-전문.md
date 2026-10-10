@@ -1,6 +1,6 @@
 # 현재 AI 요청별 프롬프트 전문
 
-> 최신 실행 개정 `2026-10-11-target-role-repair-32`: 대상 근거 오류 복구 요청에서 TARGET 역할 인용 존재·원문 지칭어 복사·EXPLICIT/CONTEXTUAL 조건을 명확히 했다. 기본 판단 프롬프트는 개정 31 그대로이며 중립 대조/대상 작성 통합 수정안은 C 인용 실패로 보류했다. 복구 라우팅·영상당 최대 2회·원문 검증은 유지한다. 새 복구 지침의 실모델/전체 영상 효과는 미측정이다.
+> 최신 코드 개정 `2026-10-11-target-example-budget-repair-33`: 판단·대조 블록은 유지하고 텍스트 검증의 대상 필드 형식 예시를 추가했다. 유효 원문 인용 9~12개의 개수 초과만 기존 공유 복구 한도 안에서 재판정한다. 최종 채택 8개 상한·원문 검증·자동 삭제 금지는 유지한다. 선택적 이미지 기본 프롬프트는 형식 예시 없이 기존 구성을 유지한다. 새 개수 복구의 실모델/전체 영상 효과는 후속 검증이다.
 
 > 최신 실행 개정 `2026-10-10-context-routing-repair-31`: 아래 개정 30의 판단·출력 프롬프트 본문은 그대로다. Java 사례 선택을 후보 인용/가까운 문맥 교차 방식으로 바꾸고 TARGET_MENTION_RELATION을 기존 대상 근거 복구 대상으로 추가했다. 생성 프롬프트를 다시 늘리거나 모델/샘플링을 바꾸지 않았다. 아래 '현재 실행' 개정 30 설명은 프롬프트 본문 변경 이력이다.
 
@@ -227,9 +227,42 @@ JSON: {"verifications":[{"candidateId":"요청 후보 ID","assessment":{
   "evidence":[{"segmentId":"anchorId","quote":"PRIMARY 인용","role":"PRIMARY"}],
   "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null}}]}
 
+# 대상 필드 형식 예시 — 판정 예시가 아니다
+아래 raw는 설명용 가상 원문이다. 실제 요청의 raw에 없는 ID·문구·대상을 복사하지 않는다.
+대상 평가를 이유로 REVIEW_REQUIRED를 이미 결정한 경우에만 다음 작성 관계를 참고한다.
+가상 raw: [{"id":"example-1","text":"이 가게를 소개합니다."},{"id":"example-2","text":"여기는"}]
+직접 원문 지칭을 target으로 쓰면:
+{"target":"이 가게","targetMention":"이 가게","targetType":"BUSINESS","targetRelation":"EXPLICIT",
+ "targetReason":"원문에서 이 가게를 직접 지칭한다.",
+ "evidence":[{"segmentId":"example-1","quote":"이 가게","role":"TARGET"}]}
+지칭어와 해석 대상의 문자열이 다르면 의미가 가까워도 CONTEXTUAL이다:
+{"target":"앞서 소개한 가게","targetMention":"여기는","targetType":"BUSINESS","targetRelation":"CONTEXTUAL",
+ "targetReason":"이 가게를 소개한 발언과 여기는이라는 후속 지칭이 같은 가게를 연결한다.",
+ "evidence":[{"segmentId":"example-2","quote":"여기는","role":"TARGET"},
+ {"segmentId":"example-1","quote":"이 가게를 소개합니다.","role":"CONTEXT"}]}
+이는 대상 필드와 인용 역할만 보여주는 부분 객체다. 실제 응답에는 anchor의 PRIMARY와 다른 필수 필드도 필요하다.
+대상 지칭어를 CONTEXT 역할로만 반환하면 TARGET 인용이 아니다. PRIMARY와 TARGET이 같은 줄이어도 두 역할을 각각 적는다.
+PASS/UNCERTAIN은 대상 필드를 null로, 표현 자체 검토는 대상 근거가 없으면 대상 필드를 null로 유지한다.
+가게 소개·여기는 같은 말 자체는 경고 근거가 아니다. 실제 연결이 없으면 예시처럼 관계를 만들어 채우지 않는다.
+
 반드시 유효한 JSON 객체만 반환한다. JSON을 코드 블록으로 감싸거나 객체 밖에 설명을 덧붙이지 마라.
 ```
 
+
+## 개정 33: 유효 원문 인용 개수 초과 재검증
+
+9~12개 인용이 모두 허용 원문·역할이며 anchor PRIMARY가 일치할 때만 이 복구 경로를 사용한다. 최종 채택 상한은 여전히 8개이며 후보당 한 번/영상당 합산 두 번 한도다. 허구 인용·누락 PRIMARY·13개 이상은 이 경로로 보내지 않는다.
+
+```text
+# 인용 개수 계약 재검증
+이전 응답은 evidence 객체 수가 8개를 초과해 채택되지 않았다. 현재 후보의 허용 raw만 다시 읽고 독립 판정한다.
+evidence는 PRIMARY·TARGET·CONTEXT를 합쳐 최대 8개다. 같은 줄의 PRIMARY와 TARGET도 객체 2개로 센다.
+먼저 anchor PRIMARY, 대상 평가이면 실제 TARGET, CONTEXTUAL이면 다른 줄의 필수 CONTEXT를 확보한다.
+남은 자리에는 판단에 꼭 필요한 연결만 인용한다. 이 한도에 맞춰 원문·역할·대상 관계를 바꾸거나 꾸미지 않는다.
+필요한 대조·근거가 없으면 PASS 또는 UNCERTAIN을 반환한다. 이전 경고를 유지할 의무는 없다.
+targetMention은 TARGET.quote에서 복사하며 target과 다르면 CONTEXTUAL과 실제 연결 설명이 필요하다.
+반환 전 개수·필수 역할·원문 ID와 인용을 확인한다. 서버가 인용을 자르거나 오류를 자동 교정하지 않는다.
+```
 
 ## 연결 후보 PASS 계약 재검증 (개정 30)
 

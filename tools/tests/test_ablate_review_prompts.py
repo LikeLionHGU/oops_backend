@@ -22,7 +22,7 @@ def inputs(tmp_path):
 
 def test_ablation_changes_only_the_two_additions():
     old = tool.prompts(subprocess.check_output(["git", "show", tool.BASELINE + ":" + tool.ENGINE], cwd=tool.ROOT, text=True))[2]
-    current = tool.prompts((tool.ROOT / tool.ENGINE).read_text())[2]
+    current = tool.prompts(subprocess.check_output(["git", "show", tool.FROZEN_CURRENT + ":" + tool.ENGINE], cwd=tool.ROOT, text=True))[2]
     arms = dict(tool.ablation_arms(old, current))
     assert arms["baseline-28"] == old and arms["current-31"] == current
     assert "상황 → 평가 → 평가 대상" in arms["judgment-only"]

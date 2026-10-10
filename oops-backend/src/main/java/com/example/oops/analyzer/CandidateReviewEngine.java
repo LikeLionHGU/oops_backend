@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-11-target-role-repair-32";
+    static final String REVISION = "2026-10-11-target-example-budget-repair-33";
     static final String POLICY = """
             게시 전 제작자가 다시 확인할 표현과 연결된 대화 흐름을 원문 근거로 찾는다.
             기준은 두 축이다.
@@ -122,6 +122,24 @@ final class CandidateReviewEngine {
               "score":null,"context":null,"reading":null,"missingInformation":[],
               "evidence":[{"segmentId":"anchorId","quote":"PRIMARY 인용","role":"PRIMARY"}],
               "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null}}]}
+
+            # 대상 필드 형식 예시 — 판정 예시가 아니다
+            아래 raw는 설명용 가상 원문이다. 실제 요청의 raw에 없는 ID·문구·대상을 복사하지 않는다.
+            대상 평가를 이유로 REVIEW_REQUIRED를 이미 결정한 경우에만 다음 작성 관계를 참고한다.
+            가상 raw: [{"id":"example-1","text":"이 가게를 소개합니다."},{"id":"example-2","text":"여기는"}]
+            직접 원문 지칭을 target으로 쓰면:
+            {"target":"이 가게","targetMention":"이 가게","targetType":"BUSINESS","targetRelation":"EXPLICIT",
+             "targetReason":"원문에서 이 가게를 직접 지칭한다.",
+             "evidence":[{"segmentId":"example-1","quote":"이 가게","role":"TARGET"}]}
+            지칭어와 해석 대상의 문자열이 다르면 의미가 가까워도 CONTEXTUAL이다:
+            {"target":"앞서 소개한 가게","targetMention":"여기는","targetType":"BUSINESS","targetRelation":"CONTEXTUAL",
+             "targetReason":"이 가게를 소개한 발언과 여기는이라는 후속 지칭이 같은 가게를 연결한다.",
+             "evidence":[{"segmentId":"example-2","quote":"여기는","role":"TARGET"},
+             {"segmentId":"example-1","quote":"이 가게를 소개합니다.","role":"CONTEXT"}]}
+            이는 대상 필드와 인용 역할만 보여주는 부분 객체다. 실제 응답에는 anchor의 PRIMARY와 다른 필수 필드도 필요하다.
+            대상 지칭어를 CONTEXT 역할로만 반환하면 TARGET 인용이 아니다. PRIMARY와 TARGET이 같은 줄이어도 두 역할을 각각 적는다.
+            PASS/UNCERTAIN은 대상 필드를 null로, 표현 자체 검토는 대상 근거가 없으면 대상 필드를 null로 유지한다.
+            가게 소개·여기는 같은 말 자체는 경고 근거가 아니다. 실제 연결이 없으면 예시처럼 관계를 만들어 채우지 않는다.
             """;
     private static final int MAX_TRACES = 200;
     private static final int MAX_CONTRACT_REPAIRS = 2;
@@ -142,6 +160,7 @@ final class CandidateReviewEngine {
             """;
     static final Set<String> REPAIRABLE_FAILURES = Set.of("DECISION_UNKNOWN_EVIDENCE_ID",
             "TARGET_REQUIRED", "TARGET_EVIDENCE_REQUIRED", "TARGET_CONTEXT_EVIDENCE_REQUIRED", "TARGET_MENTION_RELATION",
+            "EVIDENCE_BUDGET_EXCEEDED",
             "LINKED_PASS_CONTRAST_REQUIRED", "LINKED_PASS_CONTEXT_REQUIRED");
     static final String CONTRAST_REPAIR_PROMPT = """
             # 연결 후보 대조 계약 재검증
@@ -152,6 +171,7 @@ final class CandidateReviewEngine {
             이전 판정을 유지하거나 경고를 만들 의무가 없다. 원문·대상·동기를 만들어 보충하지 않는다.
             """;
     static String repairPrompt(String failure) {
+        if ("EVIDENCE_BUDGET_EXCEEDED".equals(failure)) return EVIDENCE_BUDGET_REPAIR_PROMPT;
         if ("DECISION_UNKNOWN_EVIDENCE_ID".equals(failure)) return ID_REPAIR_PROMPT;
         if ("LINKED_PASS_CONTRAST_REQUIRED".equals(failure) || "LINKED_PASS_CONTEXT_REQUIRED".equals(failure))
             return CONTRAST_REPAIR_PROMPT;
@@ -169,6 +189,16 @@ final class CandidateReviewEngine {
             TARGET 인용과 다른 segmentId의 실제 CONTEXT 및 연결 설명이 필요하다.
             반환 전 TARGET 역할·지칭어 포함·관계 조건을 점검한다. 대상 이름·인용·관계를 추측해 보충하지 않는다.
             원문 근거가 부족하면 UNCERTAIN, 구체적인 검토 이유가 없으면 PASS다. 경고로 복구할 의무는 없다.
+            """;
+    static final String EVIDENCE_BUDGET_REPAIR_PROMPT = """
+            # 인용 개수 계약 재검증
+            이전 응답은 evidence 객체 수가 8개를 초과해 채택되지 않았다. 현재 후보의 허용 raw만 다시 읽고 독립 판정한다.
+            evidence는 PRIMARY·TARGET·CONTEXT를 합쳐 최대 8개다. 같은 줄의 PRIMARY와 TARGET도 객체 2개로 센다.
+            먼저 anchor PRIMARY, 대상 평가이면 실제 TARGET, CONTEXTUAL이면 다른 줄의 필수 CONTEXT를 확보한다.
+            남은 자리에는 판단에 꼭 필요한 연결만 인용한다. 이 한도에 맞춰 원문·역할·대상 관계를 바꾸거나 꾸미지 않는다.
+            필요한 대조·근거가 없으면 PASS 또는 UNCERTAIN을 반환한다. 이전 경고를 유지할 의무는 없다.
+            targetMention은 TARGET.quote에서 복사하며 target과 다르면 CONTEXTUAL과 실제 연결 설명이 필요하다.
+            반환 전 개수·필수 역할·원문 ID와 인용을 확인한다. 서버가 인용을 자르거나 오류를 자동 교정하지 않는다.
             """;
     static final String ID_REPAIR_PROMPT = """
             # 원문 ID 계약 재검증
@@ -578,8 +608,19 @@ final class CandidateReviewEngine {
     private static Validation invalid(String code) { return new Validation(null, code); }
     static Validation validate(Candidate c, TextReviewEngine.LlmDecision d, ReviewInput input) {
         if (d == null || !c.proposal().anchorId().equals(d.segmentId()) || !useful(d.reason(), 400)
-                || d.evidence() == null || d.evidence().isEmpty() || d.evidence().size() > 8
+                || d.evidence() == null || d.evidence().isEmpty() || d.evidence().size() > 12
                 || d.evidenceText() == null || d.evidenceText().isBlank() || d.context() != null || d.reading() != null) return invalid("ASSESSMENT_SHAPE");
+        if (d.evidence().size() > 8) {
+            // Only small overflows with actual permitted quotes may request one bounded rewrite.
+            // Never truncate an assessment or accept more than eight evidence objects.
+            if (d.evidence().stream().anyMatch(e -> e == null || e.segmentId() == null || e.quote() == null
+                    || e.quote().isBlank() || !Set.of("PRIMARY", "TARGET", "CONTEXT").contains(e.role() == null ? "" : e.role())
+                    || c.raw().stream().noneMatch(s -> s.id().equals(e.segmentId()) && s.text().contains(e.quote())))
+                    || d.evidence().stream().noneMatch(e -> "PRIMARY".equals(e.role())
+                    && c.proposal().anchorId().equals(e.segmentId()) && d.evidenceText().equals(e.quote())))
+                return invalid("ASSESSMENT_SHAPE");
+            return invalid("EVIDENCE_BUDGET_EXCEEDED");
+        }
         try {
             Decision decision = Decision.valueOf(d.decision());
             if (!information(d.missingInformation(), decision == Decision.UNCERTAIN)) return invalid("MISSING_INFORMATION_CONTRACT");
