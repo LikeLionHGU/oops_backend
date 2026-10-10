@@ -1,0 +1,56 @@
+import copy
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+import build_review_guidelines as tool
+from test_controversy_cards import fixture
+
+
+class GuidelineCompilerTests(unittest.TestCase):
+    def setUp(self):
+        self.bundle = fixture()[0]
+        self.bundle["collections"][0]["refreshOrDeleteBy"] = "2099-01-01T00:00:00+00:00"
+        self.plan = {"schemaVersion":"review-guideline-plan-1","status":"WORKING_REFERENCE_NOT_VALIDATED",
+                     "humanValidated":False,"version":"synthetic-v1","mechanisms":[
+                         {"id":"mechanism","axis":"TARGET_TREATMENT","channels":["SPEECH","CAPTION"],
+                          "sourceCaseIds":["synthetic-card"],"condition":"합성 연결 조건","normalContrast":"합성 정상 리뷰",
+                          "requiredEvidence":"현재 원문 인용","missingContext":"대상 미확인"}]}
+
+    def test_compilation_is_reference_not_approval_and_preserves_sources(self):
+        before = copy.deepcopy(self.bundle)
+        result = tool.compile_guidelines(self.bundle,self.plan,b"synthetic-source")
+        self.assertEqual(before,self.bundle)
+        self.assertFalse(result["humanValidated"])
+        self.assertEqual("UNREVIEWED_DRAFT",result["sourceCases"][0]["status"])
+        self.assertEqual("synthetic-card",result["guidelines"][0]["sourceCaseIds"][0])
+        self.assertNotIn("reactions",result)
+
+    def test_new_cards_require_explicit_mapping(self):
+        card = copy.deepcopy(self.bundle["incidents"][0]["cards"][0]);card["id"]="new-card"
+        self.bundle["incidents"][0]["cards"].append(card)
+        with self.assertRaisesRegex(tool.PilotError,"NEW_CARDS_REQUIRE_EXPLICIT_MECHANISM_MAPPING"):
+            tool.compile_guidelines(self.bundle,self.plan,b"source")
+        self.plan["mechanisms"][0]["sourceCaseIds"].append("new-card")
+        self.assertEqual(2,len(tool.compile_guidelines(self.bundle,self.plan,b"source")["sourceCases"]))
+
+    def test_unsafe_approval_unknown_refs_and_overlong_rules_rejected(self):
+        for field,value in (("sourceCaseIds",["absent"]),("condition","가"*351),("channels",["ANY"]),("axis","KEYWORD")):
+            plan=copy.deepcopy(self.plan);plan["mechanisms"][0][field]=value
+            with self.assertRaises(tool.PilotError):tool.compile_guidelines(self.bundle,plan,b"source")
+        self.plan["humanValidated"]=True
+        with self.assertRaises(tool.PilotError):tool.compile_guidelines(self.bundle,self.plan,b"source")
+
+    def test_atomic_private_output_and_symlink_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"runtime.json"
+            tool.write_private(path,{"version":"first"});tool.write_private(path,{"version":"second"})
+            self.assertEqual(0o600,path.stat().st_mode & 0o777)
+            self.assertEqual("second",tool.parse(path.read_bytes())["version"])
+            link=Path(directory)/"link.json";link.symlink_to(path)
+            with self.assertRaises(tool.PilotError):tool.write_private(link,{})
+
+
+if __name__=="__main__":unittest.main()
