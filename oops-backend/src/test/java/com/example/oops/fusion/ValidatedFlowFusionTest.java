@@ -7,6 +7,74 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ValidatedFlowFusionTest {
+    RiskFinding grounded(String label, String type, FindingSupport.Quote target, FindingSupport.Quote... context) {
+        var f = finding("a", 23500, .7, context);
+        org.springframework.test.util.ReflectionTestUtils.setField(f, "target", label);
+        var quotes = new ArrayList<>(f.validatedSupports().get(0).quotes());
+        quotes.add(target);
+        f.recordValidatedSupports(List.of(new FindingSupport("a", type, quotes)));
+        return f;
+    }
+    @Test void differentDisplayLabelsMergeWithSameRawTargetMention() {
+        var a = grounded("이곳의 음식 선택지와 생활", "REGION",
+                new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "원문", "TARGET"));
+        var b = grounded("영양 지역의 음식·생활 선택지", "REGION", quote("a", 23500, "TARGET"));
+        var r = new FindingFusionService().fuse(List.of(a, b));
+        assertThat(r).hasSize(1);
+        assertThat(r.get(0).getOccurrenceCount()).isOne();
+        assertThat(r.get(0).getMergedCount()).isEqualTo(2);
+    }
+    @Test void nearbyRegionDeixisNeedsSharedContextAndPreservesThreeSupports() {
+        var x = quote("x", 26000, "CONTEXT"); var y = quote("y", 36500, "CONTEXT");
+        var here = new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "여기", "TARGET");
+        var previous = new FindingSupport.Quote("previous", TimelineEventType.SPEECH, 22500, 23500, "여기 봐봐", "TARGET");
+        var a = grounded("이곳의 음식 선택지와 생활", "REGION", here, x, y);
+        var b = grounded("영양 지역의 음식·생활 선택지", "REGION", here, x, y);
+        var c = grounded("해당 장소의 생활 선택지", "REGION", previous, x, y);
+        var r = new FindingFusionService().fuse(List.of(a, b, c));
+        assertThat(r).hasSize(1);
+        var dto = TimelineEventDto.from(r.get(0), null, null, null);
+        assertThat(dto.supportCount()).isEqualTo(3); assertThat(dto.occurrences()).isOne();
+        assertThat(dto.relatedEvidence()).contains(previous);
+    }
+    @Test void proximityWithoutSharedContextOrWithDifferentTypeCannotMerge() {
+        var here = new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "여기", "TARGET");
+        var previous = new FindingSupport.Quote("previous", TimelineEventType.SPEECH, 22500, 23500, "여기 봐봐", "TARGET");
+        assertThat(new FindingFusionService().fuse(List.of(
+                grounded("이곳의 음식 선택지와 생활", "REGION", here),
+                grounded("해당 장소의 생활 선택지", "REGION", previous)))).hasSize(2);
+        assertThat(new FindingFusionService().fuse(List.of(
+                grounded("이곳의 음식 선택지와 생활", "REGION", here),
+                grounded("영양 지역의 음식·생활 선택지", "PRODUCT", here)))).hasSize(2);
+    }
+    @Test void differentExplicitTargetsAndDistantDeixisStaySeparateDespiteSharedContext() {
+        var x = quote("x", 26000, "CONTEXT"); var y = quote("y", 36500, "CONTEXT");
+        var a = grounded("이곳의 음식 선택지와 생활", "REGION",
+                new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "서울", "TARGET"), x, y);
+        var b = grounded("다른 지역의 생활 조건", "REGION",
+                new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "부산", "TARGET"), x, y);
+        assertThat(new FindingFusionService().fuse(List.of(a, b))).hasSize(2);
+        a = grounded("이곳의 음식 선택지와 생활", "REGION",
+                new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "여기", "TARGET"), x, y);
+        b = grounded("다른 지역의 생활 조건", "REGION",
+                new FindingSupport.Quote("far", TimelineEventType.SPEECH, 15000, 16000, "여기", "TARGET"), x, y);
+        assertThat(new FindingFusionService().fuse(List.of(a, b))).hasSize(2);
+    }
+    @Test void IdenticalDisplayLabelsCannotOverrideConflictingTargetQuotes() {
+        var a = grounded("같은 표시 이름", "GROUP",
+                new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "첫 집단", "TARGET"));
+        var b = grounded("같은 표시 이름", "GROUP",
+                new FindingSupport.Quote("a", TimelineEventType.SPEECH, 23500, 24500, "다른 집단", "TARGET"));
+        assertThat(new FindingFusionService().fuse(List.of(a, b))).hasSize(2);
+    }
+    @Test void oneSharedTargetCannotHideAnAdditionalUnmatchedTarget() {
+        var a = grounded("첫 대상", "GROUP", quote("a", 23500, "TARGET"));
+        var b = grounded("다른 대상", "GROUP", quote("a", 23500, "TARGET"));
+        var extra = new ArrayList<>(b.validatedSupports().get(0).quotes());
+        extra.add(new FindingSupport.Quote("other", TimelineEventType.SPEECH, 22000, 23000, "다른 집단", "TARGET"));
+        b.recordValidatedSupports(List.of(new FindingSupport("a", "GROUP", extra)));
+        assertThat(new FindingFusionService().fuse(List.of(a, b))).hasSize(2);
+    }
     FindingSupport.Quote quote(String id, long at, String role) {
         return new FindingSupport.Quote(id, TimelineEventType.SPEECH, at, at + 1000, "원문 " + id, role);
     }

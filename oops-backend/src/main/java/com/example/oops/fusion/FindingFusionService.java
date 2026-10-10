@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @Service
 public class FindingFusionService {
 
-    public static final String REVISION = "2026-10-10-validated-flow-fusion-1";
+    public static final String REVISION = "2026-10-10-validated-flow-fusion-2";
 
     /** 이 시간(ms) 안에 있으면 같은 장면으로 본다 */
     private static final long MERGE_WINDOW_MS = 3000;
@@ -222,11 +222,13 @@ public class FindingFusionService {
             var x = a.validatedSupports(); var y = b.validatedSupports();
             if (x.isEmpty() || y.isEmpty()) return false;
             var p = x.get(0); var q = y.get(0);
-            if (!targetMatches(a, b) || !java.util.Objects.equals(p.targetType(), q.targetType())) return false;
+            if (!java.util.Objects.equals(p.targetType(), q.targetType())) return false;
             if (p.anchorId().equals(q.anchorId())) {
-                return p.quotes().stream().filter(e -> "PRIMARY".equals(e.role()) && e.segmentId().equals(p.anchorId()))
+                boolean samePrimary = p.quotes().stream().filter(e -> "PRIMARY".equals(e.role()) && e.segmentId().equals(p.anchorId()))
                         .anyMatch(e -> q.quotes().stream().anyMatch(f -> "PRIMARY".equals(f.role()) && sameQuote(e, f)));
+                return samePrimary && sameAnchoredTarget(a, b, p, q);
             }
+            if (!targetMatches(a, b)) return false;
             if (p.targetType() == null) return false;
             long start = Math.min(a.getStartMs(), b.getStartMs()), end = Math.max(a.getEndMs(), b.getEndMs());
             if (end - start > 60000) return false;
@@ -238,6 +240,37 @@ public class FindingFusionService {
                     .filter(e -> q.quotes().stream().anyMatch(f -> "CONTEXT".equals(f.role()) && sameQuote(e, f)))
                     .map(FindingSupport.Quote::segmentId).distinct().count();
             return linkedAnchor && shared >= 2;
+        }
+
+        private boolean sameAnchoredTarget(RiskFinding a, RiskFinding b, FindingSupport p, FindingSupport q) {
+            var left = p.quotes().stream().filter(e -> "TARGET".equals(e.role())).toList();
+            var right = q.quotes().stream().filter(e -> "TARGET".equals(e.role())).toList();
+            if (left.isEmpty() || right.isEmpty()) return left.isEmpty() && right.isEmpty() && targetMatches(a, b);
+            if (p.targetType() == null) return false;
+            // Resolved display labels are not identities. Compare grounded raw mentions instead.
+            if (!left.isEmpty() && !right.isEmpty()
+                    && left.stream().allMatch(e -> right.stream().anyMatch(f -> overlappingTargetMention(e, f)))
+                    && right.stream().allMatch(e -> left.stream().anyMatch(f -> overlappingTargetMention(e, f)))) return true;
+            // Nearby place deixis needs two shared context segments, never proximity alone.
+            if (!"REGION".equals(p.targetType())) return false;
+            long shared = p.quotes().stream().filter(e -> "CONTEXT".equals(e.role()))
+                    .filter(e -> q.quotes().stream().anyMatch(f -> "CONTEXT".equals(f.role()) && sameQuote(e, f)))
+                    .map(FindingSupport.Quote::segmentId).distinct().count();
+            return shared >= 2 && !left.isEmpty() && !right.isEmpty()
+                    && left.stream().allMatch(e -> nearbyPlaceMention(e, a.representativeStartMs()))
+                    && right.stream().allMatch(e -> nearbyPlaceMention(e, b.representativeStartMs()));
+        }
+
+        private boolean overlappingTargetMention(FindingSupport.Quote a, FindingSupport.Quote b) {
+            return a.segmentId().equals(b.segmentId()) && a.type() == b.type()
+                    && a.startMs() == b.startMs() && a.endMs() == b.endMs()
+                    && (a.quote().contains(b.quote()) || b.quote().contains(a.quote()));
+        }
+
+        private boolean nearbyPlaceMention(FindingSupport.Quote quote, long anchorMs) {
+            return quote.type() == com.example.oops.domain.TimelineEventType.SPEECH
+                    && Math.abs(quote.startMs() - anchorMs) <= 3000
+                    && quote.quote().matches(".*(?:여기|이곳|그곳|저기|저곳).*");
         }
 
         private boolean targetMatches(RiskFinding a, RiskFinding b) {
