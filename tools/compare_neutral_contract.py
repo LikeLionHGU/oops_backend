@@ -16,6 +16,7 @@ from collect_youtube_comments import read_key
 from replay_draft_cases import complete, prompts
 
 PREVIOUS = "4e4e3fb"
+CURRENT = "3d15941"
 OLD_CONTRAST = """reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 해석이 설명하는 범위와
   별도의 검토 이유가 남는지를 적는다. REVIEW_REQUIRED에는 대조 해석이 필수다.
   TARGET_TREATMENT의 proposedEvidence가 서로 다른 두 줄 이상이면 PASS에도 대조 해석이 필수다.
@@ -58,12 +59,36 @@ NEW_TARGET = """대상 평가로 REVIEW_REQUIRED를 반환하면 target과 실�
 """
 
 
-def neutralize(system):
-    for old, new in [(OLD_CONTRAST, NEW_CONTRAST), (OLD_TARGET, NEW_TARGET)]:
+def neutralize(system, profile="combined"):
+    if profile not in {"combined", "contrast-only"}:
+        raise ValueError("PROFILE_REQUIRED")
+    blocks = [(OLD_CONTRAST, NEW_CONTRAST)]
+    if profile == "combined":
+        blocks.append((OLD_TARGET, NEW_TARGET))
+    for old, new in blocks:
         if system.count(old) != 1:
             raise ValueError("PINNED_PROMPT_BLOCK_REQUIRED")
         system = system.replace(old, new)
     return system
+
+
+def expression_case(snapshot):
+    rows = [r for r in snapshot["transcript"] if 51500 <= r["startMs"] and r["endMs"] <= 80500]
+    if not 1 <= len(rows) <= 48:
+        raise ValueError("EXPRESSION_WINDOW_REQUIRED")
+    raw = [{"id": f"stt-replay-{i}", "type": "SPEECH", **row} for i, row in enumerate(rows)]
+    quotes = []
+    for time in (79000, 75000):
+        matches = [r for r in raw if r["startMs"] == time]
+        if len(matches) != 1:
+            raise ValueError("UNIQUE_QUOTE_REQUIRED")
+        quotes.append({"segmentId": matches[0]["id"], "quote": matches[0]["text"]})
+    payload = {"promptRevision": "2026-10-11-target-role-repair-32", "raw": raw,
+               "candidates": [{"candidateId": "candidate-1", "anchorId": quotes[0]["segmentId"],
+                   "axis": "EXPRESSION_CONTENT", "hypothesisNotEvidence": "표현 자체에 별도 검토 이유가 있는지 원문으로 확인한다.",
+                   "proposedEvidence": quotes, "contextExpanded": False, "contextLimited": False,
+                   "segmentIds": [r["id"] for r in raw]}]}
+    return {"name": "D", "payload": payload, "inputSha256": digest(payload)}
 
 
 def schedule(cases, arms, repeats):
@@ -74,12 +99,14 @@ def schedule(cases, arms, repeats):
         for repeat in range(repeats if case["name"] in {"B-23.5", "C"} else 1):
             for arm in arms if repeat % 2 == 0 else list(reversed(arms)):
                 result.append((case, repeat, arm))
-    if len(result) > 20:
+    if len(result) > 22:
         raise ValueError("CALL_LIMIT")
     return result
 
 
-def run(snapshot_path, archive_path, output, execute=False, repeats=3):
+def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="combined"):
+    if profile not in {"combined", "contrast-only"}:
+        raise ValueError("PROFILE_REQUIRED")
     output = Path(output)
     if output.exists() or any(output.parent.glob("ablation-*-report.json")):
         raise ValueError("NEW_OUTPUT_DIRECTORY_REQUIRED")
@@ -87,15 +114,19 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
     cases, reference = prepare(snapshot, json.loads(Path(archive_path).read_text()), b_anchor=23500)
     controls = boundary_cases(cases)[1:]
     cases = cases[:2] + controls
-    source = subprocess.check_output(["git", "show", PREVIOUS + ":" + ENGINE], cwd=ROOT, text=True)
+    previous = CURRENT if profile == "contrast-only" else PREVIOUS
+    if profile == "contrast-only":
+        cases.append(expression_case(snapshot))
+    source = subprocess.check_output(["git", "show", previous + ":" + ENGINE], cwd=ROOT, text=True)
     old = prompts(source)[2]
     library = (ROOT / "oops-backend/src/main/java/com/example/oops/analyzer/ReviewGuidelineLibrary.java").read_text()
     contract = textwrap.dedent(re.search(r'String CONTRACT = """\n(.*?)\n\s*""";', library, re.S)[1]) + "\n"
     suffix = "\n" + contract + "\ncontextReference=" + json.dumps(reference, ensure_ascii=False)
-    arms = [("previous-31", old + suffix), ("neutral-proposal", neutralize(old) + suffix)]
+    arms = [("current-32" if profile == "contrast-only" else "previous-31", old + suffix),
+            (profile + "-proposal" if profile == "contrast-only" else "neutral-proposal", neutralize(old, profile) + suffix)]
     planned = schedule(cases, arms, repeats)
     report = {"schemaVersion": "neutral-contract-comparison-1", "scope": "FIXED_CANDIDATE_DEVELOPMENT_CALIBRATION",
-              "previousCommit": PREVIOUS, "model": "gpt-6-luna", "plannedCalls": len(planned), "execute": execute,
+              "previousCommit": previous, "profile": profile, "model": "gpt-6-luna", "plannedCalls": len(planned), "execute": execute,
               "referenceSha256": digest(reference), "sourceTranscriptSha256": digest(snapshot["transcript"]),
               "armPromptSha256": {name: digest(system) for name, system in arms}, "cases": cases, "calls": []}
     write_private(output, report)
@@ -122,6 +153,7 @@ if __name__ == "__main__":
         parser.add_argument(arg)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--profile", choices=["combined", "contrast-only"], default="combined")
     args = parser.parse_args()
-    result = run(args.snapshot, args.archive, args.output, args.execute, args.repeats)
+    result = run(args.snapshot, args.archive, args.output, args.execute, args.repeats, args.profile)
     print(json.dumps({"plannedCalls": result["plannedCalls"], "executedCalls": len(result["calls"])}))

@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -47,3 +48,37 @@ def test_failures_are_redacted_without_retry(tmp_path):
     assert complete.call_count == 12
     assert all(c["error"] == "RuntimeError" for c in result["calls"])
     assert "SECRET" not in (tmp_path / "failure" / "run.json").read_text()
+
+
+def test_contrast_only_changes_one_block_preserving_target_contract():
+    source = subprocess.check_output(["git", "show", tool.CURRENT + ":" + tool.ENGINE], cwd=tool.ROOT, text=True)
+    old = tool.prompts(source)[2]
+    new = tool.neutralize(old, "contrast-only")
+    assert new.replace(tool.NEW_CONTRAST, tool.OLD_CONTRAST) == old
+    assert tool.OLD_TARGET in new
+    assert tool.NEW_TARGET not in new
+    with pytest.raises(ValueError, match="PROFILE_REQUIRED"):
+        tool.neutralize(old, "unknown")
+
+
+def test_contrast_only_plan_includes_raw_expression_control_without_calls(tmp_path):
+    paths = inputs(tmp_path)
+    snapshot = json.loads(paths[0].read_text())
+    snapshot["transcript"].extend([
+        {"startMs": 75000, "endMs": 77000, "text": "비유 앞 원문"},
+        {"startMs": 79000, "endMs": 80500, "text": "비유 원문"},
+    ])
+    paths[0].write_text(json.dumps(snapshot))
+    with mock.patch.object(tool, "read_key") as key, mock.patch.object(tool, "complete") as complete:
+        result = tool.run(paths[0], paths[1], tmp_path / "contrast" / "run.json", profile="contrast-only")
+    key.assert_not_called(); complete.assert_not_called()
+    assert result["plannedCalls"] == 22
+    assert result["previousCommit"] == tool.CURRENT
+    assert result["profile"] == "contrast-only"
+    case = result["cases"][-1]
+    assert case["name"] == "D"
+    assert case["payload"]["candidates"][0]["axis"] == "EXPRESSION_CONTENT"
+    assert case["payload"]["candidates"][0]["proposedEvidence"][0]["quote"] == "비유 원문"
+    assert "developmentExpectation" not in case["payload"]
+    with pytest.raises(ValueError, match="UNIQUE_QUOTE_REQUIRED"):
+        tool.expression_case({"transcript": snapshot["transcript"][:-1]})
