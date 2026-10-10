@@ -1,0 +1,15 @@
+# 선택형 기존 외부 검색 경로. 기본 업로드 분석이나 요청별 옵션이 아니다.
+# 예: --spring.profiles.active=local,external-review
+# Spring 목록 설정은 병합되지 않고 교체된다. 핵심 분석기를 함께 명시한다.
+# enabled-analyzers를 환경/명령행으로 덮어쓰면 그 설정이 우선한다.
+# 외부 API/뉴스 요청 및 추가 비용이 발생할 수 있다.
+oops:
+  analysis:
+    enabled-analyzers:
+      - subtitle
+      - speech-review
+      - context-lexicon
+      - screen-text
+      - screen-text-review
+      - entity-check
+      - context-check
