@@ -75,3 +75,39 @@ def test_audit_export_keeps_assessments_and_fixed_quote_ids(tmp_path):
     proposal = exported["calls"][0]["output"]["candidates"][0]
     assert proposal["anchorId"] == case["payload"]["candidates"][0]["anchorId"]
     assert proposal["evidence"] == case["payload"]["candidates"][0]["proposedEvidence"]
+
+
+def test_boundary_profile_has_same_b_input_and_no_labels_in_requests(tmp_path):
+    paths = inputs(tmp_path)
+    initial = tool.run(*paths)
+    output = tmp_path / "boundary" / "plan.json"
+    with mock.patch.object(tool, "read_key") as key, mock.patch.object(tool, "complete") as complete:
+        report = tool.run(paths[0], paths[1], output, profile="boundary")
+        key.assert_not_called(); complete.assert_not_called()
+    assert report["plannedCalls"] == 28
+    assert report["cases"][0] == initial["cases"][0]
+    for case in report["cases"][1:]:
+        serialized = json.dumps(case["payload"], ensure_ascii=False)
+        assert "developmentExpectation" not in serialized
+        assert "REVIEW_REQUIRED" not in serialized and "PASS" not in serialized
+        for quote, raw in zip(case["payload"]["candidates"][0]["proposedEvidence"], case["payload"]["raw"]):
+            assert quote["quote"] == raw["text"] and quote["segmentId"] == raw["id"]
+    with pytest.raises(ValueError, match="NEW_OUTPUT_DIRECTORY_REQUIRED"):
+        tool.run(paths[0], paths[1], output, profile="boundary")
+
+
+def test_boundary_profile_bounded_calls_and_audits(tmp_path):
+    paths = inputs(tmp_path)
+    output = tmp_path / "boundary" / "report.json"
+    with mock.patch.object(tool, "read_key", return_value="test-key"), \
+            mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete:
+        report = tool.run(paths[0], paths[1], output, execute=True, profile="boundary")
+    assert complete.call_count == 28
+    for case in report["cases"]:
+        calls = [call for call in report["calls"] if call["case"] == case["name"]]
+        assert len(calls) == (12 if case["name"] == "B-23.5" else 4)
+        assert {c["inputSha256"] for c in calls} == {case["inputSha256"]}
+        assert len({c["arm"] for c in calls}) == 4
+        assert (output.parent / f'ablation-{case["name"]}-report.json').exists()
+    with pytest.raises(ValueError, match="PROFILE_REQUIRED"):
+        tool.run(*paths, profile="unexpected")
