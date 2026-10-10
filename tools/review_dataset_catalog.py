@@ -73,6 +73,20 @@ def validate(catalog, root):
         require(excluded["reason"] == "IDENTICAL_COMMENT_ROWS"
                 and excluded["action"] == "PRESERVED_NOT_COUNTED", "EXCLUSION_POLICY_REQUIRED")
         snapshots.add(excluded["snapshot"])
+    if catalog.get("commonCardsDraft") is not None:
+        # Import lazily: the converter also uses catalog/source validation.
+        from controversy_cards import validate_bundle
+        common = parse(read_bytes(inside(root, catalog["commonCardsDraft"])))
+        validate_bundle(common)
+        common_cases = {c["id"] for i in common["incidents"] for c in i["cards"]}
+        require(common_cases == cases and {i["familyId"] for i in common["incidents"]} == families,
+                "COMMON_CATALOG_CASE_MISMATCH")
+        require(common["collections"] == active, "COMMON_CATALOG_COLLECTION_MISMATCH")
+        for incident in incidents:
+            item = next(i for i in common["incidents"] if i["familyId"] == incident["familyId"])
+            require({c["id"] for c in item["cards"]} == set(incident["caseIds"])
+                    and sum(len(c["reactions"]) for c in item["cards"]) == incident["selectedReactions"],
+                    "COMMON_CATALOG_INCIDENT_MISMATCH")
     return {"status": "STRUCTURALLY_VALID_CATALOG", "incidentFamilies": len(families),
             "draftCards": len(cases), "selectedReactionDrafts": sum(i["selectedReactions"] for i in incidents),
             "activeCommentRecords": sum(c["records"] for c in active),

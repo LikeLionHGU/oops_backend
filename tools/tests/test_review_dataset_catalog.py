@@ -66,6 +66,11 @@ class CatalogTests(unittest.TestCase):
             with self.assertRaises(tool.PilotError):
                 tool.validate(catalog, self.dataset_root)
 
+    def test_common_draft_cannot_reference_outside_dataset(self):
+        self.catalog["commonCardsDraft"] = "../outside.json"
+        with self.assertRaisesRegex(tool.PilotError, "PATH_OUTSIDE_ROOT"):
+            tool.validate(self.catalog, self.dataset_root)
+
     def test_outside_path_rejected(self):
         for relative in ("../outside.json", "/etc/passwd"):
             with self.assertRaises(tool.PilotError):
