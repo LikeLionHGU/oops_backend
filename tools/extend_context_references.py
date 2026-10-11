@@ -171,10 +171,17 @@ def main():
     for flag in ('base', 'additions', 'output-dir'): parser.add_argument('--' + flag, required=True)
     parser.add_argument('--trace')
     parser.add_argument('--audit', action='store_true')
+    parser.add_argument('--regression-packet', help='Include paired original-case and B/C/D regression preparation')
     args = parser.parse_args()
     require(not args.audit or args.trace is not None, 'trace required for audit')
     base, additions = read(args.base), read(args.additions)
     result, provenance = project(base, additions)
+    regression = None
+    if args.regression_packet:
+        from case_reference_regression import prepare, evaluate
+        packet = {name: read(Path(args.regression_packet) / name) for name in
+                  ('model-inputs.json', 'manifest.json', 'owner-labels.json')}
+        regression = prepare(base, additions, packet)
     routing = None
     if args.trace:
         trace = read(args.trace)
@@ -189,6 +196,12 @@ def main():
     write_private(directory / 'provenance.json', provenance)
     if routing is not None:
         write_private(directory / 'routing-input.json', routing)
+    if regression is not None:
+        regression_dir = directory / 'regression-check'
+        regression_dir.mkdir(mode=0o700)
+        for name, value in regression.items(): write_private(regression_dir / name, value)
+        write_private(regression_dir / 'status.json', evaluate(*(regression[n] for n in
+                      ('model-inputs.json', 'plan.json', 'observations.json'))))
     if args.audit:
         audit(directory)
     print(json.dumps({'addedExamples': len(provenance['addedReferenceCaseIds']),
