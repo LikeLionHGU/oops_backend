@@ -46,7 +46,12 @@ def run(report_path, archive_path, output):
         raise ValueError("NEW_AUDIT_OUTPUT_REQUIRED")
     report = json.loads(report_path.read_text())
     limit = 42 if any(c.get('outputAdapter') in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'} for c in report.get('calls',[])) else 28
-    if not 1 <= len(report["cases"]) <= 8 or not 1 <= len(report["calls"]) <= limit:
+    if report.get('trialSchemaVersion')=='recorded-flow-regression-1':
+        n=report.get('repetitionsPerCondition')
+        if type(n) is not int or not 3<=n<=5: raise ValueError('BOUNDED_REGRESSION_REQUIRED')
+        limit=2*len(report['cases'])*n
+    case_limit=9 if report.get('trialSchemaVersion')=='recorded-flow-regression-1' else 8
+    if not 1 <= len(report["cases"]) <= case_limit or not 1 <= len(report["calls"]) <= limit:
         raise ValueError("AUDIT_LIMIT")
     if any(not re.fullmatch(r"[A-Za-z0-9.-]+", c["name"]) for c in report["cases"]):
         raise ValueError("CASE_NAME_REQUIRED")

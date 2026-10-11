@@ -160,11 +160,11 @@ def validate_output(output, raw):
     return True  # Syntax and literal evidence only; no semantic score.
 
 
-def transport(key, body):
+def transport(key, body, timeout=55):
     request = urllib.request.Request("https://api.openai.com/v1/chat/completions", method="POST",
                                      data=json.dumps(body).encode(), headers={"Authorization": "Bearer " + key,
                                                                            "Content-Type": "application/json"})
-    with urllib.request.build_opener(NoRedirect()).open(request, timeout=55) as response:
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout) as response:
         raw = response.read(2_000_001)
     require(len(raw) <= 2_000_000, "response too large")
     return json.loads(raw)

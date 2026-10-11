@@ -113,7 +113,13 @@ def checked_output(result, payload):
 def execute(artifact, directory, key, call=transport, prior_report=None):
     require(artifact['artifactHash'] == digest({k: v for k, v in artifact.items() if k != 'artifactHash'}),
             'artifact changed')
-    if artifact.get('schemaVersion') == 'recorded-semantic-guidance-trial-1':
+    if artifact.get('schemaVersion') == 'recorded-flow-regression-1':
+        from prepare_flow_regression import validate
+        require(prior_report is None,'no automatic retry or partial resume')
+        validate(artifact)
+        require(positive(artifact['reservedTotalCostUsd'])==sum(positive(r['reservedCostUsd']) for r in artifact['requests']),
+                'regression reservation mismatch')
+    elif artifact.get('schemaVersion') == 'recorded-semantic-guidance-trial-1':
         ledger=artifact['priorAdditionalReservationLedger']
         require(len(artifact['requests'])==artifact['plannedCalls']==28 and len(ledger)==2
                 and [r['reservedCostUsd'] for r in ledger]==['0.1829466','0.1829613']
@@ -175,14 +181,17 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
             <= positive(artifact['remainingBudgetUsd']), 'budget exceeded')
     cases = {c['name']: c for c in artifact['cases']}
     for row in artifact['requests']:
-        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1','recorded-evidence-selection-trial-1','recorded-semantic-guidance-trial-1'}:
+        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1','recorded-evidence-selection-trial-1','recorded-semantic-guidance-trial-1','recorded-flow-regression-1'}:
             require(row['case'] in cases and row['arm'] in {'BASELINE','CANDIDATE'}
                     and row['body']['model'] == 'gpt-6-luna'
                     and row['body']['response_format'] == {'type':'json_object'}
                     and row['body']['store'] is False
-                    and row['body']['temperature'] == .1 and row['body']['reasoning_effort'] == 'none'
+                    and ((artifact.get('schemaVersion')=='recorded-flow-regression-1'
+                          and row['body']['reasoning_effort'] in {'none','low'})
+                         or (row['body'].get('temperature') == .1 and row['body']['reasoning_effort'] == 'none'))
                     and type(row['body']['max_completion_tokens']) is int
-                    and 1 <= row['body']['max_completion_tokens'] <= 4000
+                    and 1 <= row['body']['max_completion_tokens'] <= (artifact.get('maxCompletionTokens',4000)
+                                                                   if artifact.get('schemaVersion')=='recorded-flow-regression-1' else 4000)
                     and len(row['body']['messages']) == 2
                     and row['body']['messages'][1]['role'] == 'user'
                     and json.loads(row['body']['messages'][1]['content']) == cases[row['case']]['payload'],
@@ -207,6 +216,12 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
               'actualBilledCostUsd': None, 'unknownCostAttempts': 0, 'qualityGateMet': None,
               'normalControlsIncluded': artifact.get('normalControlsIncluded', False), 'fullPipelineReplayed': False}
     estimated = Decimal(0)
+    if artifact.get('schemaVersion')=='recorded-flow-regression-1':
+        report.update(trialSchemaVersion=artifact['schemaVersion'],authorizationHash=artifact['authorizationHash'],
+                      repetitionsPerCondition=artifact['repetitionsPerCondition'],trialDesign=artifact.get('trialDesign','PAIRED_COMPARISON'))
+        if call is transport:
+            timeout=artifact.get('requestTimeoutSeconds',55)
+            call=lambda key,body:transport(key,body,timeout=timeout)
     if prior_report is not None:
         require(prior_report['artifactHash'] == artifact['artifactHash']
                 and prior_report['status'] == 'PARTIAL' and prior_report['unknownCostAttempts'] == 0,
