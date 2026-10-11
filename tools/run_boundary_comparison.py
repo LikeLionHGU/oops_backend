@@ -72,6 +72,10 @@ def positive(value):
     return number
 
 
+def reference_for(config, arm):
+    return config.get('candidateReferenceSnapshot', config['referenceSnapshot']) if arm == 'CANDIDATE' else config['referenceSnapshot']
+
+
 def reserve(body, config):
     # Conservative heuristic, not a provider tokenizer or a billing guarantee.
     tokens = len(json.dumps(body, ensure_ascii=False).encode("utf-8")) + 2000
@@ -83,7 +87,11 @@ def reserve(body, config):
 
 def freeze(packet, config):
     require(config.get("schemaVersion") == "boundary-execution-config-1", "execution config required")
-    require(set(config) == set(configuration_template()), "unknown configuration fields")
+    require(set(config) in (set(configuration_template()), set(configuration_template()) | {'candidateReferenceSnapshot'}),
+            "unknown configuration fields")
+    if 'candidateReferenceSnapshot' in config:
+        require(config['baselinePrompt'] == config['candidatePrompt'] and config['candidateReferenceSnapshot'] is not None,
+                'reference-only comparison requires identical prompts')
     require(isinstance(config.get("model"), str) and config["model"].strip(), "model required")
     require(set(config.get("settings", {})) == {"reasoning_effort", "temperature"}, "explicit settings required")
     require(config["settings"]["reasoning_effort"] == "none"
@@ -108,7 +116,7 @@ def freeze(packet, config):
         payload = units[job["unitId"]]
         require(payload["mode"] in {"SAVED_STT_WINDOW", "SYNTHETIC_TEXT"}, "unsupported input mode")
         raw = [{"id": f"segment-{i:03d}", **s} for i, s in enumerate(payload["segments"], 1)]
-        user = {"inputMode": payload["mode"], "raw": raw, "contextReference": config["referenceSnapshot"]}
+        user = {"inputMode": payload["mode"], "raw": raw, "contextReference": reference_for(config, job['arm'])}
         body = {"model": config["model"], **config["settings"], "max_completion_tokens": config["maxCompletionTokens"],
                 "store": False, "messages": [
                     {"role": "system", "content": config["baselinePrompt" if job["arm"] == "BASELINE" else "candidatePrompt"]
@@ -168,6 +176,9 @@ def validate_artifact(artifact):
             and artifact.get("artifactHash") == digest(content), "execution artifact changed")
     require(artifact["outputContractHash"] == digest(OUTPUT_SCHEMA), "output contract changed")
     requests, config = artifact["requests"], artifact["configuration"]
+    if 'candidateReferenceSnapshot' in config:
+        require(config['baselinePrompt'] == config['candidatePrompt']
+                and config['candidateReferenceSnapshot'] is not None, 'reference-only comparison requires identical prompts')
     require(isinstance(requests, list) and 1 <= len(requests) <= 100, "request count invalid")
     require(all(r["requestHash"] == digest(r["body"]) for r in requests), "request changed")
     jobs, unit_inputs = set(), {}
@@ -181,7 +192,9 @@ def validate_artifact(artifact):
                 "request configuration mismatch")
         expected_prompt = config["baselinePrompt" if job["arm"] == "BASELINE" else "candidatePrompt"] + "\n" + OUTPUT_INSTRUCTIONS
         require(body["messages"][0] == {"role": "system", "content": expected_prompt}, "prompt snapshot mismatch")
-        user_hash = digest(body["messages"][1])
+        user = json.loads(body['messages'][1]['content'])
+        require(user.get('contextReference') == reference_for(config, job['arm']), 'reference snapshot mismatch')
+        user_hash = digest({k:v for k,v in user.items() if k != 'contextReference'})
         require(unit_inputs.setdefault(job["unitId"], user_hash) == user_hash, "different input across arms")
         tokens, cost = reserve(body, config)
         require(row["reservedInputTokensHeuristic"] == tokens and positive(row["reservedCostUsd"]) == cost,
@@ -219,6 +232,8 @@ def execute(artifact, output_dir, key, call=transport):
         try:
             response = call(key, row["body"])
             result["providerResponse"] = response
+            if 'candidateReferenceSnapshot' in config:
+                require(response.get('model') == config['model'], 'unexpected returned model')
             usage = response["usage"]
             require(all(type(usage.get(k)) is int and usage[k] >= 0 for k in ("prompt_tokens", "completion_tokens")),
                     "usage unavailable")
