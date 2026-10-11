@@ -8,6 +8,18 @@ from diagnose_candidate_output import diagnose
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_missing_target_is_wire_specific_and_rejected_wire_is_not_lost(self):
+        from diagnose_candidate_output import report_diagnostics
+        a = {'decision':'REVIEW_REQUIRED','target':'place','evidence':[{'segmentId':'a','quote':'text','role':'PRIMARY'}]}
+        raw = [{'id':'a','text':'text'}]
+        self.assertEqual([],diagnose(a,raw)['defects'])
+        self.assertEqual(['WIRE_SINGLE_TARGET_REQUIRED'],diagnose(a,raw,wire=True)['defects'])
+        report = {'cases':[{'name':'B','payload':{'raw':raw}}], 'calls':[{
+            'case':'B','arm':'CANDIDATE','repeat':1,'outputAdapter':'single-target-evidence-wire-1',
+            'wireOutput':{'verifications':[{'candidateId':'c','assessment':a}]}}]}
+        result = report_diagnostics(report)
+        self.assertEqual('wireOutput',result['results'][0]['outputSource'])
+        self.assertEqual(['WIRE_SINGLE_TARGET_REQUIRED'],result['results'][0]['defects'])
     def test_coexisting_budget_and_wrong_row_not_confused_with_other_type(self):
         a = {'targetType':'OTHER','evidence':[{'segmentId':'a','quote':'여기는','role':'TARGET'}]*9}
         original = copy.deepcopy(a)

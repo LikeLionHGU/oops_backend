@@ -10,7 +10,7 @@ from pathlib import Path
 from fixed_review_suite import digest, read, require, write_private
 
 
-def diagnose(assessment, raw):
+def diagnose(assessment, raw, wire=False):
     evidence = assessment.get('evidence')
     if not isinstance(evidence,list):
         return {'evidenceCount':None,'defects':['EVIDENCE_NOT_LIST'],'quoteMismatches':[]}
@@ -23,6 +23,9 @@ def diagnose(assessment, raw):
     defects = []
     if len(evidence) > 8: defects.append('EVIDENCE_OBJECT_BUDGET_EXCEEDED')
     if mismatches: defects.append('QUOTE_NOT_IN_OWN_RAW_ROW')
+    if wire and assessment.get('decision') == 'REVIEW_REQUIRED' and assessment.get('target') is not None:
+        if sum(isinstance(q,dict) and q.get('role') == 'TARGET' for q in evidence) != 1:
+            defects.append('WIRE_SINGLE_TARGET_REQUIRED')
     if assessment.get('target') is not None:
         mention = assessment.get('targetMention') or assessment['target']
         if mention != assessment['target'] and assessment.get('targetRelation') != 'CONTEXTUAL':
@@ -34,9 +37,12 @@ def report_diagnostics(report):
     cases = {c['name']:c['payload'] for c in report['cases']}
     results = []
     for call in report['calls']:
-        for v in call.get('output',{}).get('verifications',[]):
+        source = 'output' if 'output' in call else 'wireOutput'
+        for v in call.get(source,{}).get('verifications',[]):
             results.append({**{k:call[k] for k in ('case','arm','repeat')},'candidateId':v['candidateId'],
-                            **diagnose(v['assessment'],cases[call['case']]['raw'])})
+                            'outputSource':source,
+                            **diagnose(v['assessment'],cases[call['case']]['raw'],
+                                       wire=call.get('outputAdapter') == 'single-target-evidence-wire-1')})
     return {'schemaVersion':'candidate-output-diagnostics-1','sourceReportHash':digest(report),
             'supplementalOnly':True,'responsesModified':False,'qualityGateMet':None,'results':results}
 
