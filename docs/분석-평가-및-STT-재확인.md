@@ -53,6 +53,36 @@ B/C/D는 ID 51의 실제 전사에서 생략 없는 시간 창을 복사했다. 
 
 ### 대조쌍과 반복 비교 계획
 
+#### 10/11 후속: 실행기·출력 계약 구현, 실제 호출 전
+
+`tools/run_boundary_comparison.py`를 추가했다. `setup`은 private 설정 양식 생성, `freeze`는 검증한 패킷/양쪽 프롬프트/모델 설정/공통 참고/단가/한도를 요청 본문·해시로 고정, `run`은 기본 검사만 수행하고 `--execute`에서만 호출한다. frozen 평가 초안은 수정하지 않고 별도 실행 파일을 만든다. 사용자 서버·운영 판단에는 연결하지 않는다.
+
+사용자가 **추정 총비용 $0.50 이하**를 선택했다. `bcd-execution-config-draft.json`에 $0.50/최대 42회로 기록했다. 모델·설정 기본 제안은 기존 gpt-6-luna/none/0.1이지만 모델 접근 가능 여부는 실제 호출 전 확인 대상이다. 양쪽 프롬프트·참고 스냅샷·단가/출처/확인일은 아직 미입력이며 실제 실행 파일은 만들지 않았다. API 키는 실행에서만 환경 변수 또는 명시한 private env 파일로 읽고 출력/설정에 넣지 않는다.
+
+출력 계약은 전체 텍스트 창의 decision/reason/missingInformation/쟁점별 issues(axis/reason/normalInterpretation/evidence)다. 합성 입력의 null 시간과 저장 STT 원문은 보존하며 익명 segment ID를 부여한다. 근거 인용은 해당 행의 실제 연속 문자열이어야 한다. PASS/UNCERTAIN은 쟁점 빈 배열이고 UNCERTAIN에는 누락 정보가 필요하다. **운영의 후보 검증 JSON과 다른 평가용 계약**이다. 운영 후보·장면·복구·대상 지칭 계약을 모두 재생하거나 전체 서비스 정확도를 측정한다고 주장하지 않는다. 기준 프롬프트도 이 평가 계약에 맞게 명시적으로 고정해야 한다.
+
+요청 전 reservation/attempt 파일을 남기고 응답/사용량/시간을 저장한다. 자동 재시도·복구는 없다. 한도 초과는 호출 전 중단, 네트워크 오류·거절·잘린 응답·사용량 미확보·계약/인용 오류는 첫 실패 후 중단한다. 입력/요청/설정/예약액 변조를 검사하며 같은 unit은 양쪽에 동일 입력을 사용한다. 요청별 예약 금액은 누적하고 실패 때 돌려주지 않는다. 출력은 새 private 폴더와 0600 파일이며 기존 실행 덮어쓰기/자동 재개는 없다.
+
+비용은 입력 UTF-8 바이트+여유량과 최대 출력 토큰으로 보수적으로 예약하고, 응답 토큰×설정 단가로 추정한다. **공급자 토크나이저·실제 청구액 보장 장치가 아니다.** 캐시 할인은 적용하지 않고 예약보다 실제 사용량이 크면 즉시 중단한다. 네트워크 오류 등 비용 미확인은 unknownCostAttempts/estimateCompleteForAttemptedCalls=false로 남긴다. actualBilledCostUsd=null이며 실제 계정 청구 한도는 별도다.
+
+형식과 실제 인용이 맞으면 VALID_CONTRACT이지 논란 탐지 정답이 아니다. targetIssueFound/unsupportedInference/duplicateIssue/qualityGateMet는 자동 확정하지 않는다. 다른 쟁점 경고와 B/C/D 목표 발견은 사람 검수로 구분한다. 가짜 응답으로 전체 241개 Python 테스트를 통과했고 실모델 호출은 0회다.
+
+```bash
+# 이미 만든 설정은 덮어쓰지 말고 검토해서 채운다.
+python tools/run_boundary_comparison.py freeze \
+  --packet datasets/controversy/evaluation/v1/bcd-boundary-comparison-draft \
+  --config datasets/controversy/evaluation/v1/bcd-execution-config-draft.json \
+  --output datasets/controversy/evaluation/v1/bcd-execution-frozen.json
+
+# 기본은 호출하지 않는 검사 모드다.
+python tools/run_boundary_comparison.py run \
+  datasets/controversy/evaluation/v1/bcd-execution-frozen.json
+```
+
+현재 설정으로 freeze하면 미입력 항목 때문에 거절되는 것이 정상이다. 실제 호출은 이후 프롬프트·참고·단가를 검토하고 새 결과 폴더와 `--execute`를 명시한 뒤 진행한다. [공식 Structured Outputs 문서](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat)를 OpenAI Docs 스킬로 확인해 JSON Schema, 거절·불완전 응답 처리를 적용했다. 형식 보장을 의미 판단 보장으로 해석하지 않는다.
+
+#### 앞선 오프라인 초안 기록
+
 4개 대조쌍을 private `bcd-boundary-pairs.json`에 기록했다. 기존 원문/라벨 패킷과는 별도로 `bcd-boundary-comparison-draft/`를 생성했고, 모델 원문·검수·라벨·manifest·대조쌍·비교 계획을 분리한 6개 파일을 저장했다. 정상 대조를 반론으로 취급해 실제 검토 이유를 취소하는 용도가 아니라, 어떤 연결 차이가 판정을 바꾸는지 평가하는 용도다.
 
 ```bash
