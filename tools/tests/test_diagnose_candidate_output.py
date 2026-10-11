@@ -41,3 +41,43 @@ class DiagnosticsTests(unittest.TestCase):
         a = {'target':'메뉴','targetMention':'메뉴','targetRelation':'EXPLICIT','targetType':'OTHER',
              'evidence':[{'segmentId':'a','quote':'메뉴','role':'TARGET'}]}
         self.assertEqual([],diagnose(a,[{'id':'a','text':'메뉴'}])['defects'])
+
+
+class SemanticPacketTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        from test_prepare_evidence_selection_trial import setup
+        from prepare_evidence_selection_trial import prepare
+        from compare_recorded_candidates import execute,audit_export
+        from compare_review_prompts import digest
+        from test_compare_recorded_candidates import response
+        cls.frozen = prepare(*setup())
+        with tempfile.TemporaryDirectory() as tmp:
+            cls.report = execute(cls.frozen,Path(tmp)/'datasets'/'run','fake',response)
+        cls.audit = {'sourceReportSha256':digest(audit_export(cls.report)),
+                     'results':[{'case':c['case'],'arm':c['arm'],'repeat':c['repeat'],
+                                 'accepted':False,'failureCode':'TEST_STUB_ONLY'} for c in cls.report['calls']]}
+
+    def test_keeps_all_cases_responses_and_blank_semantic_labels(self):
+        from diagnose_candidate_output import semantic_packet
+        original = copy.deepcopy((self.frozen,self.report,self.audit))
+        packet = semantic_packet(self.frozen,self.report,self.audit)
+        self.assertEqual(original,(self.frozen,self.report,self.audit))
+        self.assertEqual(42,len(packet['worksheet']))
+        self.assertEqual(7,len(packet['cases']))
+        self.assertTrue(all(r['review']['semanticDecision'] is None for r in packet['worksheet']))
+        self.assertEqual(0,packet['independentGoldApprovals'])
+        self.assertFalse(packet['apiExecutionEnabled'])
+        self.assertTrue(any(r['responseSource']=='wireOutput' for r in packet['worksheet']))
+
+    def test_stale_source_missing_response_and_duplicate_audit_fail_closed(self):
+        from diagnose_candidate_output import semantic_packet
+        for mode in ('frozen','audit','call','duplicate','adapter'):
+            frozen,report,audit = copy.deepcopy((self.frozen,self.report,self.audit))
+            if mode == 'frozen': frozen['cases'][0]['name'] = 'changed'
+            if mode == 'audit': audit['sourceReportSha256'] = 'wrong'
+            if mode == 'call': report['calls'].pop()
+            if mode == 'duplicate': audit['results'][-1] = copy.deepcopy(audit['results'][0])
+            if mode == 'adapter': report['calls'][0]['outputAdapter'] = 'changed'
+            with self.subTest(mode=mode),self.assertRaises(ValueError): semantic_packet(frozen,report,audit)
