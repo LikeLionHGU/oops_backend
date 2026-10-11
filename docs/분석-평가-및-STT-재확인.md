@@ -51,6 +51,26 @@ B/C/D는 ID 51의 실제 전사에서 생략 없는 시간 창을 복사했다. 
 
 입력별 해시·전체 레지스트리 해시·원본 자료 내용 해시·전체 기준 커밋을 기록했다. 입력이 바뀌면 같은 평가 버전으로 덮어쓰지 않고 새 버전을 만든다. 도구는 기존 출력 덮어쓰기를 거부한다. 모델 입력 영역에는 연구 쟁점/제안 라벨/댓글을 넣지 않는다. **파일 전체를 모델에게 보내면 안 된다.** 실제 평가 실행기·참고 자료 스냅샷 고정·자동 결과 채점은 아직 후속이다.
 
+### 대조쌍과 반복 비교 계획
+
+4개 대조쌍을 private `bcd-boundary-pairs.json`에 기록했다. 기존 원문/라벨 패킷과는 별도로 `bcd-boundary-comparison-draft/`를 생성했고, 모델 원문·검수·라벨·manifest·대조쌍·비교 계획을 분리한 6개 파일을 저장했다. 정상 대조를 반론으로 취급해 실제 검토 이유를 취소하는 용도가 아니라, 어떤 연결 차이가 판정을 바꾸는지 평가하는 용도다.
+
+```bash
+python tools/review_boundary_pairs.py \
+  --suite datasets/controversy/evaluation/v1/suite-frozen.json \
+  --pairs datasets/controversy/evaluation/v1/bcd-boundary-pairs.json \
+  --owner-review datasets/controversy/evaluation/v1/bcd-owner-review.json \
+  --output-dir datasets/controversy/evaluation/v2/bcd-comparison-draft
+```
+
+출력 경로는 새 경로만 허용한다. 모델에 전달하는 것은 `model-inputs.json`의 각 원문뿐이며 대조 설명·정답·사건 ID는 평가 관리용이다. 같은 검토 사례를 여러 대조에 연결해도 모델 입력은 중복 생성하지 않는다.
+
+`comparison-draft.json`은 7입력 × 2안 × 3회 = **42개 평가 작업**을 생성한다. 반복별 기준/수정 순서를 교차하고 작업별 판단·목표 발견·원문 인용 타당성·원문 밖 해석·중복·시간·사용량·비용을 빈칸으로 기록한다. 다른 쟁점 경고를 목표 발견으로 자동 계산하지 않는다. 실제 API 호출 수는 null이며 복구/재시도까지 포함한 총호출 상한과 별개다.
+
+상태는 NOT_EXECUTABLE/API OFF다. 모델/설정, 양쪽 프롬프트 해시, 참고 스냅샷, 출력 계약, 총호출·금액 상한은 미확정(null)으로 남긴다. 값을 채운다고 이 도구가 자동 실행되거나 승인하는 기능은 없다. 실제 실행기와 의미 채점기, 독립 검수는 후속이며 새 유료 호출·정확도 개선은 없다. Python 230개 통과.
+
+OpenAI Docs 스킬로 확인한 [공식 평가 지침](https://developers.openai.com/api/docs/guides/evaluation-best-practices)의 명시적 평가 기준·전문가 데이터·지속적인 평가 원칙을 참고했다. 이 프로젝트의 대조쌍은 모델 응답 두 개를 비교하는 pairwise judge와 달리, 맥락 경계를 확인하는 사례 연결이다. 지침을 이 개발 라벨의 정확성 인증으로 사용하지 않는다.
+
 ### 변경 전에 고정할 채택 기준
 
 다음은 향후 비교의 사전 기준이며 이번에 개선을 입증했다는 뜻이 아니다.
