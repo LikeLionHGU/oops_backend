@@ -78,6 +78,8 @@ def validate(artifact):
         expected = prepare_bound(artifact['source'], artifact['authorization'], artifact['priorCatalog'])
         if 'additionalFunding' in artifact:
             expected = fund_bound(expected, artifact['additionalFunding'])
+        if 'selectionVariant' in artifact:
+            expected = prepare_target_selection(expected, artifact['priorLiveReport'])
     else:
         expected = prepare_catalog(artifact['source'],artifact['authorization'],artifact['priorReport']) if artifact.get('schemaVersion')==CATALOG_SCHEMA else prepare(artifact['source'], artifact['authorization'])
     require(artifact == expected, 'frozen comparison changed')
@@ -167,6 +169,37 @@ def fund_bound(blocked, funding):
                   unfundedArtifactHash=previous_hash, executionEnabled=True, budgetSufficient=True,
                   remainingBudgetUsd=str(Decimal(funding['additionalBudgetUsd'])-total),
                   priorBudgetRemainingUsd=funding['previousRemainingUsd'])
+    result['artifactHash'] = digest(result)
+    return result
+
+
+def prepare_target_selection(funded, prior_report):
+    """Small remaining-budget follow-up; historical comparison, not paired."""
+    from review_boundary_variants import selection_request as select
+    validate(funded)
+    require('additionalFunding' in funded and 'selectionVariant' not in funded, 'funded unchanged source required')
+    fields = ('schemaVersion', 'artifactHash', 'additionalFundingHash', 'status', 'reservedCostUsd', 'runKind')
+    expected = dict(schemaVersion=BOUND_SCHEMA, artifactHash=funded['artifactHash'],
+                    additionalFundingHash=funded['additionalFundingHash'], status='COMPLETED_PENDING_JAVA_AUDIT',
+                    reservedCostUsd=funded['reservedCostUsd'], runKind='LIVE')
+    require(all(prior_report.get(k) == v for k,v in expected.items()), 'complete prior live reservation required')
+    meta = {k: prior_report[k] for k in fields}
+    meta['sourceReportHash'] = prior_report.get('sourceReportHash', digest(prior_report))
+    result = copy.deepcopy(funded); previous_hash = result.pop('artifactHash')
+    jobs = [j for j in result['jobs'] if j['case']=='C' or (j['repeat']==1 and j['case'] in {'B','N3','N4'})]
+    require(len(jobs)==6, 'C three repeats and three guard observations required')
+    for j in jobs:
+        body = select(j['baseBody']); tokens,cost = reserve(body, result['config'])
+        j['stages'][0].update(body=body, requestHash=digest(body),
+                              reservedInputTokensHeuristic=tokens, reservedCostUsd=str(cost))
+    total = sum(Decimal(s['reservedCostUsd']) for j in jobs for s in j['stages'])
+    available = Decimal(funded['remainingBudgetUsd'])
+    result.update(selectionVariant='TARGET_SELECTION_V1', priorLiveReport=meta,
+                  parentFundedArtifactHash=previous_hash, jobs=jobs, plannedUnits=6, maxApiCalls=12,
+                  evaluatedCases=[c for c in result['source']['cases'] if c['name'] in {'B','C','N3','N4'}],
+                  reservedCostUsd=str(total), remainingBudgetUsd=str(available-total),
+                  executionEnabled=total<=available, budgetSufficient=total<=available,
+                  trialDesign='TARGET_SELECTION_ONLY_SMALL_REGRESSION')
     result['artifactHash'] = digest(result)
     return result
 
@@ -276,7 +309,7 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
     stages = [s for r in results for s in r['stages']]
     report = dict(schemaVersion=artifact['schemaVersion'], artifactHash=artifact['artifactHash'], authorizationHash=artifact['authorizationHash'],
                   status='COMPLETED_PENDING_JAVA_AUDIT' if len(results)==artifact['plannedUnits'] and not stop.is_set() else 'PARTIAL',
-                  cases=copy.deepcopy(artifact['source']['cases']), calls=results,
+                  cases=copy.deepcopy(artifact.get('evaluatedCases', artifact['source']['cases'])), calls=results,
                   apiCalls=len(stages), reservedCostUsd=artifact['reservedCostUsd'],
                   estimatedCostUsd=str(sum(Decimal(s.get('estimatedCostUsd','0')) for s in stages)),
                   unknownCostAttempts=sum('estimatedCostUsd' not in s for s in stages),

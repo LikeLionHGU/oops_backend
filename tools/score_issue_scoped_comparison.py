@@ -28,7 +28,7 @@ def score(frozen, report, audit):
     require(report['artifactHash']==frozen['artifactHash']
             and report['authorizationHash']==frozen['authorizationHash']
             and report['status']==('MOCK_COMPLETE_PENDING_JAVA_AUDIT' if is_mock else 'COMPLETED_PENDING_JAVA_AUDIT')
-            and report['cases']==frozen['source']['cases'] and len(report['calls'])==frozen['plannedUnits'],
+            and report['cases']==frozen.get('evaluatedCases', frozen['source']['cases']) and len(report['calls'])==frozen['plannedUnits'],
             'complete unchanged report required')
     exported=audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
     exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
