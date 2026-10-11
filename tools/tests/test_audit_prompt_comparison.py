@@ -9,13 +9,14 @@ import audit_prompt_comparison as tool
 
 
 def test_contract_rejection_is_not_counted_as_a_detected_warning():
-    calls = [{"arm": "current", "repeat": 0, "output": {"verifications": [
+    calls = [{"arm": "current", "repeat": 0, "comparisonMode": "JUDGMENT", "output": {"verifications": [
         {"candidateId": "candidate-1", "assessment": {"decision": "REVIEW_REQUIRED"}}]}}]
     audit = {"arms": [{"name": "current-0", "assessments": [
         {"accepted": False, "failureCode": "TARGET_EVIDENCE_REQUIRED"}]}]}
     result = tool.summarize({"name": "synthetic", "developmentExpectation": "REVIEW_REQUIRED"}, calls, audit)[0]
     assert result["decision"] == "REVIEW_REQUIRED" and not result["accepted"]
     assert not result["matchesDevelopmentExpectationAndContract"]
+    assert result["comparisonMode"] == "JUDGMENT"
 
 
 def test_missing_duplicate_and_wrong_candidate_responses_are_not_passes():

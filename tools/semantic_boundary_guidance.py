@@ -29,6 +29,44 @@ def prompt(system, mode):
     return policy + '\n' + (JUDGMENT if mode == 'JUDGMENT' else TARGET) + '\n' + marker + reference
 
 
+def freeze(source, draft, reports, authorization):
+    import copy
+    from decimal import Decimal
+    from fixed_review_suite import digest,require
+    from run_boundary_comparison import reserve
+    require(draft == prepare(source),'draft differs from reviewed guidance')
+    require(authorization == {'schemaVersion':'additional-evaluation-budget-1','additionalBudgetUsd':'.5',
+                             'priorReservedCostUsd':'0.4994146','userAuthorized':True}, 'authorization required')
+    require(len(reports)==2 and [r['reservedCostUsd'] for r in reports]==['0.1829466','0.1829613']
+            and all(r['status']=='COMPLETED_PENDING_JAVA_AUDIT' and len(r['calls'])==42 for r in reports)
+            and reports[1]['artifactHash']==source['artifactHash']
+            and digest(reports[0])==source['previousReportHash'], 'complete prior ledger required')
+    ledger=[{'reportHash':digest(r),'reservedCostUsd':r['reservedCostUsd']} for r in reports]
+    remaining=Decimal('.5')-sum(Decimal(r['reservedCostUsd']) for r in ledger)
+    requests=[]
+    for c in draft['comparisons']:
+        slot=1 if c['mode']=='JUDGMENT' else 2
+        # slot identifies the comparison, not repeat evidence of stability.
+        for arm in (('BASELINE','CANDIDATE') if slot==1 else ('CANDIDATE','BASELINE')):
+            body=copy.deepcopy(c['baselineBody'] if arm=='BASELINE' else c['candidateBody'])
+            tokens,cost=reserve(body,source['config'])
+            require(tokens<272000,'long context unsupported')
+            requests.append(dict(case=c['case'],arm=arm,repeat=slot,comparisonMode=c['mode'],body=body,
+                                 requestHash=digest(body),reservedInputTokensHeuristic=tokens,reservedCostUsd=str(cost)))
+    total=sum(Decimal(r['reservedCostUsd']) for r in requests)
+    require(total<=remaining,'remaining budget exceeded')
+    artifact=dict(schemaVersion='recorded-semantic-guidance-trial-1',plannedCalls=28,
+                  comparisonSlots={'1':'JUDGMENT','2':'TARGET'},repetitionsPerCondition=1,
+                  additionalBudgetUsd='.5',priorReservedCostUsd='0.4994146',
+                  priorAdditionalReservationLedger=ledger,remainingBudgetUsd=str(remaining),
+                  authorizationHash=digest(authorization),sourceArtifactHash=source['artifactHash'],
+                  sourceDraftHash=digest(draft),reservedTotalCostUsd=str(total),config=source['config'],
+                  cases=copy.deepcopy(source['cases']),requests=requests,
+                  normalControlsIncluded=True,fullPipelineReplayed=False,runtimeChanged=False,qualityGateMet=None)
+    artifact['artifactHash']=digest(artifact)
+    return artifact
+
+
 def prepare(source):
     import copy
     from fixed_review_suite import digest,require
@@ -60,9 +98,11 @@ if __name__=='__main__':
     from fixed_review_suite import read,require,write_private
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',required=True); p.add_argument('--output',required=True)
+    p.add_argument('--draft'); p.add_argument('--prior-report',action='append'); p.add_argument('--authorization')
     a=p.parse_args()
     path=Path(a.output).resolve()
     require('datasets' in path.parts and not path.exists(),'new private output required')
-    value=prepare(read(a.source))
+    require(bool(a.draft)==bool(a.prior_report)==bool(a.authorization),'freeze inputs required together')
+    value=freeze(read(a.source),read(a.draft),[read(r) for r in a.prior_report],read(a.authorization)) if a.draft else prepare(read(a.source))
     write_private(path,value)
-    print('draftComparisons=14, API=OFF, reservedCost=NONE')
+    print({'schema':value['schemaVersion'],'executed':False,'reservedCostUsd':value.get('reservedTotalCostUsd')})

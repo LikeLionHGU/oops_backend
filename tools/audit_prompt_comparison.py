@@ -20,6 +20,7 @@ def summarize(case, calls, audit):
     for call in calls:
         name = f'{call["arm"]}-{call["repeat"]}'
         item = {"case": case["name"], "arm": call["arm"], "repeat": call["repeat"], "accepted": False}
+        if 'comparisonMode' in call: item['comparisonMode']=call['comparisonMode']
         if "error" in call:
             item["failureCode"] = 'WIRE_ADAPTATION_REJECTED' if call['error'] == 'WIRE_ADAPTATION_REJECTED' else "PROVIDER_FAILURE"
         else:

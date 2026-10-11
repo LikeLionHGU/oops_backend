@@ -113,7 +113,33 @@ def checked_output(result, payload):
 def execute(artifact, directory, key, call=transport, prior_report=None):
     require(artifact['artifactHash'] == digest({k: v for k, v in artifact.items() if k != 'artifactHash'}),
             'artifact changed')
-    if artifact.get('schemaVersion') == 'recorded-evidence-selection-trial-1':
+    if artifact.get('schemaVersion') == 'recorded-semantic-guidance-trial-1':
+        ledger=artifact['priorAdditionalReservationLedger']
+        require(len(artifact['requests'])==artifact['plannedCalls']==28 and len(ledger)==2
+                and [r['reservedCostUsd'] for r in ledger]==['0.1829466','0.1829613']
+                and len({r['reportHash'] for r in ledger})==2 and artifact['additionalBudgetUsd']=='.5'
+                and artifact['priorReservedCostUsd']=='0.4994146'
+                and sum(positive(r['reservedCostUsd']) for r in ledger)+positive(artifact['remainingBudgetUsd'])==Decimal('.5')
+                and artifact['comparisonSlots']=={'1':'JUDGMENT','2':'TARGET'}
+                and artifact['repetitionsPerCondition']==1 and prior_report is None,
+                'debited one-shot guidance comparison required; no resume')
+        require(positive(artifact['reservedTotalCostUsd'])==sum(positive(r['reservedCostUsd']) for r in artifact['requests']),
+                'guidance reservation mismatch')
+        from semantic_boundary_guidance import prompt as guidance_prompt
+        indexed={(r['case'],r['arm'],r['repeat']):r for r in artifact['requests']}
+        require(len(indexed)==28 and {c['name'] for c in artifact['cases']}=={'B','C','D','N1','N2','N3','N4'},
+                'fixed guidance comparisons required')
+        for name in ('B','C','D','N1','N2','N3','N4'):
+            for slot,mode in ((1,'JUDGMENT'),(2,'TARGET')):
+                baseline=indexed[name,'BASELINE',slot]
+                candidate=indexed[name,'CANDIDATE',slot]
+                expected=copy.deepcopy(baseline['body'])
+                expected['messages'][0]['content']=guidance_prompt(expected['messages'][0]['content'],mode)
+                require(candidate['body']==expected and baseline['comparisonMode']==candidate['comparisonMode']==mode
+                        and baseline.get('outputAdapter') is None and candidate.get('outputAdapter') is None,
+                        'guidance must be isolated and preserve output contract')
+            require(indexed[name,'BASELINE',1]['body']==indexed[name,'BASELINE',2]['body'],'shared baseline required')
+    elif artifact.get('schemaVersion') == 'recorded-evidence-selection-trial-1':
         require(len(artifact['requests']) == artifact['plannedCalls'] == 42
                 and artifact['additionalBudgetUsd'] == '.5'
                 and artifact['priorReservedCostUsd'] == '0.4994146'
@@ -149,7 +175,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
             <= positive(artifact['remainingBudgetUsd']), 'budget exceeded')
     cases = {c['name']: c for c in artifact['cases']}
     for row in artifact['requests']:
-        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1','recorded-evidence-selection-trial-1'}:
+        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1','recorded-evidence-selection-trial-1','recorded-semantic-guidance-trial-1'}:
             require(row['case'] in cases and row['arm'] in {'BASELINE','CANDIDATE'}
                     and row['body']['model'] == 'gpt-6-luna'
                     and row['body']['response_format'] == {'type':'json_object'}
@@ -200,6 +226,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
     completed = len(report['calls'])
     for i, row in enumerate(artifact['requests'][completed:], completed + 1):
         result = {k: row[k] for k in ('case', 'arm', 'repeat', 'requestHash')}
+        if 'comparisonMode' in row: result['comparisonMode']=row['comparisonMode']
         if row.get('outputAdapter'):
             require(row['outputAdapter'] in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'}, 'unknown output adapter')
             result['outputAdapter'] = row['outputAdapter']
