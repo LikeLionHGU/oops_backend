@@ -104,16 +104,18 @@ def prepare(video_url: str | None, file_path: str | None) -> PreparedVideo:
         if not src.is_file():
             raise MediaError("요청한 영상 파일을 찾을 수 없습니다.")
         workdir = _new_workdir()
-        return PreparedVideo(path=src, workdir=workdir,
-                             duration_sec=probe_duration(src), title=src.name)
+        try:
+            return PreparedVideo(path=src, workdir=workdir,
+                                 duration_sec=probe_duration(src), title=src.name)
+        except Exception:
+            shutil.rmtree(workdir, ignore_errors=True)
+            raise
 
     if not video_url:
         raise MediaError("videoUrl 또는 filePath 중 하나는 필요합니다.")
     video_url = validate_video_url(video_url)
 
     workdir = _new_workdir()
-
-    from yt_dlp import YoutubeDL
 
     out_tmpl = str(workdir / "source.%(ext)s")
     opts = {
@@ -127,28 +129,30 @@ def prepare(video_url: str | None, file_path: str | None) -> PreparedVideo:
         "retries": 3,
     }
     try:
+        from yt_dlp import YoutubeDL
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             downloaded = Path(ydl.prepare_filename(info))
+        if not downloaded.exists():
+            candidates = list(workdir.glob("source.*"))
+            if not candidates:
+                raise MediaError("영상 다운로드에 실패했습니다.")
+            downloaded = candidates[0]
+        return PreparedVideo(
+            path=downloaded,
+            workdir=workdir,
+            duration_sec=float(info.get("duration") or probe_duration(downloaded)),
+            title=info.get("title"),
+        )
     except Exception as e:
+        # prepare() failed before returning a PreparedVideo; the endpoint cannot clean this directory.
+        shutil.rmtree(workdir, ignore_errors=True)
         # 유튜브 차단, 연령 제한, 비공개 영상 등. 원인을 그대로 올려보내야 진단이 된다.
         raise MediaError(
             f"영상을 받아오지 못했습니다: {e}\n"
             "yt-dlp 가 오래됐을 수 있습니다. pip install --upgrade yt-dlp 로 올려보세요."
         ) from e
 
-    if not downloaded.exists():
-        candidates = list(workdir.glob("source.*"))
-        if not candidates:
-            raise MediaError("영상 다운로드에 실패했습니다.")
-        downloaded = candidates[0]
-
-    return PreparedVideo(
-        path=downloaded,
-        workdir=workdir,
-        duration_sec=float(info.get("duration") or probe_duration(downloaded)),
-        title=info.get("title"),
-    )
 
 
 def extract_audio(video: PreparedVideo) -> Path:

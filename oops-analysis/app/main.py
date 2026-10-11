@@ -76,7 +76,7 @@ def probe(request: MediaRequest) -> dict:
         log.exception("길이 확인 실패")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
-        if video and not request.filePath:
+        if video:
             video.cleanup()
 
 
@@ -96,7 +96,7 @@ def transcribe(request: MediaRequest) -> dict:
         log.exception("전사 실패")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
-        if video and not request.filePath:
+        if video:
             video.cleanup()
 
 
@@ -110,7 +110,7 @@ def run_ocr(request: MediaRequest) -> dict:
         frame_dir = (str(resolve_storage_path(request.frameDir, "frames"))
                      if request.frameDir else None)
         return ocr.run(video, interval, frame_dir)
-    except ocr.OcrUnavailable as e:
+    except (ocr.OcrUnavailable, ocr.OcrProcessingFailed) as e:
         # Spring 쪽에서 503 을 보고 OCR 단계를 조용히 건너뛴다
         raise HTTPException(status_code=503, detail=str(e)) from e
     except MediaError as e:
@@ -119,7 +119,7 @@ def run_ocr(request: MediaRequest) -> dict:
         log.exception("OCR 실패")
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
-        if video and not request.filePath:
+        if video:
             video.cleanup()
 
 

@@ -71,13 +71,15 @@ def _split_audio(audio: Path, workdir: Path, duration_sec: float) -> list[tuple[
     for i in range(count):
         start = i * CHUNK_SEC
         target = workdir / f"audio_{i:03d}.mp3"
-        subprocess.run(
+        result = subprocess.run(
             ["ffmpeg", "-y", "-i", str(audio), "-ss", str(start),
              "-t", str(CHUNK_SEC), "-c", "copy", str(target)],
             capture_output=True, text=True,
         )
-        if target.exists():
-            chunks.append((start * 1000, target))
+        if result.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
+            # Split every chunk before any paid request. Never certify an incomplete transcript.
+            raise MediaError(f"음성 분할에 실패했습니다 (구간 {i + 1}/{count}). 전사를 시작하지 않았습니다.")
+        chunks.append((start * 1000, target))
     return chunks
 
 

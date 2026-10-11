@@ -47,6 +47,10 @@ class OcrUnavailable(RuntimeError):
     pass
 
 
+class OcrProcessingFailed(RuntimeError):
+    pass
+
+
 @lru_cache
 def _engine():
     try:
@@ -117,6 +121,8 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
 
     interval_sec = _adjust_interval(video.duration_sec, interval_sec)
     frames = extract_frames(video, interval_sec)
+    if not frames:
+        raise OcrProcessingFailed("OCR 분석용 프레임을 추출하지 못했습니다.")
     extracted_at = time.time()
 
     keep_dir = Path(frame_dir) if frame_dir else None
@@ -125,14 +131,19 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
 
     # ---- 1단계: 프레임별로 줄 단위 인식 결과를 모은다 ----
     region_frames = []
+    failed_frames = 0
     for time_ms, frame_path in frames:
         try:
             raw = engine.ocr(str(frame_path), cls=True)
         except Exception as e:
             log.warning("[ocr] 프레임 실패 %s: %s", frame_path.name, e)
+            failed_frames += 1
             continue
 
         region_frames.append((time_ms, frame_path, _parse_regions(raw)))
+
+    if not region_frames:
+        raise OcrProcessingFailed("모든 OCR 프레임의 인식에 실패했습니다. 글자 없음으로 판단할 수 없습니다.")
 
     # Do not delete repeated text or merge unrelated regions. Classification happens with STT in Spring.
     items = _region_items(region_frames, interval_sec, video.duration_sec, keep_dir)
@@ -142,7 +153,9 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
              len(frames), len(items),
              extracted_at - started, now - extracted_at,
              (now - extracted_at) / max(1, len(frames)))
-    return {"items": items, "formatVersion": "regions-v1"}
+    return {"items": items, "formatVersion": "regions-v1", "processing": {
+        "status": "PARTIAL" if failed_frames else "SUCCESS", "totalFrames": len(frames),
+        "successfulFrames": len(region_frames), "failedFrames": failed_frames}}
 
 
 def _parse_regions(raw):
