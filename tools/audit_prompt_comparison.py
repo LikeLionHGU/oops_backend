@@ -44,7 +44,7 @@ def run(report_path, archive_path, output):
     if output.exists() or output == report_path:
         raise ValueError("NEW_AUDIT_OUTPUT_REQUIRED")
     report = json.loads(report_path.read_text())
-    limit = 42 if len(report.get('calls',[])) == 42 and any(c.get('outputAdapter') == 'single-target-evidence-wire-1' for c in report['calls']) else 28
+    limit = 42 if any(c.get('outputAdapter') in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'} for c in report.get('calls',[])) else 28
     if not 1 <= len(report["cases"]) <= 8 or not 1 <= len(report["calls"]) <= limit:
         raise ValueError("AUDIT_LIMIT")
     if any(not re.fullmatch(r"[A-Za-z0-9.-]+", c["name"]) for c in report["cases"]):

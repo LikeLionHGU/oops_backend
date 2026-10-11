@@ -89,8 +89,11 @@ def checked_output(result, payload):
     choice = result['providerResponse']['choices'][0]
     require(choice['finish_reason'] == 'stop' and not choice['message'].get('refusal'), 'incomplete/refused')
     output = json.loads(choice['message']['content'])
-    if result.get('outputAdapter') == 'single-target-evidence-wire-1':
-        from target_wire_contract import adapt
+    if result.get('outputAdapter') in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'}:
+        if result['outputAdapter'] == 'evidence-id-selection-wire-1':
+            from evidence_selection_contract import adapt
+        else:
+            from target_wire_contract import adapt
         result['wireOutput'] = copy.deepcopy(output)
         try:
             output = adapt(output,payload)
@@ -110,7 +113,16 @@ def checked_output(result, payload):
 def execute(artifact, directory, key, call=transport, prior_report=None):
     require(artifact['artifactHash'] == digest({k: v for k, v in artifact.items() if k != 'artifactHash'}),
             'artifact changed')
-    if artifact.get('schemaVersion') == 'recorded-target-wire-trial-1':
+    if artifact.get('schemaVersion') == 'recorded-evidence-selection-trial-1':
+        require(len(artifact['requests']) == artifact['plannedCalls'] == 42
+                and artifact['additionalBudgetUsd'] == '.5'
+                and artifact['priorReservedCostUsd'] == '0.4994146'
+                and artifact['priorAdditionalReservedCostUsd'] == '0.1829466'
+                and positive(artifact['remainingBudgetUsd']) + positive(artifact['priorAdditionalReservedCostUsd']) == Decimal('.5')
+                and prior_report is None, 'debited additional ledger required; no retry')
+        require(positive(artifact['reservedTotalCostUsd']) == sum(positive(r['reservedCostUsd']) for r in artifact['requests']),
+                'selection total reservation mismatch')
+    elif artifact.get('schemaVersion') == 'recorded-target-wire-trial-1':
         require(len(artifact['requests']) == artifact['plannedCalls'] == 42
                 and artifact['additionalBudgetUsd'] == '.5'
                 and positive(artifact['remainingBudgetUsd']) == Decimal('.5')
@@ -137,7 +149,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
             <= positive(artifact['remainingBudgetUsd']), 'budget exceeded')
     cases = {c['name']: c for c in artifact['cases']}
     for row in artifact['requests']:
-        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1'}:
+        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1','recorded-evidence-selection-trial-1'}:
             require(row['case'] in cases and row['arm'] in {'BASELINE','CANDIDATE'}
                     and row['body']['model'] == 'gpt-6-luna'
                     and row['body']['response_format'] == {'type':'json_object'}
@@ -152,6 +164,9 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
         if artifact.get('schemaVersion') == 'recorded-target-wire-trial-1':
             require(row.get('outputAdapter') == ('single-target-evidence-wire-1' if row['arm'] == 'CANDIDATE' else None),
                     'adapter must match frozen comparison arm')
+        if artifact.get('schemaVersion') == 'recorded-evidence-selection-trial-1':
+            require(row.get('outputAdapter') == ('evidence-id-selection-wire-1' if row['arm'] == 'CANDIDATE' else None),
+                    'selection adapter must match frozen arm')
         tokens, cost = reserve(row['body'], artifact['config'])
         require(row['requestHash'] == digest(row['body']) and tokens == row['reservedInputTokensHeuristic']
                 and cost == positive(row['reservedCostUsd']), 'request/reservation changed')
@@ -186,7 +201,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
     for i, row in enumerate(artifact['requests'][completed:], completed + 1):
         result = {k: row[k] for k in ('case', 'arm', 'repeat', 'requestHash')}
         if row.get('outputAdapter'):
-            require(row['outputAdapter'] == 'single-target-evidence-wire-1', 'unknown output adapter')
+            require(row['outputAdapter'] in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'}, 'unknown output adapter')
             result['outputAdapter'] = row['outputAdapter']
         write_private(directory / f'attempt-{i:03d}.json', result)
         started = time.monotonic()
