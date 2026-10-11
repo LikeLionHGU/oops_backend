@@ -25,6 +25,7 @@ SCOPE_BYTES = 32000
 AUTHORIZATION = dict(schemaVersion='issue-scoped-budget-1', additionalBudgetUsd='1.00',
                      userAuthorized=True, previousReservedUsd='1.9666938', previousRemainingUsd='0.0257290')
 CATALOG_SCHEMA = 'issue-scoped-catalog-followup-1'
+BOUND_SCHEMA = 'issue-scoped-bound-followup-2'
 
 
 def prepare(source, authorization):
@@ -71,7 +72,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
-    expected = prepare_catalog(artifact['source'],artifact['authorization'],artifact['priorReport']) if artifact.get('schemaVersion')==CATALOG_SCHEMA else prepare(artifact['source'], artifact['authorization'])
+    if artifact.get('schemaVersion') == BOUND_SCHEMA:
+        expected = prepare_bound(artifact['source'], artifact['authorization'], artifact['priorCatalog'])
+    else:
+        expected = prepare_catalog(artifact['source'],artifact['authorization'],artifact['priorReport']) if artifact.get('schemaVersion')==CATALOG_SCHEMA else prepare(artifact['source'], artifact['authorization'])
     require(artifact == expected, 'frozen comparison changed')
 
 
@@ -109,17 +113,59 @@ def prepare_catalog(source,authorization,prior_report):
     return first
 
 
-def execute(artifact, directory, key, call=transport):
+def prepare_bound(source, authorization, prior_catalog):
+    """Reserve full fresh SELECT/JUDGE; insufficient budget is an explicit block.
+
+    This does not authorize another trial or refund earlier reservations.
+    """
+    from bound_review_contract import judgment_request as bound_judge
+    first = prepare_catalog(source, authorization, prior_catalog['priorReport'])
+    fields = ('schemaVersion', 'artifactHash', 'reservedCostUsd', 'priorReport')
+    prior_meta = {k: first[k] for k in fields}
+    require(prior_catalog == first or prior_catalog == prior_meta, 'unchanged prior catalog snapshot required')
+    first.pop('artifactHash')
+    for job in first['jobs']:
+        payload = json.loads(job['baseBody']['messages'][1]['content'])
+        c = payload['candidates'][0]
+        row = next(r for r in payload['raw'] if r['id'] == c['anchorId'])
+        scope = hydrate_selection(dict(candidateId=c['candidateId'], anchorId=c['anchorId'],
+                                       issueSummary='reservation envelope only', selections=[dict(
+                                           segmentId=c['anchorId'], role='PRIMARY', start=0, end=len(row['text']))]), payload)
+        body = bound_judge(job['baseBody'], scope)
+        body['messages'][1]['content'] = json.dumps(dict(original=payload, selectedScope='x'*SCOPE_BYTES,
+                                                       grounding='x'*512), ensure_ascii=False)
+        tokens, cost = reserve(body, first['config'])
+        job['stages'][1].update(body=body, requestHash=digest(body),
+                                reservedInputTokensHeuristic=tokens, reservedCostUsd=str(cost))
+    total = sum(Decimal(s['reservedCostUsd']) for j in first['jobs'] for s in j['stages'])
+    available = (Decimal(authorization['additionalBudgetUsd']) - Decimal(prior_catalog['reservedCostUsd'])
+                 - Decimal(prior_catalog['priorReport']['reservedCostUsd']))
+    first.update(schemaVersion=BOUND_SCHEMA, priorCatalog=copy.deepcopy(prior_meta),
+                 reservedCostUsd=str(total), remainingBudgetUsd=str(available),
+                 executionEnabled=total <= available, budgetSufficient=total <= available,
+                 trialDesign='FRESH_TWO_STAGE_CANDIDATE_ONLY_REGRESSION')
+    first['artifactHash'] = digest(first)
+    return first
+
+
+def execute(artifact, directory, key, call=transport, *, simulate=False):
     validate(artifact)
+    is_bound = artifact['schemaVersion'] == BOUND_SCHEMA
+    if simulate:
+        require(is_bound and call is not transport and key is None, 'mock requires explicit callback, no key')
+    elif is_bound:
+        require(artifact['executionEnabled'] and artifact['budgetSufficient'], 'insufficient remaining reservation; no calls')
     directory = Path(directory).resolve()
     require('datasets' in directory.parts and not directory.exists(), 'new private execution directory required')
     directory.mkdir(parents=True, mode=0o700)
     write_private(directory/'frozen.json', artifact)
     stop = threading.Event()
     cases = {c['name']:c for c in artifact['source']['cases']}
-    is_catalog=artifact['schemaVersion']==CATALOG_SCHEMA
+    is_catalog=artifact['schemaVersion'] in {CATALOG_SCHEMA, BOUND_SCHEMA}
     if is_catalog:
         from span_catalog_review import hydrate as hydrate_scope, judgment_request as judge_request
+        if is_bound:
+            from bound_review_contract import judgment_request as judge_request, prepare_attempt, receive, parse_response
     else:
         hydrate_scope,judge_request=hydrate_selection,judgment_request
 
@@ -135,6 +181,10 @@ def execute(artifact, directory, key, call=transport):
             actual_tokens, _ = reserve(body, artifact['config'])
             require(actual_tokens <= stage['reservedInputTokensHeuristic'], 'dynamic request exceeds reservation')
             attempt = dict(stage=stage['stage'], requestHash=digest(body), body=body)
+            ticket = None
+            if is_bound and stage['stage'] == 'JUDGE':
+                ticket = prepare_attempt(job['baseBody'], scope, f'{artifact["artifactHash"]}-{index:03d}')
+                attempt['localAttempt'] = ticket
             write_private(directory/f'attempt-{index:03d}-{stage["stage"]}.json', attempt)
             started = time.monotonic()
             try:
@@ -151,7 +201,7 @@ def execute(artifact, directory, key, call=transport):
                         and cost <= Decimal(stage['reservedCostUsd']), 'provider model/usage exceeds reservation')
                 choice = response['choices'][0]
                 require(choice['finish_reason'] == 'stop' and not choice['message'].get('refusal'), 'incomplete or refused response')
-                raw = json.loads(choice['message']['content'])
+                raw = parse_response(response, body['model']) if is_bound else json.loads(choice['message']['content'])
                 attempt['rawOutput'] = raw
                 if stage['stage'] == 'VERIFY':
                     flat = dict(providerResponse=response, outputAdapter='single-target-evidence-wire-1')
@@ -168,7 +218,12 @@ def execute(artifact, directory, key, call=transport):
                                       contractError=str(error))
                 else:
                     try:
-                        packet = review_packet(raw, scope, payload)
+                        if is_bound:
+                            receipt = receive(ticket, body, response)
+                            attempt['boundReceipt'] = receipt
+                            packet = receipt['compatiblePacket']
+                        else:
+                            packet = review_packet(raw, scope, payload)
                         result.update(reviewPacket=packet, output=packet['compatibleAssessment'], status='CONTRACT_ONLY')
                     except (ValueError, KeyError, TypeError) as error:
                         result.update(status='JUDGMENT_REJECTED', wireAdaptationError='JUDGMENT_CONTRACT_REJECTED',
@@ -204,6 +259,13 @@ def execute(artifact, directory, key, call=transport):
                   unknownCostAttempts=sum('estimatedCostUsd' not in s for s in stages),
                   actualBilledCostUsd=None, qualityGateMet=None, fullPipelineReplayed=False,
                   normalControlsIncluded=True, repetitionsPerCondition=3)
+    if is_bound:
+        report.update(runKind='MOCK_OFFLINE' if simulate else 'LIVE', simulatedCalls=len(stages) if simulate else 0,
+                      apiCalls=0 if simulate else len(stages),
+                      consumedReservationUsd='0' if simulate else artifact['reservedCostUsd'])
+        if simulate:
+            report.update(mockTokenRateEquivalentUsd=report['estimatedCostUsd'], estimatedCostUsd='0',
+                          status='MOCK_COMPLETE_PENDING_JAVA_AUDIT' if report['status']=='COMPLETED_PENDING_JAVA_AUDIT' else 'MOCK_PARTIAL')
     write_private(directory/'report.json',report)
     # Break in-memory aliases before administrative ID normalization. JSON on
     # disk duplicates shared objects, so audit provenance must use that form.
@@ -218,12 +280,18 @@ if __name__ == '__main__':
     p.add_argument('--source'); p.add_argument('--authorization'); p.add_argument('--output',required=True)
     p.add_argument('--frozen'); p.add_argument('--execute',action='store_true'); p.add_argument('--env-file')
     p.add_argument('--prior-report')
+    p.add_argument('--bound-catalog', help='prepare server-bound follow-up from unchanged catalog snapshot')
     a=p.parse_args()
     if a.execute:
         require(a.frozen and not a.source and not a.authorization,'explicit frozen execution required')
-        execute(read(a.frozen),Path(a.output),read_key(a.env_file,key_name='OPENAI_API_KEY'))
+        frozen = read(a.frozen)
+        validate(frozen)
+        if frozen['schemaVersion'] == BOUND_SCHEMA:
+            require(frozen['executionEnabled'], 'insufficient remaining reservation; key not loaded')
+        execute(frozen,Path(a.output),read_key(a.env_file,key_name='OPENAI_API_KEY'))
     else:
         require(a.source and a.authorization and not a.frozen,'source and new authorization required')
-        frozen=prepare_catalog(read(a.source),read(a.authorization),read(a.prior_report)) if a.prior_report else prepare(read(a.source),read(a.authorization))
+        require(not (a.bound_catalog and a.prior_report), 'choose one follow-up version')
+        frozen = prepare_bound(read(a.source), read(a.authorization), read(a.bound_catalog)) if a.bound_catalog else (prepare_catalog(read(a.source),read(a.authorization),read(a.prior_report)) if a.prior_report else prepare(read(a.source),read(a.authorization)))
         write_private(Path(a.output).resolve(),frozen)
         print(dict(maxApiCalls=frozen['maxApiCalls'],reservedCostUsd=frozen['reservedCostUsd'],executed=False))
