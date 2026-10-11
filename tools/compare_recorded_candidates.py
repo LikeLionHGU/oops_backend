@@ -1,7 +1,8 @@
 """Bounded replay of recorded candidate requests; no discovery/images/repairs.
 
-Only the procedure delta differs between arms. Common output cap/store=False
-are explicit departures from the original unlimited-output request.
+The original 18-call preparation compares a procedure delta. Separate frozen
+pattern/boundary artifacts can compare references or output instructions.
+Common output cap/store=False are explicit departures from original requests.
 """
 import argparse
 import copy
@@ -101,11 +102,37 @@ def checked_output(result, payload):
 def execute(artifact, directory, key, call=transport, prior_report=None):
     require(artifact['artifactHash'] == digest({k: v for k, v in artifact.items() if k != 'artifactHash'}),
             'artifact changed')
-    require(len(artifact['requests']) == 18, '18-call limit')
+    if artifact.get('schemaVersion') == 'recorded-candidate-boundary-trial-1':
+        require(len(artifact['priorReservationLedger']) == 5, 'all five prior reservations required')
+        require(type(artifact.get('plannedCalls')) is int
+                and 1 <= artifact['plannedCalls'] <= 18
+                and len(artifact['requests']) == artifact['plannedCalls'], 'bounded call count required')
+        prior = sum(positive(r['reservedCostUsd']) for r in artifact['priorReservationLedger'])
+        require(Decimal(artifact['cumulativeBudgetUsd']) == Decimal('.5')
+                and prior + positive(artifact['remainingBudgetUsd']) == Decimal('.5')
+                and len({r['reportHash'] for r in artifact['priorReservationLedger']}) == 5
+                and prior_report is None, 'complete cumulative ledger required; no automatic retry')
+        require(positive(artifact['reservedTotalCostUsd']) == sum(positive(r['reservedCostUsd']) for r in artifact['requests']),
+                'total reservation mismatch')
+    else:
+        require(artifact.get('schemaVersion') == 'recorded-candidate-trial-1'
+                and len(artifact['requests']) == 18, '18-call limit')
     require(sum(positive(r['reservedCostUsd']) for r in artifact['requests'])
             <= positive(artifact['remainingBudgetUsd']), 'budget exceeded')
     cases = {c['name']: c for c in artifact['cases']}
     for row in artifact['requests']:
+        if artifact.get('schemaVersion') == 'recorded-candidate-boundary-trial-1':
+            require(row['case'] in cases and row['arm'] in {'BASELINE','CANDIDATE'}
+                    and row['body']['model'] == 'gpt-6-luna'
+                    and row['body']['response_format'] == {'type':'json_object'}
+                    and row['body']['store'] is False
+                    and row['body']['temperature'] == .1 and row['body']['reasoning_effort'] == 'none'
+                    and type(row['body']['max_completion_tokens']) is int
+                    and 1 <= row['body']['max_completion_tokens'] <= 4000
+                    and len(row['body']['messages']) == 2
+                    and row['body']['messages'][1]['role'] == 'user'
+                    and json.loads(row['body']['messages'][1]['content']) == cases[row['case']]['payload'],
+                    'bounded request contract mismatch')
         tokens, cost = reserve(row['body'], artifact['config'])
         require(row['requestHash'] == digest(row['body']) and tokens == row['reservedInputTokensHeuristic']
                 and cost == positive(row['reservedCostUsd']), 'request/reservation changed')
@@ -118,7 +145,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
               'status': 'PARTIAL', 'model': 'gpt-6-luna', 'cases': artifact['cases'], 'calls': [],
               'reservedCostUsd': artifact['reservedTotalCostUsd'], 'estimatedCostUsd': '0',
               'actualBilledCostUsd': None, 'unknownCostAttempts': 0, 'qualityGateMet': None,
-              'normalControlsIncluded': False, 'fullPipelineReplayed': False}
+              'normalControlsIncluded': artifact.get('normalControlsIncluded', False), 'fullPipelineReplayed': False}
     estimated = Decimal(0)
     if prior_report is not None:
         require(prior_report['artifactHash'] == artifact['artifactHash']
@@ -154,7 +181,8 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
             result.update({'usage': usage, 'estimatedCostUsd': str(cost)})
             require(response.get('model') == 'gpt-6-luna', 'unexpected returned model')
             require(usage['prompt_tokens'] <= row['reservedInputTokensHeuristic']
-                    and usage['completion_tokens'] <= 4000 and cost <= positive(row['reservedCostUsd']), 'reservation exceeded')
+                    and usage['completion_tokens'] <= row['body']['max_completion_tokens']
+                    and cost <= positive(row['reservedCostUsd']), 'reservation exceeded')
             payload = cases[row['case']]['payload']
             checked_output(result, payload)
         except Exception as error:
@@ -166,7 +194,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
         print({'completed': i, 'case': row['case'], 'arm': row['arm'], 'status': result['status']}, flush=True)
         if 'error' in result: break
     report['estimatedCostUsd'] = str(estimated)
-    if len(report['calls']) == 18 and not any('error' in c for c in report['calls']): report['status'] = 'COMPLETED_PENDING_JAVA_AUDIT'
+    if len(report['calls']) == len(artifact['requests']) and not any('error' in c for c in report['calls']): report['status'] = 'COMPLETED_PENDING_JAVA_AUDIT'
     write_private(directory / 'report.json', report)
     return report
 
