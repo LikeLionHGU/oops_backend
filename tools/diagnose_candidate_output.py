@@ -10,19 +10,30 @@ from pathlib import Path
 from fixed_review_suite import digest, read, require, write_private
 
 
-def diagnose(assessment, raw, wire=False):
+def diagnose(assessment, raw, wire=False, selection=False):
     evidence = assessment.get('evidence')
     if not isinstance(evidence,list):
         return {'evidenceCount':None,'defects':['EVIDENCE_NOT_LIST'],'quoteMismatches':[]}
     rows = {r['id']:r['text'] for r in raw}
     mismatches = []
     for i,q in enumerate(evidence):
+        if selection:
+            if not isinstance(q,dict) or q.get('segmentId') not in rows:
+                mismatches.append(i)
+            continue
         if not isinstance(q,dict) or not isinstance(q.get('quote'),str) or not q['quote'].strip() \
                 or q.get('segmentId') not in rows or q['quote'] not in rows[q['segmentId']]:
             mismatches.append(i)
     defects = []
     if len(evidence) > 8: defects.append('EVIDENCE_OBJECT_BUDGET_EXCEEDED')
-    if mismatches: defects.append('QUOTE_NOT_IN_OWN_RAW_ROW')
+    if mismatches: defects.append('SELECTION_ID_NOT_RAW' if selection else 'QUOTE_NOT_IN_OWN_RAW_ROW')
+    if selection:
+        if 'evidenceText' in assessment or any(isinstance(q,dict) and set(q) != {'segmentId','role'} for q in evidence):
+            defects.append('GENERATED_FIELDS_IN_ID_SELECTION')
+        pairs = [(q.get('segmentId'),q.get('role')) for q in evidence if isinstance(q,dict)]
+        if len(pairs) != len(set(pairs)): defects.append('DUPLICATE_ID_ROLE_SELECTION')
+        if sum(isinstance(q,dict) and q.get('role') == 'PRIMARY' for q in evidence) != 1:
+            defects.append('SELECTION_SINGLE_PRIMARY_REQUIRED')
     if wire and assessment.get('decision') == 'REVIEW_REQUIRED' and assessment.get('target') is not None:
         if sum(isinstance(q,dict) and q.get('role') == 'TARGET' for q in evidence) != 1:
             defects.append('WIRE_SINGLE_TARGET_REQUIRED')
@@ -42,7 +53,8 @@ def report_diagnostics(report):
             results.append({**{k:call[k] for k in ('case','arm','repeat')},'candidateId':v['candidateId'],
                             'outputSource':source,
                             **diagnose(v['assessment'],cases[call['case']]['raw'],
-                                       wire=call.get('outputAdapter') == 'single-target-evidence-wire-1')})
+                                       wire=call.get('outputAdapter') in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'},
+                                       selection=source == 'wireOutput' and call.get('outputAdapter') == 'evidence-id-selection-wire-1')})
     return {'schemaVersion':'candidate-output-diagnostics-1','sourceReportHash':digest(report),
             'supplementalOnly':True,'responsesModified':False,'qualityGateMet':None,'results':results}
 
