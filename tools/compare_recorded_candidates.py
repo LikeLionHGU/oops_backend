@@ -89,6 +89,14 @@ def checked_output(result, payload):
     choice = result['providerResponse']['choices'][0]
     require(choice['finish_reason'] == 'stop' and not choice['message'].get('refusal'), 'incomplete/refused')
     output = json.loads(choice['message']['content'])
+    if result.get('outputAdapter') == 'single-target-evidence-wire-1':
+        from target_wire_contract import adapt
+        result['wireOutput'] = copy.deepcopy(output)
+        try:
+            output = adapt(output,payload)
+        except (ValueError,KeyError,TypeError):
+            result.update(status='PYTHON_WIRE_REJECTED',wireAdaptationError='WIRE_CONTRACT_REJECTED')
+            return
     result['output'] = output
     try:
         verify(output, payload['candidates'], payload['raw'])
@@ -102,7 +110,15 @@ def checked_output(result, payload):
 def execute(artifact, directory, key, call=transport, prior_report=None):
     require(artifact['artifactHash'] == digest({k: v for k, v in artifact.items() if k != 'artifactHash'}),
             'artifact changed')
-    if artifact.get('schemaVersion') == 'recorded-candidate-boundary-trial-1':
+    if artifact.get('schemaVersion') == 'recorded-target-wire-trial-1':
+        require(len(artifact['requests']) == artifact['plannedCalls'] == 42
+                and artifact['additionalBudgetUsd'] == '.5'
+                and positive(artifact['remainingBudgetUsd']) == Decimal('.5')
+                and artifact['priorReservedCostUsd'] == '0.4994146'
+                and prior_report is None, 'new separately authorized 42-call trial required')
+        require(positive(artifact['reservedTotalCostUsd']) == sum(positive(r['reservedCostUsd']) for r in artifact['requests']),
+                'wire total reservation mismatch')
+    elif artifact.get('schemaVersion') == 'recorded-candidate-boundary-trial-1':
         require(len(artifact['priorReservationLedger']) == 5, 'all five prior reservations required')
         require(type(artifact.get('plannedCalls')) is int
                 and 1 <= artifact['plannedCalls'] <= 18
@@ -121,7 +137,7 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
             <= positive(artifact['remainingBudgetUsd']), 'budget exceeded')
     cases = {c['name']: c for c in artifact['cases']}
     for row in artifact['requests']:
-        if artifact.get('schemaVersion') == 'recorded-candidate-boundary-trial-1':
+        if artifact.get('schemaVersion') in {'recorded-candidate-boundary-trial-1','recorded-target-wire-trial-1'}:
             require(row['case'] in cases and row['arm'] in {'BASELINE','CANDIDATE'}
                     and row['body']['model'] == 'gpt-6-luna'
                     and row['body']['response_format'] == {'type':'json_object'}
@@ -133,6 +149,9 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
                     and row['body']['messages'][1]['role'] == 'user'
                     and json.loads(row['body']['messages'][1]['content']) == cases[row['case']]['payload'],
                     'bounded request contract mismatch')
+        if artifact.get('schemaVersion') == 'recorded-target-wire-trial-1':
+            require(row.get('outputAdapter') == ('single-target-evidence-wire-1' if row['arm'] == 'CANDIDATE' else None),
+                    'adapter must match frozen comparison arm')
         tokens, cost = reserve(row['body'], artifact['config'])
         require(row['requestHash'] == digest(row['body']) and tokens == row['reservedInputTokensHeuristic']
                 and cost == positive(row['reservedCostUsd']), 'request/reservation changed')
@@ -166,6 +185,9 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
     completed = len(report['calls'])
     for i, row in enumerate(artifact['requests'][completed:], completed + 1):
         result = {k: row[k] for k in ('case', 'arm', 'repeat', 'requestHash')}
+        if row.get('outputAdapter'):
+            require(row['outputAdapter'] == 'single-target-evidence-wire-1', 'unknown output adapter')
+            result['outputAdapter'] = row['outputAdapter']
         write_private(directory / f'attempt-{i:03d}.json', result)
         started = time.monotonic()
         try:
@@ -202,6 +224,9 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
 def audit_export(report):
     """Administrative ID normalization for existing Java replay; no text edits."""
     adapted = copy.deepcopy(report)
+    for call in adapted['calls']:
+        if call.get('wireAdaptationError'):
+            call['error'] = 'WIRE_ADAPTATION_REJECTED'
     for case in adapted['cases']:
         payload = case['payload']
         mapping = {r['id']: f'stt-replay-{i}' for i, r in enumerate(payload['raw'])}
