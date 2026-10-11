@@ -26,6 +26,8 @@ AUTHORIZATION = dict(schemaVersion='issue-scoped-budget-1', additionalBudgetUsd=
                      userAuthorized=True, previousReservedUsd='1.9666938', previousRemainingUsd='0.0257290')
 CATALOG_SCHEMA = 'issue-scoped-catalog-followup-1'
 BOUND_SCHEMA = 'issue-scoped-bound-followup-2'
+BOUND_FUNDING = dict(schemaVersion='bound-followup-budget-1', additionalBudgetUsd='0.50',
+                     userAuthorized=True, previousReservedUsd='2.9093844', previousRemainingUsd='0.0573094')
 
 
 def prepare(source, authorization):
@@ -74,6 +76,8 @@ def prepare(source, authorization):
 def validate(artifact):
     if artifact.get('schemaVersion') == BOUND_SCHEMA:
         expected = prepare_bound(artifact['source'], artifact['authorization'], artifact['priorCatalog'])
+        if 'additionalFunding' in artifact:
+            expected = fund_bound(expected, artifact['additionalFunding'])
     else:
         expected = prepare_catalog(artifact['source'],artifact['authorization'],artifact['priorReport']) if artifact.get('schemaVersion')==CATALOG_SCHEMA else prepare(artifact['source'], artifact['authorization'])
     require(artifact == expected, 'frozen comparison changed')
@@ -146,6 +150,25 @@ def prepare_bound(source, authorization, prior_catalog):
                  trialDesign='FRESH_TWO_STAGE_CANDIDATE_ONLY_REGRESSION')
     first['artifactHash'] = digest(first)
     return first
+
+
+def fund_bound(blocked, funding):
+    """Separate human-approved $0.50; no rollover or refund of prior budgets."""
+    require(blocked.get('schemaVersion') == BOUND_SCHEMA and 'additionalFunding' not in blocked,
+            'unfunded bound snapshot required')
+    require(blocked == prepare_bound(blocked['source'], blocked['authorization'], blocked['priorCatalog'])
+            and funding == BOUND_FUNDING and not blocked['executionEnabled']
+            and blocked['remainingBudgetUsd'] == funding['previousRemainingUsd'], 'exact new funding required')
+    total = Decimal(blocked['reservedCostUsd'])
+    require(total <= Decimal(funding['additionalBudgetUsd']), 'full fresh regression exceeds additional approval')
+    result = copy.deepcopy(blocked)
+    previous_hash = result.pop('artifactHash')
+    result.update(additionalFunding=copy.deepcopy(funding), additionalFundingHash=digest(funding),
+                  unfundedArtifactHash=previous_hash, executionEnabled=True, budgetSufficient=True,
+                  remainingBudgetUsd=str(Decimal(funding['additionalBudgetUsd'])-total),
+                  priorBudgetRemainingUsd=funding['previousRemainingUsd'])
+    result['artifactHash'] = digest(result)
+    return result
 
 
 def execute(artifact, directory, key, call=transport, *, simulate=False):
@@ -263,6 +286,8 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
         report.update(runKind='MOCK_OFFLINE' if simulate else 'LIVE', simulatedCalls=len(stages) if simulate else 0,
                       apiCalls=0 if simulate else len(stages),
                       consumedReservationUsd='0' if simulate else artifact['reservedCostUsd'])
+        if 'additionalFundingHash' in artifact:
+            report['additionalFundingHash'] = artifact['additionalFundingHash']
         if simulate:
             report.update(mockTokenRateEquivalentUsd=report['estimatedCostUsd'], estimatedCostUsd='0',
                           status='MOCK_COMPLETE_PENDING_JAVA_AUDIT' if report['status']=='COMPLETED_PENDING_JAVA_AUDIT' else 'MOCK_PARTIAL')

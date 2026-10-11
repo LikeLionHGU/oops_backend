@@ -17,6 +17,7 @@ def score(frozen, report, audit):
     is_bound = frozen['schemaVersion'] == BOUND_SCHEMA
     is_mock = is_bound and report.get('runKind') == 'MOCK_OFFLINE'
     if is_bound:
+        require(report.get('additionalFundingHash') == frozen.get('additionalFundingHash'), 'funding provenance mismatch')
         require(report.get('runKind') in {'MOCK_OFFLINE', 'LIVE'}, 'bound execution kind required')
         stage_count = sum(len(c['stages']) for c in report['calls'])
         require(report['apiCalls'] == (0 if is_mock else stage_count)

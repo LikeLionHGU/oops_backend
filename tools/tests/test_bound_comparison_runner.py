@@ -4,12 +4,14 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from decimal import Decimal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from compare_recorded_candidates import audit_export
 from compare_review_prompts import digest as audit_digest
 from fixed_review_suite import digest
-from run_issue_scoped_comparison import AUTHORIZATION, execute, prepare, prepare_catalog, prepare_bound, validate, transport
+from run_issue_scoped_comparison import AUTHORIZATION, BOUND_FUNDING, fund_bound, execute, prepare, prepare_catalog, prepare_bound, validate, transport
 from score_issue_scoped_comparison import score
 from test_run_issue_scoped_comparison import source
 
@@ -46,6 +48,21 @@ def fake_audit(report):
 
 
 class BoundRunnerTests(unittest.TestCase):
+    def test_separate_funding_does_not_rollover_previous_budget_or_modify_bodies(self):
+        original = frozen()
+        funding = dict(BOUND_FUNDING, previousRemainingUsd=original['remainingBudgetUsd'])
+        # Fixture bodies have different lengths/costs than private real inputs.
+        with patch('run_issue_scoped_comparison.BOUND_FUNDING', funding):
+            a = fund_bound(original, funding); validate(a)
+            self.assertEqual(a['jobs'], original['jobs'])
+            self.assertTrue(a['executionEnabled'])
+            self.assertEqual(Decimal(a['remainingBudgetUsd']), Decimal('.5')-Decimal(a['reservedCostUsd']))
+            self.assertEqual(a['priorBudgetRemainingUsd'], funding['previousRemainingUsd'])
+            for field in ('additionalBudgetUsd', 'previousReservedUsd', 'userAuthorized'):
+                bad = copy.deepcopy(funding); bad[field] = 'wrong'
+                with self.subTest(field=field), self.assertRaises(ValueError): fund_bound(original, bad)
+            with self.assertRaises(ValueError): fund_bound(a, funding)
+
     def test_budget_block_happens_before_callback_and_directory_creation(self):
         a = frozen(); validate(a)
         self.assertFalse(a['budgetSufficient']); self.assertFalse(a['executionEnabled'])
