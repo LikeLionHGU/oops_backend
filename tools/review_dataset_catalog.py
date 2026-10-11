@@ -28,6 +28,11 @@ def validate(catalog, root):
                 ("runtimeEligible", "trainingUseAuthorized", "humanApproved")), "NO_AUTOMATIC_PROMOTION")
     refs = [catalog["curatedDataset"], catalog["sourceResearchSnapshot"], catalog["patternResearch"]]
     refs += catalog["templates"] + catalog["benchmarks"]
+    supplemental = catalog.get("supplementalResearchFiles", [])
+    require(isinstance(supplemental, list) and len(supplemental) <= 100
+            and all(isinstance(path, str) for path in supplemental)
+            and len(set(supplemental)) == len(supplemental), "SUPPLEMENTAL_RESEARCH_LIST_REQUIRED")
+    refs += supplemental  # Source-first research is not a collected comment incident.
     incidents = catalog["incidents"]
     require(isinstance(incidents, list) and 0 < len(incidents) <= 1000, "INCIDENT_LIMIT")
     refs += [item["publicMetadata"] for item in incidents]

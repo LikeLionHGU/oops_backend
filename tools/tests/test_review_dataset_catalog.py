@@ -66,6 +66,15 @@ class CatalogTests(unittest.TestCase):
             with self.assertRaises(tool.PilotError):
                 tool.validate(catalog, self.dataset_root)
 
+    def test_supplemental_research_is_referenced_without_inflating_comment_counts(self):
+        self.catalog['supplementalResearchFiles'] = ['research/metadata.json']
+        report = tool.validate(self.catalog, self.dataset_root)
+        self.assertEqual(3, report['draftCards'])
+        self.assertEqual(9, report['activeCommentRecords'])
+        self.catalog['supplementalResearchFiles'] = ['../outside.json']
+        with self.assertRaisesRegex(tool.PilotError, 'PATH_OUTSIDE_ROOT'):
+            tool.validate(self.catalog, self.dataset_root)
+
     def test_common_draft_cannot_reference_outside_dataset(self):
         self.catalog["commonCardsDraft"] = "../outside.json"
         with self.assertRaisesRegex(tool.PilotError, "PATH_OUTSIDE_ROOT"):
