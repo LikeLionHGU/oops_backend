@@ -1,0 +1,229 @@
+"""Bounded, explicit paid comparison of one-stage and evidence-first review.
+
+New authorization only; never refunds prior reservations, retries, resumes,
+deploys, labels semantics, or changes original responses. Draft mode is default.
+"""
+import argparse
+import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal
+import json
+from pathlib import Path
+import threading
+import time
+
+from collect_youtube_comments import read_key
+from compare_recorded_candidates import checked_output, audit_export
+from fixed_review_suite import digest, read, require, write_private
+from issue_scoped_review import (hydrate_selection, judgment_request, prompts, review_packet,
+                                 selection_request)
+from prepare_flow_regression import validate as validate_source
+from run_boundary_comparison import positive, reserve, transport
+
+SCHEMA = 'issue-scoped-comparison-1'
+SCOPE_BYTES = 32000
+AUTHORIZATION = dict(schemaVersion='issue-scoped-budget-1', additionalBudgetUsd='1.00',
+                     userAuthorized=True, previousReservedUsd='1.9666938', previousRemainingUsd='0.0257290')
+CATALOG_SCHEMA = 'issue-scoped-catalog-followup-1'
+
+
+def prepare(source, authorization):
+    validate_source(source)
+    require(source['artifactHash'] == digest({k:v for k,v in source.items() if k != 'artifactHash'})
+            and source['variant'] == 'TARGET_WIRE' and source.get('ownerControls')
+            and authorization == AUTHORIZATION, 'complete source and new separate authorization required')
+    require({c['name'] for c in source['cases']} == {'B','C','D','N1','N2','N3','N4','N5','N6'}, 'fixed nine cases')
+    templates = {r['case']: r['body'] for r in source['requests'] if r['repeat'] == 1}
+    require(all(r['body'] == templates[r['case']] for r in source['requests']), 'identical repeated source required')
+    jobs = []
+    for repeat in range(1, 4):
+        for i, c in enumerate(source['cases']):
+            base = copy.deepcopy(templates[c['name']])
+            require(base['model'] == 'gpt-6-luna' and base['reasoning_effort'] == 'low'
+                    and 'temperature' not in base and base['max_completion_tokens'] == 8000
+                    and base['response_format'] == {'type':'json_object'} and base['store'] is False,
+                    'fixed low/8k/json_object/store=false model settings required')
+            for arm in (('BASELINE','CANDIDATE') if (repeat+i)%2 else ('CANDIDATE','BASELINE')):
+                stages = []
+                bodies = [('VERIFY', base)] if arm == 'BASELINE' else [('SELECT', selection_request(base))]
+                if arm == 'CANDIDATE':
+                    padded = copy.deepcopy(base)
+                    padded['messages'][0]['content'] = prompts(base['messages'][0]['content'])[1]
+                    padded['messages'][1]['content'] = json.dumps(
+                        dict(original=c['payload'], selectedScope='x'*SCOPE_BYTES), ensure_ascii=False)
+                    bodies.append(('JUDGE', padded))
+                for stage, body in bodies:
+                    tokens, cost = reserve(body, source['config'])
+                    stages.append(dict(stage=stage, body=body, requestHash=digest(body),
+                                       reservedInputTokensHeuristic=tokens, reservedCostUsd=str(cost)))
+                jobs.append(dict(case=c['name'], arm=arm, repeat=repeat, baseBody=base,
+                                 baseRequestHash=digest(base), stages=stages))
+    total = sum(Decimal(s['reservedCostUsd']) for j in jobs for s in j['stages'])
+    require(total <= Decimal('1.00'), 'full two-stage reservation exceeds new budget')
+    result = dict(schemaVersion=SCHEMA, sourceArtifactHash=source['artifactHash'], source=copy.deepcopy(source),
+                  authorization=copy.deepcopy(authorization), authorizationHash=digest(authorization),
+                  config=copy.deepcopy(source['config']), jobs=jobs, plannedUnits=54, maxApiCalls=81,
+                  reservedCostUsd=str(total), scopeEnvelopeByteLimit=SCOPE_BYTES,
+                  repetitions=3, requestTimeoutSeconds=90, maxConcurrency=3,
+                  fullPipelineReplayed=False, runtimeChanged=False, qualityGateMet=None)
+    result['artifactHash'] = digest(result)
+    return result
+
+
+def validate(artifact):
+    expected = prepare_catalog(artifact['source'],artifact['authorization'],artifact['priorReport']) if artifact.get('schemaVersion')==CATALOG_SCHEMA else prepare(artifact['source'], artifact['authorization'])
+    require(artifact == expected, 'frozen comparison changed')
+
+
+def prepare_catalog(source,authorization,prior_report):
+    from span_catalog_review import selection_request as select, JUDGMENT_FIX
+    first=prepare(source,authorization)
+    require(prior_report['schemaVersion']==SCHEMA and prior_report['artifactHash']==first['artifactHash']
+            and prior_report['authorizationHash']==digest(authorization)
+            and prior_report['status']=='COMPLETED_PENDING_JAVA_AUDIT'
+            and prior_report['reservedCostUsd']==first['reservedCostUsd'], 'completed prior reservation required')
+    first.pop('artifactHash')
+    jobs=[j for j in first['jobs'] if j['arm']=='CANDIDATE']
+    for j in jobs:
+        j['stages'][0]['body']=select(j['baseBody'])
+        judge=j['stages'][1]['body']
+        marker='# 범용 맥락 참고 기준'
+        before,reference=judge['messages'][0]['content'].split(marker,1)
+        judge['messages'][0]['content']=before+JUDGMENT_FIX+'\n'+marker+reference
+        for s in j['stages']:
+            tokens,cost=reserve(s['body'],first['config'])
+            s.update(requestHash=digest(s['body']),reservedInputTokensHeuristic=tokens,reservedCostUsd=str(cost))
+    total=sum(Decimal(s['reservedCostUsd']) for j in jobs for s in j['stages'])
+    remaining=Decimal('1.00')-Decimal(prior_report['reservedCostUsd'])
+    require(total<=remaining,'catalog follow-up exceeds remaining new authorization')
+    # A budget link needs provenance and totals, not all prior provider bodies.
+    # Embedding those would multiply snapshots and exceed the 4 MiB reader.
+    fields=('schemaVersion','artifactHash','authorizationHash','status','reservedCostUsd')
+    prior_meta={k:prior_report[k] for k in fields}
+    prior_meta['sourceReportHash']=prior_report.get('sourceReportHash',digest(prior_report))
+    first.update(schemaVersion=CATALOG_SCHEMA,jobs=jobs,plannedUnits=27,maxApiCalls=54,
+                 reservedCostUsd=str(total),priorReport=prior_meta,
+                 priorReportHash=digest(prior_meta),remainingBudgetUsd=str(remaining),
+                 trialDesign='CANDIDATE_ONLY_REGRESSION')
+    first['artifactHash']=digest(first)
+    return first
+
+
+def execute(artifact, directory, key, call=transport):
+    validate(artifact)
+    directory = Path(directory).resolve()
+    require('datasets' in directory.parts and not directory.exists(), 'new private execution directory required')
+    directory.mkdir(parents=True, mode=0o700)
+    write_private(directory/'frozen.json', artifact)
+    stop = threading.Event()
+    cases = {c['name']:c for c in artifact['source']['cases']}
+    is_catalog=artifact['schemaVersion']==CATALOG_SCHEMA
+    if is_catalog:
+        from span_catalog_review import hydrate as hydrate_scope, judgment_request as judge_request
+    else:
+        hydrate_scope,judge_request=hydrate_selection,judgment_request
+
+    def unit(index, job):
+        if stop.is_set(): return None
+        result = {k:job[k] for k in ('case','arm','repeat')}
+        result.update(unitIndex=index, stages=[], requestHash=job['baseRequestHash'], status='PARTIAL')
+        payload = cases[job['case']]['payload']
+        scope = None
+        for stage in job['stages']:
+            if stop.is_set(): result['status']='STOPPED_BEFORE_STAGE'; break
+            body = judge_request(job['baseBody'], scope) if stage['stage'] == 'JUDGE' else stage['body']
+            actual_tokens, _ = reserve(body, artifact['config'])
+            require(actual_tokens <= stage['reservedInputTokensHeuristic'], 'dynamic request exceeds reservation')
+            attempt = dict(stage=stage['stage'], requestHash=digest(body), body=body)
+            write_private(directory/f'attempt-{index:03d}-{stage["stage"]}.json', attempt)
+            started = time.monotonic()
+            try:
+                response = call(key, body, timeout=artifact['requestTimeoutSeconds'])
+                attempt['providerResponse'] = response
+                usage = response.get('usage', {})
+                require(all(type(usage.get(k)) is int and usage[k] >= 0 for k in ('prompt_tokens','completion_tokens')), 'usage unavailable')
+                price = artifact['config']['pricing']
+                cost = (Decimal(usage['prompt_tokens'])*positive(price['inputUsdPerMillion'])
+                        + Decimal(usage['completion_tokens'])*positive(price['outputUsdPerMillion']))/1000000
+                attempt.update(usage=usage, estimatedCostUsd=str(cost))
+                require(response.get('model') == 'gpt-6-luna' and usage['completion_tokens'] <= 8000
+                        and usage['prompt_tokens'] <= stage['reservedInputTokensHeuristic']
+                        and cost <= Decimal(stage['reservedCostUsd']), 'provider model/usage exceeds reservation')
+                choice = response['choices'][0]
+                require(choice['finish_reason'] == 'stop' and not choice['message'].get('refusal'), 'incomplete or refused response')
+                raw = json.loads(choice['message']['content'])
+                attempt['rawOutput'] = raw
+                if stage['stage'] == 'VERIFY':
+                    flat = dict(providerResponse=response, outputAdapter='single-target-evidence-wire-1')
+                    checked_output(flat, payload)
+                    result.update({k:v for k,v in flat.items() if k != 'providerResponse'})
+                    if 'output' not in result: result['wireAdaptationError']='BASELINE_WIRE_REJECTED'
+                elif stage['stage'] == 'SELECT':
+                    try:
+                        scope = hydrate_scope(raw, payload)
+                        require(len(json.dumps(scope,ensure_ascii=False).encode()) <= SCOPE_BYTES, 'scope envelope exceeded')
+                        result['selectedScope'] = scope
+                    except (ValueError, KeyError, TypeError) as error:
+                        result.update(status='SELECTION_REJECTED', wireAdaptationError='SELECTION_CONTRACT_REJECTED',
+                                      contractError=str(error))
+                else:
+                    try:
+                        packet = review_packet(raw, scope, payload)
+                        result.update(reviewPacket=packet, output=packet['compatibleAssessment'], status='CONTRACT_ONLY')
+                    except (ValueError, KeyError, TypeError) as error:
+                        result.update(status='JUDGMENT_REJECTED', wireAdaptationError='JUDGMENT_CONTRACT_REJECTED',
+                                      contractError=str(error))
+            except Exception as error:
+                attempt.update(error=type(error).__name__, status='FAILED_STOP')
+                result.update(error=type(error).__name__, status='FAILED_STOP')
+                stop.set()
+            attempt['latencyMs'] = round((time.monotonic()-started)*1000)
+            result['stages'].append(attempt)
+            write_private(directory/f'result-{index:03d}-{stage["stage"]}.json', attempt)
+            if 'error' in attempt or result.get('wireAdaptationError'): break
+        result['latencyMs'] = sum(s['latencyMs'] for s in result['stages'])
+        if result['status'] == 'PARTIAL': result['status']='CONTRACT_ONLY'
+        write_private(directory/f'unit-{index:03d}.json', result)
+        return result
+
+    results = []
+    with ThreadPoolExecutor(max_workers=artifact['maxConcurrency']) as pool:
+        pending = [pool.submit(unit,i,j) for i,j in enumerate(artifact['jobs'],1)]
+        for future in as_completed(pending):
+            value = future.result()
+            if value is None: continue
+            results.append(value)
+            print(dict(units=len(results),case=value['case'],arm=value['arm'],repeat=value['repeat'],status=value['status']),flush=True)
+    results.sort(key=lambda r:r['unitIndex'])
+    stages = [s for r in results for s in r['stages']]
+    report = dict(schemaVersion=artifact['schemaVersion'], artifactHash=artifact['artifactHash'], authorizationHash=artifact['authorizationHash'],
+                  status='COMPLETED_PENDING_JAVA_AUDIT' if len(results)==artifact['plannedUnits'] and not stop.is_set() else 'PARTIAL',
+                  cases=copy.deepcopy(artifact['source']['cases']), calls=results,
+                  apiCalls=len(stages), reservedCostUsd=artifact['reservedCostUsd'],
+                  estimatedCostUsd=str(sum(Decimal(s.get('estimatedCostUsd','0')) for s in stages)),
+                  unknownCostAttempts=sum('estimatedCostUsd' not in s for s in stages),
+                  actualBilledCostUsd=None, qualityGateMet=None, fullPipelineReplayed=False,
+                  normalControlsIncluded=True, repetitionsPerCondition=3)
+    write_private(directory/'report.json',report)
+    # Break in-memory aliases before administrative ID normalization. JSON on
+    # disk duplicates shared objects, so audit provenance must use that form.
+    exported=audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
+    exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
+    write_private(directory/'audit-input.json',exported)
+    return report
+
+
+if __name__ == '__main__':
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--source'); p.add_argument('--authorization'); p.add_argument('--output',required=True)
+    p.add_argument('--frozen'); p.add_argument('--execute',action='store_true'); p.add_argument('--env-file')
+    p.add_argument('--prior-report')
+    a=p.parse_args()
+    if a.execute:
+        require(a.frozen and not a.source and not a.authorization,'explicit frozen execution required')
+        execute(read(a.frozen),Path(a.output),read_key(a.env_file,key_name='OPENAI_API_KEY'))
+    else:
+        require(a.source and a.authorization and not a.frozen,'source and new authorization required')
+        frozen=prepare_catalog(read(a.source),read(a.authorization),read(a.prior_report)) if a.prior_report else prepare(read(a.source),read(a.authorization))
+        write_private(Path(a.output).resolve(),frozen)
+        print(dict(maxApiCalls=frozen['maxApiCalls'],reservedCostUsd=frozen['reservedCostUsd'],executed=False))
