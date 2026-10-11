@@ -18,6 +18,48 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class AnalysisPipelineReviewTest {
+    @ParameterizedTest
+    @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,false"})
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void preservesWorkerOcrFailureStateEvenWithRetainedText(AnalyzerStatus state, boolean hasText) {
+        var client = mock(OpenAiClient.class);
+        var transcripts = mock(TranscriptService.class);
+        var screens = mock(ScreenTextService.class);
+        var progress = mock(JobProgressService.class);
+        var videos = mock(VideoRepository.class);
+        var coverage = mock(AnalysisCoverageRepository.class);
+        var worker = mock(AnalysisServerClient.class);
+        var fusion = mock(FindingFusionService.class);
+        var reports = mock(AnalysisReportRepository.class);
+        var video = Video.builder().filename("offline.mp4").build();
+        video.assignGenre(ContentGenre.GENERAL);
+        when(progress.begin(11L)).thenReturn(1L);
+        when(progress.complete(11L)).thenReturn(true);
+        when(videos.findById(1L)).thenReturn(Optional.of(video));
+        when(transcripts.extractAndSave(video)).thenReturn(List.of(new TranscriptSegment(video, 0, 1000, "정상 발언")));
+        when(screens.extractAndSave(video)).thenReturn(hasText
+                ? List.of(new ScreenText(video, 0, 1000, "화면 문구", 0.9, null)) : List.of());
+        when(worker.lastOcrAssessment()).thenReturn(Optional.of(new AnalysisServerClient.OcrAssessment(state,
+                state == AnalyzerStatus.SUCCESS ? null : "프레임 처리 실패 또는 일부 누락")));
+        when(fusion.fuse(anyList())).thenReturn(List.of());
+        when(reports.findByVideoId(1L)).thenReturn(Optional.empty());
+        var usage = mock(OpenAiClient.TokenUsage.class);
+        when(usage.pricing()).thenReturn(mock(OpenAiProperties.Pricing.class));
+        when(usage.isEmpty()).thenReturn(true);
+        when(client.videoUsage()).thenReturn(usage);
+        var pipeline = new AnalysisPipeline(List.of(), new OopsProperties(null,
+                new OopsProperties.Analysis(List.of()), null), transcripts, screens, fusion,
+                mock(GenreDetector.class), worker, new ReportBuilder(), progress, videos,
+                mock(RiskFindingRepository.class), coverage, mock(ReviewActionRepository.class), client,
+                mock(ReviewReferenceRepository.class), reports, mock(ReviewDiagnosticsStore.class), mock(ExpressionService.class));
+        pipeline.runAsync(11L);
+        ArgumentCaptor<Collection<AnalysisCoverage>> captor = ArgumentCaptor.forClass((Class) Collection.class);
+        verify(coverage).saveAll(captor.capture());
+        var result = captor.getValue().stream().filter(c -> c.getStep() == CoverageStep.OCR).findFirst().orElseThrow();
+        assertThat(result.getStatus()).isEqualTo(state);
+        if (state != AnalyzerStatus.SUCCESS) assertThat(result.getMessage()).contains("프레임 처리");
+        verify(progress).complete(11L); // Speech can still produce a completed report with explicit OCR warnings.
+    }
     @org.junit.jupiter.api.Test
     void retainsIndependentWarningsAtTheSameSeverity() {
         var pipeline=mock(AnalysisPipeline.class, CALLS_REAL_METHODS);

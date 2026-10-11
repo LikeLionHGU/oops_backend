@@ -146,7 +146,10 @@ public class AnalysisPipeline {
 
             // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
             // 분석 서버가 사유를 남겼을 때만 실패로 본다.
-            if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
+            var ocrAssessment = analysisServerClient.lastOcrAssessment().orElse(null);
+            if (ocrAssessment != null && ocrAssessment.status() != AnalyzerStatus.SUCCESS) {
+                record(coverage, video, CoverageStep.OCR, ocrAssessment.status(), ocrAssessment.message());
+            } else if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
                 record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
                         analysisServerClient.lastFailureDetail().orElse(null));
             } else if (screenTexts.isEmpty()) {
