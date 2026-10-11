@@ -28,6 +28,55 @@ def fixture():
 
 
 class FixedSuiteTests(unittest.TestCase):
+    def test_packet_preserves_input_without_incident_identity_or_expected_answers(self):
+        suite = fixture()
+        selected = ["pisik-C", "pisik-D", "pisik-yeongyang-normal_control-2"]
+        packet = tool.review_packet(suite, selected)
+        exported = packet["model-inputs.json"]["units"]
+        self.assertEqual("eval-001", exported[0]["unitId"])
+        self.assertEqual(next(c for c in suite["cases"] if c["id"] == "pisik-C")["input"], exported[0]["input"])
+        self.assertNotIn("pisik", str(exported))
+        self.assertEqual({"unitId", "input"}, set(exported[0]))
+        self.assertIsNone(packet["manifest.json"]["qualityGateMet"])
+        self.assertFalse(packet["manifest.json"]["apiExecutionEnabled"])
+        for row in packet["worksheet.json"]["units"]:
+            self.assertIsNone(row["decision"])
+            self.assertIsNone(row["inputSufficient"])
+
+    def test_owner_labels_are_isolated_and_never_fill_reviewer_answers(self):
+        suite = fixture()
+        row = suite["cases"][0]
+        owner = {"schemaVersion": "owner-development-review-1", "reviewerRole": "PROJECT_OWNER",
+                 "suiteRegistryHash": suite["registryHash"], "independentReviewCompleted": False,
+                 "curatedPromotionAuthorized": False, "runtimeUseAuthorized": False, "trainingUseAuthorized": False,
+                 "cases": [{"caseId": row["id"], "inputHash": row["inputHash"],
+                            "developmentExpectedDecision": "REVIEW_REQUIRED"}]}
+        original = copy.deepcopy(suite)
+        packet = tool.review_packet(suite, [row["id"]], owner)
+        self.assertEqual(1, len(packet["owner-labels.json"]["labels"]))
+        self.assertIsNone(packet["worksheet.json"]["units"][0]["decision"])
+        self.assertEqual(original, suite)
+        for field, value in [("suiteRegistryHash", "wrong"), ("independentReviewCompleted", True),
+                             ("runtimeUseAuthorized", True)]:
+            modified = copy.deepcopy(owner)
+            modified[field] = value
+            with self.assertRaises(ValueError): tool.review_packet(suite, [row["id"]], modified)
+        owner["cases"][0]["inputHash"] = "wrong"
+        with self.assertRaisesRegex(ValueError, "input mismatch"):
+            tool.review_packet(suite, [row["id"]], owner)
+
+    def test_packet_rejects_missing_reported_duplicate_and_unknown_cases(self):
+        for ids in [[], ["pisik-C", "pisik-C"], ["unknown"], ["timing"], ["caption"]]:
+            with self.assertRaises(ValueError): tool.review_packet(fixture(), ids)
+
+    def test_private_writer_refuses_overwriting_output(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "datasets" / "fixture.json"
+            tool.write_private(path, {"fixture": True})
+            with self.assertRaises(FileExistsError): tool.write_private(path, {"changed": True})
+            self.assertEqual({"fixture": True}, tool.read(path))
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
     def test_counts_and_blocked_status(self):
         result = tool.validate(fixture())
         self.assertEqual(30, result["slots"])

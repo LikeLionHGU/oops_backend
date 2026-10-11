@@ -156,6 +156,71 @@ def build(cards, run):
     return suite
 
 
+def review_packet(suite, case_ids, owner_review=None):
+    """Separate model data, blank review forms, and development-owner labels.
+
+    This is an offline export, not an API request or a full pipeline replay.
+    """
+    validate(suite)
+    require(bool(case_ids) and len(case_ids) == len(set(case_ids)), "unique case IDs required")
+    indexed = {r["id"]: r for r in suite["cases"]}
+    require(set(case_ids) <= set(indexed), "unknown requested case")
+    owner_labels = {}
+    if owner_review is not None:
+        require(owner_review.get("schemaVersion") == "owner-development-review-1"
+                and owner_review.get("reviewerRole") == "PROJECT_OWNER", "unsupported owner review")
+        require(owner_review.get("suiteRegistryHash") == suite["registryHash"], "owner suite mismatch")
+        require(all(owner_review.get(k) is False for k in (
+            "independentReviewCompleted", "curatedPromotionAuthorized", "runtimeUseAuthorized", "trainingUseAuthorized")),
+            "owner review cannot promote labels")
+        for item in owner_review["cases"]:
+            cid = item["caseId"]
+            require(cid in indexed and cid not in owner_labels, "invalid or duplicate owner case")
+            require(item["inputHash"] == indexed[cid]["inputHash"], "owner input mismatch")
+            require(item["developmentExpectedDecision"] in {"PASS", "REVIEW_REQUIRED", "UNCERTAIN"},
+                    "invalid development decision")
+            owner_labels[cid] = item
+    model_inputs, worksheets, manifest_rows, development_labels = [], [], [], []
+    for i, cid in enumerate(case_ids, 1):
+        row = indexed[cid]
+        require(row["input"]["mode"] in {"SAVED_STT_WINDOW", "SYNTHETIC_TEXT"},
+                "reported or missing source is not ready for a text-input comparison")
+        unit = f"eval-{i:03d}"
+        # No incident IDs, proposal labels, research notes, comments, or prior responses.
+        model_inputs.append({"unitId": unit, "input": row["input"]})
+        manifest_rows.append({"unitId": unit, "caseId": cid, "inputHash": row["inputHash"],
+                              "split": row["split"], "familyId": row["familyId"]})
+        worksheets.append({"unitId": unit, "status": "PENDING", "reviewerId": None,
+                           "decision": None, "evidence": [], "reason": None,
+                           "normalInterpretation": None, "missingInformation": [],
+                           "inputSufficient": None, "reviewedModality": None,
+                           "externalEvidence": [], "duplicateIssueUnitIds": []})
+        if cid in owner_labels:
+            development_labels.append({"unitId": unit, "reviewerRole": "PROJECT_OWNER",
+                                       "reviewStatus": "OWNER_DEVELOPMENT_ONLY",
+                                       "assessment": owner_labels[cid]})
+    inputs = {"schemaVersion": "offline-review-inputs-1", "units": model_inputs}
+    return {
+        "model-inputs.json": inputs,
+        "worksheet.json": {"schemaVersion": "offline-review-worksheet-1", "units": worksheets},
+        "owner-labels.json": {"schemaVersion": "owner-development-labels-1", "labels": development_labels},
+        "manifest.json": {"schemaVersion": "offline-review-manifest-1", "suiteRegistryHash": suite["registryHash"],
+                          "baselineCommit": suite["baselineCommit"], "modelInputsHash": digest(inputs),
+                          "ownerReviewHash": digest(owner_review), "cases": manifest_rows,
+                          "scope": "TEXT_INPUT_EXPORT_NOT_FULL_RUNTIME_REPLAY",
+                          "apiExecutionEnabled": False, "qualityGateMet": None,
+                          "curatedPromotionAuthorized": False}}
+
+
+def write_private(path, payload):
+    require("datasets" in path.resolve().parts, "private output must be inside datasets")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        json.dump(payload, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -165,16 +230,28 @@ def main():
     p.add_argument("--output", required=True)
     p = sub.add_parser("check")
     p.add_argument("suite")
+    p = sub.add_parser("packet")
+    p.add_argument("suite")
+    p.add_argument("--case-ids", nargs="+", required=True)
+    p.add_argument("--owner-review")
+    p.add_argument("--output-dir", required=True)
     args = parser.parse_args()
     if args.command == "prepare":
         suite = build(read(args.cards), read(args.run))
         path = Path(args.output)
-        require("datasets" in path.resolve().parts, "private output must be inside datasets")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w") as stream:
-            json.dump(suite, stream, ensure_ascii=False, indent=2)
-            stream.write("\n")
+        write_private(path, suite)
+    elif args.command == "packet":
+        suite = read(args.suite)
+        packet = review_packet(suite, args.case_ids, read(args.owner_review) if args.owner_review else None)
+        directory = Path(args.output_dir)
+        require("datasets" in directory.resolve().parts, "private output must be inside datasets")
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        directory.mkdir(mode=0o700)  # Never reuse/overwrite a prior packet.
+        for name, payload in packet.items():
+            write_private(directory / name, payload)
+        print(json.dumps({"units": len(args.case_ids), "ownerDevelopmentLabels": len(packet["owner-labels.json"]["labels"]),
+                          "apiExecutionEnabled": False, "qualityGateMet": None}))
+        return
     else:
         suite = read(args.suite)
     print(json.dumps(validate(suite), ensure_ascii=False, indent=2))
