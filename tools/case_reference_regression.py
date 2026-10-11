@@ -13,6 +13,41 @@ from extend_context_references import validate_additions
 from run_boundary_comparison import validate_output
 
 
+def validate_text_input(payload):
+    require(set(payload) <= {'mode', 'segments', 'contextNotes'}
+            and {'mode', 'segments'} <= set(payload), 'unexpected text input fields')
+    require(payload['mode'] in {'SAVED_STT_WINDOW','REPORTED_QUOTE','SYNTHETIC_TEXT'}, 'unsupported text mode')
+    require(isinstance(payload['segments'], list) and 1 <= len(payload['segments']) <= 1000,
+            'nonempty bounded text required')
+    for segment in payload['segments']:
+        require(set(segment) == {'text','startMs','endMs'}
+                and isinstance(segment['text'], str) and 0 < len(segment['text'].strip()) <= 10000,
+                'literal text required')
+        if payload['mode'] == 'SAVED_STT_WINDOW':
+            require(type(segment['startMs']) is int and type(segment['endMs']) is int
+                    and 0 <= segment['startMs'] < segment['endMs'], 'invalid saved times')
+        else:
+            require(segment['startMs'] is None and segment['endMs'] is None, 'text must not invent video times')
+    notes = payload.get('contextNotes', [])
+    require(isinstance(notes, list) and len(notes) <= 6, 'bounded context notes required')
+    for note in notes:
+        require(set(note) == {'kind','text'} and note['kind'] == 'SOURCE_REPORTED_CONTEXT'
+                and isinstance(note['text'], str) and 0 < len(note['text'].strip()) <= 350,
+                'only source-reported setting allowed')
+
+
+def user_input(payload, reference):
+    """Shared export for text tests; notes have no segment ID or speech time."""
+    validate_text_input(payload)
+    result = {'inputMode': payload['mode'], 'raw': [
+        {'id': f'segment-{i:03d}', **s} for i,s in enumerate(payload['segments'], 1)],
+        'contextReference': copy.deepcopy(reference)}
+    if 'contextNotes' in payload:
+        result['contextNotes'] = copy.deepcopy(payload['contextNotes'])
+        result['contextNotesAreUtterances'] = False
+    return result
+
+
 def prepare(base, additions, packet):
     validate_additions(additions, base)
     inputs, manifest, labels = (packet[k] for k in
@@ -21,8 +56,10 @@ def prepare(base, additions, packet):
     indexed = {u['unitId']: u['input'] for u in inputs['units']}
     owner = {r['assessment']['caseId']: r['assessment'] for r in labels['labels']}
     model_units, rows = [], []
+    text_first = additions['schemaVersion'] == 'source-first-context-additions-2'
 
     def add(cid, payload, expected, role, family, basis, reference_id=None):
+        validate_text_input(payload)
         uid = f'unit-{len(rows)+1:03d}'
         model_units.append({'unitId': uid, 'input': copy.deepcopy(payload)})
         rows.append({'unitId': uid, 'caseId': cid, 'familyId': family,
@@ -30,6 +67,9 @@ def prepare(base, additions, packet):
                      'developmentExpectedDecision': expected, 'labelBasis': basis,
                      'referenceCaseId': reference_id,
                      'videoDetectionEligible': payload['mode'] == 'SAVED_STT_WINDOW'})
+        if text_first:
+            rows[-1]['textDetectionEligible'] = True
+            rows[-1]['videoRequired'] = False
 
     require(len(manifest['cases']) == 7 and len(indexed) == 7,
             'B/C/D and four controls required')
@@ -45,14 +85,19 @@ def prepare(base, additions, packet):
         # HOLDOUT is preserved separately, not an obligatory warning label.
         payload = {'mode': 'REPORTED_QUOTE', 'segments': [
             {'text': q['text'], 'startMs': None, 'endMs': None} for q in case['reportedQuotes']]}
+        if text_first:
+            # Background is not dialogue and may not be cited as spoken evidence.
+            payload['contextNotes'] = [{'kind': n['kind'], 'text': n['text']} for n in case['textContext']]
         add(case['id'], payload, None, case['split'], case['familyId'],
-            'PENDING_SOURCE_SUFFICIENCY_AND_HUMAN_LABEL',
+            'PENDING_TEXT_CONTEXT_AND_HUMAN_LABEL' if text_first else 'PENDING_SOURCE_SUFFICIENCY_AND_HUMAN_LABEL',
             case['id'] if case['split'] == 'DEVELOPMENT' else None)
         add(case['id'] + '-normal', {'mode': 'SYNTHETIC_TEXT', 'segments': [
-            {'text': case['normalContrast']['text'], 'startMs': None, 'endMs': None}]},
+            {'text': case['normalContrast']['inputText'] if text_first else case['normalContrast']['text'],
+             'startMs': None, 'endMs': None}]},
             None, case['split'], case['familyId'], 'PENDING_SYNTHETIC_CONTROL_REVIEW')
-    model = {'schemaVersion': 'case-regression-inputs-1', 'units': model_units}
-    plan = {'schemaVersion': 'case-regression-plan-1', 'modelInputsHash': digest(model),
+    revision = '2' if text_first else '1'
+    model = {'schemaVersion': 'case-regression-inputs-' + revision, 'units': model_units}
+    plan = {'schemaVersion': 'case-regression-plan-' + revision, 'modelInputsHash': digest(model),
             'baseArchiveHash': digest(base), 'additionsHash': digest(additions),
             'regressionPacketHash': digest(packet), 'units': rows, 'repetitions': 3,
             'scope': 'TEXT_WINDOW_NOT_CANDIDATE_OR_FULL_VIDEO_REPLAY',
@@ -60,6 +105,10 @@ def prepare(base, additions, packet):
             'baselineReferenceHash': None, 'extendedReferenceHash': None,
             'apiExecutionEnabled': False, 'runtimeUseAuthorized': False,
             'trainingUseAuthorized': False, 'qualityGateMet': None}
+    if text_first:
+        plan['collectionMode'] = 'TEXT_FIRST_VIDEO_OPTIONAL'
+        plan['videoRequired'] = False
+        plan['contextPolicy'] = 'SOURCE_REPORTED_SETTING_NOT_QUOTABLE_DIALOGUE; NO_KNOWN_POINT_OR_REACTIONS_IN_INPUT'
     # A plan hash binds both model data and evaluator-only expectations.
     plan['planHash'] = digest(plan)
     worksheet = {'schemaVersion': 'case-regression-observations-1', 'planHash': plan['planHash'],
@@ -69,8 +118,9 @@ def prepare(base, additions, packet):
 
 def evaluate(model, plan, observations):
     unsigned = {k: v for k, v in plan.items() if k != 'planHash'}
-    require(plan['schemaVersion'] == 'case-regression-plan-1'
+    require(plan['schemaVersion'] in {'case-regression-plan-1', 'case-regression-plan-2'}
             and plan['planHash'] == digest(unsigned), 'plan changed')
+    require(model['schemaVersion'] == plan['schemaVersion'].replace('-plan-', '-inputs-'), 'input contract mismatch')
     require(plan['modelInputsHash'] == observations['modelInputsHash'] == digest(model)
             and observations['planHash'] == plan['planHash']
             and observations['schemaVersion'] == 'case-regression-observations-1', 'observation mismatch')
@@ -78,6 +128,7 @@ def evaluate(model, plan, observations):
     rows = {u['unitId']: u for u in plan['units']}
     require(len(rows) == len(plan['units']) and set(rows) == set(inputs), 'unit mismatch')
     require(all(r['inputHash'] == digest(inputs[uid]) for uid,r in rows.items()), 'input changed')
+    for payload in inputs.values(): validate_text_input(payload)
     results, seen = [], set()
     for call in observations['calls']:
         uid, arm, repeat = call['unitId'], call['arm'], call['repeat']
@@ -85,7 +136,7 @@ def evaluate(model, plan, observations):
                 and 1 <= repeat <= plan['repetitions'], 'invalid job')
         key = (uid, arm, repeat)
         require(key not in seen, 'duplicate job'); seen.add(key)
-        raw = [{'id': f'segment-{i:03d}', **s} for i,s in enumerate(inputs[uid]['segments'], 1)]
+        raw = user_input(inputs[uid], [])['raw']
         require(call['outputHash'] == digest(call['output']), 'response changed')
         try:
             validate_output(call['output'], raw)
@@ -138,8 +189,12 @@ def evaluate(model, plan, observations):
         'observationTrust': 'DECLARED_OFFLINE_RECORDS_NOT_INDEPENDENTLY_AUTHENTICATED',
         'selectionEvidenceVerified': False,
         'runtimeAdoptionAllowed': False, 'fullPipelineReplayed': False,
+        'videoRequired': plan.get('videoRequired', False),
         'generalAccuracyMeasured': False, 'apiCallsMadeByThisTool': 0,
-        'qualification': 'Text-window development only; candidate/domain and original video tests still required.'}
+        'qualification': ('Text-case development; video is optional and needed only for modality-dependent claims. '
+                          'Runtime candidate/domain integration remains a separate test.'
+                          if plan['schemaVersion'] == 'case-regression-plan-2' else
+                          'Text-window development only; candidate/domain and original video tests still required.')}
 
 
 def main():

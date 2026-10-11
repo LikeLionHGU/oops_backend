@@ -53,6 +53,71 @@ def check(bundle):
 
 
 class RegressionTests(unittest.TestCase):
+    def text_first(self):
+        base, additions, packet, _ = fixture()
+        additions['schemaVersion'] = 'source-first-context-additions-2'
+        additions.update(collectionMode='TEXT_FIRST_VIDEO_OPTIONAL', videoRequired=False)
+        for case in additions['cases']:
+            case['textContext'] = [{'kind': 'SOURCE_REPORTED_CONTEXT', 'text': 'fixture neutral setting',
+                                    'sourceId': 'source', 'sourceLocator': 'fixture paragraph'}]
+            case['normalContrast']['inputText'] = 'fixture normal utterance'
+        return base, additions, packet
+
+    def test_text_first_notes_are_not_raw_evidence_or_grading_explanation(self):
+        bundle = tool.prepare(*self.text_first())
+        original, normal = bundle['model-inputs.json']['units'][7:9]
+        payload = tool.user_input(original['input'], [])
+        self.assertEqual('fixture neutral setting', payload['contextNotes'][0]['text'])
+        self.assertFalse(payload['contextNotesAreUtterances'])
+        self.assertNotIn('fixture neutral setting', str(payload['raw']))
+        self.assertEqual('fixture normal utterance', normal['input']['segments'][0]['text'])
+        self.assertNotIn('fixture interpretation', str(bundle['model-inputs.json']))
+        self.assertEqual('case-regression-plan-2', bundle['plan.json']['schemaVersion'])
+        self.assertFalse(bundle['plan.json']['videoRequired'])
+        self.assertFalse(check(bundle)['developmentGateMet'])
+
+    def test_context_summary_cannot_pass_as_spoken_quote(self):
+        bundle = tool.prepare(*self.text_first())
+        value = call(bundle, 'fixture neutral setting'); value['unitId'] = 'unit-008'
+        self.assertFalse(check(bundle)['results'][0]['literalEvidenceValid'])
+
+    def test_invalid_text_first_source_reference_or_context_kind_rejected(self):
+        for field, value in (('sourceId','missing'), ('kind','CRITICISM_HYPOTHESIS')):
+            base, additions, packet = self.text_first()
+            additions['cases'][0]['textContext'][0][field] = value
+            with self.assertRaises(ValueError): tool.prepare(base, additions, packet)
+
+    def test_text_first_contrast_must_have_separate_input(self):
+        base, additions, packet = self.text_first()
+        del additions['cases'][0]['normalContrast']['inputText']
+        with self.assertRaises(ValueError): tool.prepare(base, additions, packet)
+
+    def test_text_payload_rejects_labels_and_invented_times(self):
+        payload = tool.prepare(*self.text_first())['model-inputs.json']['units'][7]['input']
+        for change in ('label','time'):
+            changed = copy.deepcopy(payload)
+            if change == 'label': changed['expectedDecision'] = 'REVIEW_REQUIRED'
+            else: changed['segments'][0]['startMs'] = 100
+            with self.assertRaises(ValueError): tool.user_input(changed, [])
+
+    def test_v2_projection_uses_factual_setting_not_interpreted_flow(self):
+        base, additions, packet = self.text_first()
+        import extend_context_references
+        additions['cases'][0]['contextFlow'] = ['SECRET_INTERPRETED_FLOW']
+        projected, _ = extend_context_references.project(base, additions)
+        self.assertNotIn('SECRET_INTERPRETED_FLOW', str(projected))
+        self.assertIn('fixture quote', str(projected))
+        self.assertIn('fixture neutral setting', str(projected))
+
+    def test_original_text_and_news_quote_cannot_be_mislabeled(self):
+        base, additions, packet = self.text_first()
+        for case in additions['cases']:
+            case['reportedQuotes'][0]['kind'] = 'ORIGINAL_TEXT_QUOTE'
+        with self.assertRaises(ValueError): tool.prepare(base, additions, packet)
+        additions['sources'][0]['materialKind'] = 'ORIGINAL_TEXT'
+        bundle = tool.prepare(base, additions, packet)
+        self.assertFalse(bundle['plan.json']['videoRequired'])
+
     def test_prepare_preserves_inputs_and_separates_labels(self):
         base, additions, packet, bundle = fixture()
         before = copy.deepcopy(packet)

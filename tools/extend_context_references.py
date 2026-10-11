@@ -17,7 +17,7 @@ from build_review_guidelines import prompt_rules
 
 
 def validate_additions(data, base):
-    require(data.get('schemaVersion') == 'source-first-context-additions-1'
+    require(data.get('schemaVersion') in {'source-first-context-additions-1', 'source-first-context-additions-2'}
             and data.get('status') == 'UNREVIEWED_DRAFT', 'research additions required')
     require(all(data.get(k) is False for k in ('humanApproved', 'trainingUseAuthorized', 'runtimeEligible')),
             'automatic promotion forbidden')
@@ -27,7 +27,9 @@ def validate_additions(data, base):
     for source in sources:
         url = urlparse(source['url'])
         require(url.scheme == 'https' and url.hostname and not url.username and not url.password
-                and source['materialKind'] == 'NEWS_BODY' and source['rightsReviewStatus'] == 'PENDING',
+                and source['materialKind'] in ({'NEWS_BODY'} if data['schemaVersion'].endswith('-1')
+                    else {'NEWS_BODY', 'NEWS_TEXT', 'ORIGINAL_TEXT'})
+                and source['rightsReviewStatus'] == 'PENDING',
                 'source metadata required')
         datetime.date.fromisoformat(source['retrievedOn'])
         datetime.date.fromisoformat(source['publishedOn'])
@@ -46,10 +48,15 @@ def validate_additions(data, base):
                 and len(case['mechanismIds']) == len(set(case['mechanismIds'])), 'explicit existing mechanisms required')
         refs = set(case['sourceIds'])
         require(refs and refs <= source_ids and case['reportedQuotes'], 'source links required')
+        source_kinds = {s['id']: s['materialKind'] for s in sources}
         for quote in case['reportedQuotes']:
-            require(quote['sourceId'] in refs and quote['kind'] == 'SOURCE_REPORTED_QUOTE_NOT_TRANSCRIPT'
+            quote_kinds = {'SOURCE_REPORTED_QUOTE_NOT_TRANSCRIPT'}
+            if data['schemaVersion'].endswith('-2'): quote_kinds.add('ORIGINAL_TEXT_QUOTE')
+            require(quote['sourceId'] in refs and quote['kind'] in quote_kinds
                     and isinstance(quote['text'], str) and 0 < len(quote['text']) <= 350,
                     'reported quote required')
+            require((quote['kind'] == 'ORIGINAL_TEXT_QUOTE') ==
+                    (source_kinds[quote['sourceId']] == 'ORIGINAL_TEXT'), 'quote/source origin mismatch')
         for field, low, high in (('contextFlow', 1, 6), ('criticismHypotheses', 1, 8), ('missingContext', 1, 8)):
             require(isinstance(case[field], list) and low <= len(case[field]) <= high
                     and all(isinstance(s, str) and 0 < len(s) <= 350 for s in case[field]), 'bounded context required')
@@ -57,6 +64,20 @@ def validate_additions(data, base):
                 and case['normalContrast']['status'] == 'SYNTHETIC_NOT_HISTORICAL_TRANSCRIPT'
                 and 0 < len(case['normalContrast']['text']) <= 300,
                 'draft interpretation and separate normal contrast required')
+        if data['schemaVersion'] == 'source-first-context-additions-2':
+            require(data.get('collectionMode') == 'TEXT_FIRST_VIDEO_OPTIONAL'
+                    and data.get('videoRequired') is False, 'text-first collection policy required')
+            context = case.get('textContext')
+            require(isinstance(context, list) and len(context) <= 6, 'bounded source context required')
+            for note in context:
+                require(set(note) == {'kind', 'text', 'sourceId', 'sourceLocator'}
+                        and note['kind'] == 'SOURCE_REPORTED_CONTEXT' and note['sourceId'] in refs
+                        and isinstance(note['text'], str) and 0 < len(note['text'].strip()) <= 350
+                        and isinstance(note['sourceLocator'], str) and 0 < len(note['sourceLocator'].strip()) <= 200,
+                        'source-linked factual context required; interpretations belong outside input')
+            normal_input = case['normalContrast'].get('inputText')
+            require(isinstance(normal_input, str) and 0 < len(normal_input.strip()) <= 300,
+                    'separate synthetic input without grading explanation required')
 
 
 def project(base, additions):
@@ -73,10 +94,17 @@ def project(base, additions):
                 rule['sourceCaseIds'].append(case['id'])
                 channels.update(rule['channels'])
         result['sourceCases'].append({'caseId': case['id'], 'familyId': case['familyId'], 'status': 'UNREVIEWED_DRAFT'})
+        flow = case['contextFlow']
+        if additions['schemaVersion'] == 'source-first-context-additions-2':
+            # Source-reported setting and actual quotation remain visibly distinct
+            # from criticism hypotheses; no news headline or response is copied.
+            flow = ['보도된 상황(발언 원문 아님): ' + n['text'] for n in case['textContext']]
+            flow += [('원문 텍스트 인용: ' if q['kind'] == 'ORIGINAL_TEXT_QUOTE'
+                      else '보도 인용(원전사 미확인): ') + q['text'] for q in case['reportedQuotes']]
         result['examples'].append({'id': case['id'], 'familyId': case['familyId'],
             'mechanismIds': case['mechanismIds'], 'channels': sorted(channels), 'context': {
                 'coverage': 'REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT',
-                'flow': case['contextFlow'] + ['비교용 정상 대조(합성, 사건 전사 아님): ' + case['normalContrast']['text']],
+                'flow': flow + ['비교용 정상 대조(합성, 사건 전사 아님): ' + case['normalContrast']['text']],
                 'criticismHypotheses': case['criticismHypotheses'],
                 'missingContext': case['missingContext'], 'sourceInterpretations': []}})
     result['version'] = additions['version']
