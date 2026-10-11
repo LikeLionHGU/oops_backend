@@ -1,5 +1,24 @@
 # 공통 논란 카드 JSON
 
+## 10/11 최신 수집 원칙 — 텍스트 우선, 영상 선택
+
+논란 사례의 기본 자료는 **발언 + 전후 상황 + 논란 연결 + 반응 근거 + 정상 대조 + 출처/한계**다. 원영상 파일이나 시간 정보는 필수가 아니다. 원문 텍스트를 확보하면 우선 활용하고, 없으면 공식 언론의 인용과 상황 설명으로 구성할 수 있다. 영상은 억양·표정·장면이 판단에 필수인 사례의 보충 자료다. 이때 영상 미확인은 해당 해석의 한계이지 모든 텍스트 사례 수집을 막는 조건이 아니다. 기사/영상 공개만으로 자료 이용·학습 권한이 승인되는 것은 아니다.
+
+보충 원장 `source-first-context-additions-2`를 추가하고 v1 읽기는 유지한다. 상위 collectionMode=TEXT_FIRST_VIDEO_OPTIONAL/videoRequired=false이며, v2는 아래 두 필드를 명시적으로 분리한다.
+
+| 필드 | 역할 |
+| --- | --- |
+| reportedQuotes | 실제 인용 문장. 보도 인용(SOURCE_REPORTED_QUOTE_NOT_TRANSCRIPT)과 원문 텍스트(ORIGINAL_TEXT_QUOTE)를 출처 종류에 맞춰 구분. STT/시간으로 가장하지 않음 |
+| textContext | 상황 설명만: kind=SOURCE_REPORTED_CONTEXT, text, sourceId, sourceLocator. 출처의 설명을 요약한 자료이며 발언·화자의 의도나 문제 판정이 아님 |
+| contextFlow / criticismHypotheses | 쟁점의 연결·문제 이유를 정리하는 연구 해석. 시험 입력에는 넣지 않음 |
+| normalContrast.inputText | 정상 대조 시험에 넣을 합성 예문만 저장 |
+| normalContrast.text | 대조 예문과 경계 설명을 함께 보관하는 연구용 자료. 설명을 정상 정답 힌트로 시험에 넣지 않음 |
+| missingContext / originalVerified | 모르는 사실·장면과 확인 범위. 원영상/댓글의 미확인은 숨기지 않되 수집 자체의 필수 요건으로 만들지 않음 |
+
+`case_reference_regression.py`는 v2 시험 입력을 발언 segments와 상황 contextNotes로 분리한다. 상황 요약에는 segment ID/발화 시간/기대 판단이 없으며, 인용 검증은 발언 segments만 인정한다. **상황 설명의 문장을 실제 발언으로 인용하면 실패**다. 시험용 user_input() 내보내기는 이 분리를 유지하지만 실제 유료 실행은 수행하지 않는다. 설명 속 판정 유출·사실 정확성은 사람이 검수해야 하며 필드 검사만으로 의미 안전성을 보장하지 않는다.
+
+참고집 투영도 v2에서는 상황 요약과 인용에 각각 표식을 붙이고, 해석을 별도 criticismHypotheses에 둔다. 뉴스 제목·기사 전체·댓글을 시험 입력에 넣지 않는다. HOLDOUT은 참고에서 제외한다. 기존 운영 v4 형식/패턴/기본 runtime.json은 유지하고 비교용 투영본만 생성한다. 새 텍스트 사례의 입력 충분성과 정답 확인은 별도로 남기며, 기존 v1 실험 파일과 B/C/D 입력을 덮어쓰지 않는다.
+
 ## 10/11 출처 우선 보충 형식 — 댓글이 아직 없는 사례
 
 `source-first-context-additions-1`은 기존 사건/댓글 카드와 분리된 수집 초기 원장이다. sources에는 URL·게시/확인일·발췌 위치·사용 범위 미검수 상태를, cases에는 보도 인용·연결 해석·비판 가설·합성 정상 대조·누락 정보를 담는다. originalVerified=false/timestamps=null/commentCollectionStatus=NOT_COLLECTED로 한계를 표시한다. 보도 인용은 SOURCE_REPORTED_QUOTE_NOT_TRANSCRIPT이며 해석은 ASSISTANT_DRAFT_NOT_VIDEO_FACT다. 실제 댓글을 수집하기 전 가짜 댓글 ID·반응 수·타임스탬프를 채우지 않는다.
