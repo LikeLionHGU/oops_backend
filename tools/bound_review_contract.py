@@ -57,22 +57,30 @@ def judgment_request(base, scope):
     return body
 
 
-def prepare_attempt(base, scope, attempt_id):
+def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
     """Fresh local attempt ID must be assigned by the caller, never by the model."""
     require(useful(attempt_id, 200), 'local attempt ID required')
     payload = json.loads(base['messages'][1]['content'])
-    body = judgment_request(base, scope)
+    if judgment_variant is None:
+        body = judgment_request(base, scope)
+    else:
+        require(judgment_variant == 'RELATION_CHECKLIST', 'unsupported bound judgment variant')
+        from review_boundary_variants import judgment_request as variant_request
+        body = variant_request(base, scope, judgment_variant)
     result = dict(schemaVersion=VERSION, attemptId=attempt_id, baseRequest=copy.deepcopy(base),
                   originalInput=payload, selectedScope=copy.deepcopy(scope), requestBody=body,
                   requestHash=digest(body), inputHash=digest(payload), scopeHash=scope['scopeHash'],
                   executionEnabled=False, runtimeUseAuthorized=False)
+    if judgment_variant is not None:
+        result.update(schemaVersion='server-bound-review-draft-3', judgmentVariant=judgment_variant)
     result['attemptHash'] = digest(result)
     return result
 
 
 def validate_attempt(attempt):
     require(isinstance(attempt, dict) and attempt == prepare_attempt(
-        attempt['baseRequest'], attempt['selectedScope'], attempt['attemptId']), 'local attempt changed')
+        attempt['baseRequest'], attempt['selectedScope'], attempt['attemptId'],
+        judgment_variant=attempt.get('judgmentVariant')), 'local attempt changed')
 
 
 def parse_response(response, model):
@@ -128,7 +136,7 @@ def receive(attempt, observed_request, response):
             'executed request differs from local attempt')
     output = parse_response(response, observed_request['model'])
     compatibility = adapt(output, attempt['selectedScope'], attempt['originalInput'])
-    result = dict(schemaVersion=VERSION, attemptHash=attempt['attemptHash'], attemptId=attempt['attemptId'],
+    result = dict(schemaVersion=attempt['schemaVersion'], attemptHash=attempt['attemptHash'], attemptId=attempt['attemptId'],
                   requestHash=attempt['requestHash'], scopeHash=attempt['scopeHash'],
                   providerResponse=copy.deepcopy(response), responseHash=digest(response),
                   modelOutput=output, compatiblePacket=compatibility,

@@ -9,7 +9,7 @@ from compare_recorded_candidates import audit_export, checked_output
 from compare_review_prompts import digest as audit_digest
 from fixed_review_suite import digest, read, require, write_private
 from issue_scoped_review import judgment_request, review_packet, validate_scope
-from run_issue_scoped_comparison import validate,CATALOG_SCHEMA,BOUND_SCHEMA
+from run_issue_scoped_comparison import validate,CATALOG_SCHEMA,BOUND_SCHEMA,bound_judgment_request
 
 
 def score(frozen, report, audit):
@@ -42,6 +42,7 @@ def score(frozen, report, audit):
         from span_catalog_review import hydrate as hydrate_scope,judgment_request as judge_request
         if is_bound:
             from bound_review_contract import judgment_request as judge_request, receive, prepare_attempt, parse_response
+            judge_request = lambda base, scope: bound_judgment_request(frozen, base, scope)
     else:
         judge_request=judgment_request
     rows=[]
@@ -59,7 +60,8 @@ def score(frozen, report, audit):
                 require(s['rawOutput'] == parse_response(s['providerResponse'], body['model']), 'bound raw response changed')
                 if s['stage'] == 'JUDGE':
                     require(s['localAttempt'] == prepare_attempt(job['baseBody'], call['selectedScope'],
-                            f'{frozen["artifactHash"]}-{index:03d}'), 'local attempt assigned to wrong unit')
+                            f'{frozen["artifactHash"]}-{index:03d}', judgment_variant=frozen.get('judgmentVariant')),
+                            'local attempt assigned to wrong unit')
         if 'output' in call:
             if call['arm']=='CANDIDATE':
                 require(len(call['stages'])==2, 'candidate missing judgment')

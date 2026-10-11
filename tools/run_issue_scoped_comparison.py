@@ -28,6 +28,8 @@ CATALOG_SCHEMA = 'issue-scoped-catalog-followup-1'
 BOUND_SCHEMA = 'issue-scoped-bound-followup-2'
 BOUND_FUNDING = dict(schemaVersion='bound-followup-budget-1', additionalBudgetUsd='0.50',
                      userAuthorized=True, previousReservedUsd='2.9093844', previousRemainingUsd='0.0573094')
+BOUNDARY_FUNDING = dict(schemaVersion='boundary-full-budget-1', additionalBudgetUsd='0.50',
+                       userAuthorized=True, previousReservedUsd='3.4001660', previousRemainingUsd='0.0092184')
 
 
 def prepare(source, authorization):
@@ -77,8 +79,12 @@ def validate(artifact):
     if artifact.get('schemaVersion') == BOUND_SCHEMA:
         expected = prepare_bound(artifact['source'], artifact['authorization'], artifact['priorCatalog'])
         if 'additionalFunding' in artifact:
-            expected = fund_bound(expected, artifact['additionalFunding'])
-        if 'selectionVariant' in artifact:
+            expected = fund_bound(expected, artifact.get('predecessorFunding', artifact['additionalFunding']))
+        if 'boundaryFollowup' in artifact:
+            link = artifact['boundaryFollowup']
+            expected = prepare_full_boundary(expected, link['priorLiveReport'], link['priorTargetReport'],
+                                             artifact['additionalFunding'])
+        elif 'selectionVariant' in artifact:
             expected = prepare_target_selection(expected, artifact['priorLiveReport'])
     else:
         expected = prepare_catalog(artifact['source'],artifact['authorization'],artifact['priorReport']) if artifact.get('schemaVersion')==CATALOG_SCHEMA else prepare(artifact['source'], artifact['authorization'])
@@ -204,6 +210,66 @@ def prepare_target_selection(funded, prior_report):
     return result
 
 
+def prepare_full_boundary(funded, prior_live_report, prior_target_report, funding):
+    """Fresh full regression; output hardening bundle, not causal attribution.
+
+    Prior reservations stay consumed. This approval does not include rollover.
+    """
+    from review_boundary_variants import selection_request_v2
+    targeted = prepare_target_selection(funded, prior_live_report)
+    require(funding == BOUNDARY_FUNDING and targeted['remainingBudgetUsd'] == funding['previousRemainingUsd'],
+            'exact separate full-regression approval required')
+    fields = ('schemaVersion', 'artifactHash', 'additionalFundingHash', 'status', 'reservedCostUsd', 'runKind')
+    expected = dict(schemaVersion=BOUND_SCHEMA, artifactHash=targeted['artifactHash'],
+                    additionalFundingHash=targeted['additionalFundingHash'], status='COMPLETED_PENDING_JAVA_AUDIT',
+                    reservedCostUsd=targeted['reservedCostUsd'], runKind='LIVE')
+    require(all(prior_target_report.get(k) == v for k,v in expected.items()), 'complete targeted predecessor required')
+    target_meta = {k: prior_target_report[k] for k in fields}
+    target_meta['sourceReportHash'] = prior_target_report.get('sourceReportHash', digest(prior_target_report))
+    result = copy.deepcopy(funded)
+    parent_hash = result.pop('artifactHash')
+    for job in result['jobs']:
+        body = selection_request_v2(job['baseBody'])
+        tokens, cost = reserve(body, result['config'])
+        job['stages'][0].update(body=body, requestHash=digest(body),
+                               reservedInputTokensHeuristic=tokens, reservedCostUsd=str(cost))
+        # Use a real hydrated scope to build instructions, then a conservative
+        # envelope for all dynamic selections, including their index checklist.
+        payload = json.loads(job['baseBody']['messages'][1]['content'])
+        c = payload['candidates'][0]
+        row = next(r for r in payload['raw'] if r['id'] == c['anchorId'])
+        scope = hydrate_selection(dict(candidateId=c['candidateId'], anchorId=c['anchorId'],
+            issueSummary='reservation envelope only', selections=[dict(segmentId=c['anchorId'],
+                role='PRIMARY', start=0, end=len(row['text']))]), payload)
+        body = bound_judgment_request(result, job['baseBody'], scope, variant='RELATION_CHECKLIST')
+        body['messages'][1]['content'] = json.dumps(dict(original=payload, selectedScope='x'*SCOPE_BYTES,
+            grounding='x'*512, expectedSelectionIndexes=list(range(8))), ensure_ascii=False)
+        tokens, cost = reserve(body, result['config'])
+        job['stages'][1].update(body=body, requestHash=digest(body),
+                               reservedInputTokensHeuristic=tokens, reservedCostUsd=str(cost))
+    total = sum(Decimal(s['reservedCostUsd']) for j in result['jobs'] for s in j['stages'])
+    require(total <= Decimal(funding['additionalBudgetUsd']), 'full boundary regression exceeds new approval')
+    result.update(selectionVariant='TARGET_SELECTION_V2', judgmentVariant='RELATION_CHECKLIST',
+        boundaryFollowup=dict(priorLiveReport=targeted['priorLiveReport'], priorTargetReport=target_meta,
+                              parentFundedArtifactHash=parent_hash, targetedArtifactHash=targeted['artifactHash']),
+        predecessorFunding=copy.deepcopy(funded['additionalFunding']),
+        additionalFunding=copy.deepcopy(funding), additionalFundingHash=digest(funding),
+        reservedCostUsd=str(total), remainingBudgetUsd=str(Decimal(funding['additionalBudgetUsd'])-total),
+        priorBudgetRemainingUsd=funding['previousRemainingUsd'], executionEnabled=True, budgetSufficient=True,
+        trialDesign='FRESH_FULL_OUTPUT_HARDENING_BUNDLE_NO_CAUSAL_ATTRIBUTION')
+    result['artifactHash'] = digest(result)
+    return result
+
+
+def bound_judgment_request(artifact, base, scope, *, variant=None):
+    from bound_review_contract import judgment_request as original
+    variant = variant or artifact.get('judgmentVariant')
+    if variant is None:
+        return original(base, scope)
+    from review_boundary_variants import judgment_request as changed
+    return changed(base, scope, variant)
+
+
 def execute(artifact, directory, key, call=transport, *, simulate=False):
     validate(artifact)
     is_bound = artifact['schemaVersion'] == BOUND_SCHEMA
@@ -222,6 +288,7 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
         from span_catalog_review import hydrate as hydrate_scope, judgment_request as judge_request
         if is_bound:
             from bound_review_contract import judgment_request as judge_request, prepare_attempt, receive, parse_response
+            judge_request = lambda base, scope: bound_judgment_request(artifact, base, scope)
     else:
         hydrate_scope,judge_request=hydrate_selection,judgment_request
 
@@ -239,7 +306,8 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
             attempt = dict(stage=stage['stage'], requestHash=digest(body), body=body)
             ticket = None
             if is_bound and stage['stage'] == 'JUDGE':
-                ticket = prepare_attempt(job['baseBody'], scope, f'{artifact["artifactHash"]}-{index:03d}')
+                ticket = prepare_attempt(job['baseBody'], scope, f'{artifact["artifactHash"]}-{index:03d}',
+                                         judgment_variant=artifact.get('judgmentVariant'))
                 attempt['localAttempt'] = ticket
             write_private(directory/f'attempt-{index:03d}-{stage["stage"]}.json', attempt)
             started = time.monotonic()

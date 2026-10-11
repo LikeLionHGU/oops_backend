@@ -11,6 +11,8 @@ from bound_review_contract import judgment_request as original_judge
 from review_boundary_variants import selection_request, selection_request_v2, judgment_request
 from span_catalog_review import selection_request as original_select
 from run_issue_scoped_comparison import BOUND_FUNDING, fund_bound, prepare_target_selection, execute, validate
+from run_issue_scoped_comparison import BOUNDARY_FUNDING, prepare_full_boundary
+from decimal import Decimal
 from test_bound_review_contract import setup
 from test_bound_comparison_runner import frozen, mock, fake_audit
 from score_issue_scoped_comparison import score
@@ -24,6 +26,32 @@ def funded_fixture():
 
 
 class BoundaryVariantTests(unittest.TestCase):
+    def test_full_output_followup_versions_receipts_and_uses_separate_budget(self):
+        a, old_funding = funded_fixture()
+        meta = dict(schemaVersion=a['schemaVersion'],artifactHash=a['artifactHash'],
+            additionalFundingHash=a['additionalFundingHash'],status='COMPLETED_PENDING_JAVA_AUDIT',
+            reservedCostUsd=a['reservedCostUsd'],runKind='LIVE')
+        with patch('run_issue_scoped_comparison.BOUND_FUNDING',old_funding):
+            targeted = prepare_target_selection(a,meta)
+            previous = dict(meta,artifactHash=targeted['artifactHash'],reservedCostUsd=targeted['reservedCostUsd'])
+            funding = dict(BOUNDARY_FUNDING,previousRemainingUsd=targeted['remainingBudgetUsd'])
+            with patch('run_issue_scoped_comparison.BOUNDARY_FUNDING',funding):
+                new = prepare_full_boundary(a,meta,previous,funding);validate(new)
+                self.assertEqual(new['plannedUnits'],27); self.assertEqual(new['maxApiCalls'],54)
+                self.assertEqual(Decimal(new['remainingBudgetUsd']),Decimal('.50')-Decimal(new['reservedCostUsd']))
+                self.assertEqual(new['source'],a['source'])
+                for old,job in zip(a['jobs'],new['jobs']):self.assertEqual(old['baseBody'],job['baseBody'])
+                with tempfile.TemporaryDirectory() as tmp:
+                    report = execute(new,Path(tmp)/'datasets'/'full',None,mock,simulate=True)
+                    self.assertTrue(score(new,report,fake_audit(report))['mockContractGateMet'])
+                for unit in report['calls']:
+                    attempt=unit['stages'][1]['localAttempt']
+                    self.assertEqual(attempt['schemaVersion'],'server-bound-review-draft-3')
+                    self.assertEqual(attempt['judgmentVariant'],'RELATION_CHECKLIST')
+                changed=copy.deepcopy(new);changed['judgmentVariant']='TARGET_SCOPE'
+                with self.assertRaises(ValueError):validate(changed)
+                with self.assertRaises(ValueError):prepare_full_boundary(a,meta,dict(previous,status='PARTIAL'),funding)
+                with self.assertRaises(ValueError):prepare_full_boundary(a,meta,previous,dict(funding,userAuthorized=False))
     def test_output_field_disambiguation_is_separate_from_executed_v1(self):
         _,_,_,base,_=setup()
         v1=selection_request(base);v2=selection_request_v2(base)

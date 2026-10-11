@@ -38,7 +38,7 @@ def selection_request(base):
 
 
 def selection_request_v2(base):
-    """Unexecuted follow-up: v1's unexpected output field remains a failure."""
+    """Separate follow-up: v1's unexpected output field remains a failure."""
     body = selection_request(base)
     body['messages'][0]['content'] += """
 # 입력 목록과 출력 필드 구분 v2
