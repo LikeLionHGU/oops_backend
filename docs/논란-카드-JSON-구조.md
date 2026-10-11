@@ -1,5 +1,13 @@
 # 공통 논란 카드 JSON
 
+## 10/11 출처 우선 보충 형식 — 댓글이 아직 없는 사례
+
+`source-first-context-additions-1`은 기존 사건/댓글 카드와 분리된 수집 초기 원장이다. sources에는 URL·게시/확인일·발췌 위치·사용 범위 미검수 상태를, cases에는 보도 인용·연결 해석·비판 가설·합성 정상 대조·누락 정보를 담는다. originalVerified=false/timestamps=null/commentCollectionStatus=NOT_COLLECTED로 한계를 표시한다. 보도 인용은 SOURCE_REPORTED_QUOTE_NOT_TRANSCRIPT이며 해석은 ASSISTANT_DRAFT_NOT_VIDEO_FACT다. 실제 댓글을 수집하기 전 가짜 댓글 ID·반응 수·타임스탬프를 채우지 않는다.
+
+사례별 DEVELOPMENT/HOLDOUT은 비교 계획의 역할이지 정답 승인이다. HOLDOUT의 발언/해석/정상 대조는 참고집에 넣지 않으며 developmentExpectation=PENDING_HUMAN_REVIEW를 유지한다. 기사에서 반박받았다는 사실과 표현 자체의 폄하는 구별한다. 뉴스 자료는 조사 출처이지 자동 정답이나 자유로운 학습 사용 승인 자료가 아니다.
+
+`extend_context_references.py`가 기존 v4의 공통 패턴 문구를 그대로 유지해 격리된 참고집만 내보낸다. 기존 기본 runtime.json·curated·댓글 카탈로그의 건수는 바꾸지 않는다. 연구 원장은 catalog.supplementalResearchFiles로 추적한다. 후속 댓글·원음·사람 검수가 확보되면 기존 공통 카드로 명시적으로 연결하며 자동 승격하지 않는다. 현재 선택 결과는 [실험 94절](AI-분석-실험-기록.md#94-유사-사건-3개-보강--실제-검색에서-새-사례-0개-선택-모델-비교-보류)을 따른다.
+
 ## 10/11 추가 원칙: 검토 대상과 정상 대조를 연결해 축적
 
 사건 원장을 둘로 복사하지 않고, 원문 사례는 한 번 저장하고 별도 대조쌍에서 ID·입력 해시로 연결한다. 같은 검토 대상에 정상 대조 여러 개를 연결할 수 있다. 새 사례마다 **어떤 맥락이 검토 이유이고 정상 사례에는 그 연결이 왜 없는지**를 기록한다. 정상 대조를 못 찾았으면 미확보로 남기며 억지로 PASS 예문을 만들거나 애매한 입력을 둘 중 하나로 확정하지 않는다.
