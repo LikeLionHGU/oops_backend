@@ -114,16 +114,69 @@ def semantic_packet(frozen, report, java_audit):
             'responsesModified':False}
 
 
+def attach_observations(packet, notes):
+    """Validate assistant notes, not semantic ground truth or repaired outputs."""
+    require(packet.get('schemaVersion') == 'saved-response-semantic-review-1'
+            and packet['status'] == 'UNREVIEWED' and notes.get('schemaVersion') == 'assistant-semantic-notes-1'
+            and notes['sourcePacketHash'] == digest(packet), 'observation source mismatch')
+    require(notes.get('reviewerType') == 'ASSISTANT' and notes.get('scope') == ['B','C'],
+            'explicit assistant BC scope required')
+    require(packet['apiExecutionEnabled'] is False and packet['runtimeChanged'] is False
+            and packet['trainingUseAuthorized'] is False and packet['curatedPromotionAuthorized'] is False
+            and packet['independentGoldApprovals'] == 0 and packet['qualityGateMet'] is None,
+            'unapproved offline packet required')
+    result = copy.deepcopy(packet)
+    cases = {c['name']:c['payload'] for c in result['cases']}
+    indexed = {(w['case'],w['arm'],w['repeat']):w for w in result['worksheet']}
+    expected = {k for k in indexed if k[0] in notes['scope']}
+    require(set(notes['caseReviews']) == {'B','C'},'case notes required')
+    entries = notes['entries']
+    require(len(entries) == len(expected) == 12, 'all twelve BC notes required')
+    seen = set()
+    permitted = {'normalExplanation','criticismExplanation','normalUnsupportedPremises',
+                 'criticismUnsupportedPremises','sourceOfExplanation','evaluationLinkQuotes',
+                 'targetGroundingQuotes','targetGroundingSufficient','issueMatchesCandidate',
+                 'textAloneSufficient','requiredAdditionalContext','semanticDecision','note'}
+    for entry in entries:
+        key = (entry['case'],entry['arm'],entry['repeat'])
+        require(key in expected and key not in seen,'unknown or duplicate response note')
+        seen.add(key)
+        review = {**notes['caseReviews'][entry['case']], **entry['review']}
+        require(set(review) <= permitted and review.get('semanticDecision') is None,
+                'assistant notes cannot assign ground truth')
+        for f in ('normalExplanation','criticismExplanation','note'):
+            require(isinstance(review.get(f),str) and review[f].strip(),'explanation required')
+        for f in ('targetGroundingSufficient','issueMatchesCandidate','textAloneSufficient'):
+            require(review.get(f) is None or type(review[f]) is bool,'nullable review flags required')
+        rows = {r['id']:r['text'] for r in cases[entry['case']]['raw']}
+        allowed = set(cases[entry['case']]['candidates'][0]['segmentIds'])
+        for f in ('evaluationLinkQuotes','targetGroundingQuotes'):
+            require(isinstance(review.get(f),list),'quote lists required')
+            for q in review[f]:
+                require(set(q) == {'segmentId','quote'} and q['segmentId'] in rows
+                        and q['segmentId'] in allowed and isinstance(q['quote'],str) and q['quote'].strip()
+                        and q['quote'] in rows[q['segmentId']], 'review quote not in own allowed row')
+        indexed[key]['review'].update(review, reviewer='Codex assistant', status='ASSISTANT_OBSERVATION_NOT_GOLD')
+    result.update(status='ASSISTANT_OBSERVATIONS_ONLY',sourcePacketHash=digest(packet),
+                  assistantNotesHash=digest(notes),assistantObservedResponses=len(seen))
+    return result
+
+
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('report'); p.add_argument('--output',required=True)
     p.add_argument('--frozen',help='Enable offline semantic review worksheet')
     p.add_argument('--java-audit')
+    p.add_argument('--annotations',help='Attach assistant notes to an existing semantic packet; no approvals')
     a = p.parse_args()
     path = Path(a.output).resolve()
     require('datasets' in path.parts and not path.exists(),'new private output required')
     require(bool(a.frozen) == bool(a.java_audit),'frozen and java audit required together')
-    result = semantic_packet(read(a.frozen),read(a.report),read(a.java_audit)) if a.frozen else report_diagnostics(read(a.report))
+    require(not a.annotations or not a.frozen,'annotation and packet creation modes are separate')
+    if a.annotations:
+        result = attach_observations(read(a.report),read(a.annotations))
+    else:
+        result = semantic_packet(read(a.frozen),read(a.report),read(a.java_audit)) if a.frozen else report_diagnostics(read(a.report))
     write_private(path,result)
     print(json.dumps({'responses':len(result.get('results',result.get('worksheet',[]))),
                       'supplementalOnly':True,'apiExecutionEnabled':False}))

@@ -81,3 +81,46 @@ class SemanticPacketTests(unittest.TestCase):
             if mode == 'duplicate': audit['results'][-1] = copy.deepcopy(audit['results'][0])
             if mode == 'adapter': report['calls'][0]['outputAdapter'] = 'changed'
             with self.subTest(mode=mode),self.assertRaises(ValueError): semantic_packet(frozen,report,audit)
+
+    def notes(self):
+        from diagnose_candidate_output import semantic_packet
+        from fixed_review_suite import digest
+        packet = semantic_packet(self.frozen,self.report,self.audit)
+        cases = {c['name']:c['payload'] for c in packet['cases']}
+        reviews = {}
+        for name in ('B','C'):
+            row = cases[name]['raw'][0]
+            reviews[name] = {'normalExplanation':'normal','criticismExplanation':'criticism',
+                             'semanticDecision':None,'evaluationLinkQuotes':[{'segmentId':row['id'],'quote':row['text']}],
+                             'targetGroundingQuotes':[]}
+        notes = {'schemaVersion':'assistant-semantic-notes-1','sourcePacketHash':digest(packet),
+                 'reviewerType':'ASSISTANT','scope':['B','C'],'caseReviews':reviews,
+                 'entries':[{'case':w['case'],'arm':w['arm'],'repeat':w['repeat'],'review':{'note':'observation'}}
+                            for w in packet['worksheet'] if w['case'] in {'B','C'}]}
+        return packet,notes
+
+    def test_attaches_twelve_observations_without_editing_responses_or_other_reviews(self):
+        from diagnose_candidate_output import attach_observations
+        packet,notes = self.notes()
+        original = copy.deepcopy(packet)
+        result = attach_observations(packet,notes)
+        self.assertEqual(packet,original)
+        self.assertEqual(result['assistantObservedResponses'],12)
+        for before,after in zip(packet['worksheet'],result['worksheet']):
+            self.assertEqual(before['savedAssessment'],after['savedAssessment'])
+            self.assertEqual(before['contractAudit'],after['contractAudit'])
+            if before['case'] not in {'B','C'}: self.assertEqual(before,after)
+        self.assertEqual(result['independentGoldApprovals'],0)
+        self.assertIsNone(result['qualityGateMet'])
+
+    def test_cannot_attach_fabricated_quotes_assign_gold_or_rewrite_assessments(self):
+        from diagnose_candidate_output import attach_observations
+        for mode in ('quote','decision','rewrite','duplicate','hash','reviewer'):
+            packet,notes = self.notes()
+            if mode=='quote': notes['caseReviews']['B']['evaluationLinkQuotes'][0]['quote']='not in raw'
+            if mode=='decision': notes['caseReviews']['B']['semanticDecision']='REVIEW_REQUIRED'
+            if mode=='rewrite': notes['entries'][0]['review']['savedAssessment']={}
+            if mode=='duplicate': notes['entries'][-1]=copy.deepcopy(notes['entries'][0])
+            if mode=='hash': notes['sourcePacketHash']='wrong'
+            if mode=='reviewer': notes['reviewerType']='HUMAN'
+            with self.subTest(mode=mode),self.assertRaises(ValueError): attach_observations(packet,notes)
