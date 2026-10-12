@@ -193,6 +193,19 @@ class CompletionTransactionTest {
         target.runAsync(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
     }
+    @Test void failedDuringExtractionDoesNotLaunchOcrOrSaveResults() throws Exception {
+        Long id=seedPipeline(); var target=preparePipeline();
+        when(transcript.extract(any())).thenAnswer(call -> {
+            assertThat(progress.fail(id, "TEST_STOP", "fixture")).isTrue();
+            return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "원문"));
+        });
+        target.runAsync(id);
+        assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.FAILED);
+        verify(screens, never()).extract(any(), anyLong());
+        Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
+        assertThat(reports.findByVideoId(videoId)).isEmpty();
+        assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).isEmpty();
+    }
     @Test void cancelledThenRetriedRunCannotReplacePreviousRows() throws Exception {
         Long id=seedPipeline();
         var target=preparePipeline();

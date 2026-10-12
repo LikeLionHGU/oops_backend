@@ -23,6 +23,7 @@ class SourceRetentionLockTest {
     @Autowired PlatformTransactionManager manager;
     @Autowired JobFrameRetentionService frameRetention;
     @Autowired com.example.oops.repository.AnalysisJobRepository jobs;
+    @Autowired JobProgressService progress;
     @MockitoBean StorageService storage;
 
     @Test void lockedRetryStatusChangeIsVisibleBeforeAnySourceDeletion() throws Exception {
@@ -90,6 +91,32 @@ class SourceRetentionLockTest {
             verifyNoInteractions(storage);
             release.countDown(); retry.get(5, TimeUnit.SECONDS);
             assertThat(purge.get(5, TimeUnit.SECONDS)).isFalse(); verifyNoInteractions(storage);
+        } finally { release.countDown(); pool.shutdownNow(); }
+    }
+    @Test void waitingBeginDoesNotHoldJobLockBeforeVideoLock() throws Exception {
+        var tx=new TransactionTemplate(manager);
+        var owner=tx.execute(s -> {
+            var video=videos.save(Video.builder().sourceType(SourceType.UPLOAD).filename("begin-lock.mp4").build());
+            var job=jobs.saveAndFlush(new AnalysisJob(video));
+            return new StorageService.JobFrames(video.getId(), job.getId());
+        });
+        var held=new CountDownLatch(1); var release=new CountDownLatch(1); var entering=new CountDownLatch(1);
+        var pool=Executors.newFixedThreadPool(3);
+        try {
+            var holding=pool.submit(() -> tx.executeWithoutResult(s -> {
+                videos.findByIdForUpdate(owner.videoId()).orElseThrow(); held.countDown();
+                try { if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("test timeout"); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
+            }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            var begin=pool.submit(() -> { entering.countDown(); return progress.begin(owner.jobId()); });
+            assertThat(entering.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> begin.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            // A Video holder can still obtain Job: begin must not hold the opposite lock.
+            var jobLock=pool.submit(() -> tx.execute(s -> jobs.findByIdForUpdate(owner.jobId()).orElseThrow().getId()));
+            assertThat(jobLock.get(1, TimeUnit.SECONDS)).isEqualTo(owner.jobId());
+            release.countDown(); holding.get(5, TimeUnit.SECONDS);
+            assertThat(begin.get(5, TimeUnit.SECONDS)).isEqualTo(owner.videoId());
         } finally { release.countDown(); pool.shutdownNow(); }
     }
 }

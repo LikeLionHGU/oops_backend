@@ -68,7 +68,14 @@ public class AnalysisPipeline {
             return;
         }
 
-        Video video = videoRepository.findById(videoId).orElse(null);
+        Video video;
+        try {
+            video = videoRepository.findById(videoId).orElse(null);
+        } catch (Exception e) {
+            log.error("[pipeline] 영상 입력 조회 실패 jobId={}", jobId, e);
+            progressService.fail(jobId, "ANALYSIS_FAILED", "영상 입력을 조회하지 못했습니다.");
+            return;
+        }
         if (video == null) {
             progressService.fail(jobId, "VIDEO_NOT_FOUND", "영상을 찾을 수 없습니다.");
             return;
@@ -83,7 +90,7 @@ public class AnalysisPipeline {
             openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
 
             // 1. 음성 → 타임스탬프 대본
-            checkNotCancelled(jobId);
+            checkStillActive(jobId);
             progressService.update(jobId, AnalysisStage.STT, 15);
             long mark = System.currentTimeMillis();
             Map<CoverageStep, AnalysisCoverage> coverage = new LinkedHashMap<>();
@@ -91,7 +98,7 @@ public class AnalysisPipeline {
             record(coverage, video, CoverageStep.EXPRESSION_SCAN,
                     transcript.isEmpty() ? AnalyzerStatus.FAILED : AnalyzerStatus.SUCCESS,
                     transcript.isEmpty() ? "대본이 없어 선택 표현을 확인하지 못했습니다." : null);
-            checkNotCancelled(jobId);
+            checkStillActive(jobId);
             elapsed.put("STT", System.currentTimeMillis() - mark);
 
             // 수행 여부를 기록한다. 0건과 실패는 다르다.
@@ -105,12 +112,12 @@ public class AnalysisPipeline {
             }
 
             // 2. 화면 → OCR 자막 (OCR 이 없으면 빈 리스트로 진행)
-            checkNotCancelled(jobId);
+            checkStillActive(jobId);
             progressService.update(jobId, AnalysisStage.OCR, 35);
             mark = System.currentTimeMillis();
             List<ScreenText> screenTexts = screenTextService.extract(video, jobId);
             com.example.oops.screentext.ScreenTextClassifier.classify(screenTexts, transcript);
-            checkNotCancelled(jobId);
+            checkStillActive(jobId);
             elapsed.put("OCR", System.currentTimeMillis() - mark);
 
             // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
@@ -138,12 +145,12 @@ public class AnalysisPipeline {
             // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
             ContentGenre genre = video.getGenre();
             if (genre == null) {
-                checkNotCancelled(jobId);
+                checkStillActive(jobId);
                 progressService.update(jobId, AnalysisStage.TEXT_RISK, 42, "영상 유형 판별 중");
                 mark = System.currentTimeMillis();
                 openAiClient.beginAnalyzer("genre");
                 genre = genreDetector.detect(transcript, screenTexts);
-                checkNotCancelled(jobId);
+                checkStillActive(jobId);
                 elapsed.put("유형판별", System.currentTimeMillis() - mark);
             }
             log.info("[pipeline] videoId={} 유형={}", videoId, genre);
@@ -174,7 +181,7 @@ public class AnalysisPipeline {
 
             int index = 0;
             for (ContentAnalyzer analyzer : active) {
-                checkNotCancelled(jobId);
+                checkStillActive(jobId);
                 index++;
                 progressService.update(jobId, stageOf(analyzer),
                         45 + (35 * index / Math.max(1, active.size())),
@@ -200,7 +207,7 @@ public class AnalysisPipeline {
                     if (reviewResult != null && reviewResult.diagnostics() != null) {
                         diagnostics.add(reviewResult.diagnostics());
                     }
-                    checkNotCancelled(jobId);
+                    checkStillActive(jobId);
 
                     long took = System.currentTimeMillis() - analyzerStart;
                     elapsed.put(analyzer.key(), took);
@@ -225,7 +232,7 @@ public class AnalysisPipeline {
                                         : coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL,
                                 coverageNotice);
                     }
-                } catch (AnalysisCancelledException e) {
+                } catch (AnalysisStoppedException e) {
                     throw e;
                 } catch (Exception e) {
                     // 분석기 하나가 죽어도 나머지 결과는 살린다
@@ -245,7 +252,7 @@ public class AnalysisPipeline {
             }
 
             // 4. 다중 후보 병합 + 우선순위
-            checkNotCancelled(jobId);
+            checkStillActive(jobId);
             progressService.update(jobId, AnalysisStage.MULTIMODAL, 85, "논란 후보 정리 중");
             List<RiskFinding> findings = fusionService.fuse(candidates);
 
@@ -258,13 +265,13 @@ public class AnalysisPipeline {
 
             // 5. 리포트 집계
             progressService.update(jobId, AnalysisStage.FINALIZING, 92);
-            checkNotCancelled(jobId);
+            checkStillActive(jobId);
             int riskScore = reportBuilder.calculateRiskScore(findings);
             String summary = reportBuilder.buildSummary(findings);
 
             if (!resultWriter.save(jobId, new AnalysisResultWriter.Result(video, genre, transcript, screenTexts,
                     coverage.values(), findings, riskScore, summary, openAiClient.videoUsage().model(), diagnostics))) {
-                throw new AnalysisCancelledException();
+                throw new AnalysisStoppedException();
             }
 
             long total = System.currentTimeMillis() - pipelineStart;
@@ -273,8 +280,8 @@ public class AnalysisPipeline {
             log.info("[pipeline] 소요 내역 jobId={} — {}", jobId, formatElapsed(elapsed, total));
             logCost(videoId, video.getDurationSec());
 
-        } catch (AnalysisCancelledException e) {
-            log.info("[pipeline] 취소된 작업 결과를 저장하지 않습니다. jobId={}", jobId);
+        } catch (AnalysisStoppedException e) {
+            log.info("[pipeline] 종료되었거나 대체된 작업 결과를 저장하지 않습니다. jobId={}", jobId);
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             progressService.fail(jobId, "ANALYSIS_FAILED", "분석 처리 또는 결과 저장에 실패했습니다.");
@@ -285,13 +292,13 @@ public class AnalysisPipeline {
         }
     }
 
-    private void checkNotCancelled(Long jobId) {
-        if (progressService.isCancelled(jobId)) {
-            throw new AnalysisCancelledException();
+    private void checkStillActive(Long jobId) {
+        if (progressService.isStopped(jobId)) {
+            throw new AnalysisStoppedException();
         }
     }
 
-    private static final class AnalysisCancelledException extends RuntimeException {}
+    private static final class AnalysisStoppedException extends RuntimeException {}
 
     /** 어디에 시간을 썼는지 비중과 함께 한 줄로 정리한다. */
     private String formatElapsed(Map<String, Long> elapsed, long total) {

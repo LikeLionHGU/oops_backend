@@ -18,6 +18,20 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class AnalysisPipelineReviewTest {
+    @org.junit.jupiter.api.Test
+    void snapshotReadFailureIsHandledBeforeAnyExternalAnalysis() {
+        var progress=mock(JobProgressService.class); var videos=mock(VideoRepository.class);
+        var ai=mock(OpenAiClient.class); var transcript=mock(TranscriptService.class);
+        var screens=mock(ScreenTextService.class); var writer=mock(AnalysisResultWriter.class);
+        when(progress.begin(11L)).thenReturn(1L);
+        when(videos.findById(1L)).thenThrow(new IllegalStateException("fixture read failure"));
+        var pipeline=new AnalysisPipeline(List.of(), new OopsProperties(null, null, null), transcript, screens,
+                mock(FindingFusionService.class), mock(GenreDetector.class), mock(AnalysisServerClient.class),
+                new ReportBuilder(), progress, videos, ai, writer);
+        pipeline.runAsync(11L);
+        verify(progress).fail(eq(11L), eq("ANALYSIS_FAILED"), anyString());
+        verifyNoInteractions(ai, transcript, screens, writer);
+    }
     @ParameterizedTest
     @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,false"})
     void preservesWorkerOcrFailureStateEvenWithRetainedText(AnalyzerStatus state, boolean hasText) {

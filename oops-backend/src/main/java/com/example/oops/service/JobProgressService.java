@@ -4,6 +4,7 @@ import com.example.oops.domain.AnalysisJob;
 import com.example.oops.domain.AnalysisStage;
 import com.example.oops.domain.AnalysisStatus;
 import com.example.oops.repository.AnalysisJobRepository;
+import com.example.oops.repository.VideoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,12 +27,13 @@ public class JobProgressService {
 
     private final AnalysisJobRepository jobRepository;
     private final ProgressPublisher progressPublisher;
+    private final VideoRepository videoRepository;
 
     /** 분석 시작. 대상 videoId 를 돌려준다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Long begin(Long jobId) {
-        AnalysisJob job = jobRepository.findByIdForUpdate(jobId).orElseThrow();
-        if (job.getStatus() != AnalysisStatus.PENDING) {
+        AnalysisJob job = lockLatest(jobId).orElse(null);
+        if (job == null || job.getStatus() != AnalysisStatus.PENDING) {
             return null;
         }
         job.start();
@@ -48,7 +50,7 @@ public class JobProgressService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void update(Long jobId, AnalysisStage stage, int progress, String message) {
-        jobRepository.findByIdForUpdate(jobId).ifPresent(job -> {
+        lockLatest(jobId).ifPresent(job -> {
             if (job.getStatus() != AnalysisStatus.PROCESSING) return;
             job.updateProgress(stage, progress, message);
             jobRepository.flush();
@@ -59,7 +61,7 @@ public class JobProgressService {
     // Join the result transaction: completion must not outlive a rolled-back report.
     @Transactional
     public boolean complete(Long jobId) {
-        return jobRepository.findByIdForUpdate(jobId).map(job -> {
+        return lockLatest(jobId).map(job -> {
             if (job.getStatus() != AnalysisStatus.PROCESSING) return false;
             job.complete();
             job.getVideo().updateStatus(AnalysisStatus.COMPLETED);
@@ -82,7 +84,7 @@ public class JobProgressService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean fail(Long jobId, String errorCode, String message) {
-        return jobRepository.findByIdForUpdate(jobId).map(job -> {
+        return lockLatest(jobId).map(job -> {
             if (!job.getStatus().isRunning()) return false;
             job.fail(errorCode, message);
             job.getVideo().updateStatus(AnalysisStatus.FAILED);
@@ -93,9 +95,18 @@ public class JobProgressService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
-    public boolean isCancelled(Long jobId) {
+    public boolean isStopped(Long jobId) {
         return jobRepository.findById(jobId)
-                .map(job -> job.getStatus() == AnalysisStatus.CANCELLED)
+                .map(job -> job.getStatus() != AnalysisStatus.PROCESSING
+                        || jobRepository.findTopByVideoIdOrderByIdDesc(job.getVideo().getId())
+                                .map(latest -> !latest.getId().equals(jobId)).orElse(true))
                 .orElse(true);
+    }
+
+    /** Every mutating path uses Video -> latest Job, including standalone completion. */
+    private java.util.Optional<AnalysisJob> lockLatest(Long jobId) {
+        var videoId = jobRepository.findVideoIdById(jobId).orElse(null);
+        if (videoId == null || videoRepository.findByIdForUpdate(videoId).isEmpty()) return java.util.Optional.empty();
+        return jobRepository.findFirstByVideoIdOrderByIdDesc(videoId).filter(job -> job.getId().equals(jobId));
     }
 }
