@@ -45,16 +45,13 @@ public class VideoDeletionService {
 
     @Transactional
     public void delete(Long videoId) {
+        // Preserve the immediate 409 for active jobs rather than waiting on a long analysis lock.
+        rejectRunning(videoId);
         Video video = videoRepository.findByIdForUpdate(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
 
         // 분석 중인 영상을 지우면 백그라운드 작업이 사라진 데이터를 건드리게 된다
-        boolean running = jobRepository.existsByVideoIdAndStatusIn(
-                videoId, List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING));
-        if (running) {
-            throw new BusinessException(ErrorCode.ANALYSIS_IN_PROGRESS,
-                    "분석이 진행 중인 영상은 삭제할 수 없습니다. 완료 후 다시 시도하세요.");
-        }
+        rejectRunning(videoId);
 
         deleteChildren(videoId);
         videoRepository.delete(video);
@@ -69,6 +66,13 @@ public class VideoDeletionService {
         diagnosticsStore.removeAfterCommit(videoId);
 
         log.info("[delete] videoId={} DB 삭제 요청, 커밋 후 파일 정리", videoId);
+    }
+
+    private void rejectRunning(Long videoId) {
+        if (jobRepository.existsByVideoIdAndStatusIn(videoId, List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING))) {
+            throw new BusinessException(ErrorCode.ANALYSIS_IN_PROGRESS,
+                    "분석이 진행 중인 영상은 삭제할 수 없습니다. 완료 후 다시 시도하세요.");
+        }
     }
 
     /** 참조 순서를 지켜 자식부터 지운다. */
