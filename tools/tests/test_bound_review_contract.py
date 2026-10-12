@@ -30,6 +30,24 @@ def response(output):
 
 
 class BoundReviewTests(unittest.TestCase):
+    def test_structural_contract_does_not_approve_reason_using_unselected_raw(self):
+        # Demonstrate the current boundary, not an endorsement of this reason.
+        # The model sees full raw; checking index references is not enough to
+        # establish that free-text reasoning uses only the selected issue.
+        p,selection,_,base,out=setup()
+        unrelated='다른 상품은 의미가 없다'
+        p['raw'].append(dict(id='unselected-fixture',text=unrelated))
+        p['candidates'][0]['segmentIds'].append('unselected-fixture')
+        base['messages'][1]['content']=json.dumps(p,ensure_ascii=False)
+        scope=hydrate_selection(selection,p)
+        self.assertFalse(any(unrelated in e['quote'] for e in scope['evidence']))
+        self.assertIn(unrelated,json.dumps(judgment_request(base,scope),ensure_ascii=False))
+        out['assessment']['reason']='선택 밖 발언 '+unrelated+'를 이유로 현재 후보도 검토한다.'
+        packet=adapt(out,scope,p)
+        self.assertTrue(packet['mechanicalContractOnly'])
+        self.assertIsNone(packet['semanticQualityGateMet'])
+        self.assertFalse(packet['runtimeUseAuthorized'])
+
     def test_hashes_stay_server_side_and_raw_references_model_settings_stay_fixed(self):
         p, _, scope, base, _ = setup(); before = copy.deepcopy((p, scope, base))
         body = judgment_request(base, scope)
