@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import math
-import re
 import shutil
 import time
 from functools import lru_cache
@@ -16,26 +15,9 @@ log = logging.getLogger(__name__)
 
 # 신뢰도가 낮은 인식 결과는 노이즈라 버린다.
 # 한글 자막은 외곽선·그림자 효과 때문에 신뢰도가 잘 안 올라가므로 기준을 낮게 잡고,
-# 대신 글자 수 조건으로 노이즈를 거른다. 조금 깨진 텍스트는 LLM 이 문맥으로 복원한다.
+# 대신 글자 수 조건으로 노이즈를 거른다. 전사/OCR 원문을 문맥만으로 교정하지 않는다.
 MIN_CONFIDENCE = 0.6
 MIN_LENGTH = 2
-
-# 유튜브 UI 나 채널 워터마크처럼 매번 잡히는 무의미한 텍스트
-IGNORE_PATTERNS = ("구독", "좋아요", "알림설정", "http", "www.")
-
-# 전체 프레임 중 이 비율 이상에서 같은 자리에 글자가 있으면
-# 고정 텍스트(로고·배너)로 본다. 자막은 몇 초씩만 떠 있으므로 절반을 넘지 않는다.
-WATERMARK_RATIO = 0.5
-
-# 위치를 뭉갤 격자 크기(px). 로고가 몇 픽셀 흔들려도 같은 칸으로 잡히게 한다.
-POSITION_GRID = 80
-
-# 같은 자리에 나온 글자들이 이만큼 비슷하면 고정 텍스트로 본다.
-# 자막은 내용이 매번 바뀌므로 이 값을 넘지 않는다.
-WATERMARK_SIMILARITY = 0.45
-
-# 유사도 비교에 쓸 최대 표본 수. 프레임이 많아도 계산이 폭증하지 않게 한다.
-WATERMARK_SAMPLE = 30
 
 # 짧은 영상에서 최소한 이만큼은 뽑는다. 2~3장으로는 자막을 놓치기 쉽다.
 MIN_FRAMES = 8
@@ -67,44 +49,6 @@ def is_available() -> bool:
         return True
     except Exception:
         return False
-
-
-def _parse(raw) -> list[tuple[str, float, int, int]]:
-    """
-    PaddleOCR 출력을 (텍스트, 신뢰도, 중심x, 중심y) 로 바꾼다.
-
-    위치를 함께 뽑는 이유:
-    채널 로고나 고정 배너는 매 프레임 같은 자리에 나온다.
-    그런데 OCR 이 그때그때 다르게 읽어서(POGUES, PO6UFS, 피F LOGUES)
-    글자만으로는 같은 것인 줄 모른다. 위치로 보면 확실하다.
-
-    출력 포맷이 버전마다 달라서 방어적으로 파싱한다.
-    """
-    lines: list[tuple[str, float, int, int]] = []
-    if not raw:
-        return lines
-
-    page = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else raw
-    if not page:
-        return lines
-
-    for item in page:
-        try:
-            text, confidence = item[1][0], float(item[1][1])
-        except (IndexError, TypeError, ValueError):
-            continue
-
-        cx, cy = 0, 0
-        try:
-            box = item[0]
-            xs = [float(pt[0]) for pt in box]
-            ys = [float(pt[1]) for pt in box]
-            cx, cy = int(sum(xs) / len(xs)), int(sum(ys) / len(ys))
-        except (IndexError, TypeError, ValueError):
-            pass   # 위치를 못 얻으면 0,0 으로 두고 글자로만 판단한다
-
-        lines.append((text, confidence, cx, cy))
-    return lines
 
 
 def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None) -> dict:
@@ -299,81 +243,3 @@ def _adjust_interval(duration_sec: float, requested: float) -> float:
     return adjusted
 
 
-def _normalize(text: str) -> str:
-    """OCR 이 매번 조금씩 다르게 읽으므로 비교용으로 다듬는다."""
-    return re.sub(r"[^가-힣a-zA-Z0-9]", "", text).lower()
-
-
-def _position_key(cx: int, cy: int) -> tuple[int, int]:
-    """위치를 격자로 뭉갠다. 로고가 몇 픽셀씩 흔들려도 같은 칸으로 본다."""
-    return (cx // POSITION_GRID, cy // POSITION_GRID)
-
-
-def _similarity(a: str, b: str) -> float:
-    """겹치는 글자 비율. OCR 오인식이 섞여도 견디도록 글자 단위로 본다."""
-    x, y = _normalize(a), _normalize(b)
-    if not x or not y:
-        return 0.0
-    counts: dict[str, int] = {}
-    for ch in x:
-        counts[ch] = counts.get(ch, 0) + 1
-    common = 0
-    for ch in y:
-        if counts.get(ch, 0) > 0:
-            counts[ch] -= 1
-            common += 1
-    return common / min(len(x), len(y))
-
-
-def _find_watermarks(per_frame) -> set[tuple[int, int]]:
-    """
-    채널 로고나 고정 배너가 있는 자리를 찾는다.
-
-    두 조건을 모두 만족해야 한다.
-      1) 거의 모든 프레임에서 그 자리에 글자가 있다
-      2) 그 글자들이 매번 사실상 같은 내용이다
-
-    위치만 보면 안 되는 이유:
-    자막도 하단 같은 자리에 계속 나온다. 위치만으로는 로고와 구분되지 않는다.
-
-    글자만 보면 안 되는 이유:
-    OCR 이 로고를 프레임마다 다르게 읽는다.
-    POGUES 가 PO6UFS, 피F LOGUES, FOGUES 로 나오는 식이다.
-
-    그래서 "같은 자리에 + 비슷한 글자가 계속" 일 때만 로고로 본다.
-    자막은 자리는 같아도 내용이 매번 바뀌므로 걸러지지 않는다.
-    """
-    if len(per_frame) < 4:
-        return set()   # 프레임이 너무 적으면 판단할 수 없다
-
-    texts_at: dict[tuple[int, int], list[str]] = {}
-    for _, _, parsed in per_frame:
-        seen: dict[tuple[int, int], str] = {}
-        for text, _conf, cx, cy in parsed:
-            seen.setdefault(_position_key(cx, cy), text)
-        for key, text in seen.items():
-            texts_at.setdefault(key, []).append(text)
-
-    threshold = max(3, int(len(per_frame) * WATERMARK_RATIO))
-    watermarks: set[tuple[int, int]] = set()
-
-    for key, texts in texts_at.items():
-        if len(texts) < threshold:
-            continue
-
-        # 가장 대표적인 글자를 기준으로 삼는다.
-        # 첫 글자를 그냥 쓰면, 그게 유독 심하게 깨진 경우 전부 다르다고 나온다.
-        # 실제로 로고가 첫 프레임에서 "동행마스" 로 읽힌 사례가 있었다.
-        sample = texts[:WATERMARK_SAMPLE]
-        best = 0.0
-        for base in sample:
-            others = [t for t in sample if t is not base]
-            if not others:
-                continue
-            avg = sum(_similarity(base, other) for other in others) / len(others)
-            best = max(best, avg)
-
-        if best >= WATERMARK_SIMILARITY:
-            watermarks.add(key)
-
-    return watermarks

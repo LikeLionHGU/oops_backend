@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.ocr import _find_watermarks, _position_key, _similarity, _adjust_interval
+from .legacy_ocr_watermark import _find_watermarks, _position_key, _similarity
+from app.ocr import _adjust_interval
 
 
 def frame(idx: int, items):
