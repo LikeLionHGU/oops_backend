@@ -76,6 +76,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'fixedScopeStudy' in artifact:
+        from fixed_scope_diagnostic import validate as validate_fixed
+        validate_fixed(artifact)
+        return
     if artifact.get('schemaVersion') == BOUND_SCHEMA:
         expected = prepare_bound(artifact['source'], artifact['authorization'], artifact['priorCatalog'])
         if 'additionalFunding' in artifact:
@@ -297,7 +301,9 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
         result = {k:job[k] for k in ('case','arm','repeat')}
         result.update(unitIndex=index, stages=[], requestHash=job['baseRequestHash'], status='PARTIAL')
         payload = cases[job['case']]['payload']
-        scope = None
+        scope = copy.deepcopy(job.get('fixedSelectedScope'))
+        if scope is not None:
+            result['selectedScope'] = copy.deepcopy(scope)
         for stage in job['stages']:
             if stop.is_set(): result['status']='STOPPED_BEFORE_STAGE'; break
             body = judge_request(job['baseBody'], scope) if stage['stage'] == 'JUDGE' else stage['body']
