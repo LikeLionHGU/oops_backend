@@ -77,6 +77,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'scopedPaidComparison' in artifact:
+        from compare_scoped_inputs import validate as validate_paid_scoped
+        validate_paid_scoped(artifact)
+        return
     if 'scopedInputStudy' in artifact:
         from scoped_input_study import validate as validate_scoped
         validate_scoped(artifact)

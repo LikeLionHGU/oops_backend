@@ -144,8 +144,13 @@ def diagnostic_audit_export(report, *, partial=False):
     return exported
 
 
-def score(frozen, report, audit, *, allow_partial=False):
-    validate(frozen)
+def score(frozen, report, audit, *, allow_partial=False, paired=False):
+    if paired:
+        from compare_scoped_inputs import validate as validate_pair
+        validate_pair(frozen)
+    else:
+        validate(frozen)
+    limit=frozen['plannedUnits'] if paired else 12
     mock = report.get('runKind') == 'MOCK_OFFLINE'
     partial = report['status'] in {'PARTIAL','MOCK_PARTIAL'}
     require(not partial or allow_partial, 'partial diagnostic requires explicit opt-in; no gate')
@@ -156,7 +161,7 @@ def score(frozen, report, audit, *, allow_partial=False):
         and report['additionalFundingHash']==frozen['additionalFundingHash']
         and report['status']==(('MOCK_PARTIAL' if mock else 'PARTIAL') if partial else
                               ('MOCK_COMPLETE_PENDING_JAVA_AUDIT' if mock else 'COMPLETED_PENDING_JAVA_AUDIT'))
-        and report['cases']==frozen['source']['cases'] and (1<=count<=12 if partial else count==12)
+        and report['cases']==frozen['source']['cases'] and (1<=count<=limit if partial else count==limit)
         and report['apiCalls']==(0 if mock else count) and report['simulatedCalls']==(count if mock else 0)
         and report['consumedReservationUsd']==('0' if mock else frozen['reservedCostUsd'])
         and report['reservedCostUsd']==frozen['reservedCostUsd']
@@ -171,14 +176,14 @@ def score(frozen, report, audit, *, allow_partial=False):
     rows=[]; total_cost=Decimal(0)
     for unit in report['calls']:
         index=unit['unitIndex']
-        require(type(index) is int and 1<=index<=12,'execution index invalid')
+        require(type(index) is int and 1<=index<=limit,'execution index invalid')
         job=frozen['jobs'][index-1]
         require(all(job[k]==unit[k] for k in ('case','arm','repeat'))
             and unit['selectedScope']==job['fixedSelectedScope'] and len(unit['stages'])==1
             and unit['requestHash']==job['baseRequestHash'], 'fixed scope/unit mismatch')
         stage=unit['stages'][0]; body=job['stages'][0]['body']
         ticket=prepare_attempt(job['baseBody'],job['fixedSelectedScope'],f'{frozen["artifactHash"]}-{index:03d}',
-                               judgment_variant='RELATION_CHECKLIST')
+                               judgment_variant=job.get('judgmentVariant','RELATION_CHECKLIST'))
         require(stage['stage']=='JUDGE' and stage['body']==body and stage['requestHash']==digest(body)
             and stage['localAttempt']==ticket, 'stage provenance mismatch')
         if 'error' in stage:
@@ -195,6 +200,7 @@ def score(frozen, report, audit, *, allow_partial=False):
             rows.append(dict(case=job['case'],repeat=job['repeat'],accepted=False,decision=None,
                 developmentExpectedDecision='REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS',
                 matched=None,semanticIssueMatched=None,failureCode='PROVIDER_FAILURE'))
+            if paired:rows[-1]['arm']=job['arm']
             continue
         require(stage['rawOutput']==parse_response(stage['providerResponse'],body['model']), 'raw response mismatch')
         usage=stage['providerResponse'].get('usage',{})
@@ -219,20 +225,41 @@ def score(frozen, report, audit, *, allow_partial=False):
         rows.append(dict(case=job['case'],repeat=job['repeat'],accepted=a['accepted'],decision=a.get('decision'),
             developmentExpectedDecision=wanted,matched=None if mock or partial else a['accepted'] and a.get('decision')==wanted,
             semanticIssueMatched=None))
+        if paired:rows[-1]['arm']=job['arm']
     require(Decimal(report['estimatedCostUsd'])== (Decimal(0) if mock else total_cost), 'total usage mismatch')
     require(report['unknownCostAttempts']==sum('estimatedCostUsd' not in s for u in report['calls'] for s in u['stages']),
             'unknown cost count mismatch')
     summary=[]
-    for case in frozen['source']['cases']:
-        group=[r for r in rows if r['case']==case['name']]
-        summary.append(dict(case=case['name'],observations=len(group),accepted=sum(r['accepted'] for r in group),
-            decisions=dict(Counter(r['decision'] for r in group)),matched=None if mock or partial else sum(r['matched'] for r in group)))
-    return dict(schemaVersion='fixed-scope-diagnostic-score-1',runKind=report['runKind'],frozenHash=frozen['artifactHash'],
+    for arm in (('BASELINE','CANDIDATE') if paired else (None,)):
+        for case in frozen['source']['cases']:
+            group=[r for r in rows if r['case']==case['name'] and (not paired or r['arm']==arm)]
+            summary.append(dict(case=case['name'],observations=len(group),accepted=sum(r['accepted'] for r in group),
+                decisions=dict(Counter(r['decision'] for r in group)),matched=None if mock or partial else sum(r['matched'] for r in group)))
+            if paired:summary[-1]['arm']=arm
+    result=dict(schemaVersion='fixed-scope-diagnostic-score-1',runKind=report['runKind'],frozenHash=frozen['artifactHash'],
         reportHash=digest(report),auditHash=digest(audit),summary=summary,results=rows,
         developmentRegressionGateMet=None,diagnosticExpectedDecisionsMet=None if mock or partial else all(r['matched'] for r in rows),
         diagnosticComplete=not partial,unknownCostAttempts=report['unknownCostAttempts'],
         semanticQualityGateMet=None,runtimeUseAuthorized=False,fullPipelineReplayed=False,
         independentGoldApprovals=0,responsesModified=False,selectionReplayed=False)
+    if paired:
+        costs=[]
+        for arm in ('BASELINE','CANDIDATE'):
+            units=[u for u in report['calls'] if u['arm']==arm]
+            stages=[s for u in units for s in u['stages']]
+            costs.append(dict(arm=arm,units=len(units),apiAttempts=len(stages),
+                unknownCostAttempts=sum('estimatedCostUsd' not in s for s in stages),
+                promptTokens=sum(s.get('usage',{}).get('prompt_tokens',0) for s in stages),
+                completionTokens=sum(s.get('usage',{}).get('completion_tokens',0) for s in stages),
+                knownUsageRateEquivalentUsd=str(sum(Decimal(s.get('estimatedCostUsd','0')) for s in stages)),
+                meanUnitLatencyMs=round(sum(u['latencyMs'] for u in units)/len(units)) if units else None))
+        result.update(schemaVersion='paired-scoped-input-score-1',armCosts=costs,
+            comparisonScope='FIXED_SELECTION_JUDGE_ONLY_NOT_FULL_PIPELINE')
+        if mock:
+            for c in costs:
+                c['simulatedCalls']=c['apiAttempts'];c['apiAttempts']=0
+                c['mockTokenRateEquivalentUsd']=c.pop('knownUsageRateEquivalentUsd')
+    return result
 
 
 if __name__=='__main__':
