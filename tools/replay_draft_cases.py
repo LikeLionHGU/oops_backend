@@ -1,4 +1,4 @@
-"""Explicit paid, offline text-only A/B experiment; never changes runtime approvals.
+"""Historical text-only replay preparation; direct paid execution is disabled.
 
 Uses current Java discovery/verification prompts, but ONE full-transcript window
 and one verification group, not production batching, continuation or scene review.
@@ -8,15 +8,12 @@ Unreviewed cases and compiled mechanisms are reference material, not training.
 """
 import argparse
 import datetime
-import hashlib
 import json
 import re
 import textwrap
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-from collect_youtube_comments import CollectionError, NoRedirect, read_key
+from collect_youtube_comments import CollectionError
 from controversy_cards import build_bundle, validate_bundle
 from build_review_guidelines import compile_guidelines, prompt_rules
 from review_context_pilot import PilotError, parse, read_bytes, require
@@ -86,30 +83,8 @@ def segments(snapshot):
 
 
 def complete(key, system, payload):
-    body = {"model": "gpt-6-luna", "reasoning_effort": "none", "temperature": 0.1,
-            "max_completion_tokens": 7000, "response_format": {"type": "json_object"},
-            "messages": [{"role": "system", "content": system + "\n" + JSON_ONLY},
-                         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]}
-    request = urllib.request.Request("https://api.openai.com/v1/chat/completions",
-                                     data=json.dumps(body).encode(), method="POST",
-                                     headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
-    try:
-        with urllib.request.build_opener(NoRedirect()).open(request, timeout=55) as response:
-            raw = response.read(2_000_001)
-        require(len(raw) <= 2_000_000, "API_RESPONSE_LIMIT")
-        data = json.loads(raw)
-        require(data["choices"][0]["finish_reason"] == "stop", "MODEL_OUTPUT_INCOMPLETE")
-        return {"output": json.loads(data["choices"][0]["message"]["content"]),
-                "model": data["model"], "usage": data.get("usage", {}),
-                "requestSha256": hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()}
-    except urllib.error.HTTPError as error:
-        raise PilotError("OPENAI_HTTP_" + str(error.code)) from None
-    except CollectionError:
-        raise PilotError("OPENAI_REDIRECT_REFUSED") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise PilotError("OPENAI_NETWORK_ERROR") from None
-    except (KeyError, IndexError, ValueError, TypeError):
-        raise PilotError("INVALID_MODEL_RESPONSE") from None
+    """Compatibility guard: direct paid transport has been retired."""
+    raise PilotError("LEGACY_DIRECT_EXECUTION_DISABLED_USE_GUARDED_FROZEN_RUNNER")
 
 
 def candidates(output, raw):
@@ -195,8 +170,10 @@ def main():
     reference_mode.add_argument("--family", action="append")
     reference_mode.add_argument("--guidelines", type=Path, help="Compiled generic mechanism reference, including target-family-derived criteria")
     parser.add_argument("--env-file", type=Path)
-    parser.add_argument("--execute", action="store_true", help="Explicitly authorize at most four paid API calls")
+    parser.add_argument("--execute", action="store_true", help="Retired paid path; use a guarded frozen runner")
     args = parser.parse_args()
+    if args.execute:
+        parser.exit(2, "LEGACY_DIRECT_EXECUTION_DISABLED_USE_GUARDED_FROZEN_RUNNER\n")
     try:
         snapshot = parse(read_bytes(args.transcript))
         raw = segments(snapshot)
@@ -205,7 +182,6 @@ def main():
         expected = build_bundle(dataset_root, ROOT / "uploads/comment-collections",
                                 parse(read_bytes(dataset_root / "research/reaction-classification-plan.json")))
         require(bundle == expected, "BUNDLE_SOURCE_OR_PLAN_MISMATCH")
-        guide_prompt = ""
         guideline_version = None
         if args.guidelines:
             guide = parse(read_bytes(args.guidelines))
@@ -217,78 +193,16 @@ def main():
             java_guide = (ENGINE.parent / "ReviewGuidelineLibrary.java").read_text()
             matches = re.findall(r'public static final String CONTRACT = """\n(.*?)\n\s*""";', java_guide, re.S)
             require(len(matches) == 1, "GUIDELINE_CONTRACT_EXTRACTION_FAILED")
-            guide_prompt = "\n" + textwrap.dedent(matches[0]) + "\nreviewGuidelines=" + json.dumps(refs, ensure_ascii=False, separators=(",", ":"))
             guideline_version = guide["version"]
         else:
             refs = references(bundle, args.family, snapshot["sourceFamily"])
-        revision, discovery, verification = prompts(ENGINE.read_text())
+        prompts(ENGINE.read_text())  # Preserve source-contract validation for the preview.
         if not args.execute:
             print(json.dumps({"status": "DRY_RUN", "segments": len(raw), "referenceCases": len(refs),
                               "guidelineVersion": guideline_version,
-                              "maximumCalls": 4, "model": "gpt-6-luna", "runtimeChanged": False}))
+                              "maximumCalls": 4, "model": "gpt-6-luna", "runtimeChanged": False,
+                              "apiCalls": 0, "paidExecutionAvailable": False}))
             return
-        key = read_key(args.env_file, key_name="OPENAI_API_KEY")
-        directory = ROOT / "datasets/controversy/experiments"
-        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        output_path = directory / ("v1-draft-replay-" + stamp + ".json")
-        ids = [r["id"] for r in raw]
-        report = {"schemaVersion": "draft-case-replay-1", "status": "RUNNING", "model": "gpt-6-luna",
-                  "promptRevision": revision, "sourceVideoId": snapshot["sourceVideoId"],
-                  "transcriptSha256": hashlib.sha256(read_bytes(args.transcript)).hexdigest(),
-                  "cardsSha256": hashlib.sha256(read_bytes(args.cards)).hexdigest(),
-                  "referenceFamilies": args.family or [], "references": refs, "runtimeChanged": False,
-                  "guidelineVersion": guideline_version,
-                  "usesTargetFamilyDerivedGuidelines": bool(args.guidelines),
-                  "limitations": ["ONE_FULL_TRANSCRIPT_WINDOW_NOT_PRODUCTION_PIPELINE",
-                                  "NO_STT_OCR_SCENE_REANALYSIS", "UNREVIEWED_REFERENCE_HYPOTHESES",
-                                  "SINGLE_PAIR_NOT_ACCURACY_ESTIMATE", "PYTHON_QUOTE_CHECK_NOT_JAVA_DOMAIN_VALIDATION"],
-                  "arms": []}
-        # Exclusive, private checkpoint; failures cannot overwrite previous experiments.
-        import os
-        with os.fdopen(os.open(output_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as stream:
-            def checkpoint():
-                stream.seek(0)
-                json.dump(report, stream, ensure_ascii=False, indent=2)
-                stream.truncate()
-                stream.flush()
-            checkpoint()
-            try:
-                for name, examples in (("baseline", []), ("working_guidelines" if args.guidelines else "new_cases", refs)):
-                    arm = {"name": name, "calls": []}
-                    report["arms"].append(arm)
-                    payload = {"promptRevision": revision, "primaryIds": ids, "raw": raw,
-                               "windows": [{"anchorIds": ids, "segmentIds": ids}], "contextLimited": False}
-                    if examples and not args.guidelines:
-                        payload["referenceCases"] = examples
-                    supplement = guide_prompt if examples and args.guidelines else RESEARCH_CONTRACT if examples else ""
-                    response = complete(key, discovery + supplement, payload)
-                    arm["calls"].append(response)
-                    checkpoint()
-                    proposed = candidates(response["output"], raw)
-                    if proposed:
-                        checked = complete(key, verification + (guide_prompt if examples and args.guidelines else ""), {"promptRevision": revision, "raw": raw,
-                                                              "candidates": proposed})
-                        arm["calls"].append(checked)
-                        checkpoint()
-                        arm["verifications"] = verify(checked["output"], proposed, raw)
-                    else:
-                        arm["verifications"] = []
-                    arm["targetContractAudit"] = target_contract_audit(arm["verifications"], proposed)
-                    arm["status"] = "COMPLETE_TEXT_REPLAY"
-                    checkpoint()
-                report["status"] = "COMPLETE_TEXT_REPLAY"
-            except PilotError as error:
-                report["status"] = "FAILED_OR_PARTIAL"
-                report["errorCode"] = str(error)
-                raise
-            except (OSError, ValueError, TypeError, KeyError, AttributeError):
-                report["status"] = "FAILED_OR_PARTIAL"
-                report["errorCode"] = "INVALID_OR_UNAVAILABLE_REPLAY_INPUT"
-                raise PilotError("INVALID_OR_UNAVAILABLE_REPLAY_INPUT") from None
-            finally:
-                checkpoint()
-                print(json.dumps({"savedTo": str(output_path), "status": report["status"]}))
     except (PilotError, CollectionError) as error:
         parser.exit(2, str(error) + "\n")
     except (OSError, ValueError, TypeError, KeyError, AttributeError):

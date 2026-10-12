@@ -4,12 +4,12 @@ import json
 import sys
 import tempfile
 import unittest
-import urllib.error
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import replay_draft_cases as tool
+from collect_youtube_comments import read_key
 from test_controversy_cards import fixture
 
 
@@ -75,9 +75,9 @@ class ReplayTests(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text("YOUTUBE_API_KEY=$(must-not-run)\nOPENAI_API_KEY='synthetic-key'\n")
             path.chmod(0o600)
-            self.assertEqual("synthetic-key", tool.read_key(path, key_name="OPENAI_API_KEY"))
+            self.assertEqual("synthetic-key", read_key(path, key_name="OPENAI_API_KEY"))
             with self.assertRaises(tool.CollectionError):
-                tool.read_key(path, key_name="UNRELATED_SECRET")
+                read_key(path, key_name="UNRELATED_SECRET")
 
     def test_target_missing_role_is_not_a_usable_discovery_gain(self):
         proposed = [{"candidateId": "c", "axis": "TARGET_TREATMENT"}]
@@ -100,16 +100,10 @@ class ReplayTests(unittest.TestCase):
         self.assertTrue(audit["targetGuardPassed"])
         self.assertFalse(audit["fullJavaValidationPerformed"])
 
-    def test_provider_errors_never_echo_keys_or_response(self):
-        opener = mock.Mock()
-        opener.open.side_effect = urllib.error.HTTPError("https://example.org/synthetic-key", 401,
-                                                       "sensitive provider message", None, None)
-        with mock.patch.object(tool.urllib.request, "build_opener", return_value=opener):
-            with self.assertRaisesRegex(tool.PilotError, "^OPENAI_HTTP_401$"):
-                tool.complete("synthetic-key", "system", {})
-        body = json.loads(opener.open.call_args[0][0].data)
-        self.assertEqual("gpt-6-luna", body["model"])
-        self.assertEqual(7000, body["max_completion_tokens"])
+    def test_retired_transport_is_blocked_without_network_or_secret_output(self):
+        with mock.patch('urllib.request.OpenerDirector.open', side_effect=AssertionError('network forbidden')):
+            with self.assertRaisesRegex(tool.PilotError, '^LEGACY_DIRECT_EXECUTION_DISABLED_USE_GUARDED_FROZEN_RUNNER$'):
+                tool.complete('synthetic-key', 'system', {})
 
 
 if __name__ == "__main__":

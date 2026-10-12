@@ -35,12 +35,12 @@ def test_ablation_changes_only_the_two_additions():
 
 def test_dry_run_does_not_read_key_and_twenty_two_call_cap(tmp_path):
     paths = inputs(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key") as key, \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key") as key, \
             mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete:
         report = tool.run(*paths)
         assert report["plannedCalls"] == 22
         key.assert_not_called(); complete.assert_not_called()
-        report = tool.run(*paths, execute=True)
+        report = tool.run(*paths, execute=True, simulate=True)
         assert complete.call_count == 22
         assert len(report["calls"]) == 22
         for case in report["cases"]:
@@ -49,14 +49,14 @@ def test_dry_run_does_not_read_key_and_twenty_two_call_cap(tmp_path):
             data = json.loads((tmp_path / f'ablation-{case["name"]}-input.json').read_text())
             assert data["transcript"][0]["text"] == case["payload"]["raw"][0]["text"]
         with pytest.raises(ValueError, match="REPEAT_LIMIT"):
-            tool.run(*paths, execute=True, repeats=4)
+            tool.run(*paths, execute=True, repeats=4, simulate=True)
 
 
 def test_failures_do_not_retry_or_expose_messages(tmp_path):
     paths = inputs(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key"), \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key"), \
             mock.patch.object(tool, "complete", side_effect=RuntimeError("SECRET")) as complete:
-        report = tool.run(*paths, execute=True, repeats=1)
+        report = tool.run(*paths, execute=True, repeats=1, simulate=True)
         assert complete.call_count == 10
         assert all(c["error"] == "RuntimeError" for c in report["calls"])
         assert "SECRET" not in paths[2].read_text()
@@ -81,7 +81,7 @@ def test_boundary_profile_has_same_b_input_and_no_labels_in_requests(tmp_path):
     paths = inputs(tmp_path)
     initial = tool.run(*paths)
     output = tmp_path / "boundary" / "plan.json"
-    with mock.patch.object(tool, "read_key") as key, mock.patch.object(tool, "complete") as complete:
+    with mock.patch("collect_youtube_comments.read_key") as key, mock.patch.object(tool, "complete") as complete:
         report = tool.run(paths[0], paths[1], output, profile="boundary")
         key.assert_not_called(); complete.assert_not_called()
     assert report["plannedCalls"] == 28
@@ -99,9 +99,9 @@ def test_boundary_profile_has_same_b_input_and_no_labels_in_requests(tmp_path):
 def test_boundary_profile_bounded_calls_and_audits(tmp_path):
     paths = inputs(tmp_path)
     output = tmp_path / "boundary" / "report.json"
-    with mock.patch.object(tool, "read_key", return_value="test-key"), \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key"), \
             mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete:
-        report = tool.run(paths[0], paths[1], output, execute=True, profile="boundary")
+        report = tool.run(paths[0], paths[1], output, execute=True, profile="boundary", simulate=True)
     assert complete.call_count == 28
     for case in report["cases"]:
         calls = [call for call in report["calls"] if call["case"] == case["name"]]

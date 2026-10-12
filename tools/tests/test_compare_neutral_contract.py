@@ -24,27 +24,27 @@ def test_replacement_is_pinned_and_preserves_policy_and_json():
 
 def test_plan_has_twenty_call_limit_and_frozen_inputs(tmp_path):
     paths = inputs(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key") as key, \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key") as key, \
             mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete:
         result = tool.run(paths[0], paths[1], tmp_path / "plan" / "run.json")
         assert result["plannedCalls"] == 20
         key.assert_not_called(); complete.assert_not_called()
-        result = tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True)
+        result = tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True, simulate=True)
         assert complete.call_count == 20
         assert [c["name"] for c in result["cases"]][:2] == ["B-23.5", "C"]
         for case in result["cases"]:
             assert {c["inputSha256"] for c in result["calls"] if c["case"] == case["name"]} == {case["inputSha256"]}
         with pytest.raises(ValueError, match="NEW_OUTPUT_DIRECTORY_REQUIRED"):
-            tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True)
+            tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True, simulate=True)
         with pytest.raises(ValueError, match="REPEAT_LIMIT"):
-            tool.run(paths[0], paths[1], tmp_path / "extra" / "run.json", execute=True, repeats=4)
+            tool.run(paths[0], paths[1], tmp_path / "extra" / "run.json", execute=True, repeats=4, simulate=True)
 
 
 def test_failures_are_redacted_without_retry(tmp_path):
     paths = inputs(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key"), \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key"), \
             mock.patch.object(tool, "complete", side_effect=RuntimeError("SECRET")) as complete:
-        result = tool.run(paths[0], paths[1], tmp_path / "failure" / "run.json", execute=True, repeats=1)
+        result = tool.run(paths[0], paths[1], tmp_path / "failure" / "run.json", execute=True, repeats=1, simulate=True)
     assert complete.call_count == 12
     assert all(c["error"] == "RuntimeError" for c in result["calls"])
     assert "SECRET" not in (tmp_path / "failure" / "run.json").read_text()
@@ -79,7 +79,7 @@ def test_contrast_only_plan_includes_raw_expression_control_without_calls(tmp_pa
         {"startMs": 79000, "endMs": 80500, "text": "비유 원문"},
     ])
     paths[0].write_text(json.dumps(snapshot))
-    with mock.patch.object(tool, "read_key") as key, mock.patch.object(tool, "complete") as complete:
+    with mock.patch("collect_youtube_comments.read_key") as key, mock.patch.object(tool, "complete") as complete:
         result = tool.run(paths[0], paths[1], tmp_path / "contrast" / "run.json", profile=profile)
     key.assert_not_called(); complete.assert_not_called()
     assert result["plannedCalls"] == 22

@@ -15,11 +15,12 @@ from compare_neutral_contract import CURRENT, neutralize
 from compare_review_prompts import ROOT, ENGINE, digest
 from ablate_review_prompts import export_audits
 from build_review_guidelines import write_private
-from collect_youtube_comments import read_key
+from legacy_direct_execution import execution_mode, mark_report
 from replay_draft_cases import complete, prompts
 
 
-def run(report_path, audit_path, archive_path, output, execute=False):
+def run(report_path, audit_path, archive_path, output, execute=False, *, simulate=False):
+    mode = execution_mode(execute, simulate, complete)
     output = Path(output)
     if output.exists() or any(output.parent.glob("ablation-*-report.json")):
         raise ValueError("NEW_OUTPUT_DIRECTORY_REQUIRED")
@@ -62,9 +63,10 @@ def run(report_path, audit_path, archive_path, output, execute=False):
               "sourceReportSha256": digest(report), "sourceAuditSha256": digest(audit), "model": "gpt-6-luna",
               "systemSha256": digest(system), "plannedCalls": len(selected), "execute": execute,
               "cases": cases, "calls": []}
+    mark_report(result, mode)
     write_private(output, result)
     if execute:
-        key = read_key(ROOT / ".env", key_name="OPENAI_API_KEY")
+        key = None  # Explicit mock callback only; never load credentials.
         for entry in selected:
             case = next(c for c in cases if c["name"] == entry["case"])
             call = {"case": case["name"], "arm": "contrast-only-repair", "repeat": entry["repeat"],
@@ -74,6 +76,7 @@ def run(report_path, audit_path, archive_path, output, execute=False):
             except Exception as error:
                 call["error"] = type(error).__name__
             result["calls"].append(call)
+            mark_report(result, mode)
             write_private(output, result)
             print(json.dumps({"case": call["case"], "repeat": call["repeat"], "error": call.get("error"),
                               "decisions": [v.get("assessment", {}).get("decision") for v in call.get("output", {}).get("verifications", [])]}), flush=True)

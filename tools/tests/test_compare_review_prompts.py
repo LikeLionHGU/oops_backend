@@ -47,18 +47,18 @@ def test_plan_is_default_and_execution_has_sixteen_call_cap(tmp_path):
     input_path, archive_path, output = [tmp_path / name for name in ["input.json", "archive.json", "output.json"]]
     input_path.write_text(json.dumps(snapshot)); archive_path.write_text(json.dumps(archive))
     with mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete, \
-            mock.patch.object(tool, "read_key", return_value="unused-test-key") as key:
+            mock.patch("collect_youtube_comments.read_key", return_value="unused-test-key") as key:
         result = tool.run(input_path, archive_path, output)
         assert result["plannedCalls"] == 16
         complete.assert_not_called(); key.assert_not_called()
-        result = tool.run(input_path, archive_path, output, True)
+        result = tool.run(input_path, archive_path, output, True, simulate=True)
         assert complete.call_count == 16
         assert len(result["calls"]) == 16
         for case in result["cases"]:
             hashes = {c["inputSha256"] for c in result["calls"] if c["case"] == case["name"]}
             assert hashes == {case["inputSha256"]}
         with pytest.raises(ValueError, match="REPEAT_LIMIT"):
-            tool.run(input_path, archive_path, output, True, 4)
+            tool.run(input_path, archive_path, output, True, 4, simulate=True)
 
 
 def test_provider_failure_is_recorded_without_retry_or_sensitive_message(tmp_path):
@@ -67,8 +67,8 @@ def test_provider_failure_is_recorded_without_retry_or_sensitive_message(tmp_pat
     input_path.write_text(json.dumps(snapshot)); archive_path.write_text(json.dumps(archive))
     output = tmp_path / "output.json"
     with mock.patch.object(tool, "complete", side_effect=RuntimeError("SECRET-MUST-NOT-APPEAR")) as complete, \
-            mock.patch.object(tool, "read_key", return_value="unused-test-key"):
-        result = tool.run(input_path, archive_path, output, True, 1)
+            mock.patch("collect_youtube_comments.read_key", return_value="unused-test-key"):
+        result = tool.run(input_path, archive_path, output, True, 1, simulate=True)
         assert complete.call_count == 8
         assert all(c["error"] == "RuntimeError" for c in result["calls"])
         assert "SECRET-MUST-NOT-APPEAR" not in output.read_text()

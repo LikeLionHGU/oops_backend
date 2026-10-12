@@ -19,10 +19,10 @@ def fixture(tmp_path):
         {"startMs": 79000, "endMs": 80500, "text": "비유 원문"},
     ])
     paths[0].write_text(json.dumps(snapshot))
-    with mock.patch.object(comparison, "read_key", return_value="test-key"), \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key"), \
             mock.patch.object(comparison, "complete", return_value={"output": {"verifications": []}}):
         report = comparison.run(paths[0], paths[1], tmp_path / "source" / "run.json",
-                                execute=True, profile="contrast-only")
+                                execute=True, profile="contrast-only", simulate=True)
     audit = {"sourceReportSha256": tool.digest(report), "results": [
         {"case": "B-23.5", "arm": "contrast-only-proposal", "repeat": i,
          "accepted": False, "failureCode": "TARGET_EVIDENCE_REQUIRED"} for i in range(3)]}
@@ -35,11 +35,11 @@ def fixture(tmp_path):
 
 def test_repairs_are_bounded_frozen_and_do_not_force_warning(tmp_path):
     paths = fixture(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key") as key, \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key") as key, \
             mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete:
         result = tool.run(*paths, tmp_path / "plan" / "run.json")
         key.assert_not_called(); complete.assert_not_called()
-        result = tool.run(*paths, tmp_path / "paid" / "run.json", execute=True)
+        result = tool.run(*paths, tmp_path / "paid" / "run.json", execute=True, simulate=True)
     assert complete.call_count == result["plannedCalls"] == 3
     assert {c["name"] for c in result["cases"]} == {"B-23.5"}
     for args in complete.call_args_list:
@@ -56,19 +56,19 @@ def test_mismatched_audit_or_changed_reference_blocks_api(tmp_path):
     paths[2].write_text(json.dumps(archive))
     with mock.patch.object(tool, "complete") as complete:
         with pytest.raises(ValueError, match="FROZEN_REFERENCE_REQUIRED"):
-            tool.run(*paths, tmp_path / "bad-reference" / "run.json", execute=True)
+            tool.run(*paths, tmp_path / "bad-reference" / "run.json", execute=True, simulate=True)
         audit = json.loads(paths[1].read_text()); audit["sourceReportSha256"] = "changed"
         paths[1].write_text(json.dumps(audit))
         with pytest.raises(ValueError, match="MATCHED_CONTRAST_AUDIT_REQUIRED"):
-            tool.run(*paths, tmp_path / "bad-audit" / "run.json", execute=True)
+            tool.run(*paths, tmp_path / "bad-audit" / "run.json", execute=True, simulate=True)
     complete.assert_not_called()
 
 
 def test_failures_are_redacted_and_not_retried(tmp_path):
     paths = fixture(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key"), \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key"), \
             mock.patch.object(tool, "complete", side_effect=RuntimeError("SECRET")) as complete:
-        result = tool.run(*paths, tmp_path / "failure" / "run.json", execute=True)
+        result = tool.run(*paths, tmp_path / "failure" / "run.json", execute=True, simulate=True)
     assert complete.call_count == 3
     assert all(c["error"] == "RuntimeError" for c in result["calls"])
     assert "SECRET" not in (tmp_path / "failure" / "run.json").read_text()

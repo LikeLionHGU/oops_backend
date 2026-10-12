@@ -13,7 +13,7 @@ from compare_neutral_contract import CURRENT, expression_case, schedule
 from compare_review_prompts import ROOT, ENGINE, digest, prepare
 from ablate_review_prompts import boundary_cases, export_audits
 from build_review_guidelines import write_private
-from collect_youtube_comments import read_key
+from legacy_direct_execution import execution_mode, mark_report
 from replay_draft_cases import complete, prompts
 
 TARGET_EXAMPLES = """
@@ -43,7 +43,8 @@ def with_examples(system):
     return system + TARGET_EXAMPLES
 
 
-def run(snapshot_path, archive_path, output, execute=False, repeats=3):
+def run(snapshot_path, archive_path, output, execute=False, repeats=3, *, simulate=False):
+    mode = execution_mode(execute, simulate, complete)
     output = Path(output)
     if output.exists() or any(output.parent.glob("ablation-*-report.json")):
         raise ValueError("NEW_OUTPUT_DIRECTORY_REQUIRED")
@@ -62,9 +63,11 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
               "referenceSha256": digest(reference), "sourceTranscriptSha256": digest(snapshot["transcript"]),
               "armPromptSha256": {name: digest(system) for name, system in arms}, "examples": TARGET_EXAMPLES,
               "cases": cases, "calls": []}
+    mark_report(report, mode)
     write_private(output, report)
+    mark_report(report, mode)
     if execute:
-        key = read_key(ROOT / ".env", key_name="OPENAI_API_KEY")
+        key = None  # Explicit mock callback only; never load credentials.
         for case, repeat, (name, system) in planned:
             call = {"case": case["name"], "arm": name, "repeat": repeat, "inputSha256": case["inputSha256"]}
             try:
@@ -72,6 +75,7 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
             except Exception as error:
                 call["error"] = type(error).__name__
             report["calls"].append(call)
+            mark_report(report, mode)
             write_private(output, report)
             print(json.dumps({"case": case["name"], "arm": name, "repeat": repeat,
                 "decisions": [v.get("assessment", {}).get("decision") for v in call.get("output", {}).get("verifications", [])],

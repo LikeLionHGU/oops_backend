@@ -12,7 +12,7 @@ import textwrap
 from pathlib import Path
 
 from build_review_guidelines import write_private
-from collect_youtube_comments import read_key
+from legacy_direct_execution import execution_mode, mark_report
 from replay_draft_cases import prompts, complete
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +78,8 @@ def prepare(snapshot, archive, b_anchor=40500):
     return cases, reference
 
 
-def run(snapshot_path, archive_path, output, execute=False, repeats=3):
+def run(snapshot_path, archive_path, output, execute=False, repeats=3, *, simulate=False):
+    mode = execution_mode(execute, simulate, complete)
     if repeats not in {1, 2, 3}:
         raise ValueError("REPEAT_LIMIT")
     snapshot = json.loads(Path(snapshot_path).read_text())
@@ -98,8 +99,9 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
               "model": "gpt-6-luna", "plannedCalls": planned, "execute": execute,
               "referenceSha256": digest(reference), "sourceTranscriptSha256": digest(snapshot["transcript"]),
               "armPromptSha256": {name: digest(system) for name, system in arms}, "cases": cases, "calls": []}
+    mark_report(report, mode)
     if execute:
-        key = read_key(ROOT / ".env", key_name="OPENAI_API_KEY")
+        key = None  # Explicit mock callback only; never load credentials.
         for case in cases:
             for repeat in range(repeats if case["name"] in {"B", "C"} else 1):
                 # Alternate order to avoid always evaluating one arm first; no automatic retries.
@@ -110,9 +112,11 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3):
                     except Exception as error:
                         item["error"] = type(error).__name__
                     report["calls"].append(item)
+                    mark_report(report, mode)
                     write_private(output, report)
                     decisions = [v.get("assessment", {}).get("decision") for v in item.get("output", {}).get("verifications", [])]
                     print(json.dumps({k: item[k] for k in ["case", "arm", "repeat"]} | {"decisions": decisions, "error": item.get("error")}), flush=True)
+    mark_report(report, mode)
     write_private(output, report)
     return report
 

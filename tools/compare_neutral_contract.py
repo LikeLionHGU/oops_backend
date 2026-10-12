@@ -12,7 +12,7 @@ from pathlib import Path
 from ablate_review_prompts import boundary_cases, export_audits
 from compare_review_prompts import ROOT, ENGINE, digest, prepare
 from build_review_guidelines import write_private
-from collect_youtube_comments import read_key
+from legacy_direct_execution import execution_mode, mark_report
 from replay_draft_cases import complete, prompts
 
 PREVIOUS = "4e4e3fb"
@@ -105,7 +105,8 @@ def schedule(cases, arms, repeats):
     return result
 
 
-def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="combined"):
+def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="combined", *, simulate=False):
+    mode = execution_mode(execute, simulate, complete)
     if profile not in {"combined", "contrast-only", "contrast-33"}:
         raise ValueError("PROFILE_REQUIRED")
     output = Path(output)
@@ -130,9 +131,10 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="
               "previousCommit": previous, "profile": profile, "model": "gpt-6-luna", "plannedCalls": len(planned), "execute": execute,
               "referenceSha256": digest(reference), "sourceTranscriptSha256": digest(snapshot["transcript"]),
               "armPromptSha256": {name: digest(system) for name, system in arms}, "cases": cases, "calls": []}
+    mark_report(report, mode)
     write_private(output, report)
     if execute:
-        key = read_key(ROOT / ".env", key_name="OPENAI_API_KEY")
+        key = None  # Explicit mock callback only; never load credentials.
         for case, repeat, (name, system) in planned:
             call = {"case": case["name"], "arm": name, "repeat": repeat, "inputSha256": case["inputSha256"]}
             try:
@@ -140,6 +142,7 @@ def run(snapshot_path, archive_path, output, execute=False, repeats=3, profile="
             except Exception as error:
                 call["error"] = type(error).__name__
             report["calls"].append(call)
+            mark_report(report, mode)
             write_private(output, report)
             print(json.dumps({"case": case["name"], "arm": name, "repeat": repeat,
                 "decisions": [v.get("assessment", {}).get("decision") for v in call.get("output", {}).get("verifications", [])],

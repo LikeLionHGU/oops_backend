@@ -38,12 +38,12 @@ def test_only_examples_are_added_without_judgment_change():
 
 def test_plan_is_bounded_and_paid_inputs_are_frozen(tmp_path):
     paths = fixture(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key") as key, \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key") as key, \
             mock.patch.object(tool, "complete", return_value={"output": {"verifications": []}}) as complete:
         result = tool.run(paths[0], paths[1], tmp_path / "plan" / "run.json")
         assert result["plannedCalls"] == 22
         key.assert_not_called(); complete.assert_not_called()
-        result = tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True)
+        result = tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True, simulate=True)
         assert complete.call_count == 22
         assert [c["name"] for c in result["cases"]][:2] == ["B-23.5", "C"]
         assert result["cases"][-1]["name"] == "D"
@@ -51,16 +51,16 @@ def test_plan_is_bounded_and_paid_inputs_are_frozen(tmp_path):
             assert {c["inputSha256"] for c in result["calls"] if c["case"] == case["name"]} == {case["inputSha256"]}
             assert "developmentExpectation" not in case["payload"]
         with pytest.raises(ValueError, match="NEW_OUTPUT_DIRECTORY_REQUIRED"):
-            tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True)
+            tool.run(paths[0], paths[1], tmp_path / "paid" / "run.json", execute=True, simulate=True)
         with pytest.raises(ValueError, match="REPEAT_LIMIT"):
             tool.run(paths[0], paths[1], tmp_path / "extra" / "run.json", repeats=4)
 
 
 def test_failure_redaction_and_no_automatic_retry(tmp_path):
     paths = fixture(tmp_path)
-    with mock.patch.object(tool, "read_key", return_value="test-key"), \
+    with mock.patch("collect_youtube_comments.read_key", return_value="test-key"), \
             mock.patch.object(tool, "complete", side_effect=RuntimeError("SECRET")) as complete:
-        result = tool.run(paths[0], paths[1], tmp_path / "failure" / "run.json", execute=True, repeats=1)
+        result = tool.run(paths[0], paths[1], tmp_path / "failure" / "run.json", execute=True, repeats=1, simulate=True)
     assert complete.call_count == 14
     assert all(c["error"] == "RuntimeError" for c in result["calls"])
     assert "SECRET" not in (tmp_path / "failure" / "run.json").read_text()
