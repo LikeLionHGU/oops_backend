@@ -45,7 +45,7 @@ public class VideoDeletionService {
 
     @Transactional
     public void delete(Long videoId) {
-        Video video = videoRepository.findById(videoId)
+        Video video = videoRepository.findByIdForUpdate(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
 
         // 분석 중인 영상을 지우면 백그라운드 작업이 사라진 데이터를 건드리게 된다
@@ -58,10 +58,17 @@ public class VideoDeletionService {
 
         deleteChildren(videoId);
         videoRepository.delete(video);
-        storageService.deleteVideoFiles(videoId);
+        // Files cannot roll back with JPA. Only remove them after the DB deletion commits.
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override public void afterCommit() {
+                        try { storageService.deleteVideoFiles(videoId); }
+                        catch (RuntimeException e) { log.error("[delete] DB 삭제 후 파일 정리 실패 videoId={}", videoId, e); }
+                    }
+                });
         diagnosticsStore.removeAfterCommit(videoId);
 
-        log.info("[delete] videoId={} 삭제 완료 (DB + 파일)", videoId);
+        log.info("[delete] videoId={} DB 삭제 요청, 커밋 후 파일 정리", videoId);
     }
 
     /** 참조 순서를 지켜 자식부터 지운다. */

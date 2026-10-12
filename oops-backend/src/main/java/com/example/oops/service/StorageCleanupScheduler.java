@@ -32,6 +32,7 @@ public class StorageCleanupScheduler {
     private final VideoRepository videoRepository;
     private final VideoDeletionService deletionService;
     private final StorageService storageService;
+    private final SourceRetentionService sourceRetentionService;
 
     /** 원본만 매시 정각 정리한다. 리포트·대본·프레임은 남긴다. */
     @Scheduled(cron = "0 0 * * * *")
@@ -48,8 +49,7 @@ public class StorageCleanupScheduler {
         int deleted = 0;
         for (Video video : targets) {
             try {
-                storageService.deleteSourceFile(video.getId());
-                deleted++;
+                if (sourceRetentionService.purgeIfExpired(video.getId(), threshold)) deleted++;
             } catch (Exception e) {
                 log.warn("[purge-source] videoId={} 원본 삭제 실패: {}",
                         video.getId(), e.getMessage());
