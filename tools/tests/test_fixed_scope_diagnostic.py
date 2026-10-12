@@ -9,7 +9,9 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bound_review_contract import prepare_attempt, receive
 from fixed_review_suite import digest
-from fixed_scope_diagnostic import prepare, validate, score, SPEC, SOURCE_HASHES
+from fixed_scope_diagnostic import prepare, validate, score, SPEC, SOURCE_HASHES, diagnostic_audit_export
+from compare_review_prompts import digest as audit_digest
+import urllib.error
 from run_issue_scoped_comparison import execute, BOUNDARY_FUNDING
 from test_bound_review_contract import setup, response
 from test_bound_comparison_runner import mock, fake_audit
@@ -83,3 +85,17 @@ class FixedScopeTests(unittest.TestCase):
             f=prepare(seed);r=execute(f,Path(tmp)/'datasets'/'run',None,unknown,simulate=True)
             self.assertEqual(r['status'],'MOCK_PARTIAL');self.assertGreater(r['unknownCostAttempts'],0)
             with self.assertRaises(ValueError):score(f,r,fake_audit(r))
+            audit=fake_audit(r);audit['sourceReportSha256']=audit_digest(diagnostic_audit_export(r,partial=True))
+            scored=score(f,r,audit,allow_partial=True)
+            self.assertFalse(scored['diagnosticComplete']);self.assertIsNone(scored['diagnosticExpectedDecisionsMet'])
+
+    def test_http_status_is_safe_metadata_without_url_body_or_retry(self):
+        def unavailable(*args,**kwargs):
+            raise urllib.error.HTTPError('https://example.test/private-key-in-url',429,
+                'private-provider-message',None,None)
+        seed=seed_fixture()
+        with patch('fixed_scope_diagnostic.SEED_HASH',digest(seed)),tempfile.TemporaryDirectory() as tmp:
+            f=prepare(seed);r=execute(f,Path(tmp)/'datasets'/'run',None,unavailable,simulate=True)
+            self.assertEqual(r['status'],'MOCK_PARTIAL')
+            for u in r['calls']:self.assertEqual(u['stages'][0]['httpStatus'],429)
+            self.assertNotIn('private-key',json.dumps(r));self.assertNotIn('private-provider-message',json.dumps(r))

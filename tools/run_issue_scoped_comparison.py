@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import threading
 import time
+import urllib.error
 
 from collect_youtube_comments import read_key
 from compare_recorded_candidates import checked_output, audit_export
@@ -360,6 +361,10 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
                                       contractError=str(error))
             except Exception as error:
                 attempt.update(error=type(error).__name__, status='FAILED_STOP')
+                # Future diagnostics only: never persist exception text, URL or
+                # error response body, which can contain credentials/content.
+                if isinstance(error, urllib.error.HTTPError) and type(error.code) is int and 100 <= error.code <= 599:
+                    attempt['httpStatus'] = error.code
                 result.update(error=type(error).__name__, status='FAILED_STOP')
                 stop.set()
             attempt['latencyMs'] = round((time.monotonic()-started)*1000)

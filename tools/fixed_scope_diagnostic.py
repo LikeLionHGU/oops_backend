@@ -102,36 +102,69 @@ def validate(frozen):
     require(frozen == prepare(frozen['seed']), 'fixed-scope frozen changed')
 
 
-def score(frozen, report, audit):
+def diagnostic_audit_export(report, *, partial=False):
+    exported=audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
+    exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
+    if partial:
+        observed={u['case'] for u in report['calls']}
+        exported['cases']=[c for c in exported['cases'] if c['name'] in observed]
+        exported['diagnosticPartial']=True
+    return exported
+
+
+def score(frozen, report, audit, *, allow_partial=False):
     validate(frozen)
     mock = report.get('runKind') == 'MOCK_OFFLINE'
+    partial = report['status'] in {'PARTIAL','MOCK_PARTIAL'}
+    require(not partial or allow_partial, 'partial diagnostic requires explicit opt-in; no gate')
+    count=len(report['calls'])
     require(report.get('runKind') in {'MOCK_OFFLINE','LIVE'}
         and report['artifactHash']==frozen['artifactHash']
         and report['authorizationHash']==frozen['authorizationHash']
         and report['additionalFundingHash']==frozen['additionalFundingHash']
-        and report['status']==('MOCK_COMPLETE_PENDING_JAVA_AUDIT' if mock else 'COMPLETED_PENDING_JAVA_AUDIT')
-        and report['cases']==frozen['source']['cases'] and len(report['calls'])==12
-        and report['apiCalls']==(0 if mock else 12) and report['simulatedCalls']==(12 if mock else 0)
+        and report['status']==(('MOCK_PARTIAL' if mock else 'PARTIAL') if partial else
+                              ('MOCK_COMPLETE_PENDING_JAVA_AUDIT' if mock else 'COMPLETED_PENDING_JAVA_AUDIT'))
+        and report['cases']==frozen['source']['cases'] and (1<=count<=12 if partial else count==12)
+        and report['apiCalls']==(0 if mock else count) and report['simulatedCalls']==(count if mock else 0)
         and report['consumedReservationUsd']==('0' if mock else frozen['reservedCostUsd'])
-        and report['reservedCostUsd']==frozen['reservedCostUsd'] and report['unknownCostAttempts']==0,
+        and report['reservedCostUsd']==frozen['reservedCostUsd']
+        and (partial or report['unknownCostAttempts']==0),
         'complete matched diagnostic report required')
-    exported=audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
-    exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
+    exported=diagnostic_audit_export(report,partial=partial)
     require(audit['sourceReportSha256']==audit_digest(exported), 'current Java audit mismatch')
     indexed={(r['case'],r['arm'],r['repeat']):r for r in audit['results']}
-    require(len(indexed)==12 and len(audit['results'])==12
-            and set(indexed)=={(j['case'],j['arm'],j['repeat']) for j in frozen['jobs']}, 'complete unique audit required')
+    require(len(indexed)==count and len(audit['results'])==count
+            and set(indexed)=={(j['case'],j['arm'],j['repeat']) for j in report['calls']}, 'unique observed audit required')
+    require(len({u['unitIndex'] for u in report['calls']})==count, 'duplicate execution index')
     rows=[]; total_cost=Decimal(0)
-    for index,(job,unit) in enumerate(zip(frozen['jobs'],report['calls']),1):
-        require(all(job[k]==unit[k] for k in ('case','arm','repeat')) and 'error' not in unit
+    for unit in report['calls']:
+        index=unit['unitIndex']
+        require(type(index) is int and 1<=index<=12,'execution index invalid')
+        job=frozen['jobs'][index-1]
+        require(all(job[k]==unit[k] for k in ('case','arm','repeat'))
             and unit['selectedScope']==job['fixedSelectedScope'] and len(unit['stages'])==1
             and unit['requestHash']==job['baseRequestHash'], 'fixed scope/unit mismatch')
         stage=unit['stages'][0]; body=job['stages'][0]['body']
         ticket=prepare_attempt(job['baseBody'],job['fixedSelectedScope'],f'{frozen["artifactHash"]}-{index:03d}',
                                judgment_variant='RELATION_CHECKLIST')
         require(stage['stage']=='JUDGE' and stage['body']==body and stage['requestHash']==digest(body)
-            and stage['localAttempt']==ticket and 'error' not in stage
-            and stage['rawOutput']==parse_response(stage['providerResponse'],body['model']), 'stage provenance mismatch')
+            and stage['localAttempt']==ticket, 'stage provenance mismatch')
+        if 'error' in stage:
+            require(partial and unit['status']=='FAILED_STOP' and unit['error']==stage['error']
+                and 'output' not in unit and 'boundReceipt' not in stage, 'failed attempt must stay failed')
+            if 'estimatedCostUsd' in stage:
+                usage=stage['providerResponse']['usage']
+                known=(Decimal(usage['prompt_tokens'])*Decimal(str(frozen['config']['pricing']['inputUsdPerMillion']))
+                    +Decimal(usage['completion_tokens'])*Decimal(str(frozen['config']['pricing']['outputUsdPerMillion'])))/1000000
+                require(stage['usage']==usage and known==Decimal(stage['estimatedCostUsd']), 'failed known usage mismatch')
+                total_cost+=known
+            a=indexed[job['case'],job['arm'],job['repeat']]
+            require(not a['accepted'], 'provider failure cannot be accepted')
+            rows.append(dict(case=job['case'],repeat=job['repeat'],accepted=False,decision=None,
+                developmentExpectedDecision='REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS',
+                matched=None,semanticIssueMatched=None,failureCode='PROVIDER_FAILURE'))
+            continue
+        require(stage['rawOutput']==parse_response(stage['providerResponse'],body['model']), 'raw response mismatch')
         usage=stage['providerResponse'].get('usage',{})
         require(stage['usage']==usage and all(type(usage.get(k)) is int and usage[k]>=0
             for k in ('prompt_tokens','completion_tokens')), 'known exact usage required')
@@ -152,17 +185,20 @@ def score(frozen, report, audit):
         a=indexed[job['case'],job['arm'],job['repeat']]
         wanted='REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS'
         rows.append(dict(case=job['case'],repeat=job['repeat'],accepted=a['accepted'],decision=a.get('decision'),
-            developmentExpectedDecision=wanted,matched=None if mock else a['accepted'] and a.get('decision')==wanted,
+            developmentExpectedDecision=wanted,matched=None if mock or partial else a['accepted'] and a.get('decision')==wanted,
             semanticIssueMatched=None))
     require(Decimal(report['estimatedCostUsd'])== (Decimal(0) if mock else total_cost), 'total usage mismatch')
+    require(report['unknownCostAttempts']==sum('estimatedCostUsd' not in s for u in report['calls'] for s in u['stages']),
+            'unknown cost count mismatch')
     summary=[]
     for case in frozen['source']['cases']:
         group=[r for r in rows if r['case']==case['name']]
-        summary.append(dict(case=case['name'],observations=3,accepted=sum(r['accepted'] for r in group),
-            decisions=dict(Counter(r['decision'] for r in group)),matched=None if mock else sum(r['matched'] for r in group)))
+        summary.append(dict(case=case['name'],observations=len(group),accepted=sum(r['accepted'] for r in group),
+            decisions=dict(Counter(r['decision'] for r in group)),matched=None if mock or partial else sum(r['matched'] for r in group)))
     return dict(schemaVersion='fixed-scope-diagnostic-score-1',runKind=report['runKind'],frozenHash=frozen['artifactHash'],
         reportHash=digest(report),auditHash=digest(audit),summary=summary,results=rows,
-        developmentRegressionGateMet=None,diagnosticExpectedDecisionsMet=None if mock else all(r['matched'] for r in rows),
+        developmentRegressionGateMet=None,diagnosticExpectedDecisionsMet=None if mock or partial else all(r['matched'] for r in rows),
+        diagnosticComplete=not partial,unknownCostAttempts=report['unknownCostAttempts'],
         semanticQualityGateMet=None,runtimeUseAuthorized=False,fullPipelineReplayed=False,
         independentGoldApprovals=0,responsesModified=False,selectionReplayed=False)
 
@@ -170,7 +206,8 @@ def score(frozen, report, audit):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('frozen','report','audit','output'):p.add_argument('--'+name,required=True)
+    p.add_argument('--partial',action='store_true')
     a=p.parse_args()
-    result=score(read(a.frozen),read(a.report),read(a.audit))
+    result=score(read(a.frozen),read(a.report),read(a.audit),allow_partial=a.partial)
     write_private(Path(a.output).resolve(),result)
     print(dict(summary=result['summary'],runtimeUseAuthorized=False))
