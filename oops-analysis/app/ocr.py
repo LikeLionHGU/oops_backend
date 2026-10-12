@@ -241,5 +241,3 @@ def _adjust_interval(duration_sec: float, requested: float) -> float:
              "(%.0f분, 약 %d장)",
              requested, adjusted, duration_sec / 60, limit)
     return adjusted
-
-
