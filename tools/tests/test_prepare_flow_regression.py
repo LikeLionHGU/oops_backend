@@ -50,7 +50,7 @@ class FlowTests(unittest.TestCase):
         self.assertTrue(probe['diagnosticOnly'])
         self.assertEqual(next(c['payload']['raw'] for c in probe['cases'] if c['name']=='B'),payload['raw'])
         with tempfile.TemporaryDirectory() as tmp:
-            result=execute(probe,Path(tmp)/'datasets'/'run','fake',response)
+            result=execute(probe,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual(len(result['calls']),9)
         probe['cases'][0]['payload']['candidates'][0]['proposedEvidence'][0]['quote']='invented'
         with self.assertRaises(ValueError): validate(probe)
@@ -70,7 +70,7 @@ class FlowTests(unittest.TestCase):
             self.assertEqual(row['body']['max_completion_tokens'],8000)
             self.assertEqual(row['arm'],'CANDIDATE')
         with tempfile.TemporaryDirectory() as tmp:
-            result=execute(trial,Path(tmp)/'datasets'/'run','fake',response)
+            result=execute(trial,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual(len(result['calls']),27)
         self.assertEqual(result['trialDesign'],'CANDIDATE_ONLY_REGRESSION')
         trial['cases'][-1]['payload']['raw'][0]['text']='changed'
@@ -90,7 +90,7 @@ class FlowTests(unittest.TestCase):
             result['choices'][0]['message']['content']=json.dumps(parsed)
             return result
         with tempfile.TemporaryDirectory() as tmp:
-            result=execute(trial,Path(tmp)/'datasets'/'run','fake',legacy)
+            result=execute(trial,Path(tmp)/'datasets'/'run',None,legacy, simulate=True)
         for call in result['calls']:
             if call['arm']=='CANDIDATE':
                 self.assertEqual(call['status'],'PYTHON_WIRE_REJECTED')
@@ -129,7 +129,7 @@ class FlowTests(unittest.TestCase):
         for r in artifact['requests']:
             if r['arm']=='CANDIDATE': self.assertIn(NEW,r['body']['messages'][0]['content'])
         with tempfile.TemporaryDirectory() as tmp:
-            result=execute(artifact,Path(tmp)/'datasets'/'run','fake',response)
+            result=execute(artifact,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual(len(result['calls']),42)
         self.assertEqual(result['authorizationHash'],artifact['authorizationHash'])
         next_trial=prepare(*args,prior_reports=[result])
@@ -145,7 +145,7 @@ class FlowTests(unittest.TestCase):
                 if mode=='negative': artifact['remainingBudgetUsd']='1.1'
             artifact['artifactHash']=digest({k:v for k,v in artifact.items() if k!='artifactHash'})
             with tempfile.TemporaryDirectory() as tmp,self.assertRaises(ValueError):
-                execute(artifact,Path(tmp)/'datasets'/'run','fake',lambda *a:self.fail('paid call'))
+                execute(artifact,Path(tmp)/'datasets'/'run',None,lambda *a:self.fail('paid call'), simulate=True)
 
     def test_prompt_rejects_ambiguous_original_and_budget_cannot_be_reauthorized(self):
         for value in ('none',OLD+OLD):

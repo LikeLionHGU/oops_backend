@@ -190,13 +190,25 @@ def validate_artifact(artifact):
     return requests, config, budget
 
 
-def execute(artifact, output_dir, key, call=transport):
+def execute(artifact, output_dir, key, call=transport, *, simulate=False, authorization=None, ledger_path=None, env_file=None):
     requests, config, budget = validate_artifact(artifact)
     directory = Path(output_dir)
+    # Reserve all calls that fit the frozen call/money caps, not just calls that
+    # happen to finish before a failure. Unused/unknown reservations are not refunded.
+    total=Decimal(0)
+    for row in requests[:config['maxApiCalls']]:
+        cost=positive(row['reservedCostUsd'])
+        if total+cost>budget: break
+        total+=cost
+    from legacy_execution_guard import reserve_execution
+    reservation=reserve_execution(artifact, directory, total, authorization, simulate=simulate,
+            callback=call, default_transport=transport, key=key, ledger_path=ledger_path)
+    if not simulate and key is None: key=read_key(env_file, key_name='OPENAI_API_KEY')
     require("datasets" in directory.resolve().parts, "private output required")
     directory.parent.mkdir(parents=True, exist_ok=True)
     directory.mkdir(mode=0o700)
     write_private(directory / "frozen-execution.json", artifact)
+    if reservation is not None: write_private(directory / 'reservation.json', reservation)
     report = {"artifactHash": artifact["artifactHash"], "status": "PARTIAL", "apiAttempts": 0,
               "reservedCostUsd": "0", "estimatedCostUsd": "0", "actualBilledCostUsd": None,
               "qualityGateMet": None, "unknownCostAttempts": 0, "estimateCompleteForAttemptedCalls": True, "calls": []}
@@ -250,6 +262,10 @@ def execute(artifact, output_dir, key, call=transport):
         if result["status"] == "FAILED_STOP":
             break
     report.update({"reservedCostUsd": str(reserved), "estimatedCostUsd": str(estimated)})
+    report.update(runKind='MOCK_OFFLINE' if simulate else 'LIVE', apiCalls=0 if simulate else report['apiAttempts'],
+                  simulatedCalls=report['apiAttempts'] if simulate else 0,
+                  consumedReservationUsd='0' if simulate else str(total))
+    if simulate: report.update(mockTokenRateEquivalentUsd=report['estimatedCostUsd'], estimatedCostUsd='0')
     if len(report["calls"]) == len(requests) and all(r["status"] == "VALID_CONTRACT" for r in report["calls"]):
         report["status"] = "COMPLETED_CONTRACT_CHECK_ONLY"
     write_private(directory / "report.json", report)
@@ -270,6 +286,7 @@ def main():
     p.add_argument("--execute", action="store_true")
     p.add_argument("--output-dir")
     p.add_argument("--env-file")
+    p.add_argument("--authorization", help="separate verified approval bound to this artifact")
     args = parser.parse_args()
     if args.command == "setup":
         write_private(Path(args.output), configuration_template())
@@ -285,7 +302,8 @@ def main():
             print(json.dumps({"plannedCalls": len(artifact["requests"]), "executed": False}))
             return
         require(args.output_dir is not None, "new output directory required")
-        report = execute(artifact, args.output_dir, read_key(args.env_file, key_name="OPENAI_API_KEY"))
+        report = execute(artifact, args.output_dir, None, authorization=read(args.authorization) if args.authorization else None,
+                         env_file=args.env_file)
         print(json.dumps({"apiAttempts": report["apiAttempts"], "status": report["status"], "qualityGateMet": None}))
 
 

@@ -110,7 +110,8 @@ def checked_output(result, payload):
         result['evidenceValidationError'] = type(error).__name__
 
 
-def execute(artifact, directory, key, call=transport, prior_report=None):
+def execute(artifact, directory, key, call=transport, prior_report=None, *, simulate=False, authorization=None, ledger_path=None, env_file=None):
+    require(simulate or prior_report is None, 'live resume is disabled; consumed reservations are not reusable')
     require(artifact['artifactHash'] == digest({k: v for k, v in artifact.items() if k != 'artifactHash'}),
             'artifact changed')
     if artifact.get('schemaVersion') == 'recorded-flow-regression-1':
@@ -206,10 +207,17 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
         require(row['requestHash'] == digest(row['body']) and tokens == row['reservedInputTokensHeuristic']
                 and cost == positive(row['reservedCostUsd']), 'request/reservation changed')
     directory = Path(directory)
+    require(positive(artifact['reservedTotalCostUsd']) == sum(positive(r['reservedCostUsd']) for r in artifact['requests']),
+            'all legacy calls must be fully reserved')
+    from legacy_execution_guard import reserve_execution
+    reservation=reserve_execution(artifact, directory, artifact['reservedTotalCostUsd'], authorization,
+            simulate=simulate, callback=call, default_transport=transport, key=key, ledger_path=ledger_path)
+    if not simulate and key is None: key=read_key(env_file, key_name='OPENAI_API_KEY')
     require('datasets' in directory.resolve().parts, 'private output required')
     directory.parent.mkdir(parents=True, exist_ok=True)
     directory.mkdir(mode=0o700)
     write_private(directory / 'frozen.json', artifact)
+    if reservation is not None: write_private(directory / 'reservation.json', reservation)
     report = {'schemaVersion': 'recorded-candidate-results-1', 'artifactHash': artifact['artifactHash'],
               'status': 'PARTIAL', 'model': 'gpt-6-luna', 'cases': artifact['cases'], 'calls': [],
               'reservedCostUsd': artifact['reservedTotalCostUsd'], 'estimatedCostUsd': '0',
@@ -273,6 +281,10 @@ def execute(artifact, directory, key, call=transport, prior_report=None):
         print({'completed': i, 'case': row['case'], 'arm': row['arm'], 'status': result['status']}, flush=True)
         if 'error' in result: break
     report['estimatedCostUsd'] = str(estimated)
+    report.update(runKind='MOCK_OFFLINE' if simulate else 'LIVE', apiCalls=0 if simulate else len(report['calls']),
+                  simulatedCalls=len(report['calls']) if simulate else 0,
+                  consumedReservationUsd='0' if simulate else artifact['reservedTotalCostUsd'])
+    if simulate: report.update(mockTokenRateEquivalentUsd=report['estimatedCostUsd'], estimatedCostUsd='0')
     if len(report['calls']) == len(artifact['requests']) and not any('error' in c for c in report['calls']): report['status'] = 'COMPLETED_PENDING_JAVA_AUDIT'
     write_private(directory / 'report.json', report)
     return report
@@ -315,6 +327,7 @@ def main():
     p.add_argument('artifact'); p.add_argument('--execute', action='store_true')
     p.add_argument('--output-dir'); p.add_argument('--env-file')
     p.add_argument('--resume-report')
+    p.add_argument('--authorization', help='separate verified approval bound to this artifact')
     p = sub.add_parser('export-audit')
     p.add_argument('report'); p.add_argument('--output', required=True)
     args = parser.parse_args()
@@ -327,8 +340,9 @@ def main():
         write_private(Path(args.output), audit_export(read(args.report)))
     elif args.execute:
         require(args.output_dir is not None, 'new output directory required')
-        execute(read(args.artifact), args.output_dir, read_key(args.env_file, key_name='OPENAI_API_KEY'),
-                prior_report=read(args.resume_report) if args.resume_report else None)
+        execute(read(args.artifact), args.output_dir, None,
+                prior_report=read(args.resume_report) if args.resume_report else None,
+                authorization=read(args.authorization) if args.authorization else None, env_file=args.env_file)
     else:
         print({'plannedCalls': len(read(args.artifact)['requests']), 'executed': False})
 

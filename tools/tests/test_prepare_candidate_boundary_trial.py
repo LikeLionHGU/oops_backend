@@ -69,7 +69,7 @@ class BoundaryTrialTests(unittest.TestCase):
     def test_fake_execution_completes_and_preserves_normal_scope(self):
         artifact = tool.prepare(*inputs())
         with tempfile.TemporaryDirectory() as tmp:
-            report = recorded.execute(artifact,Path(tmp)/'datasets'/'run','fake',response)
+            report = recorded.execute(artifact,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual(12,len(report['calls']))
         self.assertTrue(report['normalControlsIncluded'])
         self.assertEqual('COMPLETED_PENDING_JAVA_AUDIT',report['status'])
@@ -81,7 +81,7 @@ class BoundaryTrialTests(unittest.TestCase):
         artifact['artifactHash'] = digest({k:v for k,v in artifact.items() if k != 'artifactHash'})
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
-                recorded.execute(artifact,Path(tmp)/'datasets'/'run','fake',lambda *_:self.fail('called'))
+                recorded.execute(artifact,Path(tmp)/'datasets'/'run',None,lambda *_:self.fail('called'), simulate=True)
 
     def test_rehashed_user_payload_change_rejected_before_provider(self):
         artifact = tool.prepare(*inputs())
@@ -93,4 +93,4 @@ class BoundaryTrialTests(unittest.TestCase):
         artifact['artifactHash'] = digest({k:v for k,v in artifact.items() if k != 'artifactHash'})
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
-                recorded.execute(artifact,Path(tmp)/'datasets'/'run','fake',lambda *_:self.fail('called'))
+                recorded.execute(artifact,Path(tmp)/'datasets'/'run',None,lambda *_:self.fail('called'), simulate=True)

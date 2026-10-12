@@ -26,7 +26,7 @@ class GuidanceTests(unittest.TestCase):
         self.assertLessEqual(Decimal(artifact['reservedTotalCostUsd']),Decimal('0.1340921'))
         self.assertEqual(artifact['repetitionsPerCondition'],1)
         with tempfile.TemporaryDirectory() as tmp:
-            report=execute(artifact,Path(tmp)/'datasets'/'run','fake',response)
+            report=execute(artifact,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual(len(report['calls']),28)
         for mode in ('JUDGMENT','TARGET'):
             self.assertEqual(sum(c['comparisonMode']==mode for c in report['calls']),14)
@@ -50,7 +50,7 @@ class GuidanceTests(unittest.TestCase):
                 row['body']['messages'][0]['content']+=TARGET
             artifact['artifactHash']=digest({k:v for k,v in artifact.items() if k!='artifactHash'})
             with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError):
-                execute(artifact,Path(tmp)/'datasets'/'run','fake',lambda *args:self.fail('paid call'))
+                execute(artifact,Path(tmp)/'datasets'/'run',None,lambda *args:self.fail('paid call'), simulate=True)
 
     def test_one_change_only_preserves_existing_policy_contract_and_reference(self):
         policy='original judgment\nJSON contract unchanged\n'

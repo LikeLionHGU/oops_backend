@@ -73,7 +73,7 @@ class RefinementTests(unittest.TestCase):
                 if correct: result['model'] = body['model']
                 return result
             with tempfile.TemporaryDirectory() as tmp:
-                report = window.execute(window.freeze(packet(), c), Path(tmp) / 'datasets' / 'run', 'fake', fake)
+                report = window.execute(window.freeze(packet(), c), Path(tmp) / 'datasets' / 'run', None, fake, simulate=True)
             self.assertEqual(4 if correct else 1, report['apiAttempts'])
             self.assertEqual('COMPLETED_CONTRACT_CHECK_ONLY' if correct else 'PARTIAL', report['status'])
     def test_only_four_pattern_fields_change_and_source_is_immutable(self):

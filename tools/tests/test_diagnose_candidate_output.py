@@ -54,7 +54,7 @@ class SemanticPacketTests(unittest.TestCase):
         from test_compare_recorded_candidates import response
         cls.frozen = prepare(*setup())
         with tempfile.TemporaryDirectory() as tmp:
-            cls.report = execute(cls.frozen,Path(tmp)/'datasets'/'run','fake',response)
+            cls.report = execute(cls.frozen,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         cls.audit = {'sourceReportSha256':digest(audit_export(cls.report)),
                      'results':[{'case':c['case'],'arm':c['arm'],'repeat':c['repeat'],
                                  'accepted':False,'failureCode':'TEST_STUB_ONLY'} for c in cls.report['calls']]}

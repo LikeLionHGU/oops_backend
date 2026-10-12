@@ -33,7 +33,7 @@ class BudgetTests(unittest.TestCase):
         for a,b in zip(artifact['requests'][::2],artifact['requests'][1::2]):
             self.assertEqual(a['body']['messages'][1],b['body']['messages'][1])
         with tempfile.TemporaryDirectory() as tmp:
-            result = execute(artifact,Path(tmp)/'datasets'/'run','fake',response)
+            result = execute(artifact,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual(len(result['calls']),42)
         self.assertEqual(result['status'],'COMPLETED_PENDING_JAVA_AUDIT')
         # Legacy fake responses are measured as rejected, never silently repaired.
@@ -51,4 +51,4 @@ class BudgetTests(unittest.TestCase):
             artifact['remainingBudgetUsd'] = '.5'
             artifact['artifactHash'] = digest({k:v for k,v in artifact.items() if k != 'artifactHash'})
             with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError):
-                execute(artifact,Path(tmp)/'datasets'/'run','fake',lambda *args:self.fail('paid call'))
+                execute(artifact,Path(tmp)/'datasets'/'run',None,lambda *args:self.fail('paid call'), simulate=True)

@@ -46,7 +46,7 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(a['body']['messages'][1],b['body']['messages'][1])
             self.assertNotEqual(a.get('outputAdapter'),b.get('outputAdapter'))
         with tempfile.TemporaryDirectory() as tmp:
-            result = executor.execute(artifact,Path(tmp)/'datasets'/'run','fake',response)
+            result = executor.execute(artifact,Path(tmp)/'datasets'/'run',None,response, simulate=True)
         self.assertEqual('COMPLETED_PENDING_JAVA_AUDIT',result['status'])
         self.assertEqual(42,len(result['calls']))
         self.assertTrue(all('wireOutput' in c for c in result['calls'] if c['arm'] == 'CANDIDATE'))
@@ -69,7 +69,7 @@ class PreparationTests(unittest.TestCase):
             result['choices'][0]['message']['content'] = json.dumps(output)
             return result
         with tempfile.TemporaryDirectory() as tmp:
-            result = executor.execute(artifact,Path(tmp)/'datasets'/'run','fake',legacy)
+            result = executor.execute(artifact,Path(tmp)/'datasets'/'run',None,legacy, simulate=True)
         candidate = [r for r in result['calls'] if r['arm'] == 'CANDIDATE']
         self.assertTrue(all(r['status'] == 'PYTHON_WIRE_REJECTED' for r in candidate))
         self.assertTrue(all('output' not in r for r in candidate))

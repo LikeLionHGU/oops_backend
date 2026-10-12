@@ -78,14 +78,14 @@ class ExecutionTests(unittest.TestCase):
             return response(key, body)
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / 'datasets' / 'run'
-            report = tool.execute(tool.freeze(packet(), config()), output, 'fake-key', fake)
+            report = tool.execute(tool.freeze(packet(), config()), output, None, fake, simulate=True)
             self.assertEqual(4, len(calls))
             self.assertEqual('COMPLETED_CONTRACT_CHECK_ONLY', report['status'])
             self.assertIsNone(report['qualityGateMet'])
             self.assertIsNone(report['actualBilledCostUsd'])
             self.assertTrue(all(c['targetIssueFound'] is None for c in report['calls']))
             self.assertEqual(0o600, (output / 'report.json').stat().st_mode & 0o777)
-            with self.assertRaises(FileExistsError): tool.execute(tool.freeze(packet(), config()), output, 'fake-key', fake)
+            with self.assertRaises(FileExistsError): tool.execute(tool.freeze(packet(), config()), output, None, fake, simulate=True)
             self.assertEqual(4, len(calls))
 
     def test_call_and_reserved_money_caps(self):
@@ -97,7 +97,7 @@ class ExecutionTests(unittest.TestCase):
                 calls.append(1)
                 return response(key, body)
             with tempfile.TemporaryDirectory() as tmp:
-                report = tool.execute(tool.freeze(packet(), c), Path(tmp) / 'datasets' / 'run', 'fake', fake)
+                report = tool.execute(tool.freeze(packet(), c), Path(tmp) / 'datasets' / 'run', None, fake, simulate=True)
                 self.assertEqual(expected, len(calls))
                 self.assertEqual('BUDGET_LIMIT', report['stopReason'])
 
@@ -108,7 +108,7 @@ class ExecutionTests(unittest.TestCase):
             raise RuntimeError('SECRET_DO_NOT_LOG')
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / 'datasets' / 'run'
-            report = tool.execute(tool.freeze(packet(), config()), output, 'fake', fake)
+            report = tool.execute(tool.freeze(packet(), config()), output, None, fake, simulate=True)
             self.assertEqual(1, len(calls))
             self.assertEqual(1, report['unknownCostAttempts'])
             self.assertFalse(report['estimateCompleteForAttemptedCalls'])
@@ -125,7 +125,7 @@ class ExecutionTests(unittest.TestCase):
                 if kind == 'json': value['choices'][0]['message']['content'] = '{'
                 return value
             with tempfile.TemporaryDirectory() as tmp:
-                report = tool.execute(tool.freeze(packet(), config()), Path(tmp) / 'datasets' / 'run', 'fake', fake)
+                report = tool.execute(tool.freeze(packet(), config()), Path(tmp) / 'datasets' / 'run', None, fake, simulate=True)
                 self.assertEqual(1, report['apiAttempts'])
                 self.assertEqual('FAILED_STOP', report['calls'][0]['status'])
 
@@ -134,7 +134,7 @@ class ExecutionTests(unittest.TestCase):
         artifact['requests'][0]['body']['model'] = 'changed'
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / 'datasets' / 'run'
-            with self.assertRaises(ValueError): tool.execute(artifact, output, 'fake', lambda *_: self.fail('called'))
+            with self.assertRaises(ValueError): tool.execute(artifact, output, None, lambda *_: self.fail('called'), simulate=True)
             self.assertFalse(output.exists())
 
     def test_packet_hash_verification(self):
@@ -154,7 +154,7 @@ class ExecutionTests(unittest.TestCase):
         artifact['artifactHash'] = digest({k: v for k, v in artifact.items() if k != 'artifactHash'})
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
-                tool.execute(artifact, Path(tmp) / 'datasets' / 'run', 'fake', lambda *_: self.fail('called'))
+                tool.execute(artifact, Path(tmp) / 'datasets' / 'run', None, lambda *_: self.fail('called'), simulate=True)
 
     def test_reservation_overrun_stops_next_call(self):
         def fake(key, body):
@@ -162,7 +162,7 @@ class ExecutionTests(unittest.TestCase):
             value['usage']['completion_tokens'] = 999999
             return value
         with tempfile.TemporaryDirectory() as tmp:
-            report = tool.execute(tool.freeze(packet(), config()), Path(tmp) / 'datasets' / 'run', 'fake', fake)
+            report = tool.execute(tool.freeze(packet(), config()), Path(tmp) / 'datasets' / 'run', None, fake, simulate=True)
             self.assertEqual(1, report['apiAttempts'])
             self.assertEqual('FAILED_STOP', report['calls'][0]['status'])
             self.assertIsNotNone(report['calls'][0]['estimatedCostUsd'])

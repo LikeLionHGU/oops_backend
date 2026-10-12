@@ -82,7 +82,7 @@ class RecordedComparisonTests(unittest.TestCase):
     def test_execution_and_audit_mapping_preserve_quotes(self):
         artifact = tool.prepare(*fixture())
         with tempfile.TemporaryDirectory() as root:
-            report = tool.execute(artifact, Path(root) / 'datasets' / 'run', 'fake', response)
+            report = tool.execute(artifact, Path(root) / 'datasets' / 'run', None, response, simulate=True)
         self.assertEqual('COMPLETED_PENDING_JAVA_AUDIT', report['status'])
         self.assertEqual(18, len(report['calls']))
         original = copy.deepcopy(report)
@@ -98,7 +98,7 @@ class RecordedComparisonTests(unittest.TestCase):
             attempts.append(body)
             raise TimeoutError()
         with tempfile.TemporaryDirectory() as root:
-            report = tool.execute(tool.prepare(*fixture()), Path(root) / 'datasets' / 'run', 'fake', failing)
+            report = tool.execute(tool.prepare(*fixture()), Path(root) / 'datasets' / 'run', None, failing, simulate=True)
         self.assertEqual(1, len(attempts))
         self.assertEqual(1, report['unknownCostAttempts'])
         self.assertEqual('PARTIAL', report['status'])
@@ -111,7 +111,7 @@ class RecordedComparisonTests(unittest.TestCase):
             result['choices'][0]['message']['content'] = json.dumps(output)
             return result
         with tempfile.TemporaryDirectory() as root:
-            report = tool.execute(tool.prepare(*fixture()), Path(root) / 'datasets' / 'run', 'fake', invalid)
+            report = tool.execute(tool.prepare(*fixture()), Path(root) / 'datasets' / 'run', None, invalid, simulate=True)
         self.assertEqual(18, len(report['calls']))
         self.assertTrue(all(c['status'] == 'PYTHON_EVIDENCE_REJECTED' for c in report['calls']))
         self.assertEqual(0, report['unknownCostAttempts'])
@@ -119,14 +119,14 @@ class RecordedComparisonTests(unittest.TestCase):
     def test_resume_only_calls_unfinished_suffix(self):
         artifact = tool.prepare(*fixture())
         with tempfile.TemporaryDirectory() as root:
-            report = tool.execute(artifact, Path(root) / 'datasets' / 'run', 'fake', response)
+            report = tool.execute(artifact, Path(root) / 'datasets' / 'run', None, response, simulate=True)
             report['calls'] = report['calls'][:10]
             report['status'] = 'PARTIAL'
             attempts = []
             def counted(key, body):
                 attempts.append(body)
                 return response(key, body)
-            resumed = tool.execute(artifact, Path(root) / 'datasets' / 'resume', 'fake', counted, report)
+            resumed = tool.execute(artifact, Path(root) / 'datasets' / 'resume', None, counted, report, simulate=True)
         self.assertEqual(8, len(attempts))
         self.assertEqual(18, len(resumed['calls']))
         self.assertEqual(tool.digest(report), resumed['resumedReportHash'])
@@ -137,7 +137,7 @@ class RecordedComparisonTests(unittest.TestCase):
             result['model'] = 'unexpected-model'
             return result
         with tempfile.TemporaryDirectory() as root:
-            report = tool.execute(tool.prepare(*fixture()), Path(root) / 'datasets' / 'run', 'fake', wrong_model)
+            report = tool.execute(tool.prepare(*fixture()), Path(root) / 'datasets' / 'run', None, wrong_model, simulate=True)
         self.assertEqual(1, len(report['calls']))
         self.assertEqual(0, report['unknownCostAttempts'])
         self.assertEqual('FAILED_STOP', report['calls'][0]['status'])
