@@ -13,7 +13,7 @@ from context_boundary_packet import validate as validate_packet
 from fixed_review_suite import digest, read, require
 from private_report_bundle import load
 from run_boundary_comparison import reserve, positive
-from run_issue_scoped_comparison import BOUND_SCHEMA
+from issue_scoped_recipes import BOUND_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
 PREVIEW = ROOT / 'datasets/controversy/evaluation/v1/b-context-boundary-review-20261012'

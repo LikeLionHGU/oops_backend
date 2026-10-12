@@ -16,7 +16,7 @@ from compare_recorded_candidates import audit_export
 from compare_review_prompts import digest as audit_digest
 from fixed_review_suite import digest, read, require, write_private
 from run_boundary_comparison import reserve
-from run_issue_scoped_comparison import BOUND_SCHEMA, BOUNDARY_FUNDING, bound_judgment_request
+from issue_scoped_recipes import BOUND_SCHEMA, BOUNDARY_FUNDING, bound_judgment_request
 
 SOURCE_HASHES = dict(
     frozen='9f7a89523d03cdb62397acfb2fa05705ada3d3d072f48a7cd562d6a4c27d89ea',

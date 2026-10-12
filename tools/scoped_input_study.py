@@ -10,12 +10,12 @@ from compare_recorded_candidates import audit_export
 from compare_review_prompts import digest as audit_digest
 from fixed_review_suite import digest,read,require,write_private
 from run_boundary_comparison import reserve
-from run_issue_scoped_comparison import BOUND_SCHEMA
+from issue_scoped_recipes import BOUND_SCHEMA
 from scoped_judgment_contract import judgment_request
 
 
 def prepare(source):
-    from run_issue_scoped_comparison import validate as validate_source
+    from issue_scoped_recipes import validate as validate_source
     require(source.get('fixedScopeStudy')=='JUDGE_ONLY_DIAGNOSTIC_1' and 'scopedInputStudy' not in source,
             'observed fixed-scope source required')
     validate_source(source)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fixed_review_suite import digest,read,require,write_private
 from run_boundary_comparison import reserve
-from run_issue_scoped_comparison import BOUND_SCHEMA
+from issue_scoped_recipes import BOUND_SCHEMA
 from scoped_judgment_contract import judgment_request
 from bound_review_contract import validate_receipt
 
@@ -23,7 +23,7 @@ FIRST_REPORT_HASH='1ebd67a04ed6b2c078701b531782a751e5a013e38fe1198cbcb92d3e7f1b9
 
 
 def prepare(source,authorization):
-    from run_issue_scoped_comparison import validate as validate_source
+    from issue_scoped_recipes import validate as validate_source
     require(source.get('fixedScopeStudy')=='JUDGE_ONLY_DIAGNOSTIC_1'
         and source['artifactHash']==SOURCE_HASH and authorization==AUTHORIZATION,
         'pinned same-scope source and separate approval required')
@@ -78,7 +78,7 @@ def build_full_seed(frozen,report,audit,scored):
 
 
 def prepare_full(first_source,seed,prior_report,authorization):
-    from run_issue_scoped_comparison import bound_judgment_request
+    from issue_scoped_recipes import bound_judgment_request
     if first_source.get('schemaVersion')=='fixed-source-budget-link-1':
         first_source=restore_source(first_source)
     first=prepare(first_source,authorization)

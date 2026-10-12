@@ -9,7 +9,7 @@ from compare_recorded_candidates import audit_export, checked_output
 from compare_review_prompts import digest as audit_digest
 from fixed_review_suite import digest, read, require, write_private
 from issue_scoped_review import judgment_request, review_packet, validate_scope
-from run_issue_scoped_comparison import validate,CATALOG_SCHEMA,BOUND_SCHEMA,bound_judgment_request
+from issue_scoped_recipes import validate,CATALOG_SCHEMA,BOUND_SCHEMA,bound_judgment_request
 
 
 def score(frozen, report, audit):

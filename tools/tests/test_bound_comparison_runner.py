@@ -52,7 +52,7 @@ class BoundRunnerTests(unittest.TestCase):
         original = frozen()
         funding = dict(BOUND_FUNDING, previousRemainingUsd=original['remainingBudgetUsd'])
         # Fixture bodies have different lengths/costs than private real inputs.
-        with patch('run_issue_scoped_comparison.BOUND_FUNDING', funding):
+        with patch('issue_scoped_recipes.BOUND_FUNDING', funding):
             a = fund_bound(original, funding); validate(a)
             self.assertEqual(a['jobs'], original['jobs'])
             self.assertTrue(a['executionEnabled'])

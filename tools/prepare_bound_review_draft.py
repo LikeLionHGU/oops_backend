@@ -9,7 +9,7 @@ from pathlib import Path
 
 from bound_review_contract import grounding, parse_response, prepare_attempt
 from fixed_review_suite import digest, read, require, write_private
-from run_issue_scoped_comparison import CATALOG_SCHEMA, validate
+from issue_scoped_recipes import CATALOG_SCHEMA, validate
 from span_catalog_review import hydrate
 
 

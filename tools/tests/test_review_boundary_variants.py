@@ -20,7 +20,7 @@ from score_issue_scoped_comparison import score
 
 def funded_fixture():
     old=frozen(); funding=dict(BOUND_FUNDING,previousRemainingUsd=old['remainingBudgetUsd'])
-    with patch('run_issue_scoped_comparison.BOUND_FUNDING',funding):
+    with patch('issue_scoped_recipes.BOUND_FUNDING',funding):
         a=fund_bound(old,funding)
     return a,funding
 
@@ -31,11 +31,11 @@ class BoundaryVariantTests(unittest.TestCase):
         meta = dict(schemaVersion=a['schemaVersion'],artifactHash=a['artifactHash'],
             additionalFundingHash=a['additionalFundingHash'],status='COMPLETED_PENDING_JAVA_AUDIT',
             reservedCostUsd=a['reservedCostUsd'],runKind='LIVE')
-        with patch('run_issue_scoped_comparison.BOUND_FUNDING',old_funding):
+        with patch('issue_scoped_recipes.BOUND_FUNDING',old_funding):
             targeted = prepare_target_selection(a,meta)
             previous = dict(meta,artifactHash=targeted['artifactHash'],reservedCostUsd=targeted['reservedCostUsd'])
             funding = dict(BOUNDARY_FUNDING,previousRemainingUsd=targeted['remainingBudgetUsd'])
-            with patch('run_issue_scoped_comparison.BOUNDARY_FUNDING',funding):
+            with patch('issue_scoped_recipes.BOUNDARY_FUNDING',funding):
                 new = prepare_full_boundary(a,meta,previous,funding);validate(new)
                 self.assertEqual(new['plannedUnits'],27); self.assertEqual(new['maxApiCalls'],54)
                 self.assertEqual(Decimal(new['remainingBudgetUsd']),Decimal('.50')-Decimal(new['reservedCostUsd']))
@@ -83,7 +83,7 @@ class BoundaryVariantTests(unittest.TestCase):
         a,funding=funded_fixture()
         meta=dict(schemaVersion=a['schemaVersion'],artifactHash=a['artifactHash'],additionalFundingHash=a['additionalFundingHash'],
                   status='COMPLETED_PENDING_JAVA_AUDIT',reservedCostUsd=a['reservedCostUsd'],runKind='LIVE')
-        with patch('run_issue_scoped_comparison.BOUND_FUNDING',funding):
+        with patch('issue_scoped_recipes.BOUND_FUNDING',funding):
             new=prepare_target_selection(a,meta);validate(new)
             self.assertEqual(new['plannedUnits'],6);self.assertEqual(new['maxApiCalls'],12)
             self.assertEqual({c['name'] for c in new['evaluatedCases']},{'B','C','N3','N4'})

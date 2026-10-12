@@ -13,7 +13,7 @@ from context_reselection import eligible, selection_request
 from fixed_review_suite import digest, read, require
 from private_report_bundle import load
 from run_boundary_comparison import reserve
-from run_issue_scoped_comparison import BOUND_SCHEMA, SCOPE_BYTES
+from issue_scoped_recipes import BOUND_SCHEMA, SCOPE_BYTES
 from scoped_judgment_contract import judgment_request
 
 ROOT = Path(__file__).resolve().parents[1]
