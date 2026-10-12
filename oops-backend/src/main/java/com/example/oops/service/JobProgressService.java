@@ -80,7 +80,7 @@ public class JobProgressService {
         } else progressPublisher.publish(job);
     }
 
-    public void publishCancellationAfterCommit(AnalysisJob job) { publishAfterCommit(job); }
+    public void publishStatusAfterCommit(AnalysisJob job) { publishAfterCommit(job); }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean fail(Long jobId, String errorCode, String message) {

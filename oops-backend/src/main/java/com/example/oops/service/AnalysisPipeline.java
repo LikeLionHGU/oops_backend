@@ -4,7 +4,6 @@ import com.example.oops.analyzer.AnalysisContext;
 import com.example.oops.analyzer.ContentAnalyzer;
 import com.example.oops.client.AnalysisServerClient;
 import com.example.oops.client.OpenAiClient;
-import com.example.oops.config.AsyncConfig;
 import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
@@ -14,7 +13,6 @@ import com.example.oops.screentext.ScreenTextService;
 import com.example.oops.transcript.TranscriptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -52,9 +50,9 @@ public class AnalysisPipeline {
     private final OpenAiClient openAiClient;
     private final AnalysisResultWriter resultWriter;
 
-    @Async(AsyncConfig.ANALYSIS_EXECUTOR)
+    /** Synchronous worker body; AnalysisDispatchService owns bounded async admission. */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void runAsync(Long jobId) {
+    public void run(Long jobId) {
         Long videoId;
         try {
             videoId = progressService.begin(jobId);

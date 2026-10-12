@@ -11,8 +11,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.core.task.TaskRejectedException;
 
 import com.example.oops.common.Ids;
@@ -29,7 +27,7 @@ public class AnalysisService {
 
     private final VideoService videoService;
     private final VideoRepository videoRepository;
-    private final AnalysisPipeline analysisPipeline;
+    private final AnalysisDispatchService dispatchService;
     private final JobProgressService progressService;
     private final AnalysisServerClient analysisServerClient;
     private final AnalysisJobRepository jobRepository;
@@ -69,21 +67,16 @@ public class AnalysisService {
         AnalysisJob job = jobRepository.save(new AnalysisJob(video));
         video.updateStatus(AnalysisStatus.PENDING);
 
-        // 커밋이 끝난 뒤에 비동기 스레드를 띄운다.
-        // 바로 호출하면 다른 스레드에서 아직 커밋 안 된 job 을 못 찾는 경우가 생긴다.
-        Long jobId = job.getId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    analysisPipeline.runAsync(jobId);
-                } catch (TaskRejectedException e) {
-                    log.warn("[pipeline] 분석 대기열이 가득 차 작업을 시작하지 못했습니다. jobId={}", jobId);
-                    progressService.fail(jobId, "ANALYSIS_QUEUE_FULL",
-                            "분석 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.");
-                }
-            }
-        });
+        // Reserve capacity while this transaction can still persist rejection.
+        // Accepted workers wait for commit before touching input or AI.
+        try {
+            dispatchService.submit(job.getId());
+        } catch (TaskRejectedException e) {
+            log.warn("[pipeline] 분석 실행 자리가 없어 작업을 시작하지 못했습니다. jobId={}", job.getId());
+            job.fail("ANALYSIS_QUEUE_FULL", "분석 대기열이 가득 찼거나 종료 중입니다. 잠시 후 다시 시도해 주세요.");
+            video.updateStatus(AnalysisStatus.FAILED);
+            progressService.publishStatusAfterCommit(job);
+        }
 
         return job;
     }
@@ -128,7 +121,7 @@ public class AnalysisService {
         }
         job.cancel();
         video.updateStatus(AnalysisStatus.CANCELLED);
-        progressService.publishCancellationAfterCommit(job);
+        progressService.publishStatusAfterCommit(job);
         log.info("[cancel] videoId={} jobId={} 취소", videoId, job.getJobKey());
         return AnalysisRetryResponse.from(job);
     }

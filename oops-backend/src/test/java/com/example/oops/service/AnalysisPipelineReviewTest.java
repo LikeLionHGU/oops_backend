@@ -28,7 +28,7 @@ class AnalysisPipelineReviewTest {
         var pipeline=new AnalysisPipeline(List.of(), new OopsProperties(null, null, null), transcript, screens,
                 mock(FindingFusionService.class), mock(GenreDetector.class), mock(AnalysisServerClient.class),
                 new ReportBuilder(), progress, videos, ai, writer);
-        pipeline.runAsync(11L);
+        pipeline.run(11L);
         verify(progress).fail(eq(11L), eq("ANALYSIS_FAILED"), anyString());
         verifyNoInteractions(ai, transcript, screens, writer);
     }
@@ -62,7 +62,7 @@ class AnalysisPipelineReviewTest {
                 new OopsProperties.Analysis(List.of()), null), transcripts, screens, fusion,
                 mock(GenreDetector.class), worker, new ReportBuilder(), progress, videos,
                 client, writer);
-        pipeline.runAsync(11L);
+        pipeline.run(11L);
         var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
         verify(writer).save(eq(11L), captor.capture());
         verify(screens).releaseFrames(video, 11L);
@@ -135,7 +135,7 @@ class AnalysisPipelineReviewTest {
             when(client.failureCount()).thenReturn(1);
             when(client.failureReason()).thenReturn(Optional.of("모의 API 실패"));
         }
-        pipeline.runAsync(11L);
+        pipeline.run(11L);
         var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
         verify(writer).save(eq(11L), captor.capture());
         var coverage = captor.getValue().coverage().stream().filter(c -> c.getStep() == CoverageStep.SPEECH_REVIEW).findFirst().orElseThrow();

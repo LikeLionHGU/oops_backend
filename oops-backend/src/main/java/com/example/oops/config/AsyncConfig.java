@@ -29,6 +29,8 @@ public class AsyncConfig {
         executor.setMaxPoolSize(properties.maxPoolSizeOrDefault());
         executor.setQueueCapacity(properties.queueCapacityOrDefault());
         executor.setThreadNamePrefix("analysis-");
+        // Admission waits for commit on the worker. CallerRuns would deadlock.
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
         executor.setTaskDecorator(task -> {
             Map<String, String> requestContext = MDC.getCopyOfContextMap();
             return () -> {

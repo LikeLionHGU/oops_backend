@@ -132,7 +132,7 @@ class CompletionTransactionTest {
     @Test void fullPipelinePersistsOptionalExpressionsSeparatelyFromContextCards() throws Exception {
         Long id=seedPipeline();
         var target=preparePipeline();
-        target.runAsync(id);
+        target.run(id);
         Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
         var report=analysis.getReport(videoId);
         assertThat(report.expressionDetectionStatus()).isEqualTo("SUCCESS");
@@ -150,7 +150,7 @@ class CompletionTransactionTest {
         });
         var target=preparePipeline();
         doThrow(new IllegalStateException("simulated result write failure")).when(reports).save(any());
-        target.runAsync(id);
+        target.run(id);
         verify(screens).releaseFrames(any(), eq(id));
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             var job=jobs.findById(id).orElseThrow();
@@ -190,7 +190,7 @@ class CompletionTransactionTest {
             assertThat(((com.zaxxer.hikari.HikariDataSource)dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
             return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "허버허버"));
         });
-        target.runAsync(id);
+        target.run(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
     }
     @Test void failedDuringExtractionDoesNotLaunchOcrOrSaveResults() throws Exception {
@@ -199,7 +199,7 @@ class CompletionTransactionTest {
             assertThat(progress.fail(id, "TEST_STOP", "fixture")).isTrue();
             return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "원문"));
         });
-        target.runAsync(id);
+        target.run(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.FAILED);
         verify(screens, never()).extract(any(), anyLong());
         Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
@@ -223,7 +223,7 @@ class CompletionTransactionTest {
             });
             return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "새 원문"));
         });
-        target.runAsync(id);
+        target.run(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.CANCELLED);
         assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
         assertThat(videos.findById(videoId).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.PENDING);
@@ -263,7 +263,7 @@ class CompletionTransactionTest {
                             1000, 3000, "화면 원문", "PRIMARY")))));
             return java.util.List.of(finding);
         });
-        target.runAsync(id);
+        target.run(id);
         Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             var rows=screenRows.findByVideoIdOrderByStartMsAsc(videoId);
@@ -291,8 +291,8 @@ class CompletionTransactionTest {
         });
         var executor=java.util.concurrent.Executors.newFixedThreadPool(2);
         try {
-            var a=executor.submit(() -> target.runAsync(first));
-            var b=executor.submit(() -> target.runAsync(second));
+            var a=executor.submit(() -> target.run(first));
+            var b=executor.submit(() -> target.run(second));
             assertThat(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
             assertThat(((com.zaxxer.hikari.HikariDataSource)dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
             // A status query is still possible while both external calls are blocked.
@@ -320,7 +320,7 @@ class CompletionTransactionTest {
             assertThat(findings.findByVideoId(video.getId())).hasSize(1);
             return java.util.List.of();
         });
-        target.runAsync(id);
+        target.run(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
     }
     @Test void cancellationUpdatesJobAndVideoAndCannotCancelCompletedJob() {
