@@ -68,6 +68,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'referenceSplitStudy' in artifact:
+        from run_reference_split_comparison import validate as validate_reference_split
+        validate_reference_split(artifact)
+        return
     if 'targetFocusTrial' in artifact:
         from run_target_focus_comparison import validate as validate_focus
         validate_focus(artifact)

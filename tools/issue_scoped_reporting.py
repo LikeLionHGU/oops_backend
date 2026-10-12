@@ -28,6 +28,9 @@ def build_report(artifact, results, *, stopped, is_bound, simulate):
     if 'targetFocusTrial' in artifact:
         report.update(targetFocusTrial=artifact['targetFocusTrial'], previewHash=artifact['previewHash'],
                       automaticSelectionEvaluated=False,fullRegressionReplayed=False)
+    if 'referenceSplitStudy' in artifact:
+        report.update(referenceSplitStudy=artifact['referenceSplitStudy'], previewHash=artifact['previewHash'],
+                      automaticSelectionEvaluated=False, fullRegressionReplayed=False)
     if 'contextReselectionStudy' in artifact:
         report.update(contextReselectionStudy=artifact['contextReselectionStudy'],
                       sourceReportHash=artifact['sourceReportHash'],
@@ -59,7 +62,7 @@ def save_reports(directory, artifact, report):
     exported = audit_export(json.loads(json.dumps(report, ensure_ascii=False)))
     exported.update(trialSchemaVersion=('recorded-flow-regression-1' if 'targetFocusTrial' in artifact
                     and artifact['repetitionsPerCondition'] >= 3 else
-                    'recorded-target-focus-1' if 'targetFocusTrial' in artifact else
+                    'recorded-target-focus-1' if 'targetFocusTrial' in artifact or 'referenceSplitStudy' in artifact else
                     'recorded-boundary-input-1' if 'boundaryInputStudy' in artifact else 'recorded-flow-regression-1'),
                     repetitionsPerCondition=artifact.get('repetitionsPerCondition', 3))
     if artifact.get('reportSerialization') == 'bundle-1':
