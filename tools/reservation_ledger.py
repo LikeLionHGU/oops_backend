@@ -63,6 +63,31 @@ def seed(path, authorization, entries):
                 (entry['artifactHash'],bid,str(amount(entry['reservedCostUsd'])),entry['reportHash'],'LEGACY_CONSUMED'))
 
 
+def initialize_fresh(path, authorization):
+    """Register a new explicit approval without inventing zero-cost history.
+
+    Reinitialization never resets spent reservations or pools an older budget.
+    """
+    require(authorization.get('schemaVersion') == 'fresh-experiment-budget-1'
+            and authorization.get('userAuthorized') is True
+            and isinstance(authorization.get('approvalId'), str) and authorization['approvalId'],
+            'explicit fresh approval required')
+    total=amount(authorization['additionalBudgetUsd']);bid=digest(authorization)
+    require(total>0,'positive approval required')
+    with transaction(path) as db:
+        db.execute('CREATE TABLE IF NOT EXISTS fresh_approvals (approval_id TEXT PRIMARY KEY, budget_id TEXT UNIQUE NOT NULL)')
+        approved=db.execute('SELECT budget_id FROM fresh_approvals WHERE approval_id=?',
+                            (authorization['approvalId'],)).fetchone()
+        require(approved is None or approved==(bid,), 'approval identity reused with different budget')
+        if approved is None:
+            db.execute('INSERT INTO fresh_approvals VALUES (?,?)',(authorization['approvalId'],bid))
+        row=db.execute('SELECT total,authorization_hash FROM budgets WHERE id=?',(bid,)).fetchone()
+        if row is not None:
+            require(row==(str(total),bid),'fresh budget changed')
+        else:
+            db.execute('INSERT INTO budgets VALUES (?,?,?)',(bid,str(total),bid))
+
+
 def claim(path, artifact, output):
     authorization=artifact.get('additionalFunding',artifact.get('authorization'))
     # Some funded follow-ups carry just the verified authorization plus its hash.

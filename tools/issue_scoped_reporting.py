@@ -31,6 +31,10 @@ def build_report(artifact, results, *, stopped, is_bound, simulate):
     if 'referenceSplitStudy' in artifact:
         report.update(referenceSplitStudy=artifact['referenceSplitStudy'], previewHash=artifact['previewHash'],
                       automaticSelectionEvaluated=False, fullRegressionReplayed=False)
+    if 'incidentReferenceStudy' in artifact:
+        report.update(incidentReferenceStudy=artifact['incidentReferenceStudy'],previewHash=artifact['previewHash'],
+                      automaticSelectionEvaluated=False,fullRegressionReplayed=False,
+                      evaluationScope='KNOWN_CASE_REPRODUCTION_NOT_GENERALIZATION')
     if 'contextReselectionStudy' in artifact:
         report.update(contextReselectionStudy=artifact['contextReselectionStudy'],
                       sourceReportHash=artifact['sourceReportHash'],

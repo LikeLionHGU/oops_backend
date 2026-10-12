@@ -68,6 +68,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'incidentReferenceStudy' in artifact:
+        from run_incident_reference_comparison import validate as validate_incident
+        validate_incident(artifact)
+        return
     if 'referenceSplitStudy' in artifact:
         from run_reference_split_comparison import validate as validate_reference_split
         validate_reference_split(artifact)

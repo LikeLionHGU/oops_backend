@@ -105,7 +105,8 @@ def score_validated(frozen, report, audit):
     """Only for validated frozen recipes; shared original-response/accounting checks."""
     count = frozen['plannedUnits']
     live = report['runKind'] == 'LIVE'
-    trial_key = 'referenceSplitStudy' if 'referenceSplitStudy' in frozen else 'targetFocusTrial'
+    trial_key = ('incidentReferenceStudy' if 'incidentReferenceStudy' in frozen else
+                 'referenceSplitStudy' if 'referenceSplitStudy' in frozen else 'targetFocusTrial')
     require(report['runKind'] in {'LIVE','MOCK_OFFLINE'} and len(report['calls']) == count
             and report['artifactHash'] == frozen['artifactHash'] and report['previewHash'] == frozen['previewHash']
             and report[trial_key] == frozen[trial_key]
