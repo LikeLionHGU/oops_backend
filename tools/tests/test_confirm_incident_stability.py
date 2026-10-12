@@ -49,3 +49,11 @@ def test_27_mock_units_preserve_control_text_and_cannot_award_success(tmp_path):
     with patch('confirm_incident_stability.prepare',return_value=f):
         r=execute(f,tmp_path/'datasets/run',None,mock_scoped,simulate=True)
         scored=score(f,r,audit(r));assert scored['mechanicalContractGateMet'] and not gate(scored)
+
+
+def test_paired_anchor_baseline_is_not_a_tenth_confirmation_case():
+    s,g,p=fixture();baseline=copy.deepcopy(s['source']['cases'][0])
+    baseline['name']='F2-original';s['source']['cases'].insert(0,baseline)
+    f=freeze(s,g,p,'.4')
+    assert len(f['source']['cases'])==9 and len(f['jobs'])==27
+    assert all(c['name']!='F2-original' for c in f['source']['cases'])

@@ -22,7 +22,7 @@ def freeze(source,scored,packet,available):
     require(set(templates)=={'F2','C','D','F4','F5'}, 'five primary conditions required')
     variants={j['judgmentVariant'] for j in templates.values()}
     require(len(variants)==1,'one unchanged candidate required')
-    variant=next(iter(variants));cases=copy.deepcopy(source['source']['cases'])
+    variant=next(iter(variants));cases=copy.deepcopy([c for c in source['source']['cases'] if c['name']!='F2-original'])
     specs=[('Control-Absence','F2','이 동네'),('Control-Review','C','이 메뉴'),
            ('Control-Nostalgia','D',None),('Control-SingleMenu','C','선택 가능한 메뉴')]
     inputs={u['unitId']:u['input'] for u in packet['model-inputs.json']['units']}
@@ -89,7 +89,8 @@ def prepare(available,parent_step):
     from private_report_bundle import load
     names={'TARGET_FOCUS_1':'faithful-target-focus-20261012',
            'MECHANISM_FOCUS_1':'faithful-mechanism-focus-20261012',
-           'COMPACT_REVIEW_1':'faithful-compact-review-20261012'}
+           'COMPACT_REVIEW_1':'faithful-compact-review-20261012',
+           'ANCHOR_FOCUS_1':'faithful-anchor-focus-20261012'}
     require(parent_step in names,'known confirmation parent required')
     p=ROOT/names[parent_step];source=read(p/'frozen.json')
     scored=score(source,load(p/'live-run/report-index.json'),read(p/'java-audit.json'))

@@ -74,7 +74,10 @@ def freeze(source,base,candidate,card,authorization):
 
 def prepare():return freeze(*source_inputs(),AUTHORIZATION)
 def validate(frozen):
-    if frozen.get('stabilizationStep')=='CONFIRMATION_1':
+    if frozen.get('stabilizationStep')=='ANCHOR_FOCUS_1':
+        from run_anchor_stability_comparison import validate as validate_anchor
+        validate_anchor(frozen)
+    elif frozen.get('stabilizationStep')=='CONFIRMATION_1':
         from confirm_incident_stability import validate as validate_confirmation
         validate_confirmation(frozen)
     elif 'stabilizationStep' in frozen:
