@@ -11,6 +11,13 @@ from prepare_flow_regression import OLD,prepare as flow_prepare
 from run_issue_scoped_comparison import AUTHORIZATION,execute,prepare,validate
 from test_prepare_flow_regression import inputs
 from issue_scoped_review import hydrate_selection
+from reservation_ledger import seed
+
+
+def ledger(tmp, artifact):
+    path=Path(tmp)/'datasets/reservations.sqlite3'
+    seed(path,artifact['authorization'],[dict(artifactHash='fixture-history',reservedCostUsd='0',reportHash='fixture')])
+    return path
 
 
 def source():
@@ -68,7 +75,7 @@ class ComparisonTests(unittest.TestCase):
         a=prepare(source(),AUTHORIZATION)
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'datasets'/'run'
-            r=execute(a,path,'fake',response)
+            r=execute(a,path,'fake',response,ledger_path=ledger(tmp,a))
             from compare_recorded_candidates import audit_export
             disk=json.loads((path/'report.json').read_text())
             expected=audit_export(disk)
@@ -93,7 +100,8 @@ class ComparisonTests(unittest.TestCase):
                 r['choices'][0]['message']['content']=json.dumps(o)
             return r
         with tempfile.TemporaryDirectory() as tmp:
-            r=execute(prepare(source(),AUTHORIZATION),Path(tmp)/'datasets'/'run','fake',bad_selection)
+            a=prepare(source(),AUTHORIZATION)
+            r=execute(a,Path(tmp)/'datasets'/'run','fake',bad_selection,ledger_path=ledger(tmp,a))
         self.assertEqual(r['apiCalls'],54)
         self.assertEqual(r['status'],'COMPLETED_PENDING_JAVA_AUDIT')
         self.assertTrue(all(c['status']=='SELECTION_REJECTED' and 'output' not in c
@@ -105,7 +113,7 @@ class ComparisonTests(unittest.TestCase):
         def timeout(*args,**kwargs): raise TimeoutError('fixture timeout')
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'datasets'/'run'
-            r=execute(a,path,'fake',timeout)
+            r=execute(a,path,'fake',timeout,ledger_path=ledger(tmp,a))
             with self.assertRaises(ValueError):execute(a,path,'fake',lambda *a,**k:self.fail('retry'))
         self.assertEqual(r['status'],'PARTIAL')
         self.assertGreaterEqual(r['unknownCostAttempts'],1)

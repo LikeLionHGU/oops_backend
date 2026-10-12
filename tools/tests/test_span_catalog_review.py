@@ -11,7 +11,7 @@ from issue_scoped_review import judgment_request as original_judgment
 from run_issue_scoped_comparison import AUTHORIZATION,execute,prepare,prepare_catalog,validate
 from span_catalog_review import catalog,hydrate,judgment_request,selection_request
 from test_issue_scoped_review import fixture
-from test_run_issue_scoped_comparison import source,response
+from test_run_issue_scoped_comparison import source,response,ledger
 
 
 def catalog_response(key,body,timeout=90):
@@ -77,7 +77,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(a['plannedUnits'],27);self.assertEqual(a['maxApiCalls'],54)
         self.assertTrue(all(j['arm']=='CANDIDATE' for j in a['jobs']))
         self.assertLessEqual(float(a['reservedCostUsd'])+float(prior['reservedCostUsd']),1)
-        with tempfile.TemporaryDirectory() as tmp:r=execute(a,Path(tmp)/'datasets'/'run','fake',catalog_response)
+        with tempfile.TemporaryDirectory() as tmp:r=execute(a,Path(tmp)/'datasets'/'run','fake',catalog_response,ledger_path=ledger(tmp,a))
         self.assertEqual(r['status'],'COMPLETED_PENDING_JAVA_AUDIT');self.assertEqual(r['apiCalls'],54)
         self.assertIsNone(r['qualityGateMet'])
         from compare_recorded_candidates import audit_export

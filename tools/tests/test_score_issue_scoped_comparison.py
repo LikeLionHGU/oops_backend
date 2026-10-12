@@ -10,13 +10,13 @@ from compare_recorded_candidates import audit_export
 from compare_review_prompts import digest as audit_digest
 from run_issue_scoped_comparison import AUTHORIZATION,execute,prepare
 from score_issue_scoped_comparison import score
-from test_run_issue_scoped_comparison import source,response
+from test_run_issue_scoped_comparison import source,response,ledger
 
 
 def fixture():
     frozen=prepare(source(),AUTHORIZATION)
     with tempfile.TemporaryDirectory() as tmp:
-        report=execute(frozen,Path(tmp)/'datasets'/'run','fake',response)
+        report=execute(frozen,Path(tmp)/'datasets'/'run','fake',response,ledger_path=ledger(tmp,frozen))
     exported=audit_export(json.loads(json.dumps(report)))
     exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
     audit=dict(sourceReportSha256=audit_digest(exported),results=[

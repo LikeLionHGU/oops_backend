@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prepare_bound_review_draft import build
 from run_issue_scoped_comparison import AUTHORIZATION, execute, prepare, prepare_catalog
 from fixed_review_suite import digest
-from test_run_issue_scoped_comparison import source
+from test_run_issue_scoped_comparison import source, ledger
 from test_span_catalog_review import catalog_response
 
 
@@ -21,7 +21,8 @@ class BoundDraftTests(unittest.TestCase):
                      reservedCostUsd=first['reservedCostUsd'])
         cls.frozen = prepare_catalog(s, AUTHORIZATION, prior)
         with tempfile.TemporaryDirectory() as tmp:
-            cls.report = execute(cls.frozen, Path(tmp)/'datasets'/'run', 'fake', catalog_response)
+            cls.report = execute(cls.frozen, Path(tmp)/'datasets'/'run', 'fake', catalog_response,
+                                 ledger_path=ledger(tmp,cls.frozen))
 
     def test_all_source_scopes_are_preserved_without_prior_judgment_regrading_or_api(self):
         before = copy.deepcopy((self.frozen, self.report))

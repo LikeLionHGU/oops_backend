@@ -294,7 +294,7 @@ def bound_judgment_request(artifact, base, scope, *, variant=None):
     return changed(base, scope, variant)
 
 
-def execute(artifact, directory, key, call=transport, *, simulate=False):
+def execute(artifact, directory, key, call=transport, *, simulate=False, ledger_path=None, env_file=None):
     validate(artifact)
     is_bound = artifact['schemaVersion'] == BOUND_SCHEMA
     if simulate:
@@ -303,8 +303,15 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
         require(artifact['executionEnabled'] and artifact['budgetSufficient'], 'insufficient remaining reservation; no calls')
     directory = Path(directory).resolve()
     require('datasets' in directory.parts and not directory.exists(), 'new private execution directory required')
+    reservation = None
+    if not simulate:
+        from reservation_ledger import claim, DEFAULT_PATH
+        reservation = claim(ledger_path or DEFAULT_PATH, artifact, directory)
+        # A caller may pass its own key, but the CLI loads it only after claiming.
+        if key is None: key = read_key(env_file,key_name='OPENAI_API_KEY')
     directory.mkdir(parents=True, mode=0o700)
     write_private(directory/'frozen.json', artifact)
+    if reservation is not None: write_private(directory/'reservation.json',reservation)
     stop = threading.Event()
     cases = {c['name']:c for c in artifact['source']['cases']}
     is_catalog=artifact['schemaVersion'] in {CATALOG_SCHEMA, BOUND_SCHEMA}
@@ -471,7 +478,7 @@ if __name__ == '__main__':
         validate(frozen)
         if frozen['schemaVersion'] == BOUND_SCHEMA:
             require(frozen['executionEnabled'], 'insufficient remaining reservation; key not loaded')
-        execute(frozen,Path(a.output),read_key(a.env_file,key_name='OPENAI_API_KEY'))
+        execute(frozen,Path(a.output),None,env_file=a.env_file)
     else:
         require(a.source and a.authorization and not a.frozen,'source and new authorization required')
         require(not (a.bound_catalog and a.prior_report), 'choose one follow-up version')
