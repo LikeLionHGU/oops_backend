@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fixed_review_suite import digest, read, require, write_private
-from run_boundary_comparison import reserve
+from experiment_costs import reserve
 
 OLD = '''먼저 proposedEvidence의 평가·대상·앞뒤 연결을 실제 raw에서 확인한 뒤 허용 문맥을 대조한다.
   anchor가 질문·대명사라는 이유만으로 그 문장만 떼어 PASS 처리하지 않는다.

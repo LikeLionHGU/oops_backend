@@ -14,6 +14,7 @@ import urllib.request
 from collect_youtube_comments import NoRedirect, read_key
 from fixed_review_suite import digest, read, require, write_private
 from review_boundary_pairs import comparison_draft
+from experiment_costs import positive, reserve
 
 
 def obj(properties):
@@ -65,24 +66,8 @@ def configuration_template():
             "baselinePrompt": None, "candidatePrompt": None, "referenceSnapshot": None}
 
 
-def positive(value):
-    require(type(value) in (int, float, str), "positive number required")
-    number = Decimal(str(value))
-    require(number.is_finite() and number > 0, "positive number required")
-    return number
-
-
 def reference_for(config, arm):
     return config.get('candidateReferenceSnapshot', config['referenceSnapshot']) if arm == 'CANDIDATE' else config['referenceSnapshot']
-
-
-def reserve(body, config):
-    # Conservative heuristic, not a provider tokenizer or a billing guarantee.
-    tokens = len(json.dumps(body, ensure_ascii=False).encode("utf-8")) + 2000
-    pricing = config["pricing"]
-    cost = (Decimal(tokens) * positive(pricing["inputUsdPerMillion"])
-            + Decimal(config["maxCompletionTokens"]) * positive(pricing["outputUsdPerMillion"])) / 1000000
-    return tokens, cost
 
 
 def freeze(packet, config):
