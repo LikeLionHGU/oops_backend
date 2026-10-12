@@ -66,6 +66,10 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
     elif judgment_variant == 'RELATION_CHECKLIST':
         from review_boundary_variants import judgment_request as variant_request
         body = variant_request(base, scope, judgment_variant)
+    elif judgment_variant == 'TARGET_FOCUS_CLOSED_SCOPE':
+        from scoped_judgment_contract import judgment_request as scoped_request
+        from target_focus_policy import focused_request
+        body = focused_request(scoped_request(base, scope, 'CLOSED_SCOPE'))
     else:
         require(judgment_variant in {'RAW_REMOVED','CLOSED_SCOPE'}, 'unsupported bound judgment variant')
         from scoped_judgment_contract import judgment_request as scoped_request
@@ -80,6 +84,11 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
         from scoped_judgment_contract import exposure_manifest
         result.update(schemaVersion='server-bound-review-draft-4',
             exposure=exposure_manifest(scope,payload,body,judgment_variant))
+    elif judgment_variant == 'TARGET_FOCUS_CLOSED_SCOPE':
+        from scoped_judgment_contract import exposure_manifest
+        from target_focus_policy import DELTA
+        result.update(schemaVersion='server-bound-review-draft-5',
+            targetFocusPolicyHash=digest(DELTA), exposure=exposure_manifest(scope,payload,body,'CLOSED_SCOPE'))
     result['attemptHash'] = digest(result)
     return result
 

@@ -68,6 +68,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'targetFocusTrial' in artifact:
+        from run_target_focus_comparison import validate as validate_focus
+        validate_focus(artifact)
+        return
     if 'boundaryInputStudy' in artifact:
         from run_context_boundary_comparison import validate as validate_boundary_input
         validate_boundary_input(artifact)
@@ -278,6 +282,9 @@ def bound_judgment_request(artifact, base, scope, *, variant=None):
     variant = variant or artifact.get('judgmentVariant')
     if variant is None:
         return original(base, scope)
+    if variant == 'TARGET_FOCUS_CLOSED_SCOPE':
+        from bound_review_contract import prepare_attempt
+        return prepare_attempt(base,scope,'request-preview',judgment_variant=variant)['requestBody']
     if variant in {'RAW_REMOVED','CLOSED_SCOPE'}:
         from scoped_judgment_contract import judgment_request as scoped_request
         return scoped_request(base,scope,variant)
