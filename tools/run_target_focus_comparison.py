@@ -81,34 +81,47 @@ def prepare(available):
 
 
 def validate(frozen):
+    if frozen.get('targetFocusTrial') == 'REGRESSION_THREE_REPEATS_1':
+        from run_target_focus_regression import validate as validate_regression
+        validate_regression(frozen)
+        return
     require(frozen == prepare(frozen['availableBudgetUsd']), 'target-focus frozen plan changed')
 
 
 def audit_input(report):
     exported = audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
-    exported.update(trialSchemaVersion='recorded-target-focus-1',repetitionsPerCondition=1)
+    repetitions = report.get('repetitionsPerCondition',1)
+    exported.update(trialSchemaVersion=('recorded-flow-regression-1' if repetitions >= 3 else 'recorded-target-focus-1'),
+                    repetitionsPerCondition=repetitions)
     return exported
 
 
 def score(frozen, report, audit):
     validate(frozen)
+    return score_validated(frozen, report, audit)
+
+
+def score_validated(frozen, report, audit):
+    """Only for validated frozen recipes; shared original-response/accounting checks."""
+    count = frozen['plannedUnits']
     live = report['runKind'] == 'LIVE'
-    require(report['runKind'] in {'LIVE','MOCK_OFFLINE'} and len(report['calls']) == 10
+    require(report['runKind'] in {'LIVE','MOCK_OFFLINE'} and len(report['calls']) == count
             and report['artifactHash'] == frozen['artifactHash'] and report['previewHash'] == PREVIEW_HASH
             and report['targetFocusTrial'] == frozen['targetFocusTrial']
             and report['cases'] == frozen['source']['cases']
             and report['authorizationHash'] == frozen['authorizationHash']
             and report['additionalFundingHash'] == frozen['additionalFundingHash']
             and report['reservedCostUsd'] == frozen['reservedCostUsd']
+            and report['repetitionsPerCondition'] == frozen['repetitionsPerCondition']
             and report['status'] == ('COMPLETED_PENDING_JAVA_AUDIT' if live else 'MOCK_COMPLETE_PENDING_JAVA_AUDIT')
             and audit['sourceReportSha256'] == audit_digest(audit_input(report)), 'complete associated report/audit required')
     indexed = {(a['case'],a['arm'],a['repeat']):a for a in audit['results']}
-    require(len(indexed) == len(audit['results']) == 10
-            and set(indexed) == {(j['case'],j['arm'],1) for j in frozen['jobs']}, 'unique complete Java audit required')
+    require(len(indexed) == len(audit['results']) == count
+            and set(indexed) == {(j['case'],j['arm'],j['repeat']) for j in frozen['jobs']}, 'unique complete Java audit required')
     cases = {c['name']:c for c in frozen['source']['cases']}
     rows, total = [], Decimal('0')
     for index, (job, unit) in enumerate(zip(frozen['jobs'],report['calls'],strict=True), 1):
-        require((unit['unitIndex'],unit['case'],unit['arm'],unit['repeat']) == (index,job['case'],job['arm'],1)
+        require((unit['unitIndex'],unit['case'],unit['arm'],unit['repeat']) == (index,job['case'],job['arm'],job['repeat'])
                 and unit['requestHash'] == job['baseRequestHash']
                 and len(unit['stages']) == 1 and 'error' not in unit, 'ordered complete one-stage responses required')
         stage = unit['stages'][0]; cap = job['stages'][0]
@@ -128,7 +141,7 @@ def score(frozen, report, audit):
                 and usage['prompt_tokens'] <= cap['reservedInputTokensHeuristic'] and usage['completion_tokens'] <= 8000,
                 'usage estimate/reservation changed')
         total += cost
-        a = indexed[job['case'],job['arm'],1]; assessment = None
+        a = indexed[job['case'],job['arm'],job['repeat']]; assessment = None
         try:
             receipt = receive(ticket,stage['body'],stage['providerResponse'])
         except (ValueError,KeyError,TypeError) as error:
@@ -140,12 +153,14 @@ def score(frozen, report, audit):
             assessment = copy.deepcopy(receipt['modelOutput']['assessment'])
             require(a.get('decision') == assessment['decision'], 'audited decision changed')
         wanted = cases[job['case']]['developmentExpectation']
-        rows.append(dict(case=job['case'],arm=job['arm'],accepted=a['accepted'],assessment=assessment,
+        row = dict(case=job['case'],arm=job['arm'],accepted=a['accepted'],assessment=assessment,
             expectedDecision=wanted, labelStatus='OWNER_DEVELOPMENT_ONLY',
             matchedDevelopmentDecision=(bool(a['accepted'] and assessment and assessment['decision'] == wanted) if live else None),
-            semanticIssueMatched=None))
-    require(report['unknownCostAttempts'] == 0 and report['apiCalls'] == (10 if live else 0)
-            and report['simulatedCalls'] == (0 if live else 10)
+            semanticIssueMatched=None)
+        if frozen['repetitionsPerCondition'] > 1: row['repeat'] = job['repeat']
+        rows.append(row)
+    require(report['unknownCostAttempts'] == 0 and report['apiCalls'] == (count if live else 0)
+            and report['simulatedCalls'] == (0 if live else count)
             and report['consumedReservationUsd'] == (frozen['reservedCostUsd'] if live else '0')
             and Decimal(report['estimatedCostUsd'] if live else report['mockTokenRateEquivalentUsd']) == total,
             'accounting changed')
