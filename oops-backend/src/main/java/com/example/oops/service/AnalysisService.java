@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.core.task.TaskRejectedException;
+import org.springframework.transaction.annotation.Propagation;
 
 import com.example.oops.common.Ids;
 
@@ -27,7 +27,7 @@ public class AnalysisService {
 
     private final VideoService videoService;
     private final VideoRepository videoRepository;
-    private final AnalysisDispatchService dispatchService;
+    private final AnalysisAdmissionService admissionService;
     private final JobProgressService progressService;
     private final AnalysisServerClient analysisServerClient;
     private final AnalysisJobRepository jobRepository;
@@ -39,63 +39,37 @@ public class AnalysisService {
     private final ExpressionService expressionService;
 
     /**
-     * 분석 실행 1회를 새로 만든다. 업로드 직후와 재시도 모두 이 메서드를 쓴다.
+     * 업로드 직후 분석 실행 1회를 새로 만든다. 재시도도 같은 admission 경로를 쓴다.
+     * 서버 상태 확인은 트랜잭션 밖에서, 실제 접수는 잠금 안에서 재확인한다.
      * 실제 작업은 커밋 후 백그라운드에서 돈다.
      *
      * 엔티티가 아니라 videoId 를 받는다.
-     * 업로드 트랜잭션에서 넘어온 Video 는 이미 detached 라서
-     * 그대로 상태를 바꾸면 DB 에 반영되지 않기 때문이다.
+     * 업로드는 먼저 커밋한다. 외부 트랜잭션에서 호출하면 NEVER로 거절하여
+     * 서버 응답을 기다리는 동안 호출자의 DB 연결까지 잡는 것을 방지한다.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NEVER)
     public AnalysisJob startAnalysis(Long videoId) {
-        // 비관적 락으로 영상 행을 잡아서 동시 요청을 직렬화한다.
-        // 두 요청이 동시에 들어와도 하나만 PENDING 상태를 만들 수 있다.
-        Video video = videoRepository.findByIdForUpdate(videoId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
+        admissionService.checkEligibility(videoId, false);
+        requireHealthyWorker();
+        return admissionService.admit(videoId, false);
+    }
 
-        boolean running = jobRepository.existsByVideoIdAndStatusIn(
-                video.getId(), List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING));
-        if (running) {
-            throw new BusinessException(ErrorCode.ANALYSIS_IN_PROGRESS);
-        }
-
+    private void requireHealthyWorker() {
         if (!analysisServerClient.isHealthy()) {
             throw new BusinessException(ErrorCode.WORKER_UNAVAILABLE,
                     "분석 서버에 연결할 수 없습니다. oops-analysis 가 실행 중인지 확인하세요.");
         }
-
-        AnalysisJob job = jobRepository.save(new AnalysisJob(video));
-        video.updateStatus(AnalysisStatus.PENDING);
-
-        // Reserve capacity while this transaction can still persist rejection.
-        // Accepted workers wait for commit before touching input or AI.
-        try {
-            dispatchService.submit(job.getId());
-        } catch (TaskRejectedException e) {
-            log.warn("[pipeline] 분석 실행 자리가 없어 작업을 시작하지 못했습니다. jobId={}", job.getId());
-            job.fail("ANALYSIS_QUEUE_FULL", "분석 대기열이 가득 찼거나 종료 중입니다. 잠시 후 다시 시도해 주세요.");
-            video.updateStatus(AnalysisStatus.FAILED);
-            progressService.publishStatusAfterCommit(job);
-        }
-
-        return job;
     }
 
     /**
      * 재시도. 명세 §7 — 실패하거나 취소한 작업만 다시 돌린다.
      * videoId 는 유지하고 새 jobId 를 발급한다.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NEVER)
     public AnalysisRetryResponse retry(Long videoId) {
-        AnalysisJob last = jobRepository.findTopByVideoIdOrderByIdDesc(videoId).orElse(null);
-        if (last != null && !last.getStatus().isRetryable()) {
-            throw new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE,
-                    "실패했거나 취소한 분석만 다시 시도할 수 있습니다. (현재 상태: %s)"
-                            .formatted(last.getStatus()));
-        }
-        // 후보 id 가 새로 발급되므로 검수도 처음부터다
-        videoService.getEntity(videoId).resetReview();
-        return AnalysisRetryResponse.from(startAnalysis(videoId));
+        admissionService.checkEligibility(videoId, true);
+        requireHealthyWorker();
+        return AnalysisRetryResponse.from(admissionService.admit(videoId, true));
     }
 
     /**
