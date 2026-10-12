@@ -114,7 +114,10 @@ public class AnalysisService {
      */
     @Transactional
     public AnalysisRetryResponse cancel(Long videoId) {
-        videoService.getEntity(videoId);
+        // The result writer now holds this lock only during the short final commit.
+        // Use the same Video -> Job order for cancellation and commit both states together.
+        Video video = videoRepository.findByIdForUpdate(videoId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
         // Load under lock, rather than locking an already-loaded potentially stale job.
         AnalysisJob job = jobRepository.findFirstByVideoIdOrderByIdDesc(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE, "아직 분석이 시작되지 않았습니다."));
@@ -124,10 +127,8 @@ public class AnalysisService {
                             .formatted(job.getStatus()));
         }
         job.cancel();
+        video.updateStatus(AnalysisStatus.CANCELLED);
         progressService.publishCancellationAfterCommit(job);
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCommit() { progressService.syncCancelledVideo(job.getId()); }
-        });
         log.info("[cancel] videoId={} jobId={} 취소", videoId, job.getJobKey());
         return AnalysisRetryResponse.from(job);
     }

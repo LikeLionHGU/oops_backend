@@ -2,11 +2,9 @@ package com.example.oops.transcript;
 
 import com.example.oops.domain.TranscriptSegment;
 import com.example.oops.domain.Video;
-import com.example.oops.repository.TranscriptSegmentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -17,12 +15,8 @@ public class TranscriptService {
 
     /** 스프링이 @Order 순서대로 주입해준다. */
     private final List<TranscriptProvider> providers;
-    private final TranscriptSegmentRepository segmentRepository;
-
-    @Transactional
-    public List<TranscriptSegment> extractAndSave(Video video) {
-        segmentRepository.deleteByVideoId(video.getId());
-
+    /** External extraction only; the result writer persists this snapshot atomically. */
+    public List<TranscriptSegment> extract(Video video) {
         TranscriptProvider provider = providers.stream()
                 .filter(p -> p.supports(video))
                 .findFirst()
@@ -34,6 +28,6 @@ public class TranscriptService {
                 .map(line -> new TranscriptSegment(video, line.startMs(), line.endMs(), line.text()))
                 .toList();
 
-        return segmentRepository.saveAll(segments);
+        return segments;
     }
 }

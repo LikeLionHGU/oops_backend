@@ -13,19 +13,23 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /** Uses a separate in-memory DB; no media/model calls. */
-@SpringBootTest
+@SpringBootTest(properties = {"spring.datasource.hikari.maximum-pool-size=1", "spring.datasource.hikari.minimum-idle=0"})
 @ActiveProfiles("test")
 class CompletionTransactionTest {
     @Autowired JobProgressService progress;
     @Autowired VideoRepository videos;
     @Autowired AnalysisJobRepository jobs;
-    @Autowired AnalysisReportRepository reports;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean AnalysisReportRepository reports;
     @Autowired PlatformTransactionManager manager;
     @Autowired AnalysisPipeline pipeline;
     @Autowired AnalysisService analysis;
     @Autowired ExpressionOccurrenceRepository expressions;
     @Autowired RiskFindingRepository findings;
     @Autowired VideoFrameRepository frames;
+    @Autowired TranscriptSegmentRepository segments;
+    @Autowired ScreenTextRepository screenRows;
+    @Autowired AnalysisResultWriter writer;
+    @Autowired javax.sql.DataSource dataSource;
     @MockitoBean ProgressPublisher publisher;
     @MockitoBean com.example.oops.transcript.TranscriptService transcript;
     @MockitoBean com.example.oops.screentext.ScreenTextService screens;
@@ -113,9 +117,9 @@ class CompletionTransactionTest {
         });
     }
     private AnalysisPipeline preparePipeline() throws Exception {
-        when(transcript.extractAndSave(any())).thenAnswer(call -> java.util.List.of(
+        when(transcript.extract(any())).thenAnswer(call -> java.util.List.of(
                 new TranscriptSegment(call.getArgument(0), 1000, 3000, "허버허버")));
-        when(screens.extractAndSave(any())).thenReturn(java.util.List.of());
+        when(screens.extract(any(), anyLong())).thenReturn(java.util.List.of());
         when(media.lastFailureDetail()).thenReturn(java.util.Optional.empty());
         when(fusion.fuse(anyList())).thenReturn(java.util.List.of());
         var usage=mock(com.example.oops.client.OpenAiClient.TokenUsage.class);
@@ -128,7 +132,7 @@ class CompletionTransactionTest {
     @Test void fullPipelinePersistsOptionalExpressionsSeparatelyFromContextCards() throws Exception {
         Long id=seedPipeline();
         var target=preparePipeline();
-        new TransactionTemplate(manager).executeWithoutResult(tx -> target.runAsync(id));
+        target.runAsync(id);
         Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
         var report=analysis.getReport(videoId);
         assertThat(report.expressionDetectionStatus()).isEqualTo("SUCCESS");
@@ -139,20 +143,154 @@ class CompletionTransactionTest {
     }
     @Test void fullPipelineRollbackMarksJobFailedAndDoesNotLeaveExpressionRows() throws Exception {
         Long id=seedPipeline();
-        var target=preparePipeline();
-        new TransactionTemplate(manager).executeWithoutResult(tx -> {
-            target.runAsync(id);
-            tx.setRollbackOnly(); // Simulates failure at the final result commit boundary.
+        Long videoId=new TransactionTemplate(manager).execute(tx -> {
+            var video=jobs.findById(id).orElseThrow().getVideo();
+            segments.save(new TranscriptSegment(video, 0, 1000, "이전 원문"));
+            return video.getId();
         });
+        var target=preparePipeline();
+        doThrow(new IllegalStateException("simulated result write failure")).when(reports).save(any());
+        target.runAsync(id);
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             var job=jobs.findById(id).orElseThrow();
             assertThat(job.getStatus()).isEqualTo(AnalysisStatus.FAILED);
             assertThat(job.getVideo().getStatus()).isEqualTo(AnalysisStatus.FAILED);
             assertThat(expressions.findByVideoIdOrderByStartMsAscStartOffsetAsc(job.getVideo().getId())).isEmpty();
             assertThat(reports.findByVideoId(job.getVideo().getId())).isEmpty();
+            assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
+        });
+        verify(publisher, never()).publish(argThat(j -> j.getStatus() == AnalysisStatus.COMPLETED));
+    }
+    @Test void databaseFlushFailureRollsBackReplacedRawRowsReportAndCompletion() {
+        Long id=seed();
+        var video=new TransactionTemplate(manager).execute(tx -> {
+            var v=jobs.findById(id).orElseThrow().getVideo();
+            segments.save(new TranscriptSegment(v, 0, 1000, "이전 원문"));
+            reports.save(new AnalysisReport(v, 0, 0, "이전 리포트"));
+            return v;
+        });
+        reset(publisher);
+        var result=new AnalysisResultWriter.Result(video, ContentGenre.GENERAL,
+                java.util.List.of(new TranscriptSegment(video, 1000, 3000, "허버허버")),
+                java.util.List.of(), java.util.List.of(), java.util.List.of(), 0, "x".repeat(3000),
+                "offline", java.util.List.of());
+        assertThatThrownBy(() -> writer.save(id, result)).isInstanceOf(RuntimeException.class);
+        assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.PROCESSING);
+        assertThat(reports.findByVideoId(video.getId()).orElseThrow().getSummary()).isEqualTo("이전 리포트");
+        assertThat(segments.findByVideoIdOrderByStartMsAsc(video.getId())).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
+        assertThat(expressions.findByVideoIdOrderByStartMsAscStartOffsetAsc(video.getId())).isEmpty();
+        verifyNoInteractions(publisher);
+    }
+    @Test void externalExtractionHasNoTransactionOrCheckedOutConnection() throws Exception {
+        Long id=seedPipeline();
+        var target=preparePipeline();
+        when(transcript.extract(any())).thenAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(((com.zaxxer.hikari.HikariDataSource)dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+            return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "허버허버"));
+        });
+        target.runAsync(id);
+        assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
+    }
+    @Test void cancelledThenRetriedRunCannotReplacePreviousRows() throws Exception {
+        Long id=seedPipeline();
+        var target=preparePipeline();
+        Long videoId=new TransactionTemplate(manager).execute(tx -> {
+            var video=jobs.findById(id).orElseThrow().getVideo();
+            segments.save(new TranscriptSegment(video, 0, 1000, "이전 원문"));
+            return video.getId();
+        });
+        when(transcript.extract(any())).thenAnswer(call -> {
+            analysis.cancel(videoId);
+            new TransactionTemplate(manager).executeWithoutResult(tx -> {
+                var video=videos.findByIdForUpdate(videoId).orElseThrow();
+                jobs.saveAndFlush(new AnalysisJob(video));
+                video.updateStatus(AnalysisStatus.PENDING);
+            });
+            return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "새 원문"));
+        });
+        target.runAsync(id);
+        assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.CANCELLED);
+        assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
+        assertThat(videos.findById(videoId).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.PENDING);
+    }
+    @Test void writerRejectsSupersededAndCancelledSnapshotBeforeDeletingAnything() {
+        Long id=seed();
+        var video=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo());
+        var result=new AnalysisResultWriter.Result(video, ContentGenre.GENERAL, java.util.List.of(),
+                java.util.List.of(), java.util.List.of(), java.util.List.of(), 0, "unused", "offline", java.util.List.of());
+        new TransactionTemplate(manager).executeWithoutResult(tx -> {
+            jobs.findById(id).orElseThrow().cancel();
+            segments.save(new TranscriptSegment(video, 0, 1000, "보존 원문"));
+        });
+        assertThat(writer.save(id, result)).isFalse();
+        new TransactionTemplate(manager).executeWithoutResult(tx -> jobs.saveAndFlush(new AnalysisJob(video)));
+        assertThat(writer.save(id, result)).isFalse();
+        assertThat(segments.findByVideoIdOrderByStartMsAsc(video.getId())).extracting(TranscriptSegment::getText).containsExactly("보존 원문");
+    }
+    @Test void savesUnsavedFrameReferencesAndPreservesSnapshotEvidenceIds() throws Exception {
+        Long id=seedPipeline();
+        var target=preparePipeline();
+        var retained=new java.util.concurrent.atomic.AtomicReference<ScreenText>();
+        when(screens.extract(any(), anyLong())).thenAnswer(call -> {
+            Video video=call.getArgument(0);
+            var frame=new VideoFrame(video, 1000, "frames/isolated/jobs/test.jpg", "image/jpeg");
+            var text=new ScreenText(video, 1000, 3000, "화면 원문", .9, frame);
+            retained.set(text);
+            return java.util.List.of(text);
+        });
+        when(fusion.fuse(anyList())).thenAnswer(call -> {
+            var text=retained.get();
+            var finding=RiskFinding.builder().video(text.getVideo()).frame(text.getFrame())
+                    .eventType(TimelineEventType.CAPTION).category(RiskCategory.PRIVACY).source(EvidenceSource.VISION)
+                    .score(.7).startMs(1000).endMs(3000).captionText(text.getText()).reason("offline test").build();
+            finding.recordValidatedSupports(java.util.List.of(new FindingSupport("ocr-index-0", "PRIVACY",
+                    java.util.List.of(new FindingSupport.Quote("ocr-index-0", TimelineEventType.CAPTION,
+                            1000, 3000, "화면 원문", "PRIMARY")))));
+            return java.util.List.of(finding);
+        });
+        target.runAsync(id);
+        Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
+        new TransactionTemplate(manager).executeWithoutResult(tx -> {
+            var rows=screenRows.findByVideoIdOrderByStartMsAsc(videoId);
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).getFrame().getId()).isNotNull();
+            assertThat(rows.get(0).getFrame().getStorageKey()).isEqualTo("frames/isolated/jobs/test.jpg");
+            var cards=findings.findByVideoId(videoId);
+            assertThat(cards).hasSize(1);
+            assertThat(cards.get(0).getFrame().getId()).isEqualTo(rows.get(0).getFrame().getId());
+            assertThat(cards.get(0).validatedSupports().get(0).quotes().get(0).segmentId()).isEqualTo("ocr-index-0");
+            assertThat(expressions.findByVideoIdOrderByStartMsAscStartOffsetAsc(videoId)).singleElement()
+                    .extracting(ExpressionOccurrence::getSegmentId).isEqualTo("stt-index-0");
         });
     }
-    @Test void removesOldFindingReferencesBeforeOcrFrameReplacement() throws Exception {
+    @Test void twoAnalysesCanWaitOnMediaWithOnlyOneDatabaseConnection() throws Exception {
+        Long first=seedPipeline(), second=seedPipeline();
+        var target=preparePipeline();
+        var entered=new java.util.concurrent.CountDownLatch(2);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        when(transcript.extract(any())).thenAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            entered.countDown();
+            assertThat(release.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            return java.util.List.of(new TranscriptSegment(call.getArgument(0), 1000, 3000, "허버허버"));
+        });
+        var executor=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var a=executor.submit(() -> target.runAsync(first));
+            var b=executor.submit(() -> target.runAsync(second));
+            assertThat(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(((com.zaxxer.hikari.HikariDataSource)dataSource).getHikariPoolMXBean().getActiveConnections()).isZero();
+            // A status query is still possible while both external calls are blocked.
+            assertThat(jobs.findById(first).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.PROCESSING);
+            release.countDown();
+            a.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            b.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(jobs.findById(first).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
+            assertThat(jobs.findById(second).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
+        } finally { release.countDown(); executor.shutdownNow(); }
+    }
+    @Test void retainsOldFindingsDuringExtractionAndReplacesFramesAtCommit() throws Exception {
         Long id=seedPipeline();
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             var video=jobs.findById(id).orElseThrow().getVideo();
@@ -162,13 +300,13 @@ class CompletionTransactionTest {
                     .startMs(1000).endMs(2000).captionText("test").reason("test").frame(frame).build());
         });
         var target=preparePipeline();
-        when(screens.extractAndSave(any())).thenAnswer(call -> {
+        when(screens.extract(any(), anyLong())).thenAnswer(call -> {
             Video video=call.getArgument(0);
-            assertThat(findings.findByVideoId(video.getId())).isEmpty();
-            frames.deleteByVideoId(video.getId()); frames.flush();
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(findings.findByVideoId(video.getId())).hasSize(1);
             return java.util.List.of();
         });
-        new TransactionTemplate(manager).executeWithoutResult(tx -> target.runAsync(id));
+        target.runAsync(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
     }
     @Test void cancellationUpdatesJobAndVideoAndCannotCancelCompletedJob() {

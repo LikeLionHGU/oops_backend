@@ -9,11 +9,6 @@ import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
 import com.example.oops.genre.GenreDetector;
-import com.example.oops.repository.AnalysisCoverageRepository;
-import com.example.oops.repository.AnalysisReportRepository;
-import com.example.oops.repository.ReviewActionRepository;
-import com.example.oops.repository.ReviewReferenceRepository;
-import com.example.oops.repository.RiskFindingRepository;
 import com.example.oops.repository.VideoRepository;
 import com.example.oops.screentext.ScreenTextService;
 import com.example.oops.transcript.TranscriptService;
@@ -22,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.interceptor.TransactionAspectSupport;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,8 +30,7 @@ import java.util.Map;
  *   STT → OCR → 분석기 실행 → 후보 병합/우선순위 → 리포트 집계
  *
  * 진행 상태 갱신은 JobProgressService 를 통해 별도 트랜잭션으로 나간다.
- * 이 메서드의 트랜잭션은 분석이 끝날 때까지 커밋되지 않으므로,
- * 여기서 직접 job 을 건드리면 프론트가 진행률을 실시간으로 볼 수 없다.
+ * 외부 계산에는 트랜잭션을 열지 않는다. 결과와 완료 상태는 ResultWriter가 함께 커밋한다.
  *
  * 분석기가 늘어나도 이 클래스는 그대로다.
  */
@@ -55,17 +49,11 @@ public class AnalysisPipeline {
     private final ReportBuilder reportBuilder;
     private final JobProgressService progressService;
     private final VideoRepository videoRepository;
-    private final RiskFindingRepository findingRepository;
-    private final AnalysisCoverageRepository coverageRepository;
-    private final ReviewActionRepository actionRepository;
     private final OpenAiClient openAiClient;
-    private final ReviewReferenceRepository referenceRepository;
-    private final AnalysisReportRepository reportRepository;
-    private final ReviewDiagnosticsStore diagnosticsStore;
-    private final ExpressionService expressionService;
+    private final AnalysisResultWriter resultWriter;
 
     @Async(AsyncConfig.ANALYSIS_EXECUTOR)
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void runAsync(Long jobId) {
         Long videoId;
         try {
@@ -90,19 +78,6 @@ public class AnalysisPipeline {
         // 어디가 느린지 짐작하지 않고 숫자로 확인하기 위해서다.
         Map<String, Long> elapsed = new LinkedHashMap<>();
         long pipelineStart = System.currentTimeMillis();
-        // Commit failures occur outside this method's catch. Resolve those jobs after rollback too.
-        String[] rollbackReason = {"분석 결과 저장에 실패했습니다."};
-        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
-            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
-                        @Override public void afterCompletion(int status) {
-                            if (status == STATUS_ROLLED_BACK) {
-                                try { progressService.fail(jobId, "ANALYSIS_FAILED", rollbackReason[0]); }
-                                catch (Exception e) { log.error("[pipeline] 롤백 후 상태 갱신 실패 jobId={}", jobId, e); }
-                            }
-                        }
-                    });
-        }
 
         try {
             openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
@@ -112,8 +87,7 @@ public class AnalysisPipeline {
             progressService.update(jobId, AnalysisStage.STT, 15);
             long mark = System.currentTimeMillis();
             Map<CoverageStep, AnalysisCoverage> coverage = new LinkedHashMap<>();
-            List<TranscriptSegment> transcript = transcriptService.extractAndSave(video);
-            expressionService.replace(video, transcript);
+            List<TranscriptSegment> transcript = transcriptService.extract(video);
             record(coverage, video, CoverageStep.EXPRESSION_SCAN,
                     transcript.isEmpty() ? AnalyzerStatus.FAILED : AnalyzerStatus.SUCCESS,
                     transcript.isEmpty() ? "대본이 없어 선택 표현을 확인하지 못했습니다." : null);
@@ -131,15 +105,10 @@ public class AnalysisPipeline {
             }
 
             // 2. 화면 → OCR 자막 (OCR 이 없으면 빈 리스트로 진행)
-            // Findings can reference old OCR frames. Delete dependants before replacing frames.
-            actionRepository.deleteByVideoId(videoId);
-            referenceRepository.deleteByVideoId(videoId);
-            findingRepository.deleteByVideoId(videoId);
-            findingRepository.flush();
             checkNotCancelled(jobId);
             progressService.update(jobId, AnalysisStage.OCR, 35);
             mark = System.currentTimeMillis();
-            List<ScreenText> screenTexts = screenTextService.extractAndSave(video);
+            List<ScreenText> screenTexts = screenTextService.extract(video, jobId);
             com.example.oops.screentext.ScreenTextClassifier.classify(screenTexts, transcript);
             checkNotCancelled(jobId);
             elapsed.put("OCR", System.currentTimeMillis() - mark);
@@ -190,8 +159,7 @@ public class AnalysisPipeline {
                         .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.");
                 log.error("[pipeline] videoId={} 분석 불가: {}", videoId, detail);
 
-                rollbackReason[0] = detail;
-                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                progressService.fail(jobId, "ANALYSIS_FAILED", detail);
                 return;
             }
 
@@ -275,8 +243,6 @@ public class AnalysisPipeline {
                 coverage.putIfAbsent(step, AnalysisCoverage.of(
                         video, step, AnalyzerStatus.NOT_ENABLED, "현재 사용하지 않는 기능입니다."));
             }
-            coverageRepository.deleteByVideoId(videoId);
-            coverageRepository.saveAll(coverage.values());
 
             // 4. 다중 후보 병합 + 우선순위
             checkNotCancelled(jobId);
@@ -289,7 +255,6 @@ public class AnalysisPipeline {
             if (durationMs != null) {
                 findings.forEach(f -> f.clampTo(durationMs));
             }
-            findingRepository.saveAll(findings);
 
             // 5. 리포트 집계
             progressService.update(jobId, AnalysisStage.FINALIZING, 92);
@@ -297,17 +262,8 @@ public class AnalysisPipeline {
             int riskScore = reportBuilder.calculateRiskScore(findings);
             String summary = reportBuilder.buildSummary(findings);
 
-            reportRepository.findByVideoId(videoId)
-                    .ifPresentOrElse(
-                            r -> r.update(riskScore, findings.size(), summary),
-                            () -> reportRepository.save(
-                                    new AnalysisReport(video, riskScore, findings.size(), summary))
-                    );
-
-            if (video.getGenre() == null) {
-                video.assignGenre(genre);
-            }
-            if (!progressService.complete(jobId)) {
+            if (!resultWriter.save(jobId, new AnalysisResultWriter.Result(video, genre, transcript, screenTexts,
+                    coverage.values(), findings, riskScore, summary, openAiClient.videoUsage().model(), diagnostics))) {
                 throw new AnalysisCancelledException();
             }
 
@@ -316,15 +272,12 @@ public class AnalysisPipeline {
                     jobId, videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 jobId={} — {}", jobId, formatElapsed(elapsed, total));
             logCost(videoId, video.getDurationSec());
-            diagnosticsStore.recordAfterCommit(videoId, jobId, openAiClient.videoUsage().model(), diagnostics);
 
         } catch (AnalysisCancelledException e) {
-            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             log.info("[pipeline] 취소된 작업 결과를 저장하지 않습니다. jobId={}", jobId);
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
-            rollbackReason[0] = "분석 처리 또는 결과 저장에 실패했습니다.";
-            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            progressService.fail(jobId, "ANALYSIS_FAILED", "분석 처리 또는 결과 저장에 실패했습니다.");
         } finally {
             openAiClient.endVideo();
         }

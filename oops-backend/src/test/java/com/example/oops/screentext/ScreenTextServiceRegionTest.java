@@ -7,32 +7,31 @@ import com.example.oops.storage.StorageService;
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 class ScreenTextServiceRegionTest {
     @Test
-    void persistsSeparateRegionsRawWhitespaceAndMetadataAndReusesFrame() {
+    void stagesSeparateRegionsRawWhitespaceAndMetadataAndReusesFrameWithoutWrites() {
         var client = mock(AnalysisServerClient.class);
         var repo = mock(ScreenTextRepository.class);
         var frames = mock(VideoFrameRepository.class);
         var storage = mock(StorageService.class);
-        var service = new ScreenTextService(client, repo, frames, storage);
+        var service = new ScreenTextService(client, storage);
         var video = Video.builder().filename("test.mp4").build();
         var first = new AnalysisServerClient.OcrResponse.Item(0, 1000, " 자막 ", 0.9, "/test/frame.jpg",
                 0.1, 0.8, 0.5, 0.05, "region-0", 1, 3);
         var second = new AnalysisServerClient.OcrResponse.Item(0, 1000, "메뉴 9000원", 0.9, "/test/frame.jpg",
                 0.2, 0.2, 0.2, 0.1, "region-1", 1, 0);
-        when(client.ocr(video)).thenReturn(Optional.of(new AnalysisServerClient.OcrResponse(List.of(first, second), "regions-v1")));
+        when(storage.frameDir(video.getId())).thenReturn(java.nio.file.Path.of("/test/frames/1"));
+        when(client.ocr(video, "/test/frames/1/jobs/11")).thenReturn(Optional.of(new AnalysisServerClient.OcrResponse(List.of(first, second), "regions-v1")));
         when(storage.toStorageKey(java.nio.file.Path.of("/test/frame.jpg"))).thenReturn("frames/test.jpg");
-        when(frames.save(org.mockito.ArgumentMatchers.any())).thenAnswer(i -> i.getArgument(0));
-        when(repo.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
-        var texts = service.extractAndSave(video);
+        var texts = service.extract(video, 11L);
         assertThat(texts).extracting(ScreenText::getText).containsExactly(" 자막 ", "메뉴 9000원");
         assertThat(texts.get(0).getRegion().getBoxY()).isEqualTo(0.8);
         assertThat(texts.get(0).getRegion().getSlotTextChanges()).isEqualTo(3);
         assertThat(texts.get(0).getFrame()).isSameAs(texts.get(1).getFrame());
-        verify(frames, times(1)).save(org.mockito.ArgumentMatchers.any());
+        verifyNoInteractions(frames, repo);
+        verify(storage, never()).deleteFrames(any());
     }
 
     @Test

@@ -125,11 +125,14 @@ public class AnalysisServerClient {
     }
 
     public Optional<OcrResponse> ocr(Video video) {
+        return ocr(video, storageService.frameDir(video.getId()).toString());
+    }
+
+    public Optional<OcrResponse> ocr(Video video, String frameDir) {
         // An STT failure is not an OCR failure.
         lastFailure.remove();
         ocrAssessment.remove();
         try {
-            String frameDir = storageService.frameDir(video.getId()).toString();
             OcrResponse response = restClient.post()
                     .uri("/ocr")
                     .body(toRequest(video, properties.ocrIntervalOrDefault(), frameDir))

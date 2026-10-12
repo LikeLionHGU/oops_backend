@@ -20,29 +20,26 @@ import static org.mockito.Mockito.*;
 class AnalysisPipelineReviewTest {
     @ParameterizedTest
     @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,false"})
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void preservesWorkerOcrFailureStateEvenWithRetainedText(AnalyzerStatus state, boolean hasText) {
         var client = mock(OpenAiClient.class);
         var transcripts = mock(TranscriptService.class);
         var screens = mock(ScreenTextService.class);
         var progress = mock(JobProgressService.class);
         var videos = mock(VideoRepository.class);
-        var coverage = mock(AnalysisCoverageRepository.class);
+        var writer = mock(AnalysisResultWriter.class);
+        when(writer.save(eq(11L), any())).thenReturn(true);
         var worker = mock(AnalysisServerClient.class);
         var fusion = mock(FindingFusionService.class);
-        var reports = mock(AnalysisReportRepository.class);
         var video = Video.builder().filename("offline.mp4").build();
         video.assignGenre(ContentGenre.GENERAL);
         when(progress.begin(11L)).thenReturn(1L);
-        when(progress.complete(11L)).thenReturn(true);
         when(videos.findById(1L)).thenReturn(Optional.of(video));
-        when(transcripts.extractAndSave(video)).thenReturn(List.of(new TranscriptSegment(video, 0, 1000, "정상 발언")));
-        when(screens.extractAndSave(video)).thenReturn(hasText
+        when(transcripts.extract(video)).thenReturn(List.of(new TranscriptSegment(video, 0, 1000, "정상 발언")));
+        when(screens.extract(video, 11L)).thenReturn(hasText
                 ? List.of(new ScreenText(video, 0, 1000, "화면 문구", 0.9, null)) : List.of());
         when(worker.lastOcrAssessment()).thenReturn(Optional.of(new AnalysisServerClient.OcrAssessment(state,
                 state == AnalyzerStatus.SUCCESS ? null : "프레임 처리 실패 또는 일부 누락")));
         when(fusion.fuse(anyList())).thenReturn(List.of());
-        when(reports.findByVideoId(1L)).thenReturn(Optional.empty());
         var usage = mock(OpenAiClient.TokenUsage.class);
         when(usage.pricing()).thenReturn(mock(OpenAiProperties.Pricing.class));
         when(usage.isEmpty()).thenReturn(true);
@@ -50,15 +47,14 @@ class AnalysisPipelineReviewTest {
         var pipeline = new AnalysisPipeline(List.of(), new OopsProperties(null,
                 new OopsProperties.Analysis(List.of()), null), transcripts, screens, fusion,
                 mock(GenreDetector.class), worker, new ReportBuilder(), progress, videos,
-                mock(RiskFindingRepository.class), coverage, mock(ReviewActionRepository.class), client,
-                mock(ReviewReferenceRepository.class), reports, mock(ReviewDiagnosticsStore.class), mock(ExpressionService.class));
+                client, writer);
         pipeline.runAsync(11L);
-        ArgumentCaptor<Collection<AnalysisCoverage>> captor = ArgumentCaptor.forClass((Class) Collection.class);
-        verify(coverage).saveAll(captor.capture());
-        var result = captor.getValue().stream().filter(c -> c.getStep() == CoverageStep.OCR).findFirst().orElseThrow();
+        var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
+        verify(writer).save(eq(11L), captor.capture());
+        var result = captor.getValue().coverage().stream().filter(c -> c.getStep() == CoverageStep.OCR).findFirst().orElseThrow();
         assertThat(result.getStatus()).isEqualTo(state);
         if (state != AnalyzerStatus.SUCCESS) assertThat(result.getMessage()).contains("프레임 처리");
-        verify(progress).complete(11L); // Speech can still produce a completed report with explicit OCR warnings.
+        verify(progress, never()).fail(anyLong(), anyString(), anyString());
     }
     @org.junit.jupiter.api.Test
     void retainsIndependentWarningsAtTheSameSeverity() {
@@ -76,7 +72,6 @@ class AnalysisPipelineReviewTest {
     }
     @ParameterizedTest
     @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,true"})
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void propagatesValidatedCoverageAndDrainsIntermediateResults(AnalyzerStatus expected, boolean simulateApiFailure) {
         var client = mock(OpenAiClient.class);
         var analyzer = new SpeechReviewAnalyzer(client, false); // segment-scope coverage propagation
@@ -85,16 +80,12 @@ class AnalysisPipelineReviewTest {
         var fusion = mock(FindingFusionService.class);
         var progress = mock(JobProgressService.class);
         var videoRepo = mock(VideoRepository.class);
-        var findingsRepo = mock(RiskFindingRepository.class);
-        var coverageRepo = mock(AnalysisCoverageRepository.class);
         var analysisServer = mock(AnalysisServerClient.class);
-        var reportRepo = mock(AnalysisReportRepository.class);
-        var diagnosticsStore = mock(ReviewDiagnosticsStore.class);
+        var writer = mock(AnalysisResultWriter.class);
+        when(writer.save(eq(11L), any())).thenReturn(true);
         var props = new OopsProperties(null, new OopsProperties.Analysis(List.of("speech-review")), null);
         var pipeline = new AnalysisPipeline(List.of(analyzer), props, transcripts, screens, fusion,
-                mock(GenreDetector.class), analysisServer, new ReportBuilder(), progress, videoRepo, findingsRepo,
-                coverageRepo, mock(ReviewActionRepository.class), client, mock(ReviewReferenceRepository.class), reportRepo,
-                diagnosticsStore, mock(ExpressionService.class));
+                mock(GenreDetector.class), analysisServer, new ReportBuilder(), progress, videoRepo, client, writer);
         var video = Video.builder().filename("offline.mp4").build();
         video.assignGenre(ContentGenre.GENERAL);
         var input = expected == AnalyzerStatus.PARTIAL && simulateApiFailure
@@ -102,13 +93,11 @@ class AnalysisPipelineReviewTest {
                 .mapToObj(i -> new TranscriptSegment(video, i * 1_000, i * 1_000 + 500, "일반적인 상황 설명" + i)).toList()
                 : List.of(new TranscriptSegment(video, 0, 1_000, "일반적인 상황 설명"));
         when(progress.begin(11L)).thenReturn(1L);
-        when(progress.complete(11L)).thenReturn(true);
         when(videoRepo.findById(1L)).thenReturn(Optional.of(video));
-        when(transcripts.extractAndSave(video)).thenReturn(input);
-        when(screens.extractAndSave(video)).thenReturn(List.of());
+        when(transcripts.extract(video)).thenReturn(input);
+        when(screens.extract(video, 11L)).thenReturn(List.of());
         when(analysisServer.lastFailureDetail()).thenReturn(Optional.empty());
         when(fusion.fuse(anyList())).thenAnswer(i -> i.getArgument(0));
-        when(reportRepo.findByVideoId(1L)).thenReturn(Optional.empty());
         when(client.isEnabled()).thenReturn(true);
         var usage = mock(OpenAiClient.TokenUsage.class);
         when(usage.pricing()).thenReturn(mock(OpenAiProperties.Pricing.class));
@@ -132,11 +121,11 @@ class AnalysisPipelineReviewTest {
             when(client.failureReason()).thenReturn(Optional.of("모의 API 실패"));
         }
         pipeline.runAsync(11L);
-        ArgumentCaptor<Collection<AnalysisCoverage>> captor = ArgumentCaptor.forClass((Class) Collection.class);
-        verify(coverageRepo).saveAll(captor.capture());
-        var coverage = captor.getValue().stream().filter(c -> c.getStep() == CoverageStep.SPEECH_REVIEW).findFirst().orElseThrow();
+        var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
+        verify(writer).save(eq(11L), captor.capture());
+        var coverage = captor.getValue().coverage().stream().filter(c -> c.getStep() == CoverageStep.SPEECH_REVIEW).findFirst().orElseThrow();
         for (var optional : List.of(CoverageStep.FACT_ENTITY, CoverageStep.CONTEXT_REFERENCE)) {
-            var disabled = captor.getValue().stream().filter(c -> c.getStep() == optional).findFirst().orElseThrow();
+            var disabled = captor.getValue().coverage().stream().filter(c -> c.getStep() == optional).findFirst().orElseThrow();
             assertThat(disabled.getStatus()).isEqualTo(AnalyzerStatus.NOT_ENABLED);
             assertThat(disabled.needsWarning()).isFalse();
         }
@@ -145,8 +134,6 @@ class AnalysisPipelineReviewTest {
         if (expected != AnalyzerStatus.SUCCESS) assertThat(coverage.getMessage()).isNotBlank();
         assertThat(analyzer.consumeReviewResult(new AnalysisContext(video, null, input, null))).isEmpty();
         verify(progress, never()).fail(anyLong(), anyString(), anyString());
-        verify(progress).complete(11L);
-        verify(diagnosticsStore).recordAfterCommit(eq(1L), eq(11L), any(), argThat(traces ->
-                traces.size() == 1 && traces.get(0).status() == expected));
+        assertThat(captor.getValue().diagnostics()).singleElement().extracting(ReviewDiagnostics::status).isEqualTo(expected);
     }
 }
