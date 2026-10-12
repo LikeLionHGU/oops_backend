@@ -77,6 +77,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'contextReselectionStudy' in artifact:
+        from prepare_context_reselection import validate as validate_reselection
+        validate_reselection(artifact)
+        return
     if 'scopedPaidComparison' in artifact:
         from compare_scoped_inputs import validate as validate_paid_scoped
         validate_paid_scoped(artifact)
@@ -357,6 +361,14 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
                         scope = hydrate_scope(raw, payload)
                         require(len(json.dumps(scope,ensure_ascii=False).encode()) <= SCOPE_BYTES, 'scope envelope exceeded')
                         result['selectedScope'] = scope
+                        if 'contextReselectionStudy' in artifact:
+                            previous = job['previousAttempt']['selectedScope']
+                            result['contextTransition'] = dict(
+                                priorReceiptHash=job['previousReceipt']['receiptHash'],
+                                previousScopeHash=previous['scopeHash'], newScopeHash=scope['scopeHash'],
+                                previousEvidence=copy.deepcopy(previous['evidence']),
+                                newEvidence=copy.deepcopy(scope['evidence']), reselectionsUsed=1,
+                                semanticQualityGateMet=None, runtimeUseAuthorized=False)
                     except (ValueError, KeyError, TypeError) as error:
                         result.update(status='SELECTION_REJECTED', wireAdaptationError='SELECTION_CONTRACT_REJECTED',
                                       contractError=str(error))
@@ -406,7 +418,12 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
                   estimatedCostUsd=str(sum(Decimal(s.get('estimatedCostUsd','0')) for s in stages)),
                   unknownCostAttempts=sum('estimatedCostUsd' not in s for s in stages),
                   actualBilledCostUsd=None, qualityGateMet=None, fullPipelineReplayed=False,
-                  normalControlsIncluded=True, repetitionsPerCondition=3)
+                  normalControlsIncluded=artifact.get('normalControlsIncluded', True), repetitionsPerCondition=3)
+    if 'contextReselectionStudy' in artifact:
+        report.update(contextReselectionStudy=artifact['contextReselectionStudy'],
+                      sourceReportHash=artifact['sourceReportHash'],
+                      skipped=copy.deepcopy(artifact['skipped']),
+                      freshInitialJudgments=False, fullRegressionReplayed=False)
     if is_bound:
         report.update(runKind='MOCK_OFFLINE' if simulate else 'LIVE', simulatedCalls=len(stages) if simulate else 0,
                       apiCalls=0 if simulate else len(stages),
