@@ -1,5 +1,28 @@
 # AI 분석 최종 목표와 영상 ID별 실험 기록
 
+## 139. 검색용 view·판단용 context 분리 — 설명 변경 후 B 선택 유지
+
+2026-10-12. 138에서 설명 수정이 자동 검색 순위까지 바꾼 문제를 분리했다. 새 `review-guidelines-5`는 각 사례에 `retrievalView`를 요구한다. ContextExampleSelector는 v5에서 이 view만 검색에 사용하고, 모델에 제공하는 SelectedExample은 여전히 mechanismIds/context만 포함한다. 설명·공통 조건을 수정해도 고정 검색 텍스트를 자동 재생성하지 않는다. v1~v4는 기존 동작을 유지하며, v5에서 view 누락/알 수 없는 버전·basis/해시 불일치는 INVALID_ARCHIVE로 거절한다. 누락 시 mutable context로 조용히 fallback하지 않는다. v4에 view를 붙여 새 동작으로 몰래 전환하는 것도 거절한다.
+
+`tools/freeze_context_retrieval_view.py`는 v4의 기존 flow+비판 설명+condition 연결 문자열을 그대로 저장하는 **호환 이전 도구**다. version=frozen-legacy-lexical-1, basis=FROZEN_LEGACY_NOT_SOURCE_EVIDENCE, UTF-8 SHA256와 인덱스 전체 hash를 기록한다. 기존 해석 문구도 보존하므로 **정제된 원문 전용 검색 데이터가 아니다.** 기존 순위·점수 재현부터 보장하고, 출처 연결된 짧은 관찰/원문 기반 인덱스로 바꾸는 작업은 별도 비교로 진행한다. 이전은 승인/권한/훈련 상태를 올리지 않는다.
+
+private `evaluation/v1/frozen-retrieval-view-20261012/`에 v5 이전본·같은 view를 유지한 B 설명 후보·3팔 실제 Java 검색 감사·검증 provenance를 저장했다. 모델 호출 없이 저장 B 허용 창/anchor/제안 인용 focus를 확인했다.
+
+| 검색 | 기존 v4 | v5 이전 | v5+B 설명 변경 |
+| --- | --- | --- | --- |
+| discovery-1 | C·B | C·B | C·B |
+| discovery-2 | C·D | C·D | C·D |
+| anchor focus | B·C | B·C | B·C |
+| 제안 인용 focus | C·B | C·B | C·B |
+
+v4→v5 이전의 선택 trace 전체가 같고, 설명 변경 후에도 선택 ID/순서/예산 제외 0을 유지했다. 138에서 설명 변경 후 빠졌던 B가 새 형식에서는 계속 전달될 수 있다. 이는 **검색 회귀 방지 증거이지 B 의미 탐지 성공이 아니다.** 설명이 너무 길어지면 별도의 요청/예시 예산 때문에 선택이 제외될 수 있으므로 인덱스 고정이 모든 선택 불변을 보장하지는 않는다.
+
+Java **641개**·Python **519개** 통과. 새 Java 시험은 이전 rank/score 동일, 새 설명의 판단 payload 노출, 검색 view의 모델 미노출, 누락/변조 거절, v4의 명시적 schema 전환, family 제외, 공통 condition 변경 후 frozen rank 유지를 확인한다. Python은 순수 이전·문자열 연결/UTF-8 해시·중복/모르는 mechanism·승인된 base/기존 view 거절을 확인한다. 새 인덱스의 범용 회수율이나 독립 영상 성능은 평가하지 않았다.
+
+기본 `guidelines/runtime.json`은 **v4 그대로**다. 배포/서버 재시작/현재 환경 값 변경을 하지 않았으며, v5 archive를 명시적으로 선택한 실행에서만 새 검색 분리가 활성화된다. 기존 실험의 pinned v4 snapshot도 보존한다. 컴파일 도구의 prompt_rules는 v5를 읽되 기본 compile 출력은 아직 v4이며, v5 전환 후 데이터 갱신 경로까지 자동 연결한 것은 아니다. API 호출/추가 예약 **0**, 잔여 **$0.0218501** 유지다.
+
+다음은 local 검증용 v5 archive를 명시 선택한 경로에서 B 설명만의 실제 판단 비교다. 현재 예산으로 전체 비교는 불가능하므로 새 유료 호출은 하지 않는다. 새 사례 수집/검색용 원문 정제/공통 판단 규칙 변경을 그 비교에 함께 넣지 않는다. 운영 적용은 사전 배포 경로·갱신 도구·권리/의미 검수 상태를 확인한 뒤 별도로 한다.
+
 ## 138. B 비판 설명만 보강 — 자동 검색 회귀 발견, 운영 미채택
 
 2026-10-12. 137의 양쪽 B PASS 이후 사례 설명을 점검했다. B의 flow는 매장 부재·대체·건강/추억을 담지만 앞 장소 반문·브랜드 기대의 일축을 추상화했다. 기존 criticismHypotheses는 지역 생활보다 음식/기억을 낮추는 취급에 집중하고, 해당 매장 대화를 직접 지목한 댓글이 없다는 한계를 담고 있다. 이 초점 차이는 미탐 원인 가설이며 확정하지 않는다.
