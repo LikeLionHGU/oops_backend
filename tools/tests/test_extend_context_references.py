@@ -36,6 +36,20 @@ def fixture():
 
 
 class SourceFirstTests(unittest.TestCase):
+    def test_explicit_ai_prohibition_blocks_entire_case(self):
+        base, data = fixture()
+        data['sources'][0]['aiDataUseStatus'] = 'PROHIBITED'
+        result, meta = tool.project(base, data)
+        self.assertEqual(result['examples'], base['examples'])
+        self.assertEqual(meta['addedReferenceCaseIds'], [])
+        self.assertEqual(meta['rightsBlockedCaseIds'], ['heldout-case', 'new-case'])
+        self.assertNotIn('fixture quote', json.dumps(result))
+
+    def test_invalid_rights_status_refused(self):
+        base, data = fixture()
+        data['sources'][0]['aiDataUseStatus'] = 'ALLOWED_BY_GUESS'
+        with self.assertRaises(ValueError): tool.project(base, data)
+
     def test_projection_keeps_patterns_and_base_unchanged(self):
         base, data = fixture()
         before = copy.deepcopy(base)

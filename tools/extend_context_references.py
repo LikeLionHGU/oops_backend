@@ -33,6 +33,8 @@ def validate_additions(data, base):
                 'source metadata required')
         datetime.date.fromisoformat(source['retrievedOn'])
         datetime.date.fromisoformat(source['publishedOn'])
+        require(source.get('aiDataUseStatus', 'UNKNOWN') in
+                {'UNKNOWN', 'PENDING_REVIEW', 'PROHIBITED'}, 'invalid AI use status')
     patterns = {p['id']: p for p in base['guidelines']}
     ids = {s['caseId'] for s in base['sourceCases']}
     families = {s['familyId'] for s in base['sourceCases']}
@@ -86,8 +88,11 @@ def project(base, additions):
     validate_additions(additions, base)
     result = copy.deepcopy(base)
     patterns_before = digest(prompt_rules(base, 'SPEECH'))
+    prohibited = {s['id'] for s in additions['sources']
+                  if s.get('aiDataUseStatus') == 'PROHIBITED'}
+    blocked = {c['id'] for c in additions['cases'] if prohibited & set(c['sourceIds'])}
     for case in additions['cases']:
-        if case['split'] == 'HOLDOUT': continue
+        if case['split'] == 'HOLDOUT' or case['id'] in blocked: continue
         channels = set()
         for rule in result['guidelines']:
             if rule['id'] in case['mechanismIds']:
@@ -119,7 +124,9 @@ def project(base, additions):
         'additionsHash': digest(additions), 'projectedArchiveHash': digest(result),
         'commonSpeechPatternHash': patterns_before, 'defaultRuntimeChanged': False,
         'humanApproved': False, 'trainingPerformed': False, 'qualityGateMet': None,
-        'addedReferenceCaseIds': [c['id'] for c in additions['cases'] if c['split'] == 'DEVELOPMENT'],
+        'addedReferenceCaseIds': [c['id'] for c in additions['cases']
+                                  if c['split'] == 'DEVELOPMENT' and c['id'] not in blocked],
+        'rightsBlockedCaseIds': sorted(blocked),
         'withheldCaseIds': [c['id'] for c in heldout], 'heldoutEvaluationPerformed': False,
         'scope': 'SUPPLEMENTAL_NEWS_RESEARCH_NOT_COMMENT_CATALOG_OR_APPROVED_DATASET'}
     return result, provenance
@@ -156,7 +163,7 @@ def routing_input(trace):
 
 def summarize_routing(arms, provenance):
     added = set(provenance['addedReferenceCaseIds'])
-    withheld = set(provenance['withheldCaseIds'])
+    withheld = set(provenance['withheldCaseIds']) | set(provenance.get('rightsBlockedCaseIds', []))
     baseline = {s['requestKey']: s for s in arms['baseline']['selections']}
     rows = []
     for selected in arms['extended']['selections']:

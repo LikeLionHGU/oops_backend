@@ -50,6 +50,10 @@ def user_input(payload, reference):
 
 def prepare(base, additions, packet):
     validate_additions(additions, base)
+    prohibited = {s['id'] for s in additions['sources']
+                  if s.get('aiDataUseStatus') == 'PROHIBITED'}
+    require(not any(prohibited & set(c['sourceIds']) for c in additions['cases']),
+            'AI-prohibited source cannot enter model comparison inputs')
     inputs, manifest, labels = (packet[k] for k in
         ('model-inputs.json', 'manifest.json', 'owner-labels.json'))
     require(manifest['modelInputsHash'] == digest(inputs), 'regression input changed')

@@ -53,6 +53,11 @@ def check(bundle):
 
 
 class RegressionTests(unittest.TestCase):
+    def test_ai_prohibited_source_refuses_model_packet(self):
+        base, additions, packet, _ = fixture()
+        additions['sources'][0]['aiDataUseStatus'] = 'PROHIBITED'
+        with self.assertRaises(ValueError): tool.prepare(base, additions, packet)
+
     def text_first(self):
         base, additions, packet, _ = fixture()
         additions['schemaVersion'] = 'source-first-context-additions-2'
