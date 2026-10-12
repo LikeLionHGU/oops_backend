@@ -69,19 +69,39 @@ def claim(path, artifact, output):
     if not isinstance(authorization,dict): authorization=artifact.get('authorization')
     require(isinstance(authorization,dict) and authorization.get('userAuthorized') is True,
             'approved reservation required')
-    bid=digest(authorization);cost=amount(artifact['reservedCostUsd'])
+    cost=amount(artifact['reservedCostUsd'])
     require(cost>0 and artifact['artifactHash']==digest({k:v for k,v in artifact.items() if k!='artifactHash'}),
             'unchanged positive reservation required')
+    return _claim(path, authorization, artifact['artifactHash'], cost, output)
+
+
+def claim_legacy(path, artifact, authorization, cost, output):
+    """Bind a separate verified approval to an unchanged historical artifact.
+
+    Never invent approval from a historical max-cost field or change the frozen
+    snapshot just to carry new administrative metadata.
+    """
+    require(artifact['artifactHash']==digest({k:v for k,v in artifact.items() if k!='artifactHash'}), 'legacy artifact changed')
+    require(isinstance(authorization,dict) and authorization.get('schemaVersion')=='legacy-execution-authorization-1'
+            and authorization.get('userAuthorized') is True
+            and authorization.get('approvedArtifactHash')==artifact['artifactHash'], 'separate bound approval required')
+    cost=amount(cost)
+    require(cost>0,'positive legacy reservation required')
+    return _claim(path, authorization, artifact['artifactHash'], cost, output)
+
+
+def _claim(path, authorization, identity, cost, output):
+    bid=digest(authorization)
     with transaction(path) as db:
         row=db.execute('SELECT total FROM budgets WHERE id=?',(bid,)).fetchone()
         require(row is not None,'budget must be initialized from verified history before paid execution')
-        require(db.execute('SELECT 1 FROM reservations WHERE artifact=?',(artifact['artifactHash'],)).fetchone() is None,
+        require(db.execute('SELECT 1 FROM reservations WHERE artifact=?',(identity,)).fetchone() is None,
                 'reservation already consumed; a new output directory is not new authorization')
         spent=sum((amount(r[0]) for r in db.execute('SELECT cost FROM reservations WHERE budget=?',(bid,))),Decimal('0'))
         require(spent+cost<=amount(row[0]),'cumulative reservation exceeds authorization')
         db.execute('INSERT INTO reservations VALUES (?,?,?,?,?)',
-                   (artifact['artifactHash'],bid,str(cost),str(Path(output).resolve()),'CLAIMED'))
-        return dict(artifactHash=artifact['artifactHash'],budgetId=bid,reservedCostUsd=str(cost),
+                   (identity,bid,str(cost),str(Path(output).resolve()),'CLAIMED'))
+        return dict(artifactHash=identity,budgetId=bid,reservedCostUsd=str(cost),
                     remainingBudgetUsd=str(amount(row[0])-spent-cost))
 
 
