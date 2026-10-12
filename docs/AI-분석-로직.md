@@ -1,5 +1,7 @@
 # OoPs?! AI 분석 로직
 
+10/12 접수 트랜잭션 분리: AnalysisService의 시작/재시도는 짧은 사전 읽기 → DB 연결 없는 Python health → AnalysisAdmissionService의 Video 잠금 후 재검사/접수 순서다. 서버 응답을 기다리는 동안 DB 잠금/연결을 유지하지 않으며, 사이에 생긴 새 작업·영상 삭제·최신 재시도 상태를 재확인한다. unavailable/자격 변경 시 검수 초기화나 새 작업을 남기지 않는다. 외부 트랜잭션 안에서 facade 호출은 NEVER로 금지한다. Java 622개·Python 479개 검증, 판단 개정 33·모델·사전 유지. 파일 저장/길이 probe 분리는 후속이다.
+
 10/12 접수 경계 보강: AnalysisDispatchService가 저장 트랜잭션 안에서 기존 bounded Executor 자리를 확보한다. 별도 worker는 성공 커밋을 확인한 뒤 AnalysisPipeline.run(NOT_SUPPORTED)을 실행한다. 포화/종료 거절은 같은 저장 트랜잭션에서 Job·Video를 FAILED로 확정하므로 afterCommit에서 두 번째 DB 연결을 기다리지 않는다. 롤백/불명확한 완료는 실행하지 않으며 `@Async` 이중 제출은 제거했다. 영속 큐/자동 재실행은 미구현이다. Java 613개·Python 479개 검증, 판단 개정 33·모델·사전·유료 호출은 변경하지 않았다.
 
 10/12 시작 복구 보강: StaleJobRecovery는 JVM 시작 전 작업 ID를 조회하고 InterruptedJobRecoveryService에서 Video → 대상 Job 순서로 잠가 상태/시각을 재확인한다. 이미 종료된 작업·새 실행·최신 영상 상태·기존 결과를 보존하며 자동 분석 재실행은 하지 않는다. 단일 인스턴스 기본 활성화이며 같은 DB를 공유하는 다중 Spring 서버는 startup-recovery-enabled=false로 꺼야 한다. 분산 소유권/lease는 미구현이다. Java 605개·Python 479개 검증, 실제 재시작/유료 호출 없이 판단 개정 33·모델·사전을 유지했다.
