@@ -10,6 +10,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bound_review_contract import prepare_attempt, receive
 from fixed_review_suite import digest
 from fixed_scope_diagnostic import prepare, validate, score, SPEC, SOURCE_HASHES, diagnostic_audit_export
+from fixed_scope_diagnostic import fund_retrial, RETRIAL_FUNDING
+from decimal import Decimal
 from compare_review_prompts import digest as audit_digest
 import urllib.error
 from run_issue_scoped_comparison import execute, BOUNDARY_FUNDING
@@ -31,6 +33,26 @@ def seed_fixture():
 
 
 class FixedScopeTests(unittest.TestCase):
+    def test_separate_retrial_does_not_change_bodies_or_refund_partial_run(self):
+        seed=seed_fixture()
+        with patch('fixed_scope_diagnostic.SEED_HASH',digest(seed)):
+            old=prepare(seed)
+            funding=dict(RETRIAL_FUNDING,previousRemainingUsd=old['remainingBudgetUsd'])
+            previous=dict(schemaVersion=old['schemaVersion'],artifactHash=old['artifactHash'],
+                additionalFundingHash=old['additionalFundingHash'],status='PARTIAL',runKind='LIVE',
+                reservedCostUsd=old['reservedCostUsd'],consumedReservationUsd=old['reservedCostUsd'],
+                apiCalls=3,unknownCostAttempts=1)
+            with patch('fixed_scope_diagnostic.RETRIAL_FUNDING',funding),patch('fixed_scope_diagnostic.PARTIAL_REPORT_HASH',digest(previous)):
+                new=fund_retrial(old,previous,funding);validate(new)
+                self.assertEqual(new['jobs'],old['jobs'])
+                self.assertEqual(Decimal(new['remainingBudgetUsd']),Decimal('.10')-Decimal(old['reservedCostUsd']))
+                with self.assertRaises(ValueError):fund_retrial(old,dict(previous,runKind='MOCK_OFFLINE'),funding)
+                with self.assertRaises(ValueError):fund_retrial(old,previous,dict(funding,userAuthorized=False))
+                with self.assertRaises(ValueError):fund_retrial(new,previous,funding)
+                with tempfile.TemporaryDirectory() as tmp:
+                    report=execute(new,Path(tmp)/'datasets'/'new',None,mock,simulate=True)
+                    result=score(new,report,fake_audit(report))
+                self.assertIsNone(result['diagnosticExpectedDecisionsMet'])
     def test_only_judgment_is_repeated_with_identical_observed_body(self):
         seed=seed_fixture(); before=copy.deepcopy(seed)
         with patch('fixed_scope_diagnostic.SEED_HASH',digest(seed)):

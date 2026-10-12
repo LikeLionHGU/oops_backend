@@ -25,6 +25,9 @@ SOURCE_HASHES = dict(
     score='578370cfbd74e48920f34acce7e4696e735220646b786922c62be44cf3cfc3a0')
 SEED_HASH = '1c917f77273546fe1bf568b88f1fe7fb407144b987687f694ef297bf2fe4c251'
 SPEC = [('B1', 'B', 1), ('B3', 'B', 3), ('N3', 'N3', 1), ('N4', 'N4', 1)]
+RETRIAL_FUNDING = dict(schemaVersion='fixed-scope-retrial-budget-1', additionalBudgetUsd='0.10',
+    userAuthorized=True, previousReservedUsd='3.8829914', previousRemainingUsd='0.0171746')
+PARTIAL_REPORT_HASH = 'ebc9c0debeac98aa549c5347d3d17ccea26ce1e18f781e0604e014da9a629bb9'
 
 
 def build_seed(frozen, report, audit, scored):
@@ -99,7 +102,36 @@ def prepare(seed):
 
 
 def validate(frozen):
-    require(frozen == prepare(frozen['seed']), 'fixed-scope frozen changed')
+    expected=prepare(frozen['seed'])
+    if 'retrialFunding' in frozen:
+        expected=fund_retrial(expected,frozen['priorDiagnostic'],frozen['retrialFunding'])
+    require(frozen == expected, 'fixed-scope frozen changed')
+
+
+def fund_retrial(original, prior_report, funding):
+    """One separate approved trial; no resume, automatic retry or refunds."""
+    require(original == prepare(original['seed']) and funding == RETRIAL_FUNDING,
+            'unchanged original and exact new approval required')
+    fields=('schemaVersion','artifactHash','additionalFundingHash','status','runKind',
+            'reservedCostUsd','consumedReservationUsd','apiCalls','unknownCostAttempts')
+    expected=dict(schemaVersion=BOUND_SCHEMA,artifactHash=original['artifactHash'],
+        additionalFundingHash=original['additionalFundingHash'],status='PARTIAL',runKind='LIVE',
+        reservedCostUsd=original['reservedCostUsd'],consumedReservationUsd=original['reservedCostUsd'],
+        apiCalls=3,unknownCostAttempts=1)
+    require(all(prior_report.get(k)==v for k,v in expected.items()), 'exact interrupted prior reservation required')
+    meta={k:prior_report[k] for k in fields}
+    meta['sourceReportHash']=prior_report.get('sourceReportHash',digest(prior_report))
+    require(meta['sourceReportHash']==PARTIAL_REPORT_HASH
+            and original['remainingBudgetUsd']==funding['previousRemainingUsd'], 'prior ledger mismatch')
+    total=Decimal(original['reservedCostUsd'])
+    require(total<=Decimal(funding['additionalBudgetUsd']), 'retrial exceeds separate approval')
+    result=copy.deepcopy(original); old_hash=result.pop('artifactHash')
+    result.update(retrialFunding=copy.deepcopy(funding),priorDiagnostic=meta,parentArtifactHash=old_hash,
+        additionalFunding=copy.deepcopy(funding),additionalFundingHash=digest(funding),
+        remainingBudgetUsd=str(Decimal(funding['additionalBudgetUsd'])-total),
+        priorBudgetRemainingUsd=funding['previousRemainingUsd'])
+    result['artifactHash']=digest(result)
+    return result
 
 
 def diagnostic_audit_export(report, *, partial=False):
