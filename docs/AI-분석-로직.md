@@ -1,5 +1,7 @@
 # OoPs?! AI 분석 로직
 
+10/12 업로드 준비 분리: 파일 복사/probe는 DB 밖 임시 videos/.incoming 경로에서 실행하고, UploadPersistenceService가 ID 발급·같은 파일시스템 atomic rename·storageKey 등록만 짧게 커밋한다. 최종 videos/{id} 경로는 유지한다. 롤백은 소유 파일만 정리하고 UNKNOWN은 보존한다. probe unavailable의 기존 허용 정책은 유지하며 강제 종료/정리 실패의 고아 파일 수거는 후속이다. Java 635개·Python 479개 검증. 판단 개정 33·모델·사전·유료 호출·서버 재시작은 변경하지 않았다. 아래 probe 후속 표기는 이전 작업 당시 기록이다.
+
 10/12 접수 트랜잭션 분리: AnalysisService의 시작/재시도는 짧은 사전 읽기 → DB 연결 없는 Python health → AnalysisAdmissionService의 Video 잠금 후 재검사/접수 순서다. 서버 응답을 기다리는 동안 DB 잠금/연결을 유지하지 않으며, 사이에 생긴 새 작업·영상 삭제·최신 재시도 상태를 재확인한다. unavailable/자격 변경 시 검수 초기화나 새 작업을 남기지 않는다. 외부 트랜잭션 안에서 facade 호출은 NEVER로 금지한다. Java 622개·Python 479개 검증, 판단 개정 33·모델·사전 유지. 파일 저장/길이 probe 분리는 후속이다.
 
 10/12 접수 경계 보강: AnalysisDispatchService가 저장 트랜잭션 안에서 기존 bounded Executor 자리를 확보한다. 별도 worker는 성공 커밋을 확인한 뒤 AnalysisPipeline.run(NOT_SUPPORTED)을 실행한다. 포화/종료 거절은 같은 저장 트랜잭션에서 Job·Video를 FAILED로 확정하므로 afterCommit에서 두 번째 DB 연결을 기다리지 않는다. 롤백/불명확한 완료는 실행하지 않으며 `@Async` 이중 제출은 제거했다. 영속 큐/자동 재실행은 미구현이다. Java 613개·Python 479개 검증, 판단 개정 33·모델·사전·유료 호출은 변경하지 않았다.
