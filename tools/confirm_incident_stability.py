@@ -19,7 +19,9 @@ def freeze(source,scored,packet,available):
     available=positive(available)
     require(available<=Decimal(source['remainingBudgetUsd']), 'no budget expansion')
     templates={j['case']:j for j in source['jobs'] if j['arm']=='CANDIDATE' and j['repeat']==1}
-    require(set(templates)=={'F2','C','D','F4','F5'}, 'five primary conditions required')
+    primary={'F2','C','D','F4','F5'}
+    extended=primary|{'Control-Absence','Control-Review','Control-Nostalgia','Control-SingleMenu'}
+    require(set(templates) in (primary,extended), 'fixed primary or extended conditions required')
     variants={j['judgmentVariant'] for j in templates.values()}
     require(len(variants)==1,'one unchanged candidate required')
     variant=next(iter(variants));cases=copy.deepcopy([c for c in source['source']['cases'] if c['name']!='F2-original'])
@@ -29,6 +31,9 @@ def freeze(source,scored,packet,available):
     labels={r['unitId']:r for r in packet['owner-labels.json']['labels']}
     entries=packet['manifest.json']['cases'][3:]
     require(len(entries)==4, 'four previously confirmed normal controls required')
+    if set(templates)==extended:
+        require(source['controlPacketHash']==digest(packet),'existing confirmed controls changed')
+        entries=[];specs=[]
     for entry,(name,parent,target) in zip(entries,specs,strict=True):
         inp=inputs[entry['unitId']];label=labels[entry['unitId']]
         require(entry['inputHash']==label['assessment']['inputHash']==digest(inp)
@@ -90,7 +95,8 @@ def prepare(available,parent_step):
     names={'TARGET_FOCUS_1':'faithful-target-focus-20261012',
            'MECHANISM_FOCUS_1':'faithful-mechanism-focus-20261012',
            'COMPACT_REVIEW_1':'faithful-compact-review-20261012',
-           'ANCHOR_FOCUS_1':'faithful-anchor-focus-20261012'}
+           'ANCHOR_FOCUS_1':'faithful-anchor-focus-20261012',
+           'CHRONOLOGY_1':'faithful-chronology-20261012'}
     require(parent_step in names,'known confirmation parent required')
     p=ROOT/names[parent_step];source=read(p/'frozen.json')
     scored=score(source,load(p/'live-run/report-index.json'),read(p/'java-audit.json'))

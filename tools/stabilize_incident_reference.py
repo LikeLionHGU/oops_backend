@@ -21,11 +21,13 @@ def source_inputs():
 
 
 def freeze(source,available,step='TARGET_FOCUS_1'):
-    require(step in {'TARGET_FOCUS_1','MECHANISM_FOCUS_1','COMPACT_REVIEW_1'}, 'unknown stabilization step')
+    require(step in {'TARGET_FOCUS_1','MECHANISM_FOCUS_1','COMPACT_REVIEW_1','CHRONOLOGY_1'}, 'unknown stabilization step')
     available=positive(available)
     require(available<=Decimal(source['remainingBudgetUsd']), 'do not increase existing approval')
     templates={j['case']:j for j in source['jobs'] if j['arm']=='CANDIDATE' and j['repeat']==1}
-    require(set(templates)=={'F2','C','D','F4','F5'}, 'fixed five faithful inputs required')
+    required={'F2','C','D','F4','F5'}
+    if step=='CHRONOLOGY_1':required|={'Control-Absence','Control-Review','Control-Nostalgia','Control-SingleMenu'}
+    require(set(templates)==required, 'fixed faithful inputs and controls required')
     jobs=[]
     for repeat in range(1,4):
         for i,case in enumerate(source['source']['cases']):
@@ -33,7 +35,8 @@ def freeze(source,available,step='TARGET_FOCUS_1'):
             for arm in (('BASELINE','CANDIDATE') if (i+repeat)%2 else ('CANDIDATE','BASELINE')):
                 variants={'TARGET_FOCUS_1':('CLOSED_SCOPE','TARGET_FOCUS_CLOSED_SCOPE'),
                     'MECHANISM_FOCUS_1':('TARGET_FOCUS_CLOSED_SCOPE','MECHANISM_FOCUS_CLOSED_SCOPE'),
-                    'COMPACT_REVIEW_1':('MECHANISM_FOCUS_CLOSED_SCOPE','COMPACT_REVIEW_CLOSED_SCOPE')}[step]
+                    'COMPACT_REVIEW_1':('MECHANISM_FOCUS_CLOSED_SCOPE','COMPACT_REVIEW_CLOSED_SCOPE'),
+                    'CHRONOLOGY_1':('COMPACT_REVIEW_CLOSED_SCOPE','CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE')}[step]
                 variant=variants[arm=='CANDIDATE']
                 request=prepare_attempt(old['baseBody'],old['fixedSelectedScope'],'freeze-preview',
                                         judgment_variant=variant)['requestBody']
@@ -46,10 +49,12 @@ def freeze(source,available,step='TARGET_FOCUS_1'):
     total=sum(Decimal(j['stages'][0]['reservedCostUsd']) for j in jobs)
     require(total<=available, 'full paired trial exceeds balance')
     result=copy.deepcopy(source);result.pop('artifactHash')
+    result.pop('confirmationParentStep',None);result.pop('sourceScoreHash',None)
     result.update(incidentReferenceStudy='FAITHFUL_'+step,stabilizationStep=step,
         previewHash=digest(dict(source=digest(source),jobs=jobs)),sourceTrialHash=digest(source),
         jobs=jobs,availableBudgetUsd=str(available),reservedCostUsd=str(total),
-        remainingBudgetUsd=str(available-total),predeclaredCandidateGate='ALL_15_OWNER_DECISIONS_AND_JAVA_CONTRACTS',
+        remainingBudgetUsd=str(available-total),plannedUnits=len(jobs),maxApiCalls=len(jobs),
+        predeclaredCandidateGate=f'ALL_{len(jobs)//2}_OWNER_DECISIONS_AND_JAVA_CONTRACTS',
         semanticQualityGateMet=None,qualityGateMet=None,runtimeChanged=False)
     result['artifactHash']=digest(result)
     return result
@@ -57,10 +62,11 @@ def freeze(source,available,step='TARGET_FOCUS_1'):
 
 def prepare(available,step='TARGET_FOCUS_1'):
     source=source_inputs()
-    if step in {'MECHANISM_FOCUS_1','COMPACT_REVIEW_1'}:
+    if step in {'MECHANISM_FOCUS_1','COMPACT_REVIEW_1','CHRONOLOGY_1'}:
         from run_incident_reference_comparison import score
-        directory=ROOT/('faithful-target-focus-20261012' if step=='MECHANISM_FOCUS_1'
-            else 'faithful-mechanism-focus-20261012')
+        directory=ROOT/{'MECHANISM_FOCUS_1':'faithful-target-focus-20261012',
+            'COMPACT_REVIEW_1':'faithful-mechanism-focus-20261012',
+            'CHRONOLOGY_1':'faithful-anchor-confirmation-20261012'}[step]
         source=read(directory/'frozen.json')
         require(read(directory/'score.json')==score(source,load(directory/'live-run/report-index.json'),
             read(directory/'java-audit.json')), 'audited preceding comparison required')
@@ -71,4 +77,4 @@ def validate(frozen):require(frozen==prepare(frozen['availableBudgetUsd'],frozen
 
 def development_gate(score):
     rows=[r for r in score['results'] if r['arm']=='CANDIDATE']
-    return (len(rows)==15 and all(r['accepted'] and r['matchedDevelopmentDecision'] is True for r in rows))
+    return (len(rows) in {15,27} and all(r['accepted'] and r['matchedDevelopmentDecision'] is True for r in rows))

@@ -75,10 +75,13 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
         from target_focus_policy import focused_request as target_request
         from mechanism_focus_policy import focused_request
         body = focused_request(target_request(scoped_request(base, scope, 'CLOSED_SCOPE')))
-    elif judgment_variant == 'COMPACT_REVIEW_CLOSED_SCOPE':
+    elif judgment_variant in {'COMPACT_REVIEW_CLOSED_SCOPE','CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE'}:
         from scoped_judgment_contract import judgment_request as scoped_request
         from compact_review_policy import focused_request
         body = focused_request(scoped_request(base, scope, 'CLOSED_SCOPE'))
+        if judgment_variant=='CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE':
+            from scope_source_order import ordered_request
+            body=ordered_request(body,scope,payload)
     else:
         require(judgment_variant in {'RAW_REMOVED','CLOSED_SCOPE'}, 'unsupported bound judgment variant')
         from scoped_judgment_contract import judgment_request as scoped_request
@@ -101,11 +104,14 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
         if judgment_variant=='MECHANISM_FOCUS_CLOSED_SCOPE':
             from mechanism_focus_policy import DELTA as mechanism_delta
             result.update(schemaVersion='server-bound-review-draft-6',mechanismFocusPolicyHash=digest(mechanism_delta))
-    elif judgment_variant=='COMPACT_REVIEW_CLOSED_SCOPE':
+    elif judgment_variant in {'COMPACT_REVIEW_CLOSED_SCOPE','CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE'}:
         from scoped_judgment_contract import exposure_manifest
         from compact_review_policy import CRITERIA
         result.update(schemaVersion='server-bound-review-draft-7',compactCriteriaHash=digest(CRITERIA),
             exposure=exposure_manifest(scope,payload,body,'CLOSED_SCOPE'))
+        if judgment_variant=='CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE':
+            from scope_source_order import INSTRUCTION
+            result.update(schemaVersion='server-bound-review-draft-8',sourceOrderPolicyHash=digest(INSTRUCTION))
     result['attemptHash'] = digest(result)
     return result
 

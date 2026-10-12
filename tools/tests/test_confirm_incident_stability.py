@@ -57,3 +57,12 @@ def test_paired_anchor_baseline_is_not_a_tenth_confirmation_case():
     f=freeze(s,g,p,'.4')
     assert len(f['source']['cases'])==9 and len(f['jobs'])==27
     assert all(c['name']!='F2-original' for c in f['source']['cases'])
+
+
+def test_extended_confirmation_reuses_controls_without_duplicating_them():
+    s,g,p=fixture();f=freeze(s,g,p,'.4')
+    passed=dict(results=[dict(arm='CANDIDATE',accepted=True,matchedDevelopmentDecision=True)]*27)
+    again=freeze(f,passed,p,'.2')
+    assert len(again['source']['cases'])==9 and len(again['jobs'])==27
+    for j,k in zip(f['jobs'],again['jobs'],strict=True):
+        assert j['baseBody']==k['baseBody'] and j['fixedSelectedScope']==k['fixedSelectedScope']

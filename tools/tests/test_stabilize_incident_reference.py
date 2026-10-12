@@ -87,3 +87,14 @@ def test_compact_replaces_only_criteria_and_preserves_output_contract_and_input(
     with patch('stabilize_incident_reference.prepare',return_value=f):
         r=execute(f,tmp_path/'datasets/run',None,mock_scoped,simulate=True)
         assert score(f,r,audit(r))['mechanicalContractGateMet']
+
+
+def test_order_and_normal_relation_bundle_is_full_54_without_raw_changes(tmp_path):
+    from test_confirm_incident_stability import fixture as controls_fixture
+    from confirm_incident_stability import freeze as confirmation
+    source,passed,packet=controls_fixture();extended=confirmation(source,passed,packet,'.6')
+    f=freeze(extended,'.4','CHRONOLOGY_1')
+    assert len(f['jobs'])==54 and f['plannedUnits']==54
+    with patch('stabilize_incident_reference.prepare',return_value=f):
+        r=execute(f,tmp_path/'datasets/run',None,mock_scoped,simulate=True)
+        assert score(f,r,audit(r))['mechanicalContractGateMet']
