@@ -1,5 +1,7 @@
 # OoPs?! AI 분석 로직
 
+10/12 접수 경계 보강: AnalysisDispatchService가 저장 트랜잭션 안에서 기존 bounded Executor 자리를 확보한다. 별도 worker는 성공 커밋을 확인한 뒤 AnalysisPipeline.run(NOT_SUPPORTED)을 실행한다. 포화/종료 거절은 같은 저장 트랜잭션에서 Job·Video를 FAILED로 확정하므로 afterCommit에서 두 번째 DB 연결을 기다리지 않는다. 롤백/불명확한 완료는 실행하지 않으며 `@Async` 이중 제출은 제거했다. 영속 큐/자동 재실행은 미구현이다. Java 613개·Python 479개 검증, 판단 개정 33·모델·사전·유료 호출은 변경하지 않았다.
+
 10/12 시작 복구 보강: StaleJobRecovery는 JVM 시작 전 작업 ID를 조회하고 InterruptedJobRecoveryService에서 Video → 대상 Job 순서로 잠가 상태/시각을 재확인한다. 이미 종료된 작업·새 실행·최신 영상 상태·기존 결과를 보존하며 자동 분석 재실행은 하지 않는다. 단일 인스턴스 기본 활성화이며 같은 DB를 공유하는 다중 Spring 서버는 startup-recovery-enabled=false로 꺼야 한다. 분산 소유권/lease는 미구현이다. Java 605개·Python 479개 검증, 실제 재시작/유료 호출 없이 판단 개정 33·모델·사전을 유지했다.
 
 10/12 재점검: JobProgressService의 변경은 Video → 최신 Job 순서로 잠근다. 내부 isStopped 검사는 최신 PROCESSING 작업만 계속 진행시키고 FAILED/완료/대체 작업은 다음 단계에서 멈춘다. begin 이후 snapshot 조회 오류도 외부 분석 전에 실패 갱신으로 연결했다. Java 591개·Python 479개 검증. 판단 개정 33·모델·사전은 그대로이고 실제 유료 분석/재시작은 없다. 시작 시 일괄 복구와 다중 서버 소유권은 아직 별도 후속이다.
