@@ -1,5 +1,48 @@
 # AI 분석 최종 목표와 영상 ID별 실험 기록
 
+## 137. 사례사전 연결 확인·B/C 규칙만 10회 비교 — B 미탐 유지
+
+2026-10-12. 사용자 요청에 따라 사전 연결과 규칙 분리 효과를 별도로 확인했다. OpenAI Docs 스킬과 [공식 평가 지침](https://developers.openai.com/api/docs/guides/evaluation-best-practices)을 참고해 입력·정답·비교 변경 범위를 실행 전에 고정하고, 계약 통과/개발 라벨/의미 검수/반복 안정성을 분리했다.
+
+### 연결 확인
+
+- application.yml 기본값은 guidelines-enabled=true, `file:../datasets/controversy/guidelines/runtime.json`이다. 환경 변수로 재정의할 수 있으며 파일은 ReviewGuidelineLibrary의 시작 시 load에서 읽는다.
+- SpeechReviewAnalyzer → CandidateReviewEngine → 탐색 reference/판단 candidateReference → OpenAI 요청의 `contextReference`로 연결된다. 승인 사례 전용 ReviewCaseLibrary와 미검증 작업 참고 ReviewGuidelineLibrary는 별도다. 승인 사례 라이브러리가 비어 있어도 작업 참고 사전은 사용된다.
+- 135의 저장된 실제 F2 BASELINE 3요청 모두에 현재 canonical과 본문이 동일한 pisik-C/pisik-B context가 들어 있었다. local Java 감사도 이 예시를 선택했다. 단순 미연결/예산 제외가 B 미탐의 설명은 아니다.
+- 당시 실제 요청은 실험 snapshot의 local-life-devaluation 문구를 보존해 **현재 runtime의 해당 규칙과 달랐다**. 다른 공통 규칙/예시 본문 차이는 발견하지 않았다. 두 버전을 같은 현재 기준이라고 취급하지 않는다.
+- 이번 점검 시 로컬 8080 listener는 없었다. 실행 중 서버/AWS의 환경 값·배포 사전 파일·새 분석 요청은 확인하지 않았다. 새 보충 2건은 private 연구 원장/시험 투영에만 있으며 default runtime에는 연결하지 않았다.
+
+### 규칙만 비교하는 고정 조건
+
+새 `tools/run_reference_split_comparison.py`는 135의 원문·선택에서 F2(B 앞 문맥), C, D, F4(N5), F5(N6)를 가져온다. F1의 모호한 대상과 F3의 TARGET 누락은 이번 규칙 효과 시험에서 제외했다. 전체 B 후보/선택기 성능 평가가 아니다.
+
+양쪽 모두 CLOSED_SCOPE·Luna low·최대 출력 8,000·JSON·store=false다. **현재 runtime의 공통 규칙으로 두 팔의 기준점을 먼저 맞춘다.** 후보 팔만 136의 B/C 분리 규칙과 C의 mechanism 연결을 사용한다. 사례 본문·정상 대조·순서·raw·선택·출력 계약은 동일하고, 신규 사례/새 검색/SELECT/이미지/STT·OCR 호출/대상 분리 지침 추가는 없다. 규칙 문구와 사례 소유 관계가 함께 바뀌므로 순수 ‘소유 ID 분리’ 효과로 해석하지 않는다. 135와는 기준 규칙을 맞추는 변경도 있어 직접적인 전후 인과 비교를 하지 않는다.
+
+양쪽 사례 노출은 B/N5/N6에서 C·B, C에서 C·D, D에서 D·C로 동일하다. 저장 예시 본문이 canonical과 정확히 대응하지 않거나 분리본에 새 사례가 들어가면 준비를 거절한다. shared runner/예약 원장/원응답 보존/원문 검증·채점기를 재사용하고, 변경된 실행본·비교 ID·불완전 Java 감사는 거절한다.
+
+### 실제 관측
+
+| 고정 입력 | 기존 규칙 1회 | B/C 분리 규칙 1회 |
+| --- | --- | --- |
+| F2: B 앞 문맥 | PASS | PASS |
+| C: 메뉴·제공 취급 | REVIEW_REQUIRED | REVIEW_REQUIRED |
+| D: 신체 훼손 비유 | REVIEW_REQUIRED | REVIEW_REQUIRED |
+| N5: 대체 메뉴 유래 | PASS | PASS |
+| N6: 가족 선호 | PASS | PASS |
+
+**B/C 분리만으로 B가 회복되지 않았다.** 두 팔 모두 부재·욕구·대체는 설명되지만 지역 생활/선택지를 낮추는 구체적인 평가 근거가 없다고 답했다. 사례 전달이 없어서 생긴 실패가 아니다. C는 메뉴의 무가치화와 제공 연결, D는 구체적 신체 훼손 비유를 근거로 삼았고, 주민 전체 공격·사장 청취·실제 폭력을 추가하지 않았다. 정상 두 입력에서는 오탐이 관측되지 않았다. 이 관찰은 assistant 검수이며 독립 사람 의미 gold가 아니다. 각 1회 결과를 안정성/범용 정확도/실영상 전체 성능으로 사용하지 않는다.
+
+모의 Java 10/10·실제 Java 10/10, Python **511개 통과**. 10응답 모두 반환 모델 gpt-6-luna, 통신/계약 실패·비용 미확인 0. 입력 **49,169**·출력 **6,343**토큰, 평균 단일 JUDGE **7,372ms**다. 설정 일반 단가 환산 사용량 **$0.0080884**, 실제 청구액 null. 사전 예약 **$0.0631290**, 같은 $1.00 승인 누적 예약 **$0.9781499**·잔여 **$0.0218501**. 사용량 차액으로 예약을 환불하지 않는다.
+
+private `evaluation/v1/bc-rules-only-20261012/`에 frozen·connection-audit·모의/실제 실행 bundle·Java 감사·score·assistant 관찰·provenance를 보존했다. 운영 개정 33/default 사전·DB·사용자 서버·새 사례 승인 상태는 변경하지 않았다.
+
+- frozen hash: `8f77199e92f3f1528c588a708a6daeea667929a63d932b9781babf0adafebcff`
+- 실제 보고서: `60935cae0448e1e96344718cf108ef201dbe553f14b2b49b3d821e97272c033e`
+- Java 감사: `e6855761c6c6070f58defc32fd684d43b493b1261e088aa49559c89035aeab99`
+- 채점: `f21f674f496f733bc68b1cc949a15e3b56f33ac6c67e0ce4c0bb2b31daaf6547`
+
+다음은 호출 반복/무조건 사례 수 증가가 아니라 B의 실제 낮춤 연결과 정상 대조의 차이가 사전 설명에 충분히 표현되는지 의미 검수하는 단계다. 후보의 ‘구체적 낮춤 평가’ 조건이 간접적 취급을 놓치는지도 가설로 검토하되, 부재·대체만으로 경고하는 규칙으로 완화하지 않는다. 사례 설명 보강과 규칙 변경/선택 변경을 한 번에 섞지 않고, 새 사례 참고 효과는 별도 비교다. 현재 잔여로 같은 10회 비교를 다시 실행할 수 없으며 추가 유료 시험은 별도 승인/예산이 필요하다.
+
 ## 136. B/C 패턴 분리 초안·관련 사례 추가 — 오프라인 호환 확인, 탐지 효과 미측정
 
 2026-10-12. 135의 실패 뒤 같은 모델 호출을 반복하지 않고 사례 참고 구조를 분리했다. `tools/split_context_reference_draft.py`는 기존 v4 archive를 복사해 B의 지역 생활·선택지 평가와 C의 메뉴·제공·선택 평가를 서로 다른 규칙으로 만든다. 사례 원문·비판 가설·정상 대조·개발 라벨은 그대로다. **소유 관계와 조건 문구를 함께 변경하므로 순수 검색 분리 실험은 아니다.** 기존 parent에 추가 사례가 붙거나 예시 소유가 달라지면 거절한다. 운영 개정 33/default runtime·DB·사용자 서버는 변경하지 않았다.
