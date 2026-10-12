@@ -140,7 +140,8 @@ def score_validated(frozen, report, audit):
         cost = (Decimal(usage['prompt_tokens'])*positive(price['inputUsdPerMillion'])
                 +Decimal(usage['completion_tokens'])*positive(price['outputUsdPerMillion']))/1000000
         require(cost == Decimal(stage['estimatedCostUsd']) and cost <= Decimal(cap['reservedCostUsd'])
-                and usage['prompt_tokens'] <= cap['reservedInputTokensHeuristic'] and usage['completion_tokens'] <= 8000,
+                and usage['prompt_tokens'] <= cap['reservedInputTokensHeuristic']
+                and usage['completion_tokens'] <= stage['body']['max_completion_tokens'],
                 'usage estimate/reservation changed')
         total += cost
         a = indexed[job['case'],job['arm'],job['repeat']]; assessment = None

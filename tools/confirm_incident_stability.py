@@ -96,7 +96,8 @@ def prepare(available,parent_step):
            'MECHANISM_FOCUS_1':'faithful-mechanism-focus-20261012',
            'COMPACT_REVIEW_1':'faithful-compact-review-20261012',
            'ANCHOR_FOCUS_1':'faithful-anchor-focus-20261012',
-           'CHRONOLOGY_1':'faithful-chronology-20261012'}
+           'CHRONOLOGY_1':'faithful-chronology-20261012',
+           'EXPLICIT_PASS_1':'faithful-explicit-pass-20261013'}
     require(parent_step in names,'known confirmation parent required')
     p=ROOT/names[parent_step];source=read(p/'frozen.json')
     scored=score(source,load(p/'live-run/report-index.json'),read(p/'java-audit.json'))
