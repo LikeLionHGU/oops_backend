@@ -70,6 +70,15 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
         from scoped_judgment_contract import judgment_request as scoped_request
         from target_focus_policy import focused_request
         body = focused_request(scoped_request(base, scope, 'CLOSED_SCOPE'))
+    elif judgment_variant == 'MECHANISM_FOCUS_CLOSED_SCOPE':
+        from scoped_judgment_contract import judgment_request as scoped_request
+        from target_focus_policy import focused_request as target_request
+        from mechanism_focus_policy import focused_request
+        body = focused_request(target_request(scoped_request(base, scope, 'CLOSED_SCOPE')))
+    elif judgment_variant == 'COMPACT_REVIEW_CLOSED_SCOPE':
+        from scoped_judgment_contract import judgment_request as scoped_request
+        from compact_review_policy import focused_request
+        body = focused_request(scoped_request(base, scope, 'CLOSED_SCOPE'))
     else:
         require(judgment_variant in {'RAW_REMOVED','CLOSED_SCOPE'}, 'unsupported bound judgment variant')
         from scoped_judgment_contract import judgment_request as scoped_request
@@ -84,11 +93,19 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
         from scoped_judgment_contract import exposure_manifest
         result.update(schemaVersion='server-bound-review-draft-4',
             exposure=exposure_manifest(scope,payload,body,judgment_variant))
-    elif judgment_variant == 'TARGET_FOCUS_CLOSED_SCOPE':
+    elif judgment_variant in {'TARGET_FOCUS_CLOSED_SCOPE','MECHANISM_FOCUS_CLOSED_SCOPE'}:
         from scoped_judgment_contract import exposure_manifest
         from target_focus_policy import DELTA
         result.update(schemaVersion='server-bound-review-draft-5',
             targetFocusPolicyHash=digest(DELTA), exposure=exposure_manifest(scope,payload,body,'CLOSED_SCOPE'))
+        if judgment_variant=='MECHANISM_FOCUS_CLOSED_SCOPE':
+            from mechanism_focus_policy import DELTA as mechanism_delta
+            result.update(schemaVersion='server-bound-review-draft-6',mechanismFocusPolicyHash=digest(mechanism_delta))
+    elif judgment_variant=='COMPACT_REVIEW_CLOSED_SCOPE':
+        from scoped_judgment_contract import exposure_manifest
+        from compact_review_policy import CRITERIA
+        result.update(schemaVersion='server-bound-review-draft-7',compactCriteriaHash=digest(CRITERIA),
+            exposure=exposure_manifest(scope,payload,body,'CLOSED_SCOPE'))
     result['attemptHash'] = digest(result)
     return result
 

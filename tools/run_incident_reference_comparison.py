@@ -73,7 +73,15 @@ def freeze(source,base,candidate,card,authorization):
 
 
 def prepare():return freeze(*source_inputs(),AUTHORIZATION)
-def validate(frozen):require(frozen==prepare(),'incident reference trial changed')
+def validate(frozen):
+    if frozen.get('stabilizationStep')=='CONFIRMATION_1':
+        from confirm_incident_stability import validate as validate_confirmation
+        validate_confirmation(frozen)
+    elif 'stabilizationStep' in frozen:
+        from stabilize_incident_reference import validate as validate_stabilization
+        validate_stabilization(frozen)
+    else:
+        require(frozen==prepare(),'incident reference trial changed')
 
 
 def score(frozen,report,audit):
