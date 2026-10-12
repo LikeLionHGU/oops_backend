@@ -54,7 +54,7 @@ def reference_context(card):
 
 
 def prompt_rules(archive, channel):
-    if archive.get("schemaVersion") == "review-guidelines-4":
+    if archive.get("schemaVersion") in {"review-guidelines-4", "review-guidelines-5"}:
         return [{k: rule[k] for k in ("id", "axis", "condition", "normalContrast", "requiredEvidence", "missingContext")}
                 for rule in archive["guidelines"] if channel in rule["channels"]]
     return [{**{k: v for k, v in rule.items() if k not in {"channels", "sourceCaseIds", "referenceContexts"}},

@@ -18,7 +18,9 @@ final class ContextExampleSelector {
         Map<String, String> conditions = new HashMap<>();
         rules.forEach(r -> conditions.put(r.id(), r.condition()));
         index = examples.stream().map(e -> {
-            String text = String.join(" ", e.context().flow()) + " "
+            // v5 routing is independent of mutable judgment explanations/rules.
+            // v4 keeps its exact historical behavior for backward compatibility.
+            String text = e.retrievalView() != null ? e.retrievalView().text() : String.join(" ", e.context().flow()) + " "
                     + String.join(" ", e.context().criticismHypotheses()) + " "
                     + e.mechanismIds().stream().map(conditions::get).reduce("", (a, b) -> a + " " + b);
             var terms = terms(text);

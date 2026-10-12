@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 import com.example.oops.domain.TimelineEventType;
 import java.time.OffsetDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.*;
 
 /** Working mechanism reference, distinct from approved evidence/training cases. */
@@ -71,8 +73,14 @@ public class ReviewGuidelineLibrary {
                     refreshOrDeleteBy, sourceCases, guidelines, null);
         }
     }
+    public record RetrievalView(String version, String basis, String text, String sha256) {}
     public record ContextExample(String id, String familyId, List<String> mechanismIds,
-                                 List<String> channels, Comparison context) {}
+                                 List<String> channels, Comparison context, RetrievalView retrievalView) {
+        public ContextExample(String id, String familyId, List<String> mechanismIds,
+                              List<String> channels, Comparison context) {
+            this(id, familyId, mechanismIds, channels, context, null);
+        }
+    }
     public record SelectedExample(List<String> mechanismIds, Comparison context) {}
     public record SourceCase(String caseId, String familyId, String status) {}
     public record Example(String id, String axis, String condition, String normalContrast,
@@ -140,14 +148,15 @@ public class ReviewGuidelineLibrary {
         } catch (Exception ex) { archive = null; state = "UNAVAILABLE_OR_INVALID"; }
     }
     private static boolean valid(Archive a) {
-        if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2", "review-guidelines-3", "review-guidelines-4").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
+        if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2", "review-guidelines-3", "review-guidelines-4", "review-guidelines-5").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
                 || !"WORKING_REFERENCE_NOT_VALIDATED".equals(a.status()) || !Boolean.FALSE.equals(a.humanValidated())
                 || !"REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED".equals(a.usage())
                 || a.sourceBundleSha256() == null || !a.sourceBundleSha256().matches("[0-9a-f]{64}")
                 || a.sourceCases() == null || a.sourceCases().isEmpty() || a.sourceCases().size() > 1000
                 || a.guidelines() == null || a.guidelines().isEmpty() || a.guidelines().size() > 16) return false;
         try { OffsetDateTime.parse(a.refreshOrDeleteBy()); } catch (Exception ex) { return false; }
-        boolean split = "review-guidelines-4".equals(a.schemaVersion());
+        boolean frozenRetrieval = "review-guidelines-5".equals(a.schemaVersion());
+        boolean split = frozenRetrieval || "review-guidelines-4".equals(a.schemaVersion());
         boolean dictionary = split || "review-guidelines-3".equals(a.schemaVersion());
         if (dictionary && (a.contextDictionarySha256() == null || !a.contextDictionarySha256().matches("[0-9a-f]{64}"))) return false;
         Set<String> sources = new HashSet<>(), ids = new HashSet<>(), covered = new HashSet<>();
@@ -187,6 +196,7 @@ public class ReviewGuidelineLibrary {
                 if (e == null || !sources.contains(e.id()) || !examples.add(e.id()) || !id(e.familyId())
                         || a.sourceCases().stream().noneMatch(s -> s.caseId().equals(e.id()) && s.familyId().equals(e.familyId()))
                         || e.mechanismIds() == null || e.channels() == null || e.context() == null) return false;
+                if (frozenRetrieval ? !validRetrieval(e.retrievalView()) : e.retrievalView() != null) return false;
                 Set<String> mapped = new HashSet<>(), channels = new HashSet<>();
                 a.guidelines().stream().filter(r -> r.sourceCaseIds().contains(e.id())).forEach(r -> {
                     mapped.add(r.id()); channels.addAll(r.channels());
@@ -203,7 +213,18 @@ public class ReviewGuidelineLibrary {
         }
         return true;
     }
-    private boolean splitArchive() { return archive != null && "review-guidelines-4".equals(archive.schemaVersion()); }
+    static String retrievalHash(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
+    }
+    private static boolean validRetrieval(RetrievalView r) {
+        return r != null && "frozen-legacy-lexical-1".equals(r.version())
+                && "FROZEN_LEGACY_NOT_SOURCE_EVIDENCE".equals(r.basis())
+                && text(r.text(), 8000) && retrievalHash(r.text()).equals(r.sha256());
+    }
+    private boolean splitArchive() { return archive != null && Set.of("review-guidelines-4", "review-guidelines-5").contains(archive.schemaVersion()); }
     private boolean expired() { return archive != null && !OffsetDateTime.parse(archive.refreshOrDeleteBy()).isAfter(OffsetDateTime.now()); }
     List<Example> examples(TimelineEventType channel) {
         if (archive == null || expired() || !"READY_WORKING_REFERENCE".equals(state)) return List.of();

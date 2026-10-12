@@ -19,7 +19,7 @@ public final class ContextReferenceAudit {
                     Path.of(args[1]).toAbsolutePath().toUri().toString(), 6000);
             library.load();
             if (!"READY_WORKING_REFERENCE".equals(library.trace(TimelineEventType.SPEECH).state())
-                    || !"review-guidelines-4".equals(archive.schemaVersion())) throw new IllegalArgumentException();
+                    || !Set.of("review-guidelines-4", "review-guidelines-5").contains(archive.schemaVersion())) throw new IllegalArgumentException();
             List<ReviewInput.Segment> raw = new ArrayList<>(); int index = 0;
             for (var row : root.get("transcript")) raw.add(new ReviewInput.Segment("audit-" + index++, TimelineEventType.SPEECH,
                     row.get("startMs").asLong(), row.get("endMs").asLong(), row.get("text").asText(), null));
