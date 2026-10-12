@@ -64,21 +64,90 @@ public class StorageService {
         }
     }
 
-    /** 영상 원본을 videos/{videoId}/original.{ext} 로 저장하고 storageKey 를 돌려준다. */
-    public String storeVideo(Long videoId, MultipartFile file) {
-        String extension = extensionOf(file.getOriginalFilename());
-        String storageKey = "videos/%d/original.%s".formatted(videoId, extension);
-        Path target = resolve(storageKey);
+    /** An opaque ownership handle; cleanup never recursively deletes a video directory. */
+    public static final class StagedUpload {
+        private final Path directory;
+        private final Path file;
+        private Path promotedDirectory;
+        private boolean completionManaged;
+        private StagedUpload(Path directory, Path file) { this.directory = directory; this.file = file; }
+        public boolean isCompletionManaged() { return completionManaged; }
+        public void manageCompletion() { completionManaged = true; }
+    }
 
+    /** Heavy copy happens before any database transaction or visible Video row. */
+    public StagedUpload stageVideo(MultipartFile file) {
+        validateVideoFile(file);
+        StagedUpload staged = null;
         try {
-            Files.createDirectories(target.getParent());
+            Path parent = resolve("videos/.incoming");
+            rejectLinkedPath(parent);
+            Files.createDirectories(parent);
+            Path directory = Files.createTempDirectory(parent, "upload-");
+            staged = new StagedUpload(directory, directory.resolve("original." + extensionOf(file.getOriginalFilename())));
             try (var in = file.getInputStream()) {
-                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(in, staged.file);
             }
-            return storageKey;
-        } catch (IOException e) {
-            log.error("파일 저장 실패 videoId={}", videoId, e);
+            return staged;
+        } catch (IOException | RuntimeException e) {
+            if (staged != null) discardUpload(staged);
+            log.error("임시 업로드 저장 실패", e);
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "파일 저장에 실패했습니다.");
+        }
+    }
+
+    public String stagedStorageKey(StagedUpload staged) { return toStorageKey(staged.file); }
+
+    /** Only a same-filesystem atomic rename is allowed inside the short DB commit. */
+    public String promoteUpload(StagedUpload staged, Long videoId) {
+        if (videoId == null || videoId <= 0 || staged.promotedDirectory != null) {
+            throw new IllegalArgumentException("Invalid upload promotion");
+        }
+        Path directory = resolve("videos/" + videoId);
+        try {
+            rejectLinkedPath(staged.file);
+            rejectLinkedPath(directory);
+            Files.createDirectory(directory); // Never replace another video's existing files.
+            staged.promotedDirectory = directory;
+            Path target = directory.resolve(staged.file.getFileName());
+            Files.move(staged.file, target, StandardCopyOption.ATOMIC_MOVE);
+            return toStorageKey(target);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "영상 파일 등록에 실패했습니다.");
+        }
+    }
+
+    private void rejectLinkedPath(Path path) throws IOException {
+        if (!path.toAbsolutePath().normalize().startsWith(root())) throw new IOException("Upload outside storage root");
+        Path cursor = root();
+        if (Files.isSymbolicLink(cursor)) throw new IOException("Linked storage root");
+        for (Path part : root().relativize(path)) {
+            cursor = cursor.resolve(part);
+            if (Files.isSymbolicLink(cursor)) throw new IOException("Linked upload path");
+        }
+    }
+
+    /** Best-effort compensation only for paths created by this ownership handle. */
+    public void discardUpload(StagedUpload staged) {
+        try {
+            if (staged.promotedDirectory != null) {
+                rejectLinkedPath(staged.promotedDirectory.resolve(staged.file.getFileName()));
+                Files.deleteIfExists(staged.promotedDirectory.resolve(staged.file.getFileName()));
+                Files.deleteIfExists(staged.promotedDirectory);
+            }
+            releaseUploadStaging(staged);
+        } catch (IOException | RuntimeException e) {
+            log.warn("[upload] 소유 파일 정리 실패; 수동 확인 필요: {}", staged.directory, e);
+        }
+    }
+
+    public void releaseUploadStaging(StagedUpload staged) {
+        try {
+            rejectLinkedPath(staged.file);
+            Files.deleteIfExists(staged.file);
+            Files.deleteIfExists(staged.directory);
+        } catch (IOException | RuntimeException e) {
+            log.warn("[upload] 임시 파일 정리 실패; 수동 확인 필요: {}", staged.directory, e);
         }
     }
 

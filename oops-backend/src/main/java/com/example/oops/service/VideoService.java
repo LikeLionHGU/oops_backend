@@ -24,6 +24,7 @@ import com.example.oops.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.web.multipart.MultipartFile;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -44,25 +45,26 @@ public class VideoService {
     private final ReviewActionRepository actionRepository;
     private final StorageService storageService;
     private final AnalysisServerClient analysisServerClient;
+    private final UploadPersistenceService uploadPersistence;
 
     /**
      * 파일 업로드. (API 명세 2-1)
-     * videoId 를 먼저 발급받아야 저장 경로를 videos/{id}/ 로 만들 수 있어서 두 단계로 저장한다.
+     * 복사·probe는 DB 밖에서, ID 발급·원자적 파일 이동·등록만 짧은 트랜잭션으로 처리한다.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NEVER)
     public Video createFromUpload(MultipartFile file, String genre) {
-        storageService.validateVideoFile(file);
-
-        Video video = videoRepository.save(Video.builder()
-                .sourceType(SourceType.UPLOAD)
-                .filename(file.getOriginalFilename())
-                .title(file.getOriginalFilename())
-                .genre(ContentGenre.fromOrDefault(genre, null))   // null 이면 자동 판별
-                .build());
-
-        video.assignStorageKey(storageService.storeVideo(video.getId(), file));
-        enforceDurationLimit(video);
-        return video;
+        var staged = storageService.stageVideo(file);
+        try {
+            var input = Video.builder().sourceType(SourceType.UPLOAD).filename(file.getOriginalFilename())
+                    .storageKey(storageService.stagedStorageKey(staged)).build();
+            enforceDurationLimit(input);
+            return uploadPersistence.persist(staged, file.getOriginalFilename(), genre);
+        } catch (RuntimeException | Error error) {
+            // Once registered, transaction completion owns compensation. UNKNOWN
+            // must preserve files because the DB commit might actually have succeeded.
+            if (!staged.isCompletionManaged()) storageService.discardUpload(staged);
+            throw error;
+        }
     }
 
     /** 유튜브 링크 등록 (명세 외 확장) */
@@ -116,9 +118,6 @@ public class VideoService {
         analysisServerClient.probe(video)
                 .filter(probe -> Boolean.FALSE.equals(probe.withinLimit()))
                 .ifPresent(probe -> {
-                    storageService.deleteVideoFiles(video.getId());
-                    videoRepository.delete(video);
-
                     int minutes = probe.durationSec() == null ? 0 : probe.durationSec() / 60;
                     int limit = probe.maxDurationSec() == null ? 0 : probe.maxDurationSec() / 60;
                     throw new BusinessException(ErrorCode.MAX_VIDEO_DURATION_EXCEEDED,
