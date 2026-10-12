@@ -87,6 +87,104 @@ public class StorageService {
         return resolve("frames/%d".formatted(videoId));
     }
 
+    private static final String OCR_COMPLETE = ".ocr-complete";
+    private static final String ANALYSIS_RELEASED = ".analysis-released";
+
+    public record JobFrames(Long videoId, Long jobId) {}
+
+    /** Only folders in the new job-scoped layout are eligible; never follow links. */
+    private Path safeJobFrameDir(Long videoId, Long jobId) throws IOException {
+        if (videoId == null || jobId == null || videoId <= 0 || jobId <= 0) {
+            throw new IOException("Invalid frame owner");
+        }
+        Path directory = frameDir(videoId).resolve("jobs/" + jobId);
+        Path cursor = root();
+        if (Files.isSymbolicLink(cursor)) throw new IOException("Linked storage root");
+        for (Path part : root().relativize(directory)) {
+            cursor = cursor.resolve(part);
+            if (Files.isSymbolicLink(cursor)) throw new IOException("Linked frame path");
+        }
+        return directory;
+    }
+
+    /** Called only after a valid OCR response, not after timeout or connection failure. */
+    public void markOcrComplete(Long videoId, Long jobId) {
+        try {
+            Path directory = safeJobFrameDir(videoId, jobId);
+            if (!Files.isDirectory(directory)) return; // No retained images, nothing to collect.
+            Files.writeString(directory.resolve(OCR_COMPLETE), "ocr-response-received\n",
+                    java.nio.file.StandardOpenOption.CREATE_NEW);
+        } catch (IOException e) {
+            // A missing marker means conservative retention, not failed analysis.
+            log.warn("[frame-retention] 완료 표시 실패 videoId={} jobId={}: {}", videoId, jobId, e.getMessage());
+        }
+    }
+
+    /** Called from the pipeline finally block; cancellation alone does not release files. */
+    public void releaseJobFrames(Long videoId, Long jobId) {
+        try {
+            Path directory = safeJobFrameDir(videoId, jobId);
+            if (!Files.isRegularFile(directory.resolve(OCR_COMPLETE), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
+            Files.writeString(directory.resolve(ANALYSIS_RELEASED), "analysis-returned\n",
+                    java.nio.file.StandardOpenOption.CREATE_NEW);
+        } catch (IOException e) {
+            log.warn("[frame-retention] 해제 표시 실패 videoId={} jobId={}: {}", videoId, jobId, e.getMessage());
+        }
+    }
+
+    /** At most 1000 eligible candidates; database checks happen under the video lock. */
+    public List<JobFrames> expiredJobFrames(java.time.Instant threshold) {
+        return expiredJobFrames(threshold, 0);
+    }
+
+    public List<JobFrames> expiredJobFrames(java.time.Instant threshold, long offset) {
+        Path frames = resolve("frames");
+        if (!Files.isDirectory(frames) || Files.isSymbolicLink(root()) || Files.isSymbolicLink(frames)) return List.of();
+        try (var paths = Files.walk(frames, 3)) {
+            return paths.filter(p -> p.getNameCount() == frames.getNameCount() + 3)
+                    .map(p -> {
+                        try {
+                            Path relative = frames.relativize(p);
+                            if (!relative.getName(1).toString().equals("jobs")
+                                    || !relative.getName(0).toString().matches("[1-9][0-9]*")
+                                    || !relative.getName(2).toString().matches("[1-9][0-9]*")) return null;
+                            var owner = new JobFrames(Long.valueOf(relative.getName(0).toString()), Long.valueOf(relative.getName(2).toString()));
+                            return hasExpiredMarker(safeJobFrameDir(owner.videoId(), owner.jobId()), threshold) ? owner : null;
+                        } catch (IOException | NumberFormatException e) { return null; }
+                    }).filter(java.util.Objects::nonNull).skip(Math.max(0, offset)).limit(1000).toList();
+        } catch (IOException e) {
+            log.warn("[frame-retention] 후보 조회 실패: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private boolean hasExpiredMarker(Path directory, java.time.Instant threshold) throws IOException {
+        Path marker = directory.resolve(ANALYSIS_RELEASED);
+        return Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                && Files.isRegularFile(marker, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                && Files.isRegularFile(directory.resolve(OCR_COMPLETE), java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                && Files.getLastModifiedTime(marker, java.nio.file.LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(threshold);
+    }
+
+    /** The caller must hold the video row lock and exclude running/referenced work. */
+    public boolean deleteExpiredJobFrames(Long videoId, Long jobId, java.time.Instant threshold) throws IOException {
+        Path directory = safeJobFrameDir(videoId, jobId);
+        if (!hasExpiredMarker(directory, threshold)) return false;
+        List<Path> entries;
+        try (var paths = Files.walk(directory)) { entries = paths.toList(); }
+        // Even an internal link is rejected, rather than guessing the intended target.
+        if (entries.stream().anyMatch(Files::isSymbolicLink)) return false;
+        for (Path entry : entries.stream().sorted(java.util.Comparator.comparingInt(Path::getNameCount).reversed()).toList()) {
+            // Keep the marker until last so interrupted cleanup remains discoverable.
+            if (!entry.equals(directory) && !entry.equals(directory.resolve(OCR_COMPLETE))
+                    && !entry.equals(directory.resolve(ANALYSIS_RELEASED))) Files.deleteIfExists(entry);
+        }
+        Files.deleteIfExists(directory.resolve(OCR_COMPLETE));
+        Files.deleteIfExists(directory.resolve(ANALYSIS_RELEASED));
+        Files.deleteIfExists(directory);
+        return true;
+    }
+
     /** 분석 서버가 돌려준 절대경로를 storageKey 로 되돌린다. */
     public String toStorageKey(Path absolutePath) {
         return root().relativize(absolutePath.toAbsolutePath().normalize())

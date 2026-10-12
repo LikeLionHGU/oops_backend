@@ -151,6 +151,7 @@ class CompletionTransactionTest {
         var target=preparePipeline();
         doThrow(new IllegalStateException("simulated result write failure")).when(reports).save(any());
         target.runAsync(id);
+        verify(screens).releaseFrames(any(), eq(id));
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             var job=jobs.findById(id).orElseThrow();
             assertThat(job.getStatus()).isEqualTo(AnalysisStatus.FAILED);

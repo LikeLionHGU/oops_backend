@@ -51,6 +51,7 @@ class AnalysisPipelineReviewTest {
         pipeline.runAsync(11L);
         var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
         verify(writer).save(eq(11L), captor.capture());
+        verify(screens).releaseFrames(video, 11L);
         var result = captor.getValue().coverage().stream().filter(c -> c.getStep() == CoverageStep.OCR).findFirst().orElseThrow();
         assertThat(result.getStatus()).isEqualTo(state);
         if (state != AnalyzerStatus.SUCCESS) assertThat(result.getMessage()).contains("프레임 처리");

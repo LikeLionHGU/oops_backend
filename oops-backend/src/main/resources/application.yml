@@ -70,6 +70,8 @@ oops:
     # 원본만 먼저 삭제할 보관 시간. 0이면 꺼짐.
     # 운영 환경에서 개인정보 보관을 줄이려면 24 정도로 설정한다.
     source-retention-hours: 24
+    # 정상 OCR 응답·종료·미참조가 확인된 작업 프레임만 정리. 0=꺼짐, 활성화 시 최소 24시간.
+    orphan-frame-retention-hours: 0
 
   # 분석 서버(oops-analysis) 없이 파이프라인만 돌려볼 때 true
   use-dummy-transcript: false

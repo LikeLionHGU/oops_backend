@@ -27,10 +27,15 @@ public class ScreenTextService {
     private final AnalysisServerClient analysisServerClient;
     private final StorageService storageService;
 
+    public void releaseFrames(Video video, Long jobId) {
+        storageService.releaseJobFrames(video.getId(), jobId);
+    }
+
     /** Never replace committed frames during external computation. */
     public List<ScreenText> extract(Video video, Long jobId) {
         String directory = storageService.frameDir(video.getId()).resolve("jobs/" + jobId).toString();
         var response = analysisServerClient.ocr(video, directory).orElse(null);
+        if (response != null) storageService.markOcrComplete(video.getId(), jobId);
         if (response == null || response.items() == null || response.items().isEmpty()) {
             log.info("[ocr] 화면 자막 없음 videoId={}", video.getId());
             return List.of();

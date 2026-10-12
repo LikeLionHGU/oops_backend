@@ -279,6 +279,8 @@ public class AnalysisPipeline {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             progressService.fail(jobId, "ANALYSIS_FAILED", "분석 처리 또는 결과 저장에 실패했습니다.");
         } finally {
+            try { screenTextService.releaseFrames(video, jobId); }
+            catch (Exception e) { log.warn("[pipeline] 프레임 해제 표시 실패 jobId={}", jobId, e); }
             openAiClient.endVideo();
         }
     }
