@@ -77,6 +77,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'boundaryInputStudy' in artifact:
+        from run_context_boundary_comparison import validate as validate_boundary_input
+        validate_boundary_input(artifact)
+        return
     if 'contextReselectionStudy' in artifact:
         from prepare_context_reselection import validate as validate_reselection
         validate_reselection(artifact)
@@ -418,7 +422,11 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
                   estimatedCostUsd=str(sum(Decimal(s.get('estimatedCostUsd','0')) for s in stages)),
                   unknownCostAttempts=sum('estimatedCostUsd' not in s for s in stages),
                   actualBilledCostUsd=None, qualityGateMet=None, fullPipelineReplayed=False,
-                  normalControlsIncluded=artifact.get('normalControlsIncluded', True), repetitionsPerCondition=3)
+                  normalControlsIncluded=artifact.get('normalControlsIncluded', True),
+                  repetitionsPerCondition=artifact.get('repetitionsPerCondition',3))
+    if 'boundaryInputStudy' in artifact:
+        report.update(boundaryInputStudy=artifact['boundaryInputStudy'],previewHash=artifact['previewHash'],
+                      automaticSelectionEvaluated=False,fullRegressionReplayed=False)
     if 'contextReselectionStudy' in artifact:
         report.update(contextReselectionStudy=artifact['contextReselectionStudy'],
                       sourceReportHash=artifact['sourceReportHash'],
@@ -441,7 +449,8 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
     # Break in-memory aliases before administrative ID normalization. JSON on
     # disk duplicates shared objects, so audit provenance must use that form.
     exported=audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
-    exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
+    exported.update(trialSchemaVersion='recorded-boundary-input-1' if 'boundaryInputStudy' in artifact else 'recorded-flow-regression-1',
+                    repetitionsPerCondition=artifact.get('repetitionsPerCondition',3))
     if artifact.get('reportSerialization')=='bundle-1':
         save_bundle(directory,exported,'audit')
     else:
