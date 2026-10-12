@@ -416,12 +416,19 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
         if simulate:
             report.update(mockTokenRateEquivalentUsd=report['estimatedCostUsd'], estimatedCostUsd='0',
                           status='MOCK_COMPLETE_PENDING_JAVA_AUDIT' if report['status']=='COMPLETED_PENDING_JAVA_AUDIT' else 'MOCK_PARTIAL')
-    write_private(directory/'report.json',report)
+    if artifact.get('reportSerialization')=='bundle-1':
+        from private_report_bundle import save as save_bundle
+        save_bundle(directory,report,'report')
+    else:
+        write_private(directory/'report.json',report)
     # Break in-memory aliases before administrative ID normalization. JSON on
     # disk duplicates shared objects, so audit provenance must use that form.
     exported=audit_export(json.loads(json.dumps(report,ensure_ascii=False)))
     exported.update(trialSchemaVersion='recorded-flow-regression-1',repetitionsPerCondition=3)
-    write_private(directory/'audit-input.json',exported)
+    if artifact.get('reportSerialization')=='bundle-1':
+        save_bundle(directory,exported,'audit')
+    else:
+        write_private(directory/'audit-input.json',exported)
     return report
 
 

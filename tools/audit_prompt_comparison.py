@@ -44,7 +44,11 @@ def run(report_path, archive_path, output):
     report_path, output = Path(report_path).resolve(), Path(output).resolve()
     if output.exists() or output == report_path:
         raise ValueError("NEW_AUDIT_OUTPUT_REQUIRED")
-    report = json.loads(report_path.read_text())
+    if report_path.name.endswith('-index.json'):
+        from private_report_bundle import load as load_bundle
+        report=load_bundle(report_path)
+    else:
+        report = json.loads(report_path.read_text())
     limit = 42 if any(c.get('outputAdapter') in {'single-target-evidence-wire-1','evidence-id-selection-wire-1'} for c in report.get('calls',[])) else 28
     if report.get('trialSchemaVersion')=='recorded-flow-regression-1':
         n=report.get('repetitionsPerCondition')

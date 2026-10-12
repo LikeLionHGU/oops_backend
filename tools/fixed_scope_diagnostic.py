@@ -174,6 +174,8 @@ def score(frozen, report, audit, *, allow_partial=False, paired=False):
             and set(indexed)=={(j['case'],j['arm'],j['repeat']) for j in report['calls']}, 'unique observed audit required')
     require(len({u['unitIndex'] for u in report['calls']})==count, 'duplicate execution index')
     rows=[]; total_cost=Decimal(0)
+    expected_by_case={c['name']:c.get('developmentExpectation') or (
+        'REVIEW_REQUIRED' if c['name'] in {'B','C','D','B1','B3'} else 'PASS') for c in frozen['source']['cases']}
     for unit in report['calls']:
         index=unit['unitIndex']
         require(type(index) is int and 1<=index<=limit,'execution index invalid')
@@ -198,7 +200,8 @@ def score(frozen, report, audit, *, allow_partial=False, paired=False):
             a=indexed[job['case'],job['arm'],job['repeat']]
             require(not a['accepted'], 'provider failure cannot be accepted')
             rows.append(dict(case=job['case'],repeat=job['repeat'],accepted=False,decision=None,
-                developmentExpectedDecision='REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS',
+                developmentExpectedDecision=expected_by_case[job['case']] if paired else
+                    'REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS',
                 matched=None,semanticIssueMatched=None,failureCode='PROVIDER_FAILURE'))
             if paired:rows[-1]['arm']=job['arm']
             continue
@@ -221,7 +224,7 @@ def score(frozen, report, audit, *, allow_partial=False, paired=False):
             require(stage['boundReceipt']==receipt and unit['reviewPacket']==receipt['compatiblePacket']
                 and unit['output']==receipt['compatiblePacket']['compatibleAssessment'], 'derived response mismatch')
         a=indexed[job['case'],job['arm'],job['repeat']]
-        wanted='REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS'
+        wanted=expected_by_case[job['case']] if paired else 'REVIEW_REQUIRED' if job['case'] in {'B1','B3'} else 'PASS'
         rows.append(dict(case=job['case'],repeat=job['repeat'],accepted=a['accepted'],decision=a.get('decision'),
             developmentExpectedDecision=wanted,matched=None if mock or partial else a['accepted'] and a.get('decision')==wanted,
             semanticIssueMatched=None))
