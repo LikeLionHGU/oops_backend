@@ -31,8 +31,9 @@ public interface AnalysisJobRepository extends JpaRepository<AnalysisJob, Long> 
 
     boolean existsByVideoIdAndStatusIn(Long videoId, List<AnalysisStatus> statuses);
 
-    /** 서버 재시작 시 중간에 끊긴 잡을 찾는 용도 */
-    List<AnalysisJob> findByStatusIn(List<AnalysisStatus> statuses);
+    @org.springframework.data.jpa.repository.Query("select j.id from AnalysisJob j where j.createdAt < :cutoff and j.status in :statuses order by j.id")
+    List<Long> findRecoveryCandidateIds(@org.springframework.data.repository.query.Param("cutoff") java.time.LocalDateTime cutoff,
+                                      @org.springframework.data.repository.query.Param("statuses") List<AnalysisStatus> statuses);
 
     void deleteByVideoId(Long videoId);
 }
