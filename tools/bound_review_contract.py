@@ -63,16 +63,23 @@ def prepare_attempt(base, scope, attempt_id, *, judgment_variant=None):
     payload = json.loads(base['messages'][1]['content'])
     if judgment_variant is None:
         body = judgment_request(base, scope)
-    else:
-        require(judgment_variant == 'RELATION_CHECKLIST', 'unsupported bound judgment variant')
+    elif judgment_variant == 'RELATION_CHECKLIST':
         from review_boundary_variants import judgment_request as variant_request
         body = variant_request(base, scope, judgment_variant)
+    else:
+        require(judgment_variant in {'RAW_REMOVED','CLOSED_SCOPE'}, 'unsupported bound judgment variant')
+        from scoped_judgment_contract import judgment_request as scoped_request
+        body = scoped_request(base, scope, judgment_variant)
     result = dict(schemaVersion=VERSION, attemptId=attempt_id, baseRequest=copy.deepcopy(base),
                   originalInput=payload, selectedScope=copy.deepcopy(scope), requestBody=body,
                   requestHash=digest(body), inputHash=digest(payload), scopeHash=scope['scopeHash'],
                   executionEnabled=False, runtimeUseAuthorized=False)
     if judgment_variant is not None:
         result.update(schemaVersion='server-bound-review-draft-3', judgmentVariant=judgment_variant)
+    if judgment_variant in {'RAW_REMOVED','CLOSED_SCOPE'}:
+        from scoped_judgment_contract import exposure_manifest
+        result.update(schemaVersion='server-bound-review-draft-4',
+            exposure=exposure_manifest(scope,payload,body,judgment_variant))
     result['attemptHash'] = digest(result)
     return result
 
@@ -143,6 +150,8 @@ def receive(attempt, observed_request, response):
                   linkageSource='CALLER_LOCAL_INVOCATION', providerAuthenticityVerified=False,
                   derivedCompatibilityFields=['scopeHash'], responsesModified=False,
                   qualityGateMet=None, runtimeUseAuthorized=False)
+    if 'exposure' in attempt:
+        result['exposure'] = copy.deepcopy(attempt['exposure'])
     result['receiptHash'] = digest(result)
     return result
 

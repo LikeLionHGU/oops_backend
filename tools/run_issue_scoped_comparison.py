@@ -77,6 +77,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'scopedInputStudy' in artifact:
+        from scoped_input_study import validate as validate_scoped
+        validate_scoped(artifact)
+        return
     if 'fixedScopeStudy' in artifact:
         from fixed_scope_diagnostic import validate as validate_fixed
         validate_fixed(artifact)
@@ -271,6 +275,9 @@ def bound_judgment_request(artifact, base, scope, *, variant=None):
     variant = variant or artifact.get('judgmentVariant')
     if variant is None:
         return original(base, scope)
+    if variant in {'RAW_REMOVED','CLOSED_SCOPE'}:
+        from scoped_judgment_contract import judgment_request as scoped_request
+        return scoped_request(base,scope,variant)
     from review_boundary_variants import judgment_request as changed
     return changed(base, scope, variant)
 
@@ -307,14 +314,16 @@ def execute(artifact, directory, key, call=transport, *, simulate=False):
             result['selectedScope'] = copy.deepcopy(scope)
         for stage in job['stages']:
             if stop.is_set(): result['status']='STOPPED_BEFORE_STAGE'; break
-            body = judge_request(job['baseBody'], scope) if stage['stage'] == 'JUDGE' else stage['body']
+            body = (bound_judgment_request(artifact,job['baseBody'],scope,variant=job.get('judgmentVariant'))
+                    if is_bound and stage['stage']=='JUDGE' else
+                    judge_request(job['baseBody'],scope) if stage['stage']=='JUDGE' else stage['body'])
             actual_tokens, _ = reserve(body, artifact['config'])
             require(actual_tokens <= stage['reservedInputTokensHeuristic'], 'dynamic request exceeds reservation')
             attempt = dict(stage=stage['stage'], requestHash=digest(body), body=body)
             ticket = None
             if is_bound and stage['stage'] == 'JUDGE':
                 ticket = prepare_attempt(job['baseBody'], scope, f'{artifact["artifactHash"]}-{index:03d}',
-                                         judgment_variant=artifact.get('judgmentVariant'))
+                                         judgment_variant=job.get('judgmentVariant',artifact.get('judgmentVariant')))
                 attempt['localAttempt'] = ticket
             write_private(directory/f'attempt-{index:03d}-{stage["stage"]}.json', attempt)
             started = time.monotonic()
