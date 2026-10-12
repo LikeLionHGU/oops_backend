@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -19,7 +20,8 @@ class Settings(BaseSettings):
     ocr_lang: str = "korean"
 
     # 프레임을 몇 초 간격으로 뽑을지 (OCR 기본값)
-    default_interval_sec: float = 4.0
+    default_interval_sec: float = Field(default=4.0, gt=0, allow_inf_nan=False)
+    media_timeout_sec: int = Field(default=300, gt=0, le=600)
 
     # 영상 길이 상한.
     # 타깃이 20~60분 롱폼 토크·인터뷰인데, 실제로는 70~80분짜리도 흔해서

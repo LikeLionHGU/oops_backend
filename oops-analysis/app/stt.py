@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 
 from .config import get_settings
-from .media import MediaError, PreparedVideo, extract_audio
+from .media import MediaError, PreparedVideo, extract_audio, run_command
 
 log = logging.getLogger(__name__)
 
@@ -71,10 +71,10 @@ def _split_audio(audio: Path, workdir: Path, duration_sec: float) -> list[tuple[
     for i in range(count):
         start = i * CHUNK_SEC
         target = workdir / f"audio_{i:03d}.mp3"
-        result = subprocess.run(
+        result = run_command(
             ["ffmpeg", "-y", "-i", str(audio), "-ss", str(start),
              "-t", str(CHUNK_SEC), "-c", "copy", str(target)],
-            capture_output=True, text=True,
+            timeout=60, label="음성 분할",
         )
         if result.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
             # Split every chunk before any paid request. Never certify an incomplete transcript.

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, StrictInt
 
 from . import ocr, stt, scene_frames
 from .config import get_settings
-from .media import MediaError, prepare, resolve_storage_path
+from .media import MediaError, prepare, resolve_storage_path, valid_duration
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ app = FastAPI(title="oops-analysis", version="0.1.0")
 class MediaRequest(BaseModel):
     videoUrl: str | None = None
     filePath: str | None = None
-    intervalSec: float | None = None
+    intervalSec: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     # OCR 에서 텍스트가 잡힌 프레임을 보관할 폴더. Spring 이 지정한다.
     frameDir: str | None = None
 
@@ -64,6 +64,7 @@ def probe(request: MediaRequest) -> dict:
     video = None
     try:
         video = prepare(request.videoUrl, request.filePath)
+        valid_duration(video.duration_sec)
         return {
             "durationSec": int(video.duration_sec),
             "title": video.title,
@@ -124,6 +125,7 @@ def run_ocr(request: MediaRequest) -> dict:
 
 
 def _guard_duration(duration_sec: float) -> None:
+    duration_sec = valid_duration(duration_sec)
     limit = get_settings().max_duration_sec
     if duration_sec > limit:
         raise MediaError(

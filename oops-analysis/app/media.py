@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 import shutil
 import subprocess
 import uuid
@@ -17,6 +19,25 @@ log = logging.getLogger(__name__)
 
 class MediaError(RuntimeError):
     pass
+
+
+def run_command(command, *, timeout: int, label: str):
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise MediaError(f"{label} 제한 시간을 초과했습니다.") from exc
+    except OSError as exc:
+        raise MediaError(f"{label} 도구를 실행하지 못했습니다.") from exc
+
+
+def valid_duration(value) -> float:
+    try:
+        duration = float(value)
+    except (TypeError, ValueError) as exc:
+        raise MediaError("영상 길이를 확인하지 못했습니다.") from exc
+    if not math.isfinite(duration) or duration <= 0:
+        raise MediaError("영상 길이를 확인하지 못했습니다.")
+    return duration
 
 
 YOUTUBE_HOSTS = {
@@ -84,16 +105,16 @@ def _new_workdir() -> Path:
 
 
 def probe_duration(path: Path) -> float:
-    result = subprocess.run(
+    result = run_command(
         ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
-        capture_output=True, text=True,
+        timeout=20, label="영상 길이 확인",
     )
     if result.returncode != 0:
-        return 0.0
+        raise MediaError("영상 길이를 확인하지 못했습니다.")
     try:
-        return float(json.loads(result.stdout)["format"]["duration"])
-    except (KeyError, ValueError, json.JSONDecodeError):
-        return 0.0
+        return valid_duration(json.loads(result.stdout)["format"]["duration"])
+    except (KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise MediaError("영상 길이를 확인하지 못했습니다.") from exc
 
 
 def prepare(video_url: str | None, file_path: str | None) -> PreparedVideo:
@@ -141,7 +162,7 @@ def prepare(video_url: str | None, file_path: str | None) -> PreparedVideo:
         return PreparedVideo(
             path=downloaded,
             workdir=workdir,
-            duration_sec=float(info.get("duration") or probe_duration(downloaded)),
+            duration_sec=valid_duration(info.get("duration") or probe_duration(downloaded)),
             title=info.get("title"),
         )
     except Exception as e:
@@ -163,7 +184,7 @@ def extract_audio(video: PreparedVideo) -> Path:
         "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k",
         str(target),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_command(cmd, timeout=get_settings().media_timeout_sec, label="오디오 추출")
     if result.returncode != 0 or not target.exists():
         raise MediaError(f"오디오 추출 실패: {result.stderr[-500:]}")
     return target
@@ -171,21 +192,30 @@ def extract_audio(video: PreparedVideo) -> Path:
 
 def extract_frames(video: PreparedVideo, interval_sec: float) -> list[tuple[int, Path]]:
     """interval_sec 간격으로 프레임을 뽑아 (타임코드ms, 파일경로) 목록을 돌려준다."""
+    if not math.isfinite(interval_sec) or interval_sec <= 0:
+        raise MediaError("프레임 간격은 양수여야 합니다.")
     frame_dir = video.workdir / "frames"
     frame_dir.mkdir(exist_ok=True)
 
     cmd = [
-        "ffmpeg", "-y", "-i", str(video.path),
+        "ffmpeg", "-hide_banner", "-nostats", "-y", "-i", str(video.path),
         # 자막 글자가 작으면 OCR 이 깨진다. 원본이 작아도 업스케일해서 인식률을 올린다.
         # 1920 은 인식률이 좋지만 느리다. 1600 이 속도와 정확도의 타협점이다.
-        "-vf", f"fps=1/{interval_sec},scale=1600:-2:flags=lanczos",
+        # Sample the first source frame at/after each grid point. Retain actual
+        # source-relative PTS; fps resampling rewrites PTS and samples later frames.
+        "-vf", f"setpts=PTS-STARTPTS,select='gte(t,selected_n*{interval_sec})',"
+               "showinfo=checksum=0,scale=1600:-2:flags=lanczos",
+        "-fps_mode", "vfr",
         "-q:v", "2",
         str(frame_dir / "frame_%05d.jpg"),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_command(cmd, timeout=get_settings().media_timeout_sec, label="프레임 추출")
     if result.returncode != 0:
         raise MediaError(f"프레임 추출 실패: {result.stderr[-500:]}")
 
     frames = sorted(frame_dir.glob("frame_*.jpg"))
-    # ffmpeg 의 fps 필터는 n번째 프레임이 (n-0.5)*interval 지점에 해당한다
-    return [(int(idx * interval_sec * 1000), path) for idx, path in enumerate(frames)]
+    times = [float(t) for t in re.findall(r"\[Parsed_showinfo_\d+[^\]]*\].*?\bpts_time:([0-9.eE+-]+)", result.stderr)]
+    if (len(times) != len(frames) or any(not math.isfinite(t) or t < 0 for t in times)
+            or any(b <= a for a, b in zip(times, times[1:]))):
+        raise MediaError("OCR 프레임의 실제 시간 정보를 확인하지 못했습니다.")
+    return [(round(t * 1000), path) for t, path in zip(times, frames)]
