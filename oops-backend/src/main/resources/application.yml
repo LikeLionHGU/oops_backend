@@ -119,6 +119,8 @@ oops:
     client-secret: ${NAVER_CLIENT_SECRET:}
 
   analysis:
+    # 단일 Spring 인스턴스의 시작 시 복구. 같은 DB를 공유하는 다중 인스턴스에서는 끈다.
+    startup-recovery-enabled: true
     # 원댓글/사건 예시와 별개인 압축 맥락 기준. 로컬 데이터는 Git 제외; 배포 시 파일도 제공한다.
     guidelines-enabled: ${REVIEW_GUIDELINES_ENABLED:true}
     guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json}
