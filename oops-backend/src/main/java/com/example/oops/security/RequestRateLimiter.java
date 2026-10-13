@@ -17,6 +17,13 @@ public class RequestRateLimiter {
 
     private final OopsProperties properties;
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger sinceSweep =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** 이 횟수의 요청마다 한 번만 만료된 윈도우를 정리한다. 매 요청 전체 순회를 피한다. */
+    private static final int SWEEP_INTERVAL = 256;
+    /** 윈도우 수 상한. 키 폭증(위조·분산 공격)에도 메모리가 무한히 늘지 않게 즉시 정리를 당긴다. */
+    private static final int MAX_WINDOWS = 100_000;
 
     public void check(String operation, String clientKey, int limit) {
         if (limit <= 0) return;
@@ -30,7 +37,12 @@ public class RequestRateLimiter {
             return new Window(window, previous.count() + 1);
         });
 
-        windows.entrySet().removeIf(entry -> entry.getValue().window() < window - 1);
+        // 전체 맵 순회는 비싸므로 평소에는 일정 요청마다 한 번만 한다.
+        // 다만 키가 비정상적으로 많이 쌓이면(공격) 즉시 당겨서 정리한다.
+        if (sinceSweep.incrementAndGet() >= SWEEP_INTERVAL || windows.size() > MAX_WINDOWS) {
+            sinceSweep.set(0);
+            windows.entrySet().removeIf(entry -> entry.getValue().window() < window - 1);
+        }
 
         if (current.count() > limit) {
             log.warn("[rate-limit] operation={} client={} count={} limit={}",
