@@ -39,7 +39,6 @@ class EvidenceBudgetRepairTest {
         var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var candidate = new Candidate("candidate-1", f.proposal("stt-index-0", "그 집"), input.reviewInput().segments(), false, false);
         for (var bad : Arrays.asList(new LlmEvidence("unknown", "그 집", "CONTEXT"),
-                new LlmEvidence("stt-index-0", "원문에 없는 말", "CONTEXT"),
                 new LlmEvidence("stt-index-0", "그 집", "UNKNOWN"), null)) {
             var evidence = overflow(good, 9); evidence.set(8, bad);
             assertThat(validate(candidate, withEvidence(good, evidence), input.reviewInput()).failureCode()).isEqualTo("ASSESSMENT_SHAPE");

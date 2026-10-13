@@ -68,20 +68,21 @@ class CandidateReferenceRepairTest {
         assertThat(result.diagnostics().candidatePipeline().repairs()).singleElement()
                 .extracting(CandidateReviewDiagnostics.RepairTrace::state).isEqualTo("RECOVERED");
     }
-    @Test void repairCannotReplaceUnknownIdWithFabricatedQuoteAndStillPublish() {
+    @Test void repairThatStillCitesUnknownIdStaysFailed() {
+        // Quotes are server-filled (Approach A), so a repair cannot fabricate a quote; the remaining
+        // guard is the evidence id. A repair whose answer still cites an unknown id stays rejected.
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var good = f.assessment("stt-index-0", "PASS", "그 집");
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", badId(good))))),
-                        Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
-                                f.assessment("stt-index-0", "PASS", "허구 인용"))))));
+                        Optional.of(new VerificationResult(List.of(new Verification("candidate-1", badId(good))))));
         var result = run(f.client, f.context("그 집은 조용하다"), 24);
         assertThat(result.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairs()).singleElement().satisfies(t -> {
             assertThat(t.state()).isEqualTo("FAILED");
-            assertThat(t.finalFailureCode()).isEqualTo("DECISION_QUOTE_NOT_IN_RAW");
+            assertThat(t.finalFailureCode()).isEqualTo("DECISION_UNKNOWN_EVIDENCE_ID");
         });
     }
     @Test void fabricatedQuoteIsNotAutoRepairedAndProviderFailureDoesNotLoop() {

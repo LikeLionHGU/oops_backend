@@ -30,14 +30,17 @@ class CandidateDiscoveryContractTest {
         assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isZero();
         verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
-    @Test void missingAnchorRepairCannotInventQuotesOrLoopIfStillMissing() {
-        for (String quote : List.of("허구 발언", "그 집")) {
+    @Test void missingAnchorRepairStaysFailedWhenAnchorEvidenceStillMissing() {
+        // Quotes are server-filled; the guard is that the anchor line must appear in evidence. A repair
+        // that still omits the anchor's own id stays FAILED and does not loop.
+        for (String evidenceId : List.of("stt-index-0", "stt-index-1")) {
             var f = new CandidateReviewEngineTest();
             var broken = new Proposal("stt-index-1", "TARGET_TREATMENT", "두 문장의 연결 확인",
                     List.of(new Quote("stt-index-0", "그 집")));
             f.discovery(List.of("stt-index-0", "stt-index-1"), broken);
-            var response = quote.equals("그 집") ? broken : new Proposal(broken.anchorId(), broken.axis(), broken.reason(),
-                    List.of(new Quote("stt-index-1", quote)));
+            // Repaired answer still cites only stt-index-0 (not the anchor stt-index-1) -> still invalid.
+            var response = new Proposal(broken.anchorId(), broken.axis(), broken.reason(),
+                    List.of(new Quote("stt-index-0", "그 집")));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                     .thenReturn(Optional.of(new ProposalRepairResult(response)));
             var r = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
@@ -123,7 +126,7 @@ class CandidateDiscoveryContractTest {
         f.discovery(List.of(good.anchorId()), new Proposal(good.anchorId(), good.axis(), good.reason(), List.of()));
         when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class))).thenAnswer(invocation -> {
             assertThat((String) invocation.getArgument(0)).contains(DISCOVERY_REPAIR_PROMPT);
-            assertThat((String) invocation.getArgument(1)).contains("allowedWindows", "PROPOSAL_EVIDENCE_SHAPE");
+            assertThat((String) invocation.getArgument(1)).contains("allowedWindows", "PROPOSAL_EVIDENCE_EMPTY");
             return Optional.of(new ProposalRepairResult(good));
         });
         f.verification(new Verification("candidate-1", f.assessment(good.anchorId(), "PASS", "그 집")));
@@ -135,9 +138,9 @@ class CandidateDiscoveryContractTest {
         assertThat(d.repairs()).singleElement().extracting(CandidateReviewDiagnostics.RepairTrace::state).isEqualTo("RECOVERED");
         verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
-    @Test void repairCannotChangeAxisOrUseUnprovidedQuote() {
+    @Test void repairCannotChangeAxisOrUseUnprovidedId() {
         for (var returned : List.of(new Proposal("stt-index-0", "EXPRESSION_CONTENT", "축 변경 가설", List.of(new Quote("stt-index-0", "그 집"))),
-                new Proposal("stt-index-0", "TARGET_TREATMENT", "허구 인용 가설", List.of(new Quote("stt-index-0", "그 집은 우주에 있다"))))) {
+                new Proposal("stt-index-0", "TARGET_TREATMENT", "미제공 ID 가설", List.of(new Quote("stt-index-0", "그 집"), new Quote("stt-index-99", "없는 줄"))))) {
             var f = new CandidateReviewEngineTest();
             f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "고정 후보 가설", List.of()));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
@@ -146,7 +149,7 @@ class CandidateDiscoveryContractTest {
             assertThat(r.findings()).isEmpty();
             assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement().satisfies(t -> {
                 assertThat(t.state()).isEqualTo("FAILED");
-                assertThat(t.finalFailureCode()).isIn("PROPOSAL_REPAIR_SCOPE_CHANGED", "PROPOSAL_QUOTE_NOT_IN_RAW");
+                assertThat(t.finalFailureCode()).isIn("PROPOSAL_REPAIR_SCOPE_CHANGED", "PROPOSAL_UNKNOWN_EVIDENCE_ID");
             });
             verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
         }

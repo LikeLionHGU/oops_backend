@@ -137,10 +137,12 @@ class ReviewCaseLibraryTest {
         assertThat(r.diagnostics().candidatePipeline().caseRetrieval().get(0).state()).isEqualTo("ARCHIVE_UNAVAILABLE_OR_INVALID");
         verify(fixture.client).completeAsJson(eq(DISCOVERY_PROMPT), argThat(s -> !s.contains("referenceCases")), eq(Discovery.class));
     }
-    @Test void pastCaseQuoteCannotBeUsedAsCurrentVideoEvidence() {
+    @Test void pastCaseSegmentIdCannotBeUsedAsCurrentVideoEvidence() {
+        // Quotes are server-filled from current raw, so a past-case quote cannot leak in. The remaining
+        // guard is that a past-case segmentId (not present in the current video) is rejected.
         var l = library(List.of(example("past", "PASS")));
-        fixture.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "과거 사례를 잘못 복사한 후보",
-                List.of(new Quote("stt-index-0", "이 음식 맛은 괜찮다"))));
+        fixture.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "과거 사례 ID를 잘못 복사한 후보",
+                List.of(new Quote("stt-index-0", "음식 맛이 별로야"), new Quote("past-index-0", "이 음식 맛은 괜찮다"))));
         var r = run(fixture.client, fixture.context("음식 맛이 별로야"), 24, null, l);
         assertThat(r.findings()).isEmpty(); assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isOne();
         verify(fixture.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));

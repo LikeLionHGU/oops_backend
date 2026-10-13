@@ -45,9 +45,20 @@ class LinkedContrastContractTest {
         assertThat(result.failureCode()).isNull();
         assertThat(result.observation().decision().name()).isEqualTo("PASS");
     }
-    @Test void FabricatedContextCannotSatisfyContract() {
-        assertThat(check(pass("対照解釈", "住民は劣っている"), "TARGET_TREATMENT", true).failureCode())
-                .isEqualTo("DECISION_QUOTE_NOT_IN_RAW");
+    @Test void OutOfWindowContextCannotSatisfyContract() {
+        // Quotes are server-filled (Approach A), so a fabricated CONTEXT quote is impossible; the
+        // real guard is now that a CONTEXT id outside the candidate window is rejected.
+        var input = fixture.context("店はない", "自分で作る").reviewInput();
+        var decision = new LlmDecision("stt-index-0", "PASS", "店はない", "自分の買い物の代替案を説明している。",
+                null, null, null, null, null, List.of(),
+                List.of(new LlmEvidence("stt-index-0", "店はない", "PRIMARY"),
+                        new LlmEvidence("stt-index-99", "許可されない行", "CONTEXT")),
+                null, null, null, "対照解釈");
+        var candidate = new Candidate("candidate-1", new Proposal("stt-index-0", "TARGET_TREATMENT",
+                "生活の価値を下げている可能性",
+                List.of(new Quote("stt-index-0", "店はない"))),
+                input.segments(), false, false);
+        assertThat(validate(candidate, decision, input).failureCode()).startsWith("DECISION_");
     }
     @Test void SingleQuoteAndExpressionPassDoNotAcquireLinkedTargetRequirement() {
         assertThat(check(pass(null, null), "TARGET_TREATMENT", false).failureCode()).isNull();

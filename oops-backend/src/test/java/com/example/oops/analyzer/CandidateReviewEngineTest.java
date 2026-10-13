@@ -81,12 +81,14 @@ class CandidateReviewEngineTest {
                 d.target(), d.score(), null, null, List.of(), d.evidence(), d.targetType(),
                 d.targetRelation(), d.targetReason(), d.alternativeInterpretation(), "저 동네");
         assertThat(validate(candidate, inventedMention, c.reviewInput()).failureCode()).isEqualTo("TARGET_EVIDENCE_REQUIRED");
+        // Quotes are server-filled now, so a fabricated CONTEXT quote cannot be the failure; an
+        // out-of-window CONTEXT id still is.
         var fabricatedContext = new ArrayList<>(d.evidence());
-        fabricatedContext.set(2, new LlmEvidence("stt-index-0", "원문에 없는 장소 설명", "CONTEXT"));
+        fabricatedContext.set(2, new LlmEvidence("stt-index-99", "허용되지 않은 줄", "CONTEXT"));
         var fabricated = new LlmDecision(d.segmentId(), d.decision(), d.evidenceText(), d.reason(), d.category(),
                 d.target(), d.score(), null, null, List.of(), fabricatedContext, d.targetType(),
                 d.targetRelation(), d.targetReason(), d.alternativeInterpretation(), d.targetMention());
-        assertThat(validate(candidate, fabricated, c.reviewInput()).failureCode()).isEqualTo("DECISION_QUOTE_NOT_IN_RAW");
+        assertThat(validate(candidate, fabricated, c.reviewInput()).failureCode()).startsWith("DECISION_");
     }
 
     @Test void contextualMentionSurvivesJsonDeserialization() throws Exception {
@@ -123,11 +125,20 @@ class CandidateReviewEngineTest {
             assertThat(r.findings()).isEmpty();
         }
     }
-    @Test void invalidQuoteRecordsSpecificEvidenceFailureRatherThanNormalPass() {
+    @Test void outOfWindowEvidenceRecordsSpecificFailureRatherThanNormalPass() {
+        // Quotes are server-filled, so the specific failure now comes from an evidence ID the model
+        // may not cite (outside the anchor's window), not from a mismatched quote string.
         discovery(List.of("stt-index-0"), proposal("stt-index-0", "그 집"));
-        verification(new Verification("candidate-1", assessment("stt-index-0", "PASS", "없는 원문")));
+        var base = assessment("stt-index-0", "PASS", "그 집");
+        var outside = new LlmDecision(base.segmentId(), base.decision(), base.evidenceText(), base.reason(),
+                null, null, null, null, null, List.of(),
+                List.of(new LlmEvidence("stt-index-0", "그 집", "PRIMARY"),
+                        new LlmEvidence("stt-index-99", "허용되지 않은 줄", "CONTEXT")),
+                null, null, null, null);
+        verification(new Verification("candidate-1", outside));
         var r = run(client, context("그 집 이용자들"), 24);
-        assertThat(r.diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo("DECISION_QUOTE_NOT_IN_RAW");
+        var code = r.diagnostics().candidatePipeline().candidates().get(0).failureCode();
+        assertThat(code).startsWith("DECISION_"); // UNKNOWN_EVIDENCE_ID / EVIDENCE_OUTSIDE_WINDOW family
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
     }
     final OpenAiClient client = mock(OpenAiClient.class);
@@ -231,8 +242,8 @@ class CandidateReviewEngineTest {
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().segments().get(0).decisions().get(0).missingInformation()).containsExactly("깨진 전사의 실제 단어");
     }
-    @Test void inventedQuoteWrongAxisOrCrossSourceProposalNeverReachesVerification() {
-        for (var p : List.of(proposal("stt-index-0", "원문에 없는 발언"),
+    @Test void unreviewedAnchorWrongAxisOrCrossSourceProposalNeverReachesVerification() {
+        for (var p : List.of(new Proposal("stt-index-99", "TARGET_TREATMENT", "검토되지 않은 anchor 가설", List.of(new Quote("stt-index-99", "그 집"))),
                 new Proposal("stt-index-0", "UNKNOWN", "실제 문제를 설명하는 이유", List.of(new Quote("stt-index-0", "그 집"))),
                 new Proposal("stt-index-0", "TARGET_TREATMENT", "실제 문제를 설명하는 이유", List.of(new Quote("ocr-index-0", "화면에만 있는 글자"))))) {
             discovery(List.of("stt-index-0"), p);
@@ -254,11 +265,14 @@ class CandidateReviewEngineTest {
             assertThat(r.diagnostics().candidatePipeline().verificationFailed()).isOne();
         }
     }
-    @Test void verifierCannotInventQuoteOrReplaceAnchor() {
+    @Test void verifierCannotReplaceAnchorOrCiteOutOfWindowId() {
+        // Approach A: the model no longer sends quotes (server fills them from raw), so the invariant
+        // is now "anchor must match and evidence IDs must stay in-window", not "quote must match raw".
         discovery(List.of("stt-index-0"), proposal("stt-index-0", "그 집"));
-        for (var item : List.of(assessment("stt-index-0", "REVIEW_REQUIRED", "상상한 원문"), assessment("stt-index-1", "PASS", "그 집"))) {
+        // Wrong anchor (stt-index-1 != candidate anchor stt-index-0): rejected as ASSESSMENT_SHAPE.
+        for (var item : List.of(assessment("stt-index-1", "PASS", "그 집"))) {
             verification(new Verification("candidate-1", item));
-            var r = run(client, context("그 집 음식 이야기"), 24);
+            var r = run(client, context("그 집 음식 이야기", "다른 줄"), 24);
             assertThat(r.findings()).isEmpty();
             assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         }
@@ -431,6 +445,42 @@ class CandidateReviewEngineTest {
         assertThat(trace.contextSegmentIds()).contains("stt-index-24");
         assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(60000);
         assertThat(trace.contextLimited()).isTrue();
+    }
+    @Test void overBudgetProposalRecordsSplitFailureCodeAndEvidenceCountWithoutRawText() {
+        // Nine evidence quotes: the former PROPOSAL_EVIDENCE_SHAPE now resolves to OVER_BUDGET,
+        // and the trace carries the count (not the quote text) so a stored INVALID_PROPOSAL is
+        // later distinguishable from a window-mismatch or missing-anchor failure.
+        var c = context("그 집 이야기", "메뉴 설명");
+        List<Quote> nine = new ArrayList<>();
+        for (int i = 0; i < 9; i++) nine.add(new Quote("stt-index-0", "그 집"));
+        var over = new Proposal("stt-index-0", "TARGET_TREATMENT", "인용을 과도하게 많이 제안한 가설입니다.", nine);
+        // Repair returns the same over-budget proposal, so it still fails and the INVALID_PROPOSAL trace stands.
+        when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class)))
+                .thenReturn(Optional.of(new Discovery(List.of("stt-index-0"), List.of(over), List.of(), false)));
+        when(client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
+                .thenReturn(Optional.of(new ProposalRepairResult(over)));
+        var pipeline = run(client, c, 24).diagnostics().candidatePipeline();
+        assertThat(pipeline.invalidProposals()).isPositive();
+        assertThat(pipeline.candidates()).anySatisfy(t -> {
+            assertThat(t.state()).isEqualTo("INVALID_PROPOSAL");
+            assertThat(t.failureCode()).isEqualTo("PROPOSAL_EVIDENCE_OVER_BUDGET");
+            assertThat(t.proposedEvidenceCount()).isEqualTo(9);
+            assertThat(t.anchorQuotePresent()).isTrue();
+        });
+    }
+    @Test void emptyEvidenceProposalRecordsSplitEmptyCodeNotTheOldCollapsedShapeCode() {
+        var c = context("그 집 이야기", "메뉴 설명");
+        var empty = new Proposal("stt-index-0", "TARGET_TREATMENT", "인용을 비워 제안한 가설입니다.", List.of());
+        when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class)))
+                .thenReturn(Optional.of(new Discovery(List.of("stt-index-0"), List.of(empty), List.of(), false)));
+        when(client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
+                .thenReturn(Optional.of(new ProposalRepairResult(empty)));
+        var pipeline = run(client, c, 24).diagnostics().candidatePipeline();
+        assertThat(pipeline.candidates()).anySatisfy(t -> {
+            assertThat(t.state()).isEqualTo("INVALID_PROPOSAL");
+            assertThat(t.failureCode()).isEqualTo("PROPOSAL_EVIDENCE_EMPTY");
+            assertThat(t.proposedEvidenceCount()).isZero();
+        });
     }
     @Test void placePolicySeparatesGenericInformationFromValueJudgementWithoutBenchmarkKeywordRules() {
         assertThat(POLICY).contains("주민 전체 일반화는 조롱의 필수 조건이 아니다", "정보나 개인의 불편만으로 경고하지 않는다");

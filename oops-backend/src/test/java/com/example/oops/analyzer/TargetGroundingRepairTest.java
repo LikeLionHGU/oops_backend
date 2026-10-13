@@ -128,28 +128,32 @@ class TargetGroundingRepairTest {
             verify(f.client, times(2)).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
         }
     }
-    @Test void repairCannotPublishFabricatedRawQuote() {
+    @Test void repairCannotPublishWithoutRequiredTargetEvidence() {
+        // Quotes are server-filled, so the model cannot fabricate a raw quote. The remaining guard is
+        // that a target-grounded REVIEW still needs an actual TARGET-role evidence line; a repair that
+        // still omits it stays rejected rather than publishing.
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var bad = missingTargetEvidence(f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", bad)))),
-                        Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
-                                f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집은 허구 문장"))))));
+                        Optional.of(new VerificationResult(List.of(new Verification("candidate-1", bad)))));
         var r = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement()
-                .extracting(CandidateReviewDiagnostics.RepairTrace::finalFailureCode).isEqualTo("DECISION_QUOTE_NOT_IN_RAW");
+                .extracting(CandidateReviewDiagnostics.RepairTrace::finalFailureCode).isEqualTo("TARGET_EVIDENCE_REQUIRED");
     }
-    @Test void invalidLateProposalKeepsLocationAndQuoteFailureRatherThanDisappearing() {
+    @Test void invalidLateProposalKeepsLocationAndIdFailureRatherThanDisappearing() {
         var f = new CandidateReviewEngineTest();
-        f.discovery(List.of("stt-index-0", "stt-index-1"), f.proposal("stt-index-1", "전사에 없는 문장"));
+        // Quotes are server-filled now; the invalid case is an evidence id not present in the batch.
+        f.discovery(List.of("stt-index-0", "stt-index-1"),
+                new Proposal("stt-index-1", "TARGET_TREATMENT", "허용되지 않은 ID를 든 가설",
+                        List.of(new Quote("stt-index-1", "메뉴"), new Quote("stt-index-99", "없는 줄"))));
         var r = run(f.client, f.context("그 집 메뉴가 다양하지 않네", "오늘은 정해진 메뉴만 판매합니다"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement().satisfies(t -> {
             assertThat(t.anchorId()).isEqualTo("stt-index-1");
-            assertThat(t.contextStartMs()).isEqualTo(2000);
-            assertThat(t.failureCode()).isEqualTo("PROPOSAL_QUOTE_NOT_IN_RAW");
+            assertThat(t.failureCode()).isEqualTo("PROPOSAL_UNKNOWN_EVIDENCE_ID");
             assertThat(t.state()).isEqualTo("INVALID_PROPOSAL");
         });
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
