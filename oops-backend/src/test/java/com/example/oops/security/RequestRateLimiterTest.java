@@ -16,7 +16,7 @@ class RequestRateLimiterTest {
         OopsProperties properties = new OopsProperties(
                 new OopsProperties.Storage("./uploads", 0, 0),
                 new OopsProperties.Analysis(List.of()),
-                new OopsProperties.RateLimit(2, 5));
+                new OopsProperties.RateLimit(2, 5, null));
         RequestRateLimiter limiter = new RequestRateLimiter(properties);
 
         limiter.checkUpload("203.0.113.10");
@@ -33,7 +33,7 @@ class RequestRateLimiterTest {
         OopsProperties properties = new OopsProperties(
                 new OopsProperties.Storage("./uploads", 0, 0),
                 new OopsProperties.Analysis(List.of()),
-                new OopsProperties.RateLimit(1, 5));
+                new OopsProperties.RateLimit(1, 5, null));
         RequestRateLimiter limiter = new RequestRateLimiter(properties);
 
         limiter.checkUpload("203.0.113.10");

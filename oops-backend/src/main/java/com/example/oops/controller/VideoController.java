@@ -35,6 +35,7 @@ public class VideoController {
     private final VideoDeletionService videoDeletionService;
     private final ReviewActionService reviewActionService;
     private final RequestRateLimiter requestRateLimiter;
+    private final com.example.oops.security.ClientIpResolver clientIpResolver;
 
     @Operation(summary = "영상 업로드",
             description = """
@@ -232,12 +233,6 @@ public class VideoController {
     }
 
     private String clientKey(HttpServletRequest request) {
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) return realIp.trim();
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",", 2)[0].trim();
-        }
-        return request.getRemoteAddr();
+        return clientIpResolver.resolve(request);
     }
 }

@@ -45,6 +45,12 @@ oops:
     # 인증 도입 전까지 IP 기준으로 제한한다. 0이면 해당 제한을 끈다.
     uploads-per-minute: 10
     retries-per-minute: 5
+    # X-Forwarded-For / X-Real-IP 를 신뢰할 리버스 프록시의 주소·CIDR 목록.
+    # 비어 있으면(기본) forwarded 헤더를 신뢰하지 않고 TCP 피어 주소만 쓴다.
+    # 프록시(nginx, ALB 등) 뒤에 배포할 때만 그 프록시 대역을 넣는다.
+    # 비워두지 않으면 클라이언트가 헤더를 위조해 레이트리밋을 우회할 수 있다.
+    # 예) trusted-proxies: ["10.0.0.0/8", "172.16.0.0/12"]
+    trusted-proxies: []
 
   analysis-executor:
     # 과금·메모리 한도에 맞춰 운영 환경에서 조정한다.
