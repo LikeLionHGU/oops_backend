@@ -81,6 +81,26 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
         self.assertTrue(all(checks.values()), checks)
         self.assertTrue(checks["runtime_byte_equivalent_except_ts"])
 
+    def test_single_input_build_is_equivalent_and_circular_free(self):
+        """4단계: incidents 단일 입력 빌드가 기존 runtime 과 동치 + 순환 입력 미경유."""
+        import build_incident_dataset as build
+        # incidents 파일이 아직 없으면 먼저 생성(로컬 전용).
+        if not (DATASET_ROOT / "incidents").is_dir():
+            tool.emit_incidents(DATASET_ROOT)
+        runtime, _ = build.generate(DATASET_ROOT)
+        saved = tool.load(DATASET_ROOT, "guidelines/runtime.json")
+        self.assertEqual(build._strip_ts(runtime), tool._strip_ts(saved))
+        # 순환 입력(cards/catalog)을 '코드에서 참조하지 않음'을 고정.
+        # docstring/주석은 결함 설명으로 그 이름을 '언급'하므로 AST 로 떼어내고 코드만 검사한다.
+        import ast
+        tree = ast.parse((ROOT / "build_incident_dataset.py").read_text(encoding="utf-8"))
+        # 모듈 docstring 제거
+        if tree.body and isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Constant):
+            tree.body = tree.body[1:]
+        code_only = ast.unparse(tree)
+        for forbidden in ("drafts/cards.json", "validate_catalog", "validate_private", "build_bundle"):
+            self.assertNotIn(forbidden, code_only, f"순환 입력 참조 발견: {forbidden}")
+
 
 if __name__ == "__main__":
     unittest.main()
