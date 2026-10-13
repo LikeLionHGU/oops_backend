@@ -28,12 +28,13 @@ public class VisualContextReviewer {
             단일 후보가 제공된다. 위의 assessment 계약에 따라 다음 단일 JSON으로 반환한다:
             {"candidateId":"요청 후보 ID","assessment":{
              "segmentId":"anchorId","decision":"PASS/REVIEW_REQUIRED/UNCERTAIN",
-             "evidenceText":"PRIMARY 인용","reason":"근거 설명","category":null,"target":null,
+             "reason":"근거 설명","category":null,"target":null,
              "score":null,"context":null,"reading":null,"missingInformation":[],
-             "evidence":[{"segmentId":"anchorId","quote":"PRIMARY 인용","role":"PRIMARY"}],
+             "evidence":[{"segmentId":"anchorId","role":"PRIMARY"}],
              "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null},
              "observations":[{"frameId":"제공 이미지 ID","description":"보이는 내용"}],
              "connectionReason":"관찰과 발언의 연결 또는 연결 불명확 이유"}
+            evidenceText와 각 evidence의 quote는 응답에 넣지 않는다. 서버가 segmentId의 원문으로 채운다.
             """;
     private final AnalysisServerClient media;
     private final OpenAiClient ai;

@@ -20,9 +20,16 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
     public record RepairTrace(String candidateId, String initialFailureCode, String state, String finalFailureCode) {}
     public record Trace(String candidateId, String anchorId, String axis, String state,
                         Long contextStartMs, Long contextEndMs, List<String> contextSegmentIds,
-                        boolean contextExpanded, boolean contextLimited, String failureCode) {
+                        boolean contextExpanded, boolean contextLimited, String failureCode,
+                        Integer proposedEvidenceCount, Integer outOfWindowCount, Boolean anchorQuotePresent) {
         public Trace(String id, String anchor, String axis, String state) {
-            this(id, anchor, axis, state, null, null, List.of(), false, false, null);
+            this(id, anchor, axis, state, null, null, List.of(), false, false, null, null, null, null);
+        }
+        public Trace(String candidateId, String anchorId, String axis, String state,
+                     Long contextStartMs, Long contextEndMs, List<String> contextSegmentIds,
+                     boolean contextExpanded, boolean contextLimited, String failureCode) {
+            this(candidateId, anchorId, axis, state, contextStartMs, contextEndMs, contextSegmentIds,
+                    contextExpanded, contextLimited, failureCode, null, null, null);
         }
         public Trace { contextSegmentIds = List.copyOf(contextSegmentIds); }
     }

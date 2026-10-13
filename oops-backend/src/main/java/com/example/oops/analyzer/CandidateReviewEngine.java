@@ -44,10 +44,11 @@ final class CandidateReviewEngine {
               주된 평가와 후속 설명이 다른 줄이면 둘을 별도로 인용한다. 뒤의 창도 앞의 후보로 대체하지 않는다.
             TARGET_TREATMENT는 targetWindows, EXPRESSION_CONTENT는 windows의 허용 창을 사용한다.
               대상·맥락 창은 최대 60초/48구간/6,000자이고 표현 자체 창은 기존 30초다.
-            evidence는 해당 축의 한 창 안에서 복사한 segmentId·quote 객체 목록 1~8개다.
+            evidence는 해당 축의 한 창 안에서 고른 segmentId 객체 목록 1~8개다.
+              quote는 넣지 않는다. 서버가 선택한 segmentId의 원문 전체를 근거로 연결한다.
               anchorId는 해당 창의 anchorIds에 속해야 한다.
-              anchor 인용을 포함하고 서로 떨어진 원문을 붙이거나 교정하지 않는다.
-              중요한 평가·대상·연결 인용만 고른다. 8개를 넘기거나 문자열/단일 객체로 반환하지 않는다.
+              anchor를 evidence에 포함하고 서로 떨어진 원문을 억지로 묶지 않는다.
+              중요한 평가·대상·연결 줄만 고른다. 8개를 넘기거나 문자열/단일 객체로 반환하지 않는다.
             같은 문제를 유형·관점 이름만 바꿔 반복하지 않는다. 후보는 최대 12개이며
               더 있으면 truncated=true로 표시한다. reason은 300자 이내로 실제 비판 연결을 설명한다.
             세부 유형·점수·최종 판정은 이 단계에서 만들지 않는다.
@@ -61,7 +62,7 @@ final class CandidateReviewEngine {
               영상 전체를 보았다고 가정하지 않는다. candidates와 visualCandidates 합계는 최대 12개다.
             JSON: {"reviewedSegmentIds":["원문 ID"],"candidates":[{"anchorId":"원문 ID",
               "axis":"TARGET_TREATMENT 또는 EXPRESSION_CONTENT","reason":"구체적 비판 이유",
-              "evidence":[{"segmentId":"원문 ID","quote":"연속 원문"}]}],
+              "evidence":[{"segmentId":"원문 ID"}]}],
               "visualCandidates":[],"uncertainSegments":[{"segmentId":"원문 ID","missingInformation":["필수 누락 정보"]}],"truncated":false}
             """;
     static final String VERIFICATION_PROMPT = POLICY + """
@@ -89,8 +90,8 @@ final class CandidateReviewEngine {
               그 가설을 현재 원문이 뒷받침하지 않는 이유를 적는다. 후보 이유를 사실로 받아들이지 않는다.
               또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
               필요한 연결을 확인할 수 없으면 UNCERTAIN이다. 통과·경고 어느 쪽도 강제하지 않는다.
-            evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한다.
-              PRIMARY는 anchorId의 실제 표현이며 evidenceText와 동일한 연속 인용이다.
+            evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quote는 넣지 않으며 서버가 원문을 채운다.
+              PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
               TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
             대상 평가가 이유이면 target과 TARGET 인용 및 targetType·targetRelation·targetReason이 필요하다.
               target은 문맥상 해석한 대상, targetMention은 TARGET 인용에 그대로 있는 지칭어(각 200자 이내)다.
@@ -118,10 +119,11 @@ final class CandidateReviewEngine {
             모든 결정에 원문 인용과 구체적 reason이 필요하다. context/reading은 null이다.
             JSON: {"verifications":[{"candidateId":"요청 후보 ID","assessment":{
               "segmentId":"anchorId","decision":"PASS/REVIEW_REQUIRED/UNCERTAIN",
-              "evidenceText":"PRIMARY 인용","reason":"근거 설명","category":null,"target":null,
+              "reason":"근거 설명","category":null,"target":null,
               "score":null,"context":null,"reading":null,"missingInformation":[],
-              "evidence":[{"segmentId":"anchorId","quote":"PRIMARY 인용","role":"PRIMARY"}],
+              "evidence":[{"segmentId":"anchorId","role":"PRIMARY"}],
               "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null}}]}
+            evidenceText와 각 evidence의 quote는 응답에 넣지 않는다. 서버가 segmentId의 원문으로 채운다.
 
             # 대상 필드 형식 예시 — 판정 예시가 아니다
             아래 raw는 설명용 가상 원문이다. 실제 요청의 raw에 없는 ID·문구·대상을 복사하지 않는다.
@@ -144,7 +146,8 @@ final class CandidateReviewEngine {
     private static final int MAX_TRACES = 200;
     private static final int MAX_CONTRACT_REPAIRS = 2;
     private static final int MAX_DISCOVERY_REPAIRS = 1;
-    static final Set<String> REPAIRABLE_PROPOSALS = Set.of("PROPOSAL_EVIDENCE_SHAPE", "PROPOSAL_WINDOW_MISMATCH",
+    static final Set<String> REPAIRABLE_PROPOSALS = Set.of("PROPOSAL_EVIDENCE_NULL", "PROPOSAL_EVIDENCE_EMPTY",
+            "PROPOSAL_EVIDENCE_NULL_ITEM", "PROPOSAL_EVIDENCE_OVER_BUDGET", "PROPOSAL_WINDOW_MISMATCH",
             "PROPOSAL_ANCHOR_EVIDENCE_REQUIRED");
     static final String DISCOVERY_REPAIR_PROMPT = POLICY + """
             # 단일 후보 인용 계약 재탐색
@@ -317,6 +320,12 @@ final class CandidateReviewEngine {
                 boolean needsVisual = proposalIndex >= response.candidates().size();
                 stats.proposed++;
                 String id = "candidate-" + ++counter;
+                // Approach A: server supplies evidence quotes from raw; the model only picks line IDs/roles.
+                if (proposal != null) {
+                    Map<String, ReviewInput.Segment> rawById = new HashMap<>();
+                    raw.forEach(s -> rawById.put(s.id(), s));
+                    proposal = normalizeProposal(proposal, rawById);
+                }
                 List<ReviewUnit> allowedUnits = proposal != null && "TARGET_TREATMENT".equals(proposal.axis()) ? targetUnits : units;
                 Candidate candidate = candidate(id, proposal, batch, allowedUnits, response.reviewedSegmentIds(), input);
                 if (candidate == null) {
@@ -532,6 +541,10 @@ final class CandidateReviewEngine {
             if (response != null && response.proposal() == null) failure = "PROPOSAL_REPAIR_NO_CANDIDATE";
             else if (response != null) {
                 var p = response.proposal();
+                // Approach A: fill repaired proposal quotes from raw as well.
+                Map<String, ReviewInput.Segment> rawById = new HashMap<>();
+                raw(batch).forEach(s -> rawById.put(s.id(), s));
+                p = normalizeProposal(p, rawById);
                 if (!original.anchorId().equals(p.anchorId()) || !original.axis().equals(p.axis())) failure = "PROPOSAL_REPAIR_SCOPE_CHANGED";
                 else {
                     failure = proposalFailure(p, batch, units, reviewed);
@@ -603,7 +616,10 @@ final class CandidateReviewEngine {
         if (p.anchorId() == null || !reviewed.contains(p.anchorId())) return "PROPOSAL_ANCHOR_NOT_REVIEWED";
         if (!Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis())) return "PROPOSAL_AXIS";
         if (!useful(p.reason(), 300)) return "PROPOSAL_REASON";
-        if (p.evidence() == null || p.evidence().isEmpty()) return "PROPOSAL_EVIDENCE_SHAPE";
+        // Previously all four shape failures collapsed into PROPOSAL_EVIDENCE_SHAPE, so a stored
+        // INVALID_PROPOSAL could not be told apart (missing quotes vs over-budget) after the fact.
+        if (p.evidence() == null) return "PROPOSAL_EVIDENCE_NULL";
+        if (p.evidence().isEmpty()) return "PROPOSAL_EVIDENCE_EMPTY";
         Map<String, ReviewInput.Segment> supplied = new HashMap<>(); raw(batch).forEach(s -> supplied.put(s.id(), s));
         boolean missingQuote = false;
         for (var q : p.evidence()) {
@@ -612,7 +628,8 @@ final class CandidateReviewEngine {
             if (q.quote() == null || q.quote().isBlank() || !supplied.get(q.segmentId()).text().contains(q.quote()))
                 return "PROPOSAL_QUOTE_NOT_IN_RAW";
         }
-        if (missingQuote || p.evidence().size() > 8) return "PROPOSAL_EVIDENCE_SHAPE";
+        if (missingQuote) return "PROPOSAL_EVIDENCE_NULL_ITEM";
+        if (p.evidence().size() > 8) return "PROPOSAL_EVIDENCE_OVER_BUDGET";
         if (new HashSet<>(p.evidence()).size() != p.evidence().size()) return "PROPOSAL_DUPLICATE_EVIDENCE";
         if (p.evidence().stream().noneMatch(q -> q.segmentId().equals(p.anchorId()))) return "PROPOSAL_ANCHOR_EVIDENCE_REQUIRED";
         if (units.stream().noneMatch(u -> u.anchorId().equals(p.anchorId())
@@ -621,7 +638,42 @@ final class CandidateReviewEngine {
     }
     record Validation(Observation observation, String failureCode) {}
     private static Validation invalid(String code) { return new Validation(null, code); }
-    static Validation validate(Candidate c, TextReviewEngine.LlmDecision d, ReviewInput input) {
+
+    // Approach A (candidate path only): the model selects line IDs and roles; the server supplies the
+    // exact raw quote from that line, so the model never copies or rewrites transcript text. targetMention
+    // (a short referent the model picks) is kept and still checked against the server-filled TARGET line.
+    private static Proposal normalizeProposal(Proposal p, Map<String, ReviewInput.Segment> raw) {
+        if (p == null || p.evidence() == null) return p;
+        var filled = p.evidence().stream().map(q -> {
+            if (q == null) return q;
+            var seg = raw.get(q.segmentId());
+            return seg == null ? q : new Quote(q.segmentId(), seg.text());
+        }).toList();
+        return new Proposal(p.anchorId(), p.axis(), p.reason(), filled);
+    }
+    private static TextReviewEngine.LlmDecision normalizeAssessment(TextReviewEngine.LlmDecision d,
+                                                                    Map<String, ReviewInput.Segment> raw) {
+        if (d == null) return d;
+        var anchor = raw.get(d.segmentId());
+        String evidenceText = anchor != null ? anchor.text() : d.evidenceText();
+        List<TextReviewEngine.LlmEvidence> filled = d.evidence() == null ? null : d.evidence().stream().map(e -> {
+            if (e == null) return e;
+            var seg = raw.get(e.segmentId());
+            return seg == null ? e : new TextReviewEngine.LlmEvidence(e.segmentId(), seg.text(), e.role());
+        }).toList();
+        return new TextReviewEngine.LlmDecision(d.segmentId(), d.decision(), evidenceText, d.reason(),
+                d.category(), d.target(), d.score(), d.context(), d.reading(), d.missingInformation(), filled,
+                d.targetType(), d.targetRelation(), d.targetReason(), d.alternativeInterpretation(), d.targetMention());
+    }
+
+    static Validation validate(Candidate c, TextReviewEngine.LlmDecision assessment, ReviewInput input) {
+        // Server fills quotes from raw before any shape/linkage check (Approach A).
+        Map<String, ReviewInput.Segment> raw = new HashMap<>();
+        c.raw().forEach(s -> raw.put(s.id(), s));
+        TextReviewEngine.LlmDecision d = normalizeAssessment(assessment, raw);
+        return validateFilled(c, d, input);
+    }
+    private static Validation validateFilled(Candidate c, TextReviewEngine.LlmDecision d, ReviewInput input) {
         if (d == null || !c.proposal().anchorId().equals(d.segmentId()) || !useful(d.reason(), 400)
                 || d.evidence() == null || d.evidence().isEmpty() || d.evidence().size() > 12
                 || d.evidenceText() == null || d.evidenceText().isBlank() || d.context() != null || d.reading() != null) return invalid("ASSESSMENT_SHAPE");
@@ -729,10 +781,23 @@ final class CandidateReviewEngine {
             var anchor = p == null ? null : raw(batch).stream().filter(s -> s.id().equals(p.anchorId())).findFirst().orElse(null);
             String axis = p != null && Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis()) ? p.axis() : null;
             traceCount++;
+            // Raw-free shape metadata: counts and a boolean only, never the quote text, so a stored
+            // INVALID_PROPOSAL can later be told apart (over-budget vs window-mismatch vs missing anchor).
+            Integer evidenceCount = p == null || p.evidence() == null ? null : p.evidence().size();
+            Integer outOfWindow = null;
+            Boolean anchorQuotePresent = null;
+            if (p != null && p.evidence() != null && p.anchorId() != null) {
+                Set<String> allowed = new HashSet<>();
+                units.stream().filter(u -> u.anchorId().equals(p.anchorId())).forEach(u -> allowed.addAll(u.segmentIds()));
+                outOfWindow = (int) p.evidence().stream().filter(q -> q != null
+                        && !allowed.contains(q.segmentId())).map(Quote::segmentId).distinct().count();
+                anchorQuotePresent = p.evidence().stream().anyMatch(q -> q != null && p.anchorId().equals(q.segmentId()));
+            }
             if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id,
                     anchor == null ? null : anchor.id(), axis, "INVALID_PROPOSAL",
                     anchor == null ? null : anchor.startMs(), anchor == null ? null : anchor.endMs(),
-                    List.of(), false, false, proposalFailure(p, batch, units, reviewed)));
+                    List.of(), false, false, proposalFailure(p, batch, units, reviewed),
+                    evidenceCount, outOfWindow, anchorQuotePresent));
         }
         String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey) {
             if (library == null) return "";
