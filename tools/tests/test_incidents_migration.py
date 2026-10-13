@@ -159,6 +159,49 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
         runtime = compile_guidelines(rc, rg, sb, dictionary)  # 통과하면 결함 B 제거 성립
         self.assertGreaterEqual(len(runtime["guidelines"]), 1)
 
+    def test_add_incident_assemble_passes_full_build(self):
+        """add_incident.assemble 이 만든 기사-only 사건이 전 체인(validate_bundle+reference_context)을 통과한다."""
+        import add_incident as add
+        from build_context_dictionary import compile_dictionary
+        from build_review_guidelines import compile_guidelines
+        from review_dataset_catalog import inside
+        from review_context_pilot import read_bytes
+        import json as _json
+
+        spec = {"incidentId": "unittest-demo-20260101",
+                "statements": [{"caseId": "unittest-demo-20260101#s1",
+                                "knownPoint": "테스트 논란 지점",
+                                "mechanismIds": ["local-life-devaluation"],
+                                "topicTags": ["지역", "생활"]}]}
+        incident = add.assemble(spec, DATASET_ROOT)
+        self.assertEqual(incident["catalogMeta"]["collectionId"], None)
+        self.assertEqual(incident["catalogMeta"]["selectedReactions"], 0)
+
+        cards = tool.load(DATASET_ROOT, "drafts/cards.json")
+        gplan = tool.load(DATASET_ROOT, "guidelines/plan.json")
+        dplan = tool.load(DATASET_ROOT, "research/context-dictionary-plan.json")
+        cat = tool.load(DATASET_ROOT, "catalog.json")
+        incidents = [tool.to_incident(ci["familyId"], ci, gplan, dplan, cat) for ci in cards["incidents"]]
+        rc, rg, rd, rcat = tool.reassemble(DATASET_ROOT, incidents + [incident])
+        snaps = {}
+        for cfg in rd["cards"].values():
+            for d in cfg.get("documents", []):
+                snaps[d["snapshot"]] = read_bytes(inside(DATASET_ROOT, d["snapshot"]))
+        sb = (_json.dumps(rc, ensure_ascii=False, indent=2) + "\n").encode()
+        dictionary = compile_dictionary(rc, rd, rg, sb, snaps)
+        runtime = compile_guidelines(rc, rg, sb, dictionary)
+        self.assertTrue(any("unittest-demo-20260101#s1" in m["sourceCaseIds"] for m in rg["mechanisms"]))
+        self.assertGreaterEqual(len(runtime["guidelines"]), 1)
+
+    def test_add_incident_rejects_unknown_mechanism(self):
+        import add_incident as add
+        from review_context_pilot import PilotError
+        spec = {"incidentId": "unittest-bad-20260101",
+                "statements": [{"caseId": "x", "knownPoint": "y",
+                                "mechanismIds": ["no-such-mechanism"], "topicTags": ["t"]}]}
+        with self.assertRaises(PilotError):
+            add.assemble(spec, DATASET_ROOT)
+
 
 if __name__ == "__main__":
     unittest.main()
