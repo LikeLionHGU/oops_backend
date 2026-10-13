@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oops.example/schemas/incident-2.schema.json",
+  "title": "Controversy Incident (incident-2)",
+  "description": "사건 = 파일 하나. 재설계 1단계 확정 스키마. 소비자는 tools/ 의 Python 데이터셋 도구이며 Java 런타임과 무관하다. 실제 incidents/*.json 데이터는 /datasets/ 아래 로컬 생성물로 Git 제외이고, 이 스키마 파일만 Git 추적한다. 설계 근거: docs/논란사례-구조-확정-및-마이그레이션.md",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "incidentId", "status", "humanApproved", "runtimeEligible", "trainingUseAuthorized", "split", "catalogMeta", "statements"],
+  "properties": {
+    "schemaVersion": {"const": "incident-2"},
+    "incidentId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "사건 식별자. 내부 라벨이며 사이트·모델 응답에 노출되지 않는다. 기존 familyId 를 그대로 승계. 신규 사건은 사람이 읽기 쉬운 형태 권고(강제 아님)."
+    },
+    "status": {"const": "UNREVIEWED_DRAFT"},
+    "humanApproved": {"const": false},
+    "runtimeEligible": {"const": false},
+    "trainingUseAuthorized": {"const": false},
+    "split": {"enum": ["DEVELOPMENT", "EVALUATION"]},
+    "catalogMeta": {
+      "type": "object",
+      "description": "레거시 catalog 항목을 통째 보존한다(무손실 왕복의 핵심). 재조립 시 순서·필드가 원본과 동일해야 runtime 바이트 동치가 성립.",
+      "required": ["familyId", "caseIds", "evidenceLevel", "selectedReactions"],
+      "properties": {
+        "familyId": {"type": "string"},
+        "caseIds": {"type": "array", "items": {"type": "string"}},
+        "collectionId": {
+          "type": ["string", "null"],
+          "description": "댓글 수집 참조. 기사-only 사건은 null 허용(reaction optional, §10.2). 레거시 호환을 위해 존재 시 문자열."
+        },
+        "evidenceLevel": {"enum": ["SELECTED_STT_UNVERIFIED_AUDIO", "REPORTED_CONTEXT_ONLY"]},
+        "selectedReactions": {"type": "integer", "minimum": 0}
+      }
+    },
+    "statements": {
+      "type": "array",
+      "description": "사건 안의 개별 논란 발언. 1:N. 몇 개든 추가 가능(레거시 B/C/D 3칸 제약 없음).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mechanismIds", "topicTags", "legacyDictionaryCard", "legacyCard"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "description": "레거시 caseId 를 그대로 승계."},
+          "mechanismIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"},
+            "description": "메커니즘 전이 단위(§9). 배열 — 한 발언이 둘 이상에 걸릴 수 있다. 최소 1개, 빈 배열 금지."
+          },
+          "topicTags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "검색 주제(위험 라벨 아님). 조회 편의용 승격 사본."
+          },
+          "legacyDictionaryCard": {
+            "type": "object",
+            "description": "레거시 context-dictionary-plan 의 카드 객체를 통째 보존. 선택 키(sourceOriginGroups 등) 유무까지 무손실."
+          },
+          "legacyCard": {
+            "type": "object",
+            "description": "레거시 drafts/cards 의 카드 객체를 통째 보존. 어떤 필드도 버리지 않는다 — 무손실 왕복의 핵심."
+          }
+        }
+      }
+    }
+  }
+}
