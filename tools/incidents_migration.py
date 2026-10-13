@@ -81,6 +81,59 @@ def from_incident(incident):
     return cards_incident, gplan_fragment, dplan_cards, catalog_entry
 
 
+def emit_incidents(root: Path):
+    """6사건을 incidents/{id}.json 로 디스크에 쓰고, 쓴 파일로 재조립해 동치를 재검증한다.
+
+    datasets 아래라 Git 제외 로컬 생성물. 쓰기 후 '파일에서 다시 읽어' 재조립→runtime 동치가
+    녹색이어야 성공으로 본다(쓰기 과정에서의 손실까지 잡는다).
+    """
+    import json as _json
+    cards = load(root, "drafts/cards.json")
+    gplan = load(root, "guidelines/plan.json")
+    dplan = load(root, "research/context-dictionary-plan.json")
+    catalog = load(root, "catalog.json")
+
+    out_dir = root / "incidents"
+    out_dir.mkdir(exist_ok=True)
+    written = []
+    for ci in cards["incidents"]:
+        inc = to_incident(ci["familyId"], ci, gplan, dplan, catalog)
+        path = out_dir / (inc["incidentId"] + ".json")
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(_json.dumps(inc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(path)   # 원자적 교체
+        written.append(path.name)
+
+    # 쓴 파일에서 다시 읽어 재조립 → runtime 동치 재검증.
+    from review_context_pilot import parse, read_bytes
+    from build_review_guidelines import build_bundle, compile_guidelines
+    from build_context_dictionary import compile_dictionary
+    from review_dataset_catalog import inside
+
+    incidents = [load(root, "incidents/" + name) for name in written]
+    r_cards, r_gplan, r_dplan, r_catalog = reassemble(root, incidents)
+    checks = {
+        "cards_json": r_cards == cards,
+        "gplan_json": r_gplan == gplan,
+        "dplan_json": r_dplan == dplan,
+        "catalog_json": r_catalog == catalog,
+    }
+    private_root = root.parent.parent / "uploads/comment-collections"
+    reaction_plan = load(root, "research/reaction-classification-plan.json")
+    expected = build_bundle(root, private_root, reaction_plan)
+    checks["bundle_matches_source"] = (r_cards == expected)
+    snapshots = {}
+    for cfg in r_dplan["cards"].values():
+        for d in cfg.get("documents", []):
+            snapshots[d["snapshot"]] = read_bytes(inside(root, d["snapshot"]))
+    sb = read_bytes(root / "drafts/cards.json")
+    dictionary = compile_dictionary(r_cards, r_dplan, r_gplan, sb, snapshots)
+    result = compile_guidelines(r_cards, r_gplan, sb, dictionary)
+    saved = parse(read_bytes(root / "guidelines/runtime.json"))
+    checks["runtime_byte_equivalent_except_ts"] = (_strip_ts(result) == _strip_ts(saved))
+    return written, checks
+
+
 def reassemble(root: Path, incidents):
     """6사건 incident 목록 -> 완전한 레거시 입력(cards/gplan/dplan/catalog) 재조립.
 
@@ -203,7 +256,14 @@ def main():
     p.add_argument("--family", default="pisik-yeongyang")
     p.add_argument("--dump-incident", action="store_true", help="복원 incident JSON을 stdout에 출력")
     p.add_argument("--all", action="store_true", help="6사건 전부 변환->재조립->runtime 바이트 동치 검증")
+    p.add_argument("--emit", action="store_true", help="incidents/{id}.json 6개를 디스크에 쓰고 동치 재검증(Git 제외 로컬)")
     args = p.parse_args()
+    if args.emit:
+        written, checks = emit_incidents(args.dataset_root)
+        ok = all(checks.values())
+        print(json.dumps({"emitted": written, "count": len(written),
+                          "equivalentAfterWrite": ok, "checks": checks}, ensure_ascii=False, indent=2))
+        raise SystemExit(0 if ok else 1)
     if args.all:
         checks = runtime_equivalence(args.dataset_root)
         ok = all(checks.values())
