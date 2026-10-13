@@ -44,9 +44,16 @@ import build_incident_dataset as build
 DEFAULT_ROOT = ROOT / "datasets/controversy"
 
 
-def complete_card(case_id, incident_id, known_point, article):
+def complete_card(case_id, incident_id, known_point, article, boundaries=None, source_id=None):
     """REPORTED_CONTEXT_ONLY 최소 완전 카드. validate_bundle 전 필수 필드를 모두 채운다."""
     sources, reported_quotes = [], []
+    if article is not None:
+        # 기사 발췌 document 의 sourceId 는 evidence.sources 에 등록돼 있어야 한다
+        # (compile_dictionary SOURCE_DOCUMENT_REFERENCE_REQUIRED).
+        sources = [{"id": source_id, "publisher": article["publisher"],
+                    "url": article["url"], "publishedDate": article["publishedDate"],
+                    "retrievedOn": article.get("retrievedOn", article["publishedDate"]),
+                    "kind": "NEWS_REPORT"}]
     # 기사 발췌가 있으면 evidence.sources 에 등록(인용 자체는 reportedQuotes 없이 — documents 경유).
     return {
         "id": case_id, "familyId": incident_id, "status": "UNREVIEWED_DRAFT",
@@ -62,7 +69,8 @@ def complete_card(case_id, incident_id, known_point, article):
                         "게시 전 탐지의 직접 근거로 쓰지 않는다(같은 family 평가 입력 제외)."],
                     "sequenceInterpretations": []},
         "controversy": {"status": "KNOWN_POINT_REASON_MAPPING_PENDING_REVIEW",
-                        "reasonHypotheses": [], "reasonSupportReactionIds": [], "boundaries": []},
+                        "reasonHypotheses": [], "reasonSupportReactionIds": [],
+                        "boundaries": list(boundaries or [])},
         "reactions": [],
         "review": {"status": "PENDING", "humanApproved": False, "privacyReviewed": False,
                    "datasetUseAuthorized": False, "trainingUseAuthorized": False, "runtimeEligible": False},
@@ -95,24 +103,40 @@ def assemble(spec, root: Path):
         tags = st.get("topicTags")
         require(isinstance(tags, list) and 1 <= len(tags) <= 8, "TOPIC_TAGS_1_8_REQUIRED")
         require(isinstance(st.get("knownPoint"), str) and st["knownPoint"], "KNOWN_POINT_REQUIRED")
+        boundaries = st.get("boundaries")
+        if boundaries is not None:
+            require(isinstance(boundaries, list)
+                    and all(isinstance(b, str) and b for b in boundaries), "BOUNDARIES_LIST_REQUIRED")
         documents = []
+        source_id = None
         article = st.get("article")
         if article is not None:
             for k in ("publisher", "url", "publishedDate", "snapshot", "sha256"):
                 require(isinstance(article.get(k), str) and article[k], "ARTICLE_FIELD_REQUIRED:" + k)
             require(article["snapshot"].startswith("research/source-snapshots/"),
                     "PRIVATE_SOURCE_SNAPSHOT_PATH_REQUIRED")
-            documents = [{"id": cid + "-reported", "sourceId": "report", "materialKind": "NEWS_BODY",
+            # 발췌 본문을 읽어 실제 코드포인트 범위를 계산한다(0/0 금지, 해시 검증).
+            import hashlib
+            snap_path = (root / article["snapshot"])
+            require(snap_path.exists(), "SNAPSHOT_NOT_FOUND")
+            raw = snap_path.read_bytes()
+            require(hashlib.sha256(raw).hexdigest() == article["sha256"], "SNAPSHOT_HASH_MISMATCH")
+            body = raw.decode("utf-8")
+            end_cp = len(body)  # 발췌 전체를 참조 범위로
+            require(end_cp <= 2000, "EXTRACT_TOO_LONG_MAX_2000_CODEPOINTS")
+            source_id = "src-" + cid
+            documents = [{"id": cid + "-reported", "sourceId": source_id, "materialKind": "NEWS_BODY",
                           "snapshot": article["snapshot"], "sha256": article["sha256"],
                           "statementKind": "AUTHOR_INTERPRETATION",
                           "locationHint": article["publisher"] + " " + article["publishedDate"],
                           "snapshotCoverage": "SHORT_EXTRACT_NOT_FULL_ARTICLE", "originGroupId": None,
-                          "startCodePoint": 0, "endCodePoint": 0}]
+                          "retrievedOn": article.get("retrievedOn", article["publishedDate"]),
+                          "startCodePoint": 0, "endCodePoint": end_cp, "excerpt": body[0:end_cp]}]
         legacy_dict = {"topicTags": tags, "mechanismIds": mids, "documents": documents}
         statements.append({
             "id": cid, "mechanismIds": mids, "topicTags": tags,
             "legacyDictionaryCard": legacy_dict,
-            "legacyCard": complete_card(cid, incident_id, st["knownPoint"], article),
+            "legacyCard": complete_card(cid, incident_id, st["knownPoint"], article, boundaries, source_id),
         })
 
     return {
