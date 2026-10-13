@@ -101,6 +101,64 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
         for forbidden in ("drafts/cards.json", "validate_catalog", "validate_private", "build_bundle"):
             self.assertNotIn(forbidden, code_only, f"순환 입력 참조 발견: {forbidden}")
 
+    def test_article_only_incident_passes_full_build(self):
+        """5단계(결함 B 제거): reactions 0 · collectionId null 사건이 전 체인을 통과한다.
+
+        실제 카드 구조를 복제해 reactions 만 비운다(완전 구조 + 댓글 0). 새 빌드 경로는 catalog
+        UNKNOWN_COLLECTION 을 안 타므로 기사-only 사건이 성립해야 한다.
+        """
+        import copy
+        from build_context_dictionary import compile_dictionary
+        from build_review_guidelines import compile_guidelines
+        from review_dataset_catalog import inside
+        from review_context_pilot import read_bytes
+
+        cards = tool.load(DATASET_ROOT, "drafts/cards.json")
+        gplan = tool.load(DATASET_ROOT, "guidelines/plan.json")
+        dplan = tool.load(DATASET_ROOT, "research/context-dictionary-plan.json")
+        cat = tool.load(DATASET_ROOT, "catalog.json")
+        incidents = [tool.to_incident(ci["familyId"], ci, gplan, dplan, cat) for ci in cards["incidents"]]
+
+        pisik = next(i for i in cards["incidents"] if i["familyId"] == "pisik-yeongyang")
+        base = copy.deepcopy(next(c for c in pisik["cards"] if c["id"] == "pisik-C"))
+        base["id"] = "dummy-X"
+        base["familyId"] = "dummy-article-only-20260101"
+        base["reactions"] = []
+        base["controversy"]["reasonHypotheses"] = []
+        base["controversy"]["reasonSupportReactionIds"] = []
+
+        dummy = {"schemaVersion": "incident-2", "incidentId": "dummy-article-only-20260101",
+                 "split": "DEVELOPMENT",
+                 "catalogMeta": {"familyId": "dummy-article-only-20260101", "caseIds": ["dummy-X"],
+                                 "collectionId": None, "evidenceLevel": "REPORTED_CONTEXT_ONLY",
+                                 "selectedReactions": 0},
+                 "statements": [{"id": "dummy-X", "mechanismIds": ["local-life-devaluation"],
+                                 "topicTags": ["데모"],
+                                 "legacyDictionaryCard": {"topicTags": ["데모"],
+                                                          "mechanismIds": ["local-life-devaluation"],
+                                                          "documents": []},
+                                 "legacyCard": base}]}
+
+        rc, rg, rd, rcat = tool.reassemble(DATASET_ROOT, incidents + [dummy])
+        # reassemble 이 새 사건을 cards/dplan/gplan 에 반영했는지
+        self.assertTrue(any(c["id"] == "dummy-X" for i in rc["incidents"] for c in i["cards"]))
+        self.assertIn("dummy-X", rd["cards"])
+        m = next(x for x in rg["mechanisms"] if x["id"] == "local-life-devaluation")
+        self.assertIn("dummy-X", m["sourceCaseIds"])
+        # collectionId null 보존
+        new_cat = next(i for i in rcat["incidents"] if i["familyId"] == "dummy-article-only-20260101")
+        self.assertIsNone(new_cat["collectionId"])
+
+        snaps = {}
+        for cfg in rd["cards"].values():
+            for d in cfg.get("documents", []):
+                snaps[d["snapshot"]] = read_bytes(inside(DATASET_ROOT, d["snapshot"]))
+        import json as _json
+        sb = (_json.dumps(rc, ensure_ascii=False, indent=2) + "\n").encode()
+        dictionary = compile_dictionary(rc, rd, rg, sb, snaps)
+        runtime = compile_guidelines(rc, rg, sb, dictionary)  # 통과하면 결함 B 제거 성립
+        self.assertGreaterEqual(len(runtime["guidelines"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

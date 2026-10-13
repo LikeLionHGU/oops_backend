@@ -150,20 +150,33 @@ def reassemble(root: Path, incidents):
         cards_inc, gplan_frag, dplan_cards, cat_entry = from_incident(inc)
         by_family[inc["incidentId"]] = (cards_inc, gplan_frag, dplan_cards, cat_entry)
 
-    # cards.incidents 재조립 — 원본 순서 유지.
-    base_cards["incidents"] = [by_family[i["familyId"]][0] for i in base_cards["incidents"]]
-    # catalog.incidents 재조립 — 원본 순서 유지.
-    base_catalog["incidents"] = [by_family[i["familyId"]][3] for i in base_catalog["incidents"]]
-    # dplan.cards 재조립 — 원본 키 순서 유지.
+    # 사건 처리 순서: 원본에 있던 familyId 는 원본 순서로 먼저, incidents 에만 있는
+    # 새 사건은 incidents 순서로 뒤에 붙인다. 기존 사건만 있으면 결과가 원본과 동일(동치 보존),
+    # 새 사건(기사-only 포함)은 cards/catalog/dplan/gplan 모두에 일관되게 추가된다(결함 B 제거).
+    orig_families = [i["familyId"] for i in base_cards["incidents"]]
+    orig_set = set(orig_families)
+    new_families = [inc["incidentId"] for inc in incidents if inc["incidentId"] not in orig_set]
+    ordered_families = orig_families + new_families
+
+    # cards.incidents 재조립
+    base_cards["incidents"] = [by_family[f][0] for f in ordered_families]
+    # catalog.incidents 재조립
+    base_catalog["incidents"] = [by_family[f][3] for f in ordered_families]
+    # dplan.cards 재조립 — 사건 순서대로 카드 키를 쌓는다(원본 카드가 먼저).
     merged_dplan = {}
-    for inc in incidents:
-        merged_dplan.update(by_family[inc["incidentId"]][2])
-    base_dplan["cards"] = {cid: merged_dplan[cid] for cid in base_dplan["cards"]}
+    for f in ordered_families:
+        merged_dplan.update(by_family[f][2])
+    base_dplan["cards"] = merged_dplan
     # gplan.mechanisms 재조립 — 원본 메타 보존, sourceCaseIds만 복원값으로 교체(순서 유지).
+    # 새 사건이 아직 gplan 에 없는 mechanism 을 쓰면 그 사실을 드러낸다(조용히 누락하지 않음).
     merged_map = {}
-    for inc in incidents:
-        for mid, cases in by_family[inc["incidentId"]][1].items():
+    for f in ordered_families:
+        for mid, cases in by_family[f][1].items():
             merged_map.setdefault(mid, []).extend(cases)
+    known_mechanisms = {m["id"] for m in base_gplan["mechanisms"]}
+    unknown = set(merged_map) - known_mechanisms
+    from review_context_pilot import require  # 지연 import — 모듈 관행 유지
+    require(not unknown, "UNKNOWN_MECHANISM:" + ",".join(sorted(unknown)))
     for m in base_gplan["mechanisms"]:
         if m["id"] in merged_map:
             m["sourceCaseIds"] = merged_map[m["id"]]
