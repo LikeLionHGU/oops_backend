@@ -68,6 +68,10 @@ def prepare(source, authorization):
 
 
 def validate(artifact):
+    if 'anchorCouplingStudy' in artifact:
+        from run_automatic_anchor_coupling import validate as validate_coupling
+        validate_coupling(artifact)
+        return
     if 'incidentReferenceStudy' in artifact:
         from run_incident_reference_comparison import validate as validate_incident
         validate_incident(artifact)
@@ -291,7 +295,7 @@ def bound_judgment_request(artifact, base, scope, *, variant=None):
     if variant is None:
         return original(base, scope)
     if variant in {'TARGET_FOCUS_CLOSED_SCOPE','MECHANISM_FOCUS_CLOSED_SCOPE','COMPACT_REVIEW_CLOSED_SCOPE',
-                   'CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE','EXPLICIT_PASS_CLOSED_SCOPE'}:
+                   'CHRONOLOGY_COMPACT_REVIEW_CLOSED_SCOPE','EXPLICIT_PASS_CLOSED_SCOPE','SOURCE_FAITHFUL_CLOSED_SCOPE'}:
         from bound_review_contract import prepare_attempt
         return prepare_attempt(base,scope,'request-preview',judgment_variant=variant)['requestBody']
     if variant in {'RAW_REMOVED','CLOSED_SCOPE'}:

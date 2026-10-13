@@ -74,7 +74,10 @@ def freeze(source,base,candidate,card,authorization):
 
 def prepare():return freeze(*source_inputs(),AUTHORIZATION)
 def validate(frozen):
-    if frozen.get('stabilizationStep')=='EXPLICIT_PASS_1':
+    if frozen.get('stabilizationStep')=='SOURCE_FAITHFUL_1':
+        from run_source_faithfulness_comparison import validate as validate_faithful
+        validate_faithful(frozen)
+    elif frozen.get('stabilizationStep')=='EXPLICIT_PASS_1':
         from run_explicit_pass_stability import validate as validate_explicit
         validate_explicit(frozen)
     elif frozen.get('stabilizationStep')=='ANCHOR_FOCUS_1':

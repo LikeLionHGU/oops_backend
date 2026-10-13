@@ -92,7 +92,7 @@ def export_audits(report, directory):
             if call["case"] != case["name"] or "error" in call:
                 continue
             arms.append({"name": f'{call["arm"]}-{call["repeat"]}',
-                         "calls": [{"output": {"candidates": [proposal]}}],
+                         "calls": [{"output": {"candidates": [call.get('actualCandidateProposal',proposal)]}}],
                          "verifications": call["output"].get("verifications", [])})
         write_private(directory / f'ablation-{case["name"]}-input.json', {"transcript": rows})
         write_private(directory / f'ablation-{case["name"]}-report.json', {"arms": arms})

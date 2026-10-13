@@ -292,6 +292,9 @@ def execute(artifact, directory, key, call=transport, prior_report=None, *, simu
 
 def audit_export(report):
     """Administrative ID normalization for existing Java replay; no text edits."""
+    require(not any('actualCandidateProposal' in c for c in report['calls'])
+        or report.get('anchorCouplingStudy')=='MASKED_PRIMARY_COUPLING_1',
+        'dynamic proposals are restricted to the audited anchor study')
     adapted = copy.deepcopy(report)
     for call in adapted['calls']:
         if call.get('wireAdaptationError'):
@@ -308,6 +311,10 @@ def audit_export(report):
         for q in candidate['proposedEvidence']: q['segmentId'] = mapping[q['segmentId']]
         for call in adapted['calls']:
             if call['case'] != case['name'] or 'error' in call: continue
+            if 'actualCandidateProposal' in call:
+                proposal=call['actualCandidateProposal']
+                proposal['anchorId']=mapping[proposal['anchorId']]
+                for q in proposal['evidence']:q['segmentId']=mapping[q['segmentId']]
             for v in call['output']['verifications']:
                 require(v['candidateId'] == old_id, 'response candidate mismatch')
                 v['candidateId'] = 'candidate-1'

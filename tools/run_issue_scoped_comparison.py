@@ -65,12 +65,13 @@ def execute(artifact, directory, key, call=transport, *, simulate=False, ledger_
         result = {k:job[k] for k in ('case','arm','repeat')}
         result.update(unitIndex=index, stages=[], requestHash=job['baseRequestHash'], status='PARTIAL')
         payload = cases[job['case']]['payload']
+        effective_base=copy.deepcopy(job['baseBody'])
         scope = copy.deepcopy(job.get('fixedSelectedScope'))
         if scope is not None:
             result['selectedScope'] = copy.deepcopy(scope)
         for stage in job['stages']:
             if stop.is_set(): result['status']='STOPPED_BEFORE_STAGE'; break
-            body = (bound_judgment_request(artifact,job['baseBody'],scope,variant=job.get('judgmentVariant'))
+            body = (bound_judgment_request(artifact,effective_base,scope,variant=job.get('judgmentVariant'))
                     if is_bound and stage['stage']=='JUDGE' else
                     judge_request(job['baseBody'],scope) if stage['stage']=='JUDGE' else stage['body'])
             actual_tokens, _ = reserve(body, artifact['config'])
@@ -78,7 +79,7 @@ def execute(artifact, directory, key, call=transport, *, simulate=False, ledger_
             attempt = dict(stage=stage['stage'], requestHash=digest(body), body=body)
             ticket = None
             if is_bound and stage['stage'] == 'JUDGE':
-                ticket = prepare_attempt(job['baseBody'], scope, f'{artifact["artifactHash"]}-{index:03d}',
+                ticket = prepare_attempt(effective_base, scope, f'{artifact["artifactHash"]}-{index:03d}',
                                          judgment_variant=job.get('judgmentVariant',artifact.get('judgmentVariant')))
                 attempt['localAttempt'] = ticket
             write_private(directory/f'attempt-{index:03d}-{stage["stage"]}.json', attempt)
@@ -92,14 +93,25 @@ def execute(artifact, directory, key, call=transport, *, simulate=False, ledger_
                 cost = (Decimal(usage['prompt_tokens'])*positive(price['inputUsdPerMillion'])
                         + Decimal(usage['completion_tokens'])*positive(price['outputUsdPerMillion']))/1000000
                 attempt.update(usage=usage, estimatedCostUsd=str(cost))
-                require(response.get('model') == 'gpt-6-luna' and usage['completion_tokens'] <= 8000
+                require(response.get('model') == 'gpt-6-luna' and usage['completion_tokens'] <= body['max_completion_tokens']
                         and usage['prompt_tokens'] <= stage['reservedInputTokensHeuristic']
                         and cost <= Decimal(stage['reservedCostUsd']), 'provider model/usage exceeds reservation')
                 choice = response['choices'][0]
                 require(choice['finish_reason'] == 'stop' and not choice['message'].get('refusal'), 'incomplete or refused response')
                 raw = parse_response(response, body['model']) if is_bound else json.loads(choice['message']['content'])
                 attempt['rawOutput'] = raw
-                if stage['stage'] == 'VERIFY':
+                if stage['stage']=='LOCATE':
+                    from automatic_anchor_diagnostic import accept
+                    try:
+                        chosen=accept(raw,effective_base,scope)
+                        effective_base=chosen['baseBody'];scope=chosen['scope']
+                        payload=json.loads(effective_base['messages'][1]['content']);c=payload['candidates'][0]
+                        result.update(anchorAction=chosen['status'],selectedScope=copy.deepcopy(scope),
+                            actualCandidateProposal=dict(axis=c['axis'],anchorId=c['anchorId'],
+                                reason=c['hypothesisNotEvidence'],evidence=copy.deepcopy(c['proposedEvidence'])))
+                    except (ValueError,KeyError,TypeError) as error:
+                        result.update(status='ANCHOR_REJECTED',wireAdaptationError='ANCHOR_CONTRACT_REJECTED',contractError=str(error))
+                elif stage['stage'] == 'VERIFY':
                     flat = dict(providerResponse=response, outputAdapter='single-target-evidence-wire-1')
                     checked_output(flat, payload)
                     result.update({k:v for k,v in flat.items() if k != 'providerResponse'})

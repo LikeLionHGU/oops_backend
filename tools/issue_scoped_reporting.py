@@ -35,6 +35,10 @@ def build_report(artifact, results, *, stopped, is_bound, simulate):
         report.update(incidentReferenceStudy=artifact['incidentReferenceStudy'],previewHash=artifact['previewHash'],
                       automaticSelectionEvaluated=False,fullRegressionReplayed=False,
                       evaluationScope='KNOWN_CASE_REPRODUCTION_NOT_GENERALIZATION')
+    if 'anchorCouplingStudy' in artifact:
+        report.update(anchorCouplingStudy=artifact['anchorCouplingStudy'],previewHash=artifact['previewHash'],
+            evaluationScope='MASKED_PRIMARY_IN_FIXED_SELECTED_QUOTES_NOT_FULL_DISCOVERY',
+            automaticSelectionEvaluated=False,automaticPrimaryWithinSelectedQuotesEvaluated=True)
     if 'contextReselectionStudy' in artifact:
         report.update(contextReselectionStudy=artifact['contextReselectionStudy'],
                       sourceReportHash=artifact['sourceReportHash'],
