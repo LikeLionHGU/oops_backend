@@ -124,10 +124,11 @@ primaryIds의 모든 발언을 검토하고 reviewedSegmentIds에 실제 검토�
   주된 평가와 후속 설명이 다른 줄이면 둘을 별도로 인용한다. 뒤의 창도 앞의 후보로 대체하지 않는다.
 TARGET_TREATMENT는 targetWindows, EXPRESSION_CONTENT는 windows의 허용 창을 사용한다.
   대상·맥락 창은 최대 60초/48구간/6,000자이고 표현 자체 창은 기존 30초다.
-evidence는 해당 축의 한 창 안에서 복사한 segmentId·quote 객체 목록 1~8개다.
+evidence는 해당 축의 한 창 안에서 고른 segmentId 객체 목록 1~8개다.
+  quote는 넣지 않는다. 서버가 선택한 segmentId의 원문 전체를 근거로 연결한다.
   anchorId는 해당 창의 anchorIds에 속해야 한다.
-  anchor 인용을 포함하고 서로 떨어진 원문을 붙이거나 교정하지 않는다.
-  중요한 평가·대상·연결 인용만 고른다. 8개를 넘기거나 문자열/단일 객체로 반환하지 않는다.
+  anchor를 evidence에 포함하고 서로 떨어진 원문을 억지로 묶지 않는다.
+  중요한 평가·대상·연결 줄만 고른다. 8개를 넘기거나 문자열/단일 객체로 반환하지 않는다.
 같은 문제를 유형·관점 이름만 바꿔 반복하지 않는다. 후보는 최대 12개이며
   더 있으면 truncated=true로 표시한다. reason은 300자 이내로 실제 비판 연결을 설명한다.
 세부 유형·점수·최종 판정은 이 단계에서 만들지 않는다.
@@ -141,7 +142,7 @@ evidence는 해당 축의 한 창 안에서 복사한 segmentId·quote 객체 �
   영상 전체를 보았다고 가정하지 않는다. candidates와 visualCandidates 합계는 최대 12개다.
 JSON: {"reviewedSegmentIds":["원문 ID"],"candidates":[{"anchorId":"원문 ID",
   "axis":"TARGET_TREATMENT 또는 EXPRESSION_CONTENT","reason":"구체적 비판 이유",
-  "evidence":[{"segmentId":"원문 ID","quote":"연속 원문"}]}],
+  "evidence":[{"segmentId":"원문 ID"}]}],
   "visualCandidates":[],"uncertainSegments":[{"segmentId":"원문 ID","missingInformation":["필수 누락 정보"]}],"truncated":false}
 
 반드시 유효한 JSON 객체만 반환한다. JSON을 코드 블록으로 감싸거나 객체 밖에 설명을 덧붙이지 마라.
@@ -193,8 +194,8 @@ reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 �
   그 가설을 현재 원문이 뒷받침하지 않는 이유를 적는다. 후보 이유를 사실로 받아들이지 않는다.
   또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
   필요한 연결을 확인할 수 없으면 UNCERTAIN이다. 통과·경고 어느 쪽도 강제하지 않는다.
-evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한다.
-  PRIMARY는 anchorId의 실제 표현이며 evidenceText와 동일한 연속 인용이다.
+evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quote는 넣지 않으며 서버가 원문을 채운다.
+  PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
   TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
 대상 평가가 이유이면 target과 TARGET 인용 및 targetType·targetRelation·targetReason이 필요하다.
   target은 문맥상 해석한 대상, targetMention은 TARGET 인용에 그대로 있는 지칭어(각 200자 이내)다.
@@ -222,10 +223,11 @@ missingInformation은 UNCERTAIN일 때만 필수 누락 정보 1~6개, 나머지
 모든 결정에 원문 인용과 구체적 reason이 필요하다. context/reading은 null이다.
 JSON: {"verifications":[{"candidateId":"요청 후보 ID","assessment":{
   "segmentId":"anchorId","decision":"PASS/REVIEW_REQUIRED/UNCERTAIN",
-  "evidenceText":"PRIMARY 인용","reason":"근거 설명","category":null,"target":null,
+  "reason":"근거 설명","category":null,"target":null,
   "score":null,"context":null,"reading":null,"missingInformation":[],
-  "evidence":[{"segmentId":"anchorId","quote":"PRIMARY 인용","role":"PRIMARY"}],
+  "evidence":[{"segmentId":"anchorId","role":"PRIMARY"}],
   "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null}}]}
+evidenceText와 각 evidence의 quote는 응답에 넣지 않는다. 서버가 segmentId의 원문으로 채운다.
 
 # 대상 필드 형식 예시 — 판정 예시가 아니다
 아래 raw는 설명용 가상 원문이다. 실제 요청의 raw에 없는 ID·문구·대상을 복사하지 않는다.
@@ -1919,8 +1921,8 @@ reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 �
   그 가설을 현재 원문이 뒷받침하지 않는 이유를 적는다. 후보 이유를 사실로 받아들이지 않는다.
   또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
   필요한 연결을 확인할 수 없으면 UNCERTAIN이다. 통과·경고 어느 쪽도 강제하지 않는다.
-evidence는 최대 8개로 허용 원문의 segmentId·quote·role을 반환한다.
-  PRIMARY는 anchorId의 실제 표현이며 evidenceText와 동일한 연속 인용이다.
+evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quote는 넣지 않으며 서버가 원문을 채운다.
+  PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
   TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
 대상 평가가 이유이면 target과 TARGET 인용 및 targetType·targetRelation·targetReason이 필요하다.
   target은 문맥상 해석한 대상, targetMention은 TARGET 인용에 그대로 있는 지칭어(각 200자 이내)다.
@@ -1961,12 +1963,13 @@ connectionReason은 300자 이내다. 판단과 관찰을 섞지 않는다.
 단일 후보가 제공된다. 위의 assessment 계약에 따라 다음 단일 JSON으로 반환한다:
 {"candidateId":"요청 후보 ID","assessment":{
  "segmentId":"anchorId","decision":"PASS/REVIEW_REQUIRED/UNCERTAIN",
- "evidenceText":"PRIMARY 인용","reason":"근거 설명","category":null,"target":null,
+ "reason":"근거 설명","category":null,"target":null,
  "score":null,"context":null,"reading":null,"missingInformation":[],
- "evidence":[{"segmentId":"anchorId","quote":"PRIMARY 인용","role":"PRIMARY"}],
+ "evidence":[{"segmentId":"anchorId","role":"PRIMARY"}],
  "targetType":null,"targetRelation":null,"targetReason":null,"targetMention":null,"alternativeInterpretation":null},
  "observations":[{"frameId":"제공 이미지 ID","description":"보이는 내용"}],
  "connectionReason":"관찰과 발언의 연결 또는 연결 불명확 이유"}
+evidenceText와 각 evidence의 quote는 응답에 넣지 않는다. 서버가 segmentId의 원문으로 채운다.
 
 반드시 유효한 JSON 객체만 반환한다. JSON을 코드 블록으로 감싸거나 객체 밖에 설명을 덧붙이지 마라.
 ```
