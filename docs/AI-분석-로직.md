@@ -2,6 +2,8 @@
 
 ## 현재 코드 경계 — 2026-10-14, 개정 37
 
+후속 정상 대조 시험은 별도 `textBoundaryTrial` 명시적 opt-in 작업으로 실행한다. 기본 test/bootRun에는 유료 호출을 연결하지 않는다. 현재 CandidateReviewEngine 탐색/고정 원문/참고/검증을 쓰지만 STT/OCR/이미지/최종 병합/DB는 실행하지 않고 합성 시간과 실험 출력 상한 8,000토큰을 사용한다. 6정상×2회는 완전 탐색·무경고 12/12, C 발췌는 검토 1/PASS 1로 판정 변동이 남았다. B는 음식 중심이며 정상 대조 성공을 범용 정확도·생산 안정화로 표시하지 않는다. [실험 기록](AI-분석-실험-기록.md)을 따른다.
+
 `2026-10-14-target-contract-diagnostics-37`은 개정 36의 원문/참고 고정을 유지하면서 대상 필드 계약 진단을 세분화한다. 아래 개정 36은 입력 고정 구현 이력이다. 사례집·모델·복구 한도·발행 기준은 바꾸지 않는다.
 
 `candidatePipeline.evidenceCounts[].targetContract`는 최초/복구 응답의 대상 이름·지칭어·연결 설명 유효 여부, 명시적 targetMention 사용 여부, TARGET 역할 수·지칭어가 들어 있는 TARGET 수·별도 CONTEXT 수를 기록한다. 문자열 원응답은 저장하지 않는다. `failureDetail`은 다음 우선순위의 첫 실패이며 나머지 boolean/count로 복합 누락도 확인한다.
