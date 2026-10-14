@@ -139,6 +139,10 @@ def assemble(spec, root: Path):
             "legacyDictionaryCard": legacy_dict,
             "legacyCard": complete_card(cid, incident_id, st["knownPoint"], article, boundaries, source_id),
         })
+        if "criticismHypotheses" in st:
+            from criticism_hypotheses import validate as validate_criticism_hypotheses
+            validate_criticism_hypotheses(st["criticismHypotheses"], statements[-1]["legacyCard"])
+            statements[-1]["criticismHypotheses"] = st["criticismHypotheses"]
 
     return {
         "schemaVersion": "incident-2", "incidentId": incident_id,

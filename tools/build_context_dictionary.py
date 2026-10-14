@@ -15,6 +15,7 @@ from controversy_cards import build_bundle, validate_bundle
 from build_review_guidelines import write_private
 from review_context_pilot import PilotError, parse, read_bytes, require, text
 from review_dataset_catalog import inside
+from criticism_hypotheses import validate as validate_criticism_hypotheses
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "datasets/controversy"
@@ -134,6 +135,9 @@ def compile_dictionary(bundle, plan, guideline_plan, source_bytes, snapshots=Non
             "review": {"status": "PENDING", "gaps": gaps, "humanApproved": False,
                        "privacyReviewed": False, "datasetUseAuthorized": False,
                        "groundTruth": False, "runtimeEligible": False, "trainingUseAuthorized": False}})
+        if "criticismHypotheses" in config:
+            entries[-1]["interpretationMaterial"]["criticismHypotheses"] = validate_criticism_hypotheses(
+                config["criticismHypotheses"], card)
     deadlines = [datetime.datetime.fromisoformat(c["refreshOrDeleteBy"]) for c in bundle["collections"]]
     require(deadlines, "SOURCE_RETENTION_REQUIRED")
     return {"schemaVersion": "context-dictionary-1", "status": "UNREVIEWED_DRAFT",

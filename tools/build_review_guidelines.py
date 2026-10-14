@@ -109,6 +109,8 @@ def compile_guidelines(bundle, plan, source_bytes, dictionary=None):
                 ref["criticismHypotheses"] = list(dict.fromkeys(
                     u["interpretation"]["reason"] for u in entry["audienceReception"]["pointReasonUnits"]
                     if u["stage"] == "CONTENT" and u["scope"] in {"EXACT_POINT", "SCENE_OR_FLOW"}))
+                ref["criticismHypotheses"] = list(dict.fromkeys(ref["criticismHypotheses"] + [
+                    h["compactReferenceText"] for h in entry["interpretationMaterial"].get("criticismHypotheses", [])]))
                 ref["sourceInterpretations"] = [
                     {"statementKind": s["statementKind"], "excerpt": s["excerpt"]}
                     for s in entry["interpretationMaterial"]["sourceExtracts"]

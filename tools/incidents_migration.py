@@ -47,6 +47,8 @@ def to_incident(family_id, cards_incident, gplan, dplan, catalog):
             # 원본 card 객체를 통째로 보존 — 무손실의 핵심. 어떤 필드도 버리지 않는다.
             "legacyCard": card,
         })
+        if "criticismHypotheses" in dcfg:
+            statements[-1]["criticismHypotheses"] = dcfg["criticismHypotheses"]
     return {
         "schemaVersion": "incident-2",
         "incidentId": family_id,                         # §6 결정5: familyId 그대로 승격
@@ -71,7 +73,15 @@ def from_incident(incident):
         "cards": [s["legacyCard"] for s in incident["statements"]],
     }
     # dplan 카드 복원 — 보존한 원본 객체를 그대로 반환(무손실).
-    dplan_cards = {s["id"]: s["legacyDictionaryCard"] for s in incident["statements"]}
+    import copy
+    from review_context_pilot import require
+    dplan_cards = {s["id"]: copy.deepcopy(s["legacyDictionaryCard"]) for s in incident["statements"]}
+    for s in incident["statements"]:
+        if "criticismHypotheses" in s:
+            cfg = dplan_cards[s["id"]]
+            require("criticismHypotheses" not in cfg or cfg["criticismHypotheses"] == s["criticismHypotheses"],
+                    "CRITICISM_HYPOTHESES_CONFLICT")
+            cfg["criticismHypotheses"] = copy.deepcopy(s["criticismHypotheses"])
     # gplan 역매핑 복원: mechanism -> [caseId...] (사건 내부 조각만)
     gplan_fragment = {}
     for s in incident["statements"]:
