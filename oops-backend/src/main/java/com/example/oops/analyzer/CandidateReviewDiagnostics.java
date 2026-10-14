@@ -10,13 +10,17 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         boolean truncated, List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
         List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
         List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
-        int discoveryRepairCalls) {
+        int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts) {
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
         caseRetrieval = List.copyOf(caseRetrieval);
         contextSelections = List.copyOf(contextSelections);
         repairs = List.copyOf(repairs);
+        evidenceCounts = evidenceCounts == null ? List.of() : List.copyOf(evidenceCounts);
     }
+    public record EvidenceCountTrace(String candidateId, String attempt, Integer evidenceCount,
+                                     int uniqueSegments, int uniqueSegmentRoles, int duplicateRoleEntries,
+                                     int invalidEntries, int configuredLimit, String validationFailure) {}
     public record RepairTrace(String candidateId, String initialFailureCode, String state, String finalFailureCode) {}
     public record Trace(String candidateId, String anchorId, String axis, String state,
                         Long contextStartMs, Long contextEndMs, List<String> contextSegmentIds,

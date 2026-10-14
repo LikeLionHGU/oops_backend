@@ -458,6 +458,10 @@ public final class TextReviewEngine {
 
     static Observation observation(LlmDecision item, ReviewInput.Segment segment,
                                            TextReviewBatchPlanner.Batch batch, List<ReviewUnit> units) {
+        return observation(item, segment, batch, units, 12);
+    }
+    static Observation observation(LlmDecision item, ReviewInput.Segment segment,
+                                           TextReviewBatchPlanner.Batch batch, List<ReviewUnit> units, int evidenceLimit) {
         Decision decision;
         try { decision = Decision.valueOf(item.decision()); }
         catch (IllegalArgumentException | NullPointerException e) { throw rejected(ReviewDiagnostics.Failure.INVALID_DECISION); }
@@ -474,7 +478,7 @@ public final class TextReviewEngine {
         List<LlmEvidence> raw = item.evidence();
         if (raw == null) raw = List.of(new LlmEvidence(segment.id(), item.evidenceText(), "PRIMARY"));
         if (raw.isEmpty()) throw rejected(ReviewDiagnostics.Failure.MISSING_EVIDENCE);
-        if (raw.size() > 12) throw rejected(ReviewDiagnostics.Failure.TOO_MANY_EVIDENCE);
+        if (raw.size() > evidenceLimit) throw rejected(ReviewDiagnostics.Failure.TOO_MANY_EVIDENCE);
         List<EvidenceSpan> evidence = new ArrayList<>();
             for (var span : raw) {
                 if (span == null) throw rejected(ReviewDiagnostics.Failure.MISSING_EVIDENCE);

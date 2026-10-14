@@ -8,10 +8,16 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-11-target-example-budget-repair-33";
+    static final String REVISION = "2026-10-14-evidence-count-observation-34";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
+    static String verificationPrompt(int limit) {
+        if (limit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
+        return VERIFICATION_PROMPT.replace("evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다.",
+                limit == 0 ? "evidence는 필요한 허용 원문의 segmentId·role을 반환한다. 고정 개수 상한은 없다. 동일 segmentId·role은 반복하지 않는다."
+                        : "evidence는 최대 " + limit + "개로 허용 원문의 segmentId·role을 반환한다.");
+    }
     private static final int MAX_TRACES = 200;
     private static final int MAX_CONTRACT_REPAIRS = 2;
     private static final int MAX_DISCOVERY_REPAIRS = 1;
@@ -70,6 +76,13 @@ final class CandidateReviewEngine {
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace) {
+        // Historical replay/test contract. Spring explicitly passes its configured limit below.
+        return run(client, context, maxCandidates, visual, caseLibrary, guidelines, requestTrace, 8);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit) {
+        if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
@@ -192,7 +205,7 @@ final class CandidateReviewEngine {
             VerificationResult response;
             String responseFailure = null;
             int failuresBefore = client.failureCount();
-            String requestSystem = VERIFICATION_PROMPT + guidelinePrompt;
+            String requestSystem = verificationPrompt(evidenceLimit) + guidelinePrompt;
             String requestInput = verificationRequest(group, null);
             try {
                 response = client.completeAsJson(requestSystem, requestInput,
@@ -217,11 +230,13 @@ final class CandidateReviewEngine {
             for (var c : group) {
                 var matches = returned == null || returned.verifications() == null ? List.<Verification>of()
                         : returned.verifications().stream().filter(v -> v != null && c.candidateId().equals(v.candidateId())).toList();
-                Validation validation = matches.size() == 1 ? validate(c, matches.get(0).assessment(), input)
+                Validation validation = matches.size() == 1 ? validate(c, matches.get(0).assessment(), input, evidenceLimit)
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
+                stats.evidenceCount(c, "INITIAL", matches.size() == 1 ? matches.get(0).assessment() : null,
+                        evidenceLimit, validation.failureCode());
                 if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
-                        validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode());
+                        validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit);
                     } else if (stats.repairs.size() < MAX_TRACES) {
                         stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
                                 validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
@@ -374,13 +389,13 @@ final class CandidateReviewEngine {
         return result;
     }
     private static Validation repairContract(OpenAiClient client, Candidate c, ReviewInput input,
-                                             String reference, Stats stats, String initial) {
+                                             String reference, Stats stats, String initial, int evidenceLimit) {
         stats.repairCalls++; stats.verificationCalls++;
         Validation result;
         int failuresBefore = client.failureCount();
         try {
             var correction = repairPrompt(initial);
-            var response = client.completeAsJson(VERIFICATION_PROMPT + reference + "\n" + correction,
+            var response = client.completeAsJson(verificationPrompt(evidenceLimit) + reference + "\n" + correction,
                     verificationRequest(List.of(c), initial), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE");
@@ -388,7 +403,10 @@ final class CandidateReviewEngine {
                     || response.verifications().get(0) == null
                     || !c.candidateId().equals(response.verifications().get(0).candidateId()))
                 result = invalid("REPAIR_RESPONSE_SHAPE");
-            else result = validate(c, response.verifications().get(0).assessment(), input);
+            else result = validate(c, response.verifications().get(0).assessment(), input, evidenceLimit);
+            stats.evidenceCount(c, "REPAIR", response != null && response.verifications() != null
+                    && response.verifications().size() == 1 && response.verifications().get(0) != null
+                    ? response.verifications().get(0).assessment() : null, evidenceLimit, result.failureCode());
         } catch (RuntimeException ex) { result = invalid("REQUEST_EXCEPTION"); }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
                 c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode()));
@@ -484,19 +502,22 @@ final class CandidateReviewEngine {
     }
 
     static Validation validate(Candidate c, TextReviewEngine.LlmDecision assessment, ReviewInput input) {
+        return validate(c, assessment, input, 8);
+    }
+    static Validation validate(Candidate c, TextReviewEngine.LlmDecision assessment, ReviewInput input, int evidenceLimit) {
         // Server fills quotes from raw before any shape/linkage check (Approach A).
         Map<String, ReviewInput.Segment> raw = new HashMap<>();
         c.raw().forEach(s -> raw.put(s.id(), s));
         TextReviewEngine.LlmDecision d = normalizeAssessment(assessment, raw);
-        return validateFilled(c, d, input);
+        return validateFilled(c, d, input, evidenceLimit);
     }
-    private static Validation validateFilled(Candidate c, TextReviewEngine.LlmDecision d, ReviewInput input) {
+    private static Validation validateFilled(Candidate c, TextReviewEngine.LlmDecision d, ReviewInput input, int evidenceLimit) {
         if (d == null || !c.proposal().anchorId().equals(d.segmentId()) || !useful(d.reason(), 400)
-                || d.evidence() == null || d.evidence().isEmpty() || d.evidence().size() > 12
+                || d.evidence() == null || d.evidence().isEmpty() || evidenceLimit > 0 && d.evidence().size() > Math.max(12, evidenceLimit)
                 || d.evidenceText() == null || d.evidenceText().isBlank() || d.context() != null || d.reading() != null) return invalid("ASSESSMENT_SHAPE");
-        if (d.evidence().size() > 8) {
+        if (evidenceLimit > 0 && d.evidence().size() > evidenceLimit) {
             // Only small overflows with actual permitted quotes may request one bounded rewrite.
-            // Never truncate an assessment or accept more than eight evidence objects.
+            // Never truncate an assessment or silently exceed the configured legacy limit.
             if (d.evidence().stream().anyMatch(e -> e == null || e.segmentId() == null || e.quote() == null
                     || e.quote().isBlank() || !Set.of("PRIMARY", "TARGET", "CONTEXT").contains(e.role() == null ? "" : e.role())
                     || c.raw().stream().noneMatch(s -> s.id().equals(e.segmentId()) && s.text().contains(e.quote())))
@@ -547,7 +568,8 @@ final class CandidateReviewEngine {
             var batch = new TextReviewBatchPlanner.Batch(List.of(anchor), c.raw().stream().filter(s -> !s.id().equals(anchor.id())).toList(), false, false);
             var unit = new ReviewUnit(anchor.id(), c.raw().stream().map(ReviewInput.Segment::id).toList(),
                     c.raw().get(0).startMs(), c.raw().get(c.raw().size() - 1).endMs(), false, ReviewUnit.View.CENTRED);
-            Observation o = TextReviewEngine.observation(d, anchor, batch, List.of(unit));
+            Observation o = TextReviewEngine.observation(d, anchor, batch, List.of(unit),
+                    evidenceLimit == 0 ? 3 * c.raw().size() : evidenceLimit);
             var evaluation = new ReviewEvaluation("speech-review:verification", ExecutionStatus.SUCCESS,
                     List.of(anchor.id()), List.of(o), c.raw().stream().map(ReviewInput.Segment::id).toList());
             if (!ReviewEvidenceValidator.validate(input, evaluation).isEmpty()) return invalid("RAW_EVIDENCE_VALIDATION");
@@ -592,6 +614,23 @@ final class CandidateReviewEngine {
         final List<ReviewCaseLibrary.Trace> retrievalTraces = new ArrayList<>();
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
+        final List<CandidateReviewDiagnostics.EvidenceCountTrace> evidenceCounts = new ArrayList<>();
+        void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure) {
+            if (evidenceCounts.size() >= MAX_TRACES) return;
+            Set<String> segments = new HashSet<>();
+            Set<List<String>> pairs = new HashSet<>();
+            int duplicates = 0, invalid = 0;
+            if (d != null && d.evidence() != null) for (var e : d.evidence()) {
+                if (e == null || e.segmentId() == null || e.role() == null) { invalid++; continue; }
+                segments.add(e.segmentId());
+                if (!pairs.add(List.of(e.segmentId(), e.role()))) duplicates++;
+                if (!Set.of("PRIMARY", "TARGET", "CONTEXT").contains(e.role())
+                        || c.raw().stream().noneMatch(s -> s.id().equals(e.segmentId()))) invalid++;
+            }
+            evidenceCounts.add(new CandidateReviewDiagnostics.EvidenceCountTrace(c.candidateId(), attempt,
+                    d == null || d.evidence() == null ? null : d.evidence().size(), segments.size(), pairs.size(),
+                    duplicates, invalid, limit, failure));
+        }
         ReviewGuidelineLibrary.Trace guidelineReference;
         void invalidProposal(String id, Proposal p, TextReviewBatchPlanner.Batch batch,
                              List<ReviewUnit> units, List<String> reviewed) {
@@ -653,7 +692,7 @@ final class CandidateReviewEngine {
             return new CandidateReviewDiagnostics(REVISION, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
                     expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces,
-                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls);
+                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts);
         }
     }
 }

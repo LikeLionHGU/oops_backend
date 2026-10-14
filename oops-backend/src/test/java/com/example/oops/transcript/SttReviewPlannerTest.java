@@ -24,7 +24,7 @@ class SttReviewPlannerTest {
                 0L, 40000L, input.segments().stream().map(ReviewInput.Segment::id).toList(), true, false, null))
                 : List.<CandidateReviewDiagnostics.Trace>of();
         var pipeline = new CandidateReviewDiagnostics("test", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false,
-                traces, List.of(), List.of(), null, List.of(), 0, List.of(), 0);
+                traces, List.of(), List.of(), null, List.of(), 0, List.of(), 0, List.of());
         var diagnostics = new ReviewDiagnostics("speech-review", AnalyzerStatus.PARTIAL, segments.size(), false, Map.of(), segments, null, pipeline);
         return new ReviewDiagnosticsStore.Snapshot(1L, 1L, Instant.now(), "test", List.of(diagnostics), "test", Map.of());
     }
