@@ -425,7 +425,7 @@ class CandidateReviewEngineTest {
                 null, null, null, "실제 이동의 불편을 설명하는 지역 정보로 읽힙니다.")));
         assertThat(run(client, context("매장이 없어서 옆 마을로 가야 하니 불편하다"), 24).findings()).isEmpty();
     }
-    @Test void targetContextIncludesLaterQualificationAndDiagnosticShowsExactlyWhatWasSent() {
+    @Test void targetContextKeepsTheAdvertisedDiscoveryWindowWithoutLaterReconstruction() {
         List<TranscriptSegment> lines = new ArrayList<>();
         for (int i = 0; i < 35; i++) lines.add(new TranscriptSegment(video, i * 2000L, i * 2000L + 1500,
                 i == 10 ? "그 집 음식 이야기" : i == 24 ? "주변 설명의 맥락을 보충하는 뒤 발언" : "일반적인 대화 " + i));
@@ -441,10 +441,21 @@ class CandidateReviewEngineTest {
         verify(client).completeAsJson(eq(VERIFICATION_PROMPT), prompt.capture(), eq(VerificationResult.class));
         assertThat(prompt.getValue()).contains("주변 설명의 맥락을 보충하는 뒤 발언");
         var trace = r.diagnostics().candidatePipeline().candidates().get(0);
-        assertThat(trace.contextExpanded()).isTrue();
+        assertThat(trace.contextExpanded()).isFalse();
         assertThat(trace.contextSegmentIds()).contains("stt-index-24");
         assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(60000);
         assertThat(trace.contextLimited()).isTrue();
+        var discoveryRequests = ArgumentCaptor.forClass(String.class);
+        verify(client, atLeastOnce()).completeAsJson(anyString(), discoveryRequests.capture(), eq(Discovery.class));
+        assertThat(discoveryRequests.getAllValues()).anySatisfy(request -> {
+            var tree = JsonMapper.builder().build().readTree(request);
+            assertThat(tree.get("targetWindows")).anySatisfy(window -> {
+                assertThat(window.get("anchorIds").toString()).contains("stt-index-10");
+                List<String> ids = new ArrayList<>(); window.get("segmentIds").forEach(n -> ids.add(n.asText()));
+                assertThat(ids).containsExactlyElementsOf(trace.contextSegmentIds());
+            });
+        });
+        assertThat(trace.inputSnapshot().rawSha256()).hasSize(64);
     }
     @Test void overBudgetProposalRecordsSplitFailureCodeAndEvidenceCountWithoutRawText() {
         // Nine evidence quotes: the former PROPOSAL_EVIDENCE_SHAPE now resolves to OVER_BUDGET,

@@ -138,24 +138,35 @@ class CandidateReferenceRepairTest {
                 .select(com.example.oops.domain.TimelineEventType.SPEECH, broad, "b", focus).trace().exampleIds())
                 .containsExactly("source-1");
     }
-    @Test void differentCandidateReferencesDoNotShareUnionWindowRouting() {
+    @Test void verificationReusesDiscoveryReferencesInsteadOfRerankingEachCandidate() {
         var f = new CandidateReviewEngineTest(); var helper = new ContextExampleSelectionTest();
         String first = "공공시설이 없는 생활조건", second = "메뉴 선택권을 무시하는 설명";
-        f.discovery(List.of("stt-index-0", "stt-index-1"), f.proposal("stt-index-0", first), f.proposal("stt-index-1", second));
+        String[] discoverySystem = new String[1];
+        when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(invocation -> {
+            discoverySystem[0] = invocation.getArgument(0);
+            return Optional.of(new Discovery(List.of("stt-index-0", "stt-index-1"),
+                    List.of(f.proposal("stt-index-0", first), f.proposal("stt-index-1", second)), List.of(), false));
+        });
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class))).thenAnswer(invocation -> {
             var tree = JsonMapper.builder().build().readTree((String) invocation.getArgument(1));
-            assertThat(tree.get("candidates").size()).isOne();
-            var c = tree.get("candidates").get(0); String id = c.get("candidateId").asText();
+            assertThat(tree.get("candidates").size()).isEqualTo(2);
             String system = invocation.getArgument(0);
-            assertThat(system).contains(id.equals("candidate-1") ? first : second)
-                    .doesNotContain(id.equals("candidate-1") ? second : first);
-            return Optional.of(new VerificationResult(List.of(new Verification(id,
-                    f.assessment(c.get("anchorId").asText(), "PASS", id.equals("candidate-1") ? first : second)))));
+            assertThat(system).isEqualTo(VERIFICATION_PROMPT + discoverySystem[0].substring(DISCOVERY_PROMPT.length()));
+            List<Verification> results = new ArrayList<>();
+            for (var c : tree.get("candidates")) {
+                String id = c.get("candidateId").asText();
+                results.add(new Verification(id, f.assessment(c.get("anchorId").asText(), "PASS",
+                        id.equals("candidate-1") ? first : second)));
+            }
+            return Optional.of(new VerificationResult(results));
         });
         var r = run(f.client, f.context(first, second), 24, null, null, helper.library(distinctExamples(), 1, 3000, ""));
         var d = r.diagnostics().candidatePipeline();
-        assertThat(d.verificationCalls()).isEqualTo(2);
-        assertThat(d.contextSelections().stream().filter(s -> s.requestKey().startsWith("verification-")))
-                .extracting(SelectionTrace::exampleIds).containsExactly(List.of("source-0"), List.of("source-1"));
+        assertThat(d.verificationCalls()).isOne();
+        assertThat(d.contextSelections()).singleElement().satisfies(s -> {
+            assertThat(s.requestKey()).isEqualTo("discovery-1");
+            assertThat(s.exampleIds()).hasSize(1);
+        });
+        assertThat(d.candidates()).allSatisfy(c -> assertThat(c.inputSnapshot().discoveryRequestKey()).isEqualTo("discovery-1"));
     }
 }

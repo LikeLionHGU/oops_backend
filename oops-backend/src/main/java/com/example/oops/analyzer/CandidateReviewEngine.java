@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-14-expression-target-scope-35";
+    static final String REVISION = "2026-10-14-frozen-text-context-36";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -45,7 +45,9 @@ final class CandidateReviewEngine {
     private CandidateReviewEngine() {}
 
     public record Quote(String segmentId, String quote) {}
-    public record Proposal(String anchorId, String axis, String reason, List<Quote> evidence) {}
+    public record Proposal(String anchorId, String axis, String reason, List<Quote> evidence) {
+        public Proposal { evidence = evidence == null ? null : Collections.unmodifiableList(new ArrayList<>(evidence)); }
+    }
     public record UncertainSegment(String segmentId, List<String> missingInformation) {}
     public record Discovery(List<String> reviewedSegmentIds, List<Proposal> candidates,
                             List<UncertainSegment> uncertainSegments, Boolean truncated, List<Proposal> visualCandidates) {
@@ -57,7 +59,12 @@ final class CandidateReviewEngine {
     public record ProposalRepairResult(Proposal proposal) {}
     public record VerificationResult(List<Verification> verifications) {}
     record Candidate(String candidateId, Proposal proposal, List<ReviewInput.Segment> raw,
-                     boolean contextExpanded, boolean contextLimited) {}
+                     boolean contextExpanded, boolean contextLimited) {
+        Candidate { raw = List.copyOf(raw); }
+    }
+    /** Frozen routing data, not evidence or an instruction to retain the discovery verdict. */
+    private record FrozenReference(String discoveryRequestKey, String prompt) {}
+    private record VerificationScope(String reference, String rawSha256) {}
 
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates) {
         return run(client, context, maxCandidates, null);
@@ -93,6 +100,7 @@ final class CandidateReviewEngine {
         Set<String> fingerprints = new HashSet<>();
         List<Candidate> candidates = new ArrayList<>();
         List<Candidate> visualCandidates = new ArrayList<>();
+        Map<String, FrozenReference> frozenReferences = new LinkedHashMap<>();
         List<ReviewEvaluation> evaluations = new ArrayList<>();
         Map<String, List<Observation>> observations = new LinkedHashMap<>();
         Map<String, Integer> pending = new HashMap<>();
@@ -104,7 +112,8 @@ final class CandidateReviewEngine {
             List<ReviewUnit> units = ReviewUnit.all(batch);
             List<ReviewUnit> targetUnits = CandidateContextWindow.discoveryUnits(batch);
             List<ReviewInput.Segment> raw = raw(batch);
-            String guidelinePrompt = stats.reference(guidelines, raw, "discovery-" + (stats.discoveryCalls + 1));
+            String discoveryRequestKey = "discovery-" + (stats.discoveryCalls + 1);
+            String guidelinePrompt = stats.reference(guidelines, raw, discoveryRequestKey);
             var references = caseLibrary == null ? null : caseLibrary.select(raw, sourceFingerprint);
             if (references != null && stats.retrievalTraces.size() < MAX_TRACES) stats.retrievalTraces.add(references.trace());
             stats.discoveryCalls++;
@@ -157,14 +166,14 @@ final class CandidateReviewEngine {
                     proposal = normalizeProposal(proposal, rawById);
                 }
                 List<ReviewUnit> allowedUnits = proposal != null && "TARGET_TREATMENT".equals(proposal.axis()) ? targetUnits : units;
-                Candidate candidate = candidate(id, proposal, batch, allowedUnits, response.reviewedSegmentIds(), input);
+                Candidate candidate = candidate(id, proposal, batch, allowedUnits, response.reviewedSegmentIds(), input, !needsVisual);
                 if (candidate == null) {
                     String failure = proposalFailure(proposal, batch, allowedUnits, response.reviewedSegmentIds());
                     if (REPAIRABLE_PROPOSALS.contains(failure == null ? "" : failure)) {
                         if (stats.discoveryRepairCalls < MAX_DISCOVERY_REPAIRS
                                 && stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                             var repaired = repairProposal(client, id, proposal, batch, allowedUnits,
-                                    response.reviewedSegmentIds(), input, guidelinePrompt, stats, failure);
+                                    response.reviewedSegmentIds(), input, guidelinePrompt, stats, failure, !needsVisual);
                             if (repaired != null) { candidate = repaired; proposal = repaired.proposal(); }
                         } else if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
                                 id, failure, "NOT_ATTEMPTED_BUDGET", failure));
@@ -183,7 +192,17 @@ final class CandidateReviewEngine {
                     stats.budgetSkipped++; unresolved.add(proposal.anchorId()); partial = true;
                     stats.trace(id, proposal.anchorId(), proposal.axis(), "BUDGET_SKIPPED"); continue;
                 }
-                if (needsVisual) visualCandidates.add(candidate); else candidates.add(candidate);
+                if (needsVisual) visualCandidates.add(candidate);
+                else {
+                    candidates.add(candidate);
+                    // Approved historical cases are copied too, never retrieved afresh at verification.
+                    String reference = guidelinePrompt;
+                    if (references != null && !references.examples().isEmpty()) reference += "\n" + CASE_REFERENCE_CONTRACT
+                            + "\nreferenceCases: " + JSON.writeValueAsString(references.examples());
+                    var frozen = new FrozenReference(discoveryRequestKey, reference);
+                    frozenReferences.put(id, frozen);
+                    stats.snapshot(candidate, frozen);
+                }
                 if (candidate.contextExpanded()) stats.expandedCandidates++;
                 if (candidate.contextLimited()) {
                     stats.verificationLimitedCandidates++; unresolved.add(proposal.anchorId()); partial = true;
@@ -192,15 +211,16 @@ final class CandidateReviewEngine {
             }
         }
         List<RiskFinding> findings = new ArrayList<>();
-        // Share calls only when candidate-scoped references are identical, never rerank a union window.
-        Map<String, List<Candidate>> referenceGroups = new LinkedHashMap<>();
+        // Share calls only with the same frozen references. Per-candidate segment permissions still apply.
+        Map<VerificationScope, List<Candidate>> referenceGroups = new LinkedHashMap<>();
         for (var c : candidates) {
-            String reference = stats.candidateReference(guidelines, c, "verification-" + c.candidateId());
-            referenceGroups.computeIfAbsent(reference, ignored -> new ArrayList<>()).add(c);
+            String reference = frozenReferences.get(c.candidateId()).prompt();
+            var scope = new VerificationScope(reference, stats.snapshots.get(c.candidateId()).rawSha256());
+            referenceGroups.computeIfAbsent(scope, ignored -> new ArrayList<>()).add(c);
         }
         for (var entry : referenceGroups.entrySet()) for (int start = 0; start < entry.getValue().size(); start += 4) {
             List<Candidate> group = entry.getValue().subList(start, Math.min(start + 4, entry.getValue().size()));
-            String guidelinePrompt = entry.getKey();
+            String guidelinePrompt = entry.getKey().reference();
             stats.verificationCalls++;
             VerificationResult response;
             String responseFailure = null;
@@ -236,7 +256,8 @@ final class CandidateReviewEngine {
                         evidenceLimit, validation.failureCode());
                 if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
-                        validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit);
+                        validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
+                                matches.size() == 1 ? matches.get(0).assessment() : null);
                     } else if (stats.repairs.size() < MAX_TRACES) {
                         stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
                                 validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
@@ -358,7 +379,7 @@ final class CandidateReviewEngine {
     }
     private static Candidate repairProposal(OpenAiClient client, String id, Proposal original,
             TextReviewBatchPlanner.Batch batch, List<ReviewUnit> units, List<String> reviewed,
-            ReviewInput input, String reference, Stats stats, String initial) {
+            ReviewInput input, String reference, Stats stats, String initial, boolean freezeWindow) {
         stats.discoveryRepairCalls++; stats.discoveryCalls++;
         Candidate result = null;
         String failure = "PROPOSAL_REPAIR_NO_RESPONSE";
@@ -380,7 +401,7 @@ final class CandidateReviewEngine {
                 if (!original.anchorId().equals(p.anchorId()) || !original.axis().equals(p.axis())) failure = "PROPOSAL_REPAIR_SCOPE_CHANGED";
                 else {
                     failure = proposalFailure(p, batch, units, reviewed);
-                    if (failure == null) result = candidate(id, p, batch, units, reviewed, input);
+                    if (failure == null) result = candidate(id, p, batch, units, reviewed, input, freezeWindow);
                 }
             }
         } catch (RuntimeException ex) { failure = "PROPOSAL_REPAIR_REQUEST_EXCEPTION"; }
@@ -389,9 +410,11 @@ final class CandidateReviewEngine {
         return result;
     }
     private static Validation repairContract(OpenAiClient client, Candidate c, ReviewInput input,
-                                             String reference, Stats stats, String initial, int evidenceLimit) {
+                                             String reference, Stats stats, String initial, int evidenceLimit,
+                                             TextReviewEngine.LlmDecision previous) {
         stats.repairCalls++; stats.verificationCalls++;
         Validation result;
+        TextReviewEngine.LlmDecision repaired = null;
         int failuresBefore = client.failureCount();
         try {
             var correction = repairPrompt(initial);
@@ -403,13 +426,18 @@ final class CandidateReviewEngine {
                     || response.verifications().get(0) == null
                     || !c.candidateId().equals(response.verifications().get(0).candidateId()))
                 result = invalid("REPAIR_RESPONSE_SHAPE");
-            else result = validate(c, response.verifications().get(0).assessment(), input, evidenceLimit);
+            else {
+                repaired = response.verifications().get(0).assessment();
+                result = validate(c, repaired, input, evidenceLimit);
+            }
             stats.evidenceCount(c, "REPAIR", response != null && response.verifications() != null
                     && response.verifications().size() == 1 && response.verifications().get(0) != null
                     ? response.verifications().get(0).assessment() : null, evidenceLimit, result.failureCode());
         } catch (RuntimeException ex) { result = invalid("REQUEST_EXCEPTION"); }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
-                c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode()));
+                c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode(),
+                previous == null ? null : previous.decision(), repaired == null ? null : repaired.decision(),
+                previous != null && repaired != null ? !Objects.equals(previous.decision(), repaired.decision()) : null));
         return result;
     }
     private static boolean validDiscovery(Discovery r, List<String> primary) {
@@ -423,7 +451,7 @@ final class CandidateReviewEngine {
                 u != null && reviewed.contains(u.segmentId()) && uncertain.add(u.segmentId()) && information(u.missingInformation(), true));
     }
     private static Candidate candidate(String id, Proposal p, TextReviewBatchPlanner.Batch batch,
-                                       List<ReviewUnit> units, List<String> reviewed, ReviewInput input) {
+                                       List<ReviewUnit> units, List<String> reviewed, ReviewInput input, boolean freezeWindow) {
         if (proposalFailure(p, batch, units, reviewed) != null) return null;
         var selected = units.stream().filter(u -> u.anchorId().equals(p.anchorId()) &&
                 u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()))
@@ -435,6 +463,9 @@ final class CandidateReviewEngine {
                 }).thenComparingInt(u -> u.segmentIds().size())).orElse(null);
         if (selected == null) return null;
         var base = raw(batch).stream().filter(s -> selected.segmentIds().contains(s.id())).toList();
+        // Text verification reads exactly one window already advertised to discovery: no trimming,
+        // no unseen transcript extension, and no replacement of an earlier target cue by later speech.
+        if (freezeWindow) return new Candidate(id, p, base, false, selected.limited() || batch.contextLimited());
         if (!"TARGET_TREATMENT".equals(p.axis())) return new Candidate(id, p, base, false, false);
         // Keep all proposed quotes plus intervening raw, not an incidental early edge of a broad discovery view.
         // Otherwise dense earlier speech can exhaust the 60s budget before the later continuation is read.
@@ -616,6 +647,13 @@ final class CandidateReviewEngine {
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
         final List<CandidateReviewDiagnostics.EvidenceCountTrace> evidenceCounts = new ArrayList<>();
+        final Map<String, CandidateReviewDiagnostics.InputSnapshot> snapshots = new LinkedHashMap<>();
+        void snapshot(Candidate c, FrozenReference reference) {
+            snapshots.put(c.candidateId(), new CandidateReviewDiagnostics.InputSnapshot(reference.discoveryRequestKey(),
+                    ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(compact(c.raw()))),
+                    ReviewGuidelineLibrary.retrievalHash(reference.prompt()),
+                    ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal()))));
+        }
         void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure) {
             if (evidenceCounts.size() >= MAX_TRACES) return;
             Set<String> segments = new HashSet<>();
@@ -687,7 +725,8 @@ final class CandidateReviewEngine {
                     candidate.proposal().anchorId(), candidate.proposal().axis(), state,
                     candidate.raw().stream().mapToLong(ReviewInput.Segment::startMs).min().orElseThrow(),
                     candidate.raw().stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow(),
-                    candidate.raw().stream().map(ReviewInput.Segment::id).toList(), candidate.contextExpanded(), candidate.contextLimited(), failureCode));
+                    candidate.raw().stream().map(ReviewInput.Segment::id).toList(), candidate.contextExpanded(), candidate.contextLimited(), failureCode,
+                    null, null, null, snapshots.get(candidate.candidateId())));
         }
         CandidateReviewDiagnostics finish(int explored) {
             return new CandidateReviewDiagnostics(REVISION, discoveryCalls, verificationCalls, explored, proposed, duplicates,

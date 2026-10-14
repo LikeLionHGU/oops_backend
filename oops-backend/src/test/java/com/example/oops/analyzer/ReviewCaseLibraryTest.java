@@ -115,7 +115,7 @@ class ReviewCaseLibraryTest {
                 .isEqualTo(fingerprint(fixture.context("음식 맛").reviewInput().segments()));
         assertThat(fingerprint(raw())).isNotEqualTo(fingerprint(fixture.context("다른 내용").reviewInput().segments()));
     }
-    @Test void referencesOnlyEnterDiscoveryNotIndependentVerification() {
+    @Test void frozenHistoricalReferencesReachVerificationButAreNotCurrentEvidence() {
         var l = library(List.of(example("past-normal", "PASS")));
         fixture.discovery(List.of("stt-index-0"), fixture.proposal("stt-index-0", "그 집"));
         fixture.verification(new Verification("candidate-1", fixture.assessment("stt-index-0", "PASS", "그 집")));
@@ -126,7 +126,9 @@ class ReviewCaseLibraryTest {
         verify(fixture.client).completeAsJson(system.capture(), user.capture(), eq(Discovery.class));
         assertThat(system.getValue()).contains(CASE_REFERENCE_CONTRACT);
         assertThat(user.getValue()).contains("referenceCases", "past-normal");
-        verify(fixture.client).completeAsJson(eq(VERIFICATION_PROMPT), argThat(s -> !s.contains("referenceCases") && !s.contains("past-normal")), eq(VerificationResult.class));
+        verify(fixture.client).completeAsJson(argThat(s -> s.startsWith(VERIFICATION_PROMPT)
+                        && s.contains(CASE_REFERENCE_CONTRACT) && s.contains("past-normal")),
+                argThat(s -> !s.contains("past-normal")), eq(VerificationResult.class));
         verify(fixture.client, times(2)).completeAsJson(anyString(), anyString(), any());
     }
     @Test void unavailableArchiveKeepsBaseRequestAndCoverageWithoutInventingPartialFailure() {

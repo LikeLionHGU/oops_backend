@@ -124,7 +124,7 @@ class ContextExampleSelectionTest {
         f.verification(new CandidateReviewEngine.Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
         var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), 24, null, null, library(archive(4), 0, 3000, ""));
         assertThat(result.diagnostics().candidatePipeline().exploredSegments()).isEqualTo(1);
-        assertThat(result.diagnostics().candidatePipeline().contextSelections()).hasSize(2)
+        assertThat(result.diagnostics().candidatePipeline().contextSelections()).hasSize(1)
                 .allSatisfy(s -> assertThat(s.exampleIds()).isEmpty());
     }
 }
