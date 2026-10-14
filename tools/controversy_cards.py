@@ -209,6 +209,8 @@ def main():
     parser.add_argument("--build", action="store_true", help="Print private common JSON, not a runtime export")
     parser.add_argument("--bundle", type=Path, help="Check an existing local bundle against original sources and plan")
     args = parser.parse_args()
+    if (args.dataset_root / "definitions/build.json").exists():
+        parser.error("LEGACY_COMMAND: use tools/build_incident_dataset.py --verify")
     if args.build and args.bundle:
         parser.error("BUILD_OR_VERIFY_NOT_BOTH")
     try:

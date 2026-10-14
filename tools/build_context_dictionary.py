@@ -163,6 +163,8 @@ def main():
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
+    if (args.dataset_root / "definitions/build.json").exists():
+        parser.error("LEGACY_COMMAND: use tools/build_incident_dataset.py --write / --verify")
     if args.write and args.verify:
         parser.error("WRITE_OR_VERIFY_NOT_BOTH")
     try:

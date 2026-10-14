@@ -11,12 +11,16 @@
   불필요하다. compile 로직은 기존 함수를 그대로 재사용한다(전략 A — runtime 동치 보존).
 
   --write : incidents + definitions/build.json + 기사 발췌에서 runtime 생성. 기존 출력은 읽지 않는다.
-  --verify: 같은 입력에서 재생성하고 저장 runtime과 refreshOrDeleteBy 제외 동치를 비교한다.
+  --verify: 같은 입력에서 재생성하고 저장 runtime 및 입력/출력 해시 manifest를 대조한다.
 
 실제 incidents/*.json 은 /datasets/ 아래 Git 제외 로컬 생성물이다.
 """
 import argparse
+import datetime
+import hashlib
 import json
+import shutil
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 from review_context_pilot import parse, read_bytes, require
 from build_context_dictionary import compile_dictionary
 from build_review_guidelines import compile_guidelines
+from build_review_guidelines import write_private
 from review_dataset_catalog import inside
 import incidents_migration as mig
 
@@ -36,7 +41,14 @@ def load_incidents(root: Path):
     require(directory.is_dir(), "INCIDENTS_DIR_REQUIRED")
     files = sorted(directory.glob("*.json"))
     require(len(files) > 0, "NO_INCIDENTS")
-    return [json.loads(p.read_text(encoding="utf-8")) for p in files]
+    incidents = [parse(read_bytes(p)) for p in files]
+    for p, incident in zip(files, incidents):
+        require(incident.get("schemaVersion") == "incident-2"
+                and incident.get("status") == "UNREVIEWED_DRAFT"
+                and all(incident.get(k) is False for k in
+                        ("humanApproved", "runtimeEligible", "trainingUseAuthorized")), "INCIDENT_CONTRACT_REQUIRED")
+        require(p.stem == incident.get("incidentId"), "INCIDENT_FILENAME_MISMATCH")
+    return incidents
 
 
 def generate(root: Path):
@@ -63,6 +75,71 @@ def _strip_ts(obj):
     return o
 
 
+def input_hashes(root):
+    """Only canonical inputs; historical files and generated output never participate."""
+    inputs = {"definitions/build.json"}
+    for p in (root / "incidents").glob("*.json"):
+        inputs.add(p.relative_to(root).as_posix())
+        incident = parse(read_bytes(p))
+        for s in incident["statements"]:
+            for document in s["legacyDictionaryCard"].get("documents", []):
+                inputs.add(document["snapshot"])
+    return {name: hashlib.sha256(read_bytes(inside(root, name))).hexdigest()
+            for name in sorted(inputs)}
+
+
+def prepare(root):
+    hashes = input_hashes(root)
+    runtime, dictionary = generate(root)
+    require(all(re.fullmatch(r"[a-zA-Z0-9_-]{1,64}(?:#[a-zA-Z0-9_-]{1,64})?", c["caseId"])
+                and re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", c["familyId"])
+                for c in runtime["sourceCases"]), "JAVA_SOURCE_ID_CONTRACT")
+    require(hashes == input_hashes(root), "INPUT_CHANGED_DURING_BUILD")
+    raw = (json.dumps(runtime, ensure_ascii=False, indent=2) + "\n").encode()
+    require(len(raw) <= 1_048_576, "RUNTIME_EXCEEDS_JAVA_LIMIT")
+    require(datetime.datetime.fromisoformat(runtime["refreshOrDeleteBy"]) >
+            datetime.datetime.now(datetime.timezone.utc), "REFERENCE_EXPIRED")
+    manifest = {"schemaVersion": "incident-build-manifest-1", "version": runtime["version"],
+                "inputHashes": hashes, "runtimeSha256": hashlib.sha256(raw).hexdigest(),
+                "sourceBundleSha256": runtime["sourceBundleSha256"],
+                "contextDictionarySha256": runtime["contextDictionarySha256"],
+                "incidents": len(load_incidents(root)), "examples": len(runtime["examples"]),
+                "mechanisms": len(runtime["guidelines"])}
+    return runtime, manifest
+
+
+def verify(root):
+    runtime, expected = prepare(root)
+    saved_bytes = read_bytes(root / "guidelines/runtime.json")
+    require(_strip_ts(runtime) == _strip_ts(parse(saved_bytes)), "RUNTIME_NOT_EQUIVALENT")
+    manifest = parse(read_bytes(root / "guidelines/build-manifest.json"))
+    require(manifest == expected and manifest["runtimeSha256"] == hashlib.sha256(saved_bytes).hexdigest(),
+            "BUILD_MANIFEST_MISMATCH")
+    return expected
+
+
+def publish(root):
+    runtime, manifest = prepare(root)
+    output = root / "guidelines/runtime.json"
+    if output.exists():
+        previous = read_bytes(output)
+        sha = hashlib.sha256(previous).hexdigest()
+        history = root / "legacy/runtime-history" / (sha + ".json")
+        if history.exists():
+            require(read_bytes(history) == previous, "HISTORY_HASH_MISMATCH")
+        else:
+            history.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            shutil.copyfile(output, history)
+            history.chmod(0o600)
+            require(read_bytes(history) == previous, "HISTORY_COPY_MISMATCH")
+    require(manifest["inputHashes"] == input_hashes(root), "INPUT_CHANGED_BEFORE_PUBLISH")
+    write_private(output, runtime)
+    # A crash between the two replacements is detected by verify; rerun --write to repair.
+    write_private(root / "guidelines/build-manifest.json", manifest)
+    verify(root)
+    return manifest
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--dataset-root", type=Path, default=DEFAULT_ROOT)
@@ -72,20 +149,14 @@ def main():
     if args.write and args.verify:
         p.error("WRITE_OR_VERIFY_NOT_BOTH")
     try:
-        runtime, dictionary = generate(args.dataset_root)
-        output = args.dataset_root / "guidelines/runtime.json"
-        result = {"status": runtime["status"], "version": runtime["version"],
-                  "mechanisms": len(runtime["guidelines"]), "examples": len(runtime["examples"]),
-                  "written": False, "verified": False}
         if args.verify:
-            saved = parse(read_bytes(output))
-            require(_strip_ts(runtime) == _strip_ts(saved), "RUNTIME_NOT_EQUIVALENT")
-            result["verified"] = True
-        if args.write:
-            tmp = output.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(runtime, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            tmp.replace(output)
-            result["written"] = True
+            manifest = verify(args.dataset_root)
+        elif args.write:
+            manifest = publish(args.dataset_root)
+        else:
+            _, manifest = prepare(args.dataset_root)
+        result = {k: v for k, v in manifest.items() if k != "inputHashes"}
+        result.update(written=args.write, verified=args.verify or args.write)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except Exception as error:  # noqa: BLE001 — CLI 경계에서 사유를 그대로 전달
         p.exit(2, f"{type(error).__name__}: {error}\n")

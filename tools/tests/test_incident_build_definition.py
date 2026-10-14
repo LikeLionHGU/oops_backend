@@ -72,7 +72,7 @@ def test_actual_compilers_match_without_legacy_files(tmp_path):
                             evidenceLevel='REPORTED_CONTEXT_ONLY',selectedReactions=4)])
     definition=extract(cards,g,d,cat);incident=to_incident(ci['familyId'],ci,g,d,cat)
     (tmp_path/'definitions').mkdir();(tmp_path/'definitions/build.json').write_text(json.dumps(definition))
-    (tmp_path/'incidents').mkdir();(tmp_path/'incidents/synthetic.json').write_text(json.dumps(incident))
+    (tmp_path/'incidents').mkdir();(tmp_path/'incidents'/f'{incident["incidentId"]}.json').write_text(json.dumps(incident))
     source=(json.dumps(cards,ensure_ascii=False,indent=2)+'\n').encode()
     dictionary=compile_dictionary(cards,d,g,source)
     expected=compile_guidelines(cards,g,source,dictionary)

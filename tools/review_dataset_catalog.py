@@ -150,6 +150,8 @@ def main():
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--private-root", type=Path)
     args = parser.parse_args()
+    if (args.dataset_root / "definitions/build.json").exists():
+        parser.error("LEGACY_COMMAND: use tools/build_incident_dataset.py --verify")
     try:
         catalog = parse(read_bytes(args.dataset_root / "catalog.json"))
         report = validate(catalog, args.dataset_root)
