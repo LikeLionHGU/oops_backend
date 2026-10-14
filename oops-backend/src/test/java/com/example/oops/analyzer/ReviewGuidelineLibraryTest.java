@@ -15,6 +15,17 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
 class ReviewGuidelineLibraryTest {
+    @Test void incidentStatementIdsLoadWithoutWeakeningFamilyOrRuleIds() {
+        String json = JSON.writeValueAsString(archive());
+        assertThat(library(json.replace("case-1", "incident#s1-group").getBytes(StandardCharsets.UTF_8), 6000)
+                .trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
+        for (var invalid : List.of("incident##s1", "incident/s1", "incident#")) {
+            assertThat(library(json.replace("case-1", invalid).getBytes(StandardCharsets.UTF_8), 6000)
+                    .trace(SPEECH).state()).isEqualTo("INVALID_ARCHIVE");
+        }
+        assertThat(library(json.replace("family-1", "family#s1").getBytes(StandardCharsets.UTF_8), 6000)
+                .trace(SPEECH).state()).isEqualTo("INVALID_ARCHIVE");
+    }
     @Test void localCompiledArchiveLoadsWithinProductionBudgetWhenPresent() throws Exception {
         var path = java.nio.file.Path.of("../datasets/controversy/guidelines/runtime.json");
         org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(path));

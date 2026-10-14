@@ -11,10 +11,13 @@ import java.time.OffsetDateTime;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Working mechanism reference, distinct from approved evidence/training cases. */
 @Component
 public class ReviewGuidelineLibrary {
+    private static final Logger log = LoggerFactory.getLogger(ReviewGuidelineLibrary.class);
     public static final String CONTRACT = """
             # 범용 맥락 참고 기준
             reviewGuidelines는 여러 사례에서 추출한 미검증 작업 기준이며 정답·현재 영상의 증거가 아니다.
@@ -146,6 +149,12 @@ public class ReviewGuidelineLibrary {
             if (expired()) state = "EXPIRED";
             if (splitArchive() && !expired()) selector = new ContextExampleSelector(archive.examples(), archive.guidelines());
         } catch (Exception ex) { archive = null; state = "UNAVAILABLE_OR_INVALID"; }
+        finally {
+            log.info("[context-dictionary] state={} location={} version={} sourceSha256={} examples={}",
+                    state, location, archive == null ? null : archive.version(),
+                    archive == null ? null : archive.sourceBundleSha256(),
+                    archive == null || archive.examples() == null ? 0 : archive.examples().size());
+        }
     }
     private static boolean valid(Archive a) {
         if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2", "review-guidelines-3", "review-guidelines-4", "review-guidelines-5").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
@@ -160,7 +169,7 @@ public class ReviewGuidelineLibrary {
         boolean dictionary = split || "review-guidelines-3".equals(a.schemaVersion());
         if (dictionary && (a.contextDictionarySha256() == null || !a.contextDictionarySha256().matches("[0-9a-f]{64}"))) return false;
         Set<String> sources = new HashSet<>(), ids = new HashSet<>(), covered = new HashSet<>();
-        for (var c : a.sourceCases()) if (c == null || !id(c.caseId()) || !id(c.familyId())
+        for (var c : a.sourceCases()) if (c == null || !caseId(c.caseId()) || !id(c.familyId())
                 || !"UNREVIEWED_DRAFT".equals(c.status()) || !sources.add(c.caseId())) return false;
         for (var r : a.guidelines()) {
             if (r == null || !id(r.id()) || !ids.add(r.id())
@@ -335,4 +344,7 @@ public class ReviewGuidelineLibrary {
         return values != null && values.size() >= min && values.size() <= max && values.stream().allMatch(s -> text(s, 350));
     }
     private static boolean id(String s) { return s != null && s.matches("[a-zA-Z0-9_-]{1,64}"); }
+    private static boolean caseId(String s) {
+        return s != null && s.matches("[a-zA-Z0-9_-]{1,64}(?:#[a-zA-Z0-9_-]{1,64})?");
+    }
 }
