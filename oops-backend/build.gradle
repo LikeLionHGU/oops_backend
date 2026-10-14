@@ -56,6 +56,20 @@ tasks.register('textBoundaryTrial', JavaExec) {
     }
 }
 
+// Explicit paid opt-in: fixed verification requests; never part of test/bootRun.
+tasks.register('candidateHypothesisTrial', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CandidateHypothesisTrial'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!plan || !output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved, trialPlan, trialOutput, trialBudget required')
+        args plan, output, budget
+    }
+}
+
 // No server startup or paid API calls: inspect curated-case eligibility/retrieval on saved text.
 tasks.register('reviewCaseReplay', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

@@ -82,19 +82,7 @@ public final class TextBoundaryTrial {
                 new OpenAiProperties.Pricing(inputRate,null,outputRate,null,null));
         Files.createDirectories(root); Files.createDirectory(directory);
         var budget=new Budget(cap,inputRate,outputRate,directory);
-        var factory=new JdkClientHttpRequestFactory(HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(10)).build()); factory.setReadTimeout(Duration.ofSeconds(90));
-        var builder=RestClient.builder().baseUrl(props.baseUrlOrDefault()).requestFactory(factory)
-                .defaultHeader("Authorization","Bearer "+key).requestInterceptor((request,body,execution)-> {
-                    var value=JSON.readTree(body);
-                    ((tools.jackson.databind.node.ObjectNode)value).put("max_completion_tokens",8000);
-                    byte[] bounded=JSON.writeValueAsBytes(value);
-                    budget.reserve(bounded.length); request.getHeaders().setContentLength(bounded.length);
-                    return execution.execute(request,bounded);
-                });
-        if(props.hasOrganization()) builder.defaultHeader("OpenAI-Organization",props.organization());
-        if(props.hasProject()) builder.defaultHeader("OpenAI-Project",props.project());
-        var client=new RecordingClient(builder.build(),props);
+        var client=client(props,budget);
         Files.writeString(directory.resolve("fixture.json"),JSON.writeValueAsString(suite));
         List<Map<String,Object>> results=new ArrayList<>(); double usageCost=0;
         for(int repeat=1;repeat<=suite.repeats();repeat++) for(var c:suite.cases()) {
@@ -121,5 +109,20 @@ public final class TextBoundaryTrial {
                     "Budget/provider/usage failure; stop trial, retain partial results");
         }
         System.out.println("TRIAL_COMPLETE slots="+results.size()+" usageEstimatedUsd="+usageCost+" reservedEstimatedUsd="+budget.reserved);
+    }
+    static RecordingClient client(OpenAiProperties props, Budget budget) {
+        var factory=new JdkClientHttpRequestFactory(HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10)).build()); factory.setReadTimeout(Duration.ofSeconds(90));
+        var builder=RestClient.builder().baseUrl(props.baseUrlOrDefault()).requestFactory(factory)
+                .defaultHeader("Authorization","Bearer "+props.apiKey()).requestInterceptor((request,body,execution)-> {
+                    var value=JSON.readTree(body);
+                    ((tools.jackson.databind.node.ObjectNode)value).put("max_completion_tokens",8000);
+                    byte[] bounded=JSON.writeValueAsBytes(value);
+                    budget.reserve(bounded.length); request.getHeaders().setContentLength(bounded.length);
+                    return execution.execute(request,bounded);
+                });
+        if(props.hasOrganization()) builder.defaultHeader("OpenAI-Organization",props.organization());
+        if(props.hasProject()) builder.defaultHeader("OpenAI-Project",props.project());
+        return new RecordingClient(builder.build(),props);
     }
 }
