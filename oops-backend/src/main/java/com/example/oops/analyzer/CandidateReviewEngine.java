@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-14-evidence-count-observation-34";
+    static final String REVISION = "2026-10-14-expression-target-scope-35";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -559,6 +559,7 @@ final class CandidateReviewEngine {
                 }
             }
             if (decision == Decision.REVIEW_REQUIRED && "TARGET_TREATMENT".equals(c.proposal().axis())
+                    && !"GRAPHIC_METAPHOR".equals(d.category())
                     && (d.target() == null || d.target().isBlank())) return invalid("TARGET_REQUIRED");
             if (decision == Decision.REVIEW_REQUIRED && Set.of("BELITTLEMENT", "MOCKERY", "STRONG_NEGATIVE_REVIEW",
                     "GENERALIZATION", "DISCRIMINATION", "HATE_SPEECH").contains(d.category() == null ? "" : d.category())
