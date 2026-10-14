@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "text-boundary-trial-1",
+  "repeats": 2,
+  "scope": "TEXT_ONLY_SYNTHETIC_TIMING_NOT_FULL_VIDEO_OR_INDEPENDENT_GOLD",
+  "cases": [
+    {"id":"N1-review","expected":"PASS","speech":["이 음식은 제 입맛에 별로예요.","가격에 비해 돈이 아깝다고 느꼈어요."]},
+    {"id":"N2-menu-guide","expected":"PASS","speech":["이 가게는 단일 메뉴예요.","메뉴를 고를 필요 없이 정해진 음식을 제공해요."]},
+    {"id":"N3-memory","expected":"PASS","speech":["할머니가 해주시던 맛이에요.","어릴 때 먹었던 음식이 생각나요."]},
+    {"id":"N4-home-substitute","expected":"PASS","speech":["이 동네에는 그 가게가 없어요.","그래서 내가 집에서 만들어 먹어요."]},
+    {"id":"N5-owner-origin","expected":"PASS","speech":["이 동네에는 그 음식점이 없어요.","가게 주인이 아이가 그 음식을 원해서 다른 재료로 만들어 줬다고 설명했어요.","원하는 음식을 못 사서 만든 대체 메뉴라고 소개했습니다."]},
+    {"id":"N6-family-preference","expected":"PASS","speech":["이 동네에는 그 음식점이 없어요.","아이들이 그 음식을 원해서 집에서 다른 재료로 만들어요.","밖에서 못 사서 시작했지만 우리 가족은 이 메뉴를 더 좋아해요."]},
+    {"id":"P-B-development-excerpt","expected":"REVIEW_REQUIRED","speech":["롯데리아 없나?","롯데리아 없어","롯데리아 같은 소리 하고 있어 지금","진짜 롯데리아 없다고?","롯데리아 없어","한 입 먹었는데","여기 사연이 느껴지네","여기가 롯데리아가 없다 그랬거든?","젊은 아들이 햄버거 먹고 싶은데","이걸로 대신 먹는 거야","진짜 90년대에","어머니들이","그 몸에 안 좋은 패스트푸드 집에서 먹지 말고","집에서 뭐","할 때 만들었던 유기농 햄버거","근데 좀","뭐랄까 이게","내가 느끼기엔 부대찌개 같은 그런 느낌이야","못 먹으니까","롯데리아 막","막 해서 먹는 거 아니야?","그래도 맛은 참 건강하다"]},
+    {"id":"P-C-development-excerpt","expected":"REVIEW_REQUIRED","speech":["메뉴가 너무","솔직히","너무 특색이 없어가지고","근데 여기는","내가 봤을 때 메뉴가 의미가 없어","주는 대로 먹어야 돼"]},
+    {"id":"P-D-development-excerpt","expected":"REVIEW_REQUIRED","speech":["진짜 할머니 맛이야 할머니 맛","그냥 할머니의 살을 뜯는 거 같다","여러분들 알죠?"]}
+  ]
+}

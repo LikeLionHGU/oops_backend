@@ -43,6 +43,19 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// Explicit opt-in text-only model trial; never part of test/bootRun.
+tasks.register('textBoundaryTrial', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.TextBoundaryTrial'
+    doFirst {
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved=true, trialOutput and trialBudget required')
+        args 'src/test/resources/evals/text-boundaries-37.json', '../datasets/controversy/guidelines/runtime.json', output, budget
+    }
+}
+
 // No server startup or paid API calls: inspect curated-case eligibility/retrieval on saved text.
 tasks.register('reviewCaseReplay', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
