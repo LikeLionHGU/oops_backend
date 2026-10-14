@@ -1,5 +1,27 @@
 # OoPs?! AI 분석 로직
 
+## 현재 코드 경계 — 2026-10-14, 개정 37
+
+`2026-10-14-target-contract-diagnostics-37`은 개정 36의 원문/참고 고정을 유지하면서 대상 필드 계약 진단을 세분화한다. 아래 개정 36은 입력 고정 구현 이력이다. 사례집·모델·복구 한도·발행 기준은 바꾸지 않는다.
+
+`candidatePipeline.evidenceCounts[].targetContract`는 최초/복구 응답의 대상 이름·지칭어·연결 설명 유효 여부, 명시적 targetMention 사용 여부, TARGET 역할 수·지칭어가 들어 있는 TARGET 수·별도 CONTEXT 수를 기록한다. 문자열 원응답은 저장하지 않는다. `failureDetail`은 다음 우선순위의 첫 실패이며 나머지 boolean/count로 복합 누락도 확인한다.
+
+| 세부 코드 | 의미 |
+|---|---|
+| TARGET_NAME_INVALID | 대상 이름 공백/길이 계약 실패 |
+| TARGET_MENTION_INVALID | 지칭어 공백/길이 계약 실패 |
+| TARGET_REASON_INVALID | 대상 연결 설명 공백/길이 계약 실패 |
+| TARGET_ROLE_MISSING | evidence에 TARGET 역할 없음 |
+| TARGET_MENTION_NOT_IN_TARGET_RAW | 선택한 TARGET 원문에 지칭어 없음 |
+| TARGET_RELATION_MISMATCH | 지칭어와 해석 대상이 다른데 CONTEXTUAL이 아님 |
+| TARGET_SEPARATE_CONTEXT_MISSING | 다른 줄의 CONTEXT 연결 근거 없음 |
+
+기존 상위 실패 코드/재검증 조건은 그대로다. 텍스트 대상 복구 요청의 `repair.failureDetail`로 같은 세부 조건만 전달한다. TARGET_REQUIRED는 TARGET_NAME_REQUIRED를 전달한다. 이전 응답 원문·잘못된 대상 문자열은 복구 입력에 복사하지 않는다. 서버가 지칭어를 추측하거나 역할을 교정하지 않는다.
+
+검증에서 쓰는 원문 채우기와 같은 경로로 진단을 계산한다. 해당 진단이 유효해도 ID/역할/인용/발행 계약 전체와 의미 연결이 통과했다는 뜻은 아니다. 대상이 없는 PASS/UNCERTAIN/표현 자체 판정은 대상 진단의 false 값을 오류로 읽지 않는다. 과거 진단의 targetContract는 null이다.
+
+검증 예시의 quote를 제거해 ID·역할만 반환하는 실제 계약과 맞췄다. targetMention은 존재하지 않는 출력 TARGET.quote가 아니라 선택한 segmentId의 raw.text에서 고른다. 공통 지침을 공유하는 이미지 검증에도 이 문구 명확화는 반영되지만 프레임/관찰/선택 경로는 바꾸지 않았다. 실모델 개선은 아직 미측정이며 57의 오류 필드를 사후 복원한 것도 아니다.
+
 ## 현재 코드 경계 — 2026-10-14, 개정 36
 
 `2026-10-14-frozen-text-context-36`은 텍스트 후보의 단계 간 입력 연속성을 보강한다. 아래 개정 35/33 및 실험 설명은 당시 이력이며 충돌하면 이 절을 우선한다. 배포·실영상 탐지 향상·반복 안정화 완료를 뜻하지 않는다.
