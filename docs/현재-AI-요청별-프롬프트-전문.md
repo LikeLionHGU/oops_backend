@@ -1,5 +1,7 @@
 # 현재 AI 요청별 프롬프트 전문
 
+> 현재 실행 개정 `2026-10-14-target-contract-diagnostics-37`: 판단 기준은 유지하고 대상 출력 예시의 quote를 제거했다. 지칭어는 선택한 TARGET segmentId의 raw.text에서 복사하며 실제 응답은 ID·역할만 반환한다. 복구 입력의 failureDetail은 대상 계약의 첫 실패 조건이고 이전 응답/정답이 아니다. 아래 개정 36은 입력 고정 이력이다.
+
 > 현재 실행 개정은 `2026-10-14-frozen-text-context-36`이다. 아래 개정 35의 정적 판단/출력 프롬프트 본문은 유지하고 텍스트 입력 조립만 변경했다. 탐색 때 선택한 허용 창과 참고를 검증·복구에 고정 전달한다. 참고 재검색/원문 재확장 설명은 이전 구현이다. 승인 사례가 실제 선택된 경우 검증 시스템에 같은 CASE_REFERENCE_CONTRACT와 referenceCases JSON을 붙이며 현재 원문 근거와 구분한다. [현재 입력 경계](AI-분석-로직.md#현재-코드-경계--2026-10-14-개정-36)를 우선한다.
 
 > 현재 코드 개정 `2026-10-14-expression-target-scope-35`: 신체 훼손 비유 자체에 공격 대상을 강제하지 않고 식당·메뉴 평가와 지역 평가를 구분한다. Spring의 발언 후보 검증은 기본 인용 상한 0과 최초/복구 개수 계측을 사용한다. 아래 8개 전문은 이전 비교용 기본 상수이며 실제 기본 실행 전문은 [사례 검색 프롬프트](사례-검색-프롬프트-전문.md#2026-10-14--실제-spring-검증-경로의-인용-상한-0)에 있다. 원문/역할/중복/대상 연결 검증은 유지하고 변경 후 실제 성능은 다음 ID에서 확인한다.
@@ -60,7 +62,7 @@ JSON: {"proposal":{"anchorId":"고정 원문 ID","axis":"고정 축","reason":"�
 현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
 대상 평가로 REVIEW_REQUIRED를 반환하면 evidence에 실제 TARGET 역할 인용을 반드시 포함한다.
 지칭어를 CONTEXT로만 적거나 targetMention 필드만 채우는 것은 TARGET 인용을 대신하지 않는다.
-먼저 TARGET.quote에서 targetMention을 그대로 복사하고, 다음에 해석한 대상 target을 적는다.
+먼저 TARGET 역할로 선택한 segmentId의 raw.text에서 targetMention을 복사하고, 다음에 해석한 대상 target을 적는다.
 같은 원문 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. targetReason에 실제 연결을 설명한다.
 EXPLICIT은 target과 targetMention이 동일할 때만 사용한다. 서로 다르면 CONTEXTUAL과
 TARGET 인용과 다른 segmentId의 실제 CONTEXT 및 연결 설명이 필요하다.
@@ -214,7 +216,7 @@ evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quo
   EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
   별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
   시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
-  REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
+  REVIEW_REQUIRED 반환 전 targetMention이 TARGET 역할로 선택한 segmentId의 raw.text에 실제로 있는지,
   targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
   표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
   탐색 axis는 가설이다. 검증 결과가 GRAPHIC_METAPHOR이고 대상 공격 없이 구체적 신체 훼손 비유 자체를
@@ -250,12 +252,12 @@ evidenceText와 각 evidence의 quote는 응답에 넣지 않는다. 서버가 s
 직접 원문 지칭을 target으로 쓰면:
 {"target":"이 가게","targetMention":"이 가게","targetType":"BUSINESS","targetRelation":"EXPLICIT",
  "targetReason":"원문에서 이 가게를 직접 지칭한다.",
- "evidence":[{"segmentId":"example-1","quote":"이 가게","role":"TARGET"}]}
+ "evidence":[{"segmentId":"example-1","role":"TARGET"}]}
 지칭어와 해석 대상의 문자열이 다르면 의미가 가까워도 CONTEXTUAL이다:
 {"target":"앞서 소개한 가게","targetMention":"여기는","targetType":"BUSINESS","targetRelation":"CONTEXTUAL",
  "targetReason":"이 가게를 소개한 발언과 여기는이라는 후속 지칭이 같은 가게를 연결한다.",
- "evidence":[{"segmentId":"example-2","quote":"여기는","role":"TARGET"},
- {"segmentId":"example-1","quote":"이 가게를 소개합니다.","role":"CONTEXT"}]}
+ "evidence":[{"segmentId":"example-2","role":"TARGET"},
+ {"segmentId":"example-1","role":"CONTEXT"}]}
 이는 대상 필드와 인용 역할만 보여주는 부분 객체다. 실제 응답에는 anchor의 PRIMARY와 다른 필수 필드도 필요하다.
 대상 지칭어를 CONTEXT 역할로만 반환하면 TARGET 인용이 아니다. PRIMARY와 TARGET이 같은 줄이어도 두 역할을 각각 적는다.
 PASS/UNCERTAIN은 대상 필드를 null로, 표현 자체 검토는 대상 근거가 없으면 대상 필드를 null로 유지한다.
@@ -1947,7 +1949,7 @@ evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quo
   EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
   별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
   시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
-  REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
+  REVIEW_REQUIRED 반환 전 targetMention이 TARGET 역할로 선택한 segmentId의 raw.text에 실제로 있는지,
   targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
   표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
   탐색 axis는 가설이다. 검증 결과가 GRAPHIC_METAPHOR이고 대상 공격 없이 구체적 신체 훼손 비유 자체를

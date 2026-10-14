@@ -108,7 +108,7 @@ final class CandidateReviewPrompts {
               EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
               별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
               시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
-              REVIEW_REQUIRED 반환 전 targetMention이 TARGET.quote에 실제로 있는지,
+              REVIEW_REQUIRED 반환 전 targetMention이 TARGET 역할로 선택한 segmentId의 raw.text에 실제로 있는지,
               targetReason이 비어 있지 않은지, CONTEXTUAL이면 별도 CONTEXT 인용이 있는지 점검한다.
               표현 자체에는 대상을 억지로 만들지 않는다. 기존 직접 지칭 응답은 targetMention=null도 허용한다.
               탐색 axis는 가설이다. 검증 결과가 GRAPHIC_METAPHOR이고 대상 공격 없이 구체적 신체 훼손 비유 자체를
@@ -144,12 +144,12 @@ final class CandidateReviewPrompts {
             직접 원문 지칭을 target으로 쓰면:
             {"target":"이 가게","targetMention":"이 가게","targetType":"BUSINESS","targetRelation":"EXPLICIT",
              "targetReason":"원문에서 이 가게를 직접 지칭한다.",
-             "evidence":[{"segmentId":"example-1","quote":"이 가게","role":"TARGET"}]}
+             "evidence":[{"segmentId":"example-1","role":"TARGET"}]}
             지칭어와 해석 대상의 문자열이 다르면 의미가 가까워도 CONTEXTUAL이다:
             {"target":"앞서 소개한 가게","targetMention":"여기는","targetType":"BUSINESS","targetRelation":"CONTEXTUAL",
              "targetReason":"이 가게를 소개한 발언과 여기는이라는 후속 지칭이 같은 가게를 연결한다.",
-             "evidence":[{"segmentId":"example-2","quote":"여기는","role":"TARGET"},
-             {"segmentId":"example-1","quote":"이 가게를 소개합니다.","role":"CONTEXT"}]}
+             "evidence":[{"segmentId":"example-2","role":"TARGET"},
+             {"segmentId":"example-1","role":"CONTEXT"}]}
             이는 대상 필드와 인용 역할만 보여주는 부분 객체다. 실제 응답에는 anchor의 PRIMARY와 다른 필수 필드도 필요하다.
             대상 지칭어를 CONTEXT 역할로만 반환하면 TARGET 인용이 아니다. PRIMARY와 TARGET이 같은 줄이어도 두 역할을 각각 적는다.
             PASS/UNCERTAIN은 대상 필드를 null로, 표현 자체 검토는 대상 근거가 없으면 대상 필드를 null로 유지한다.
@@ -181,7 +181,7 @@ final class CandidateReviewPrompts {
             현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
             대상 평가로 REVIEW_REQUIRED를 반환하면 evidence에 실제 TARGET 역할 인용을 반드시 포함한다.
             지칭어를 CONTEXT로만 적거나 targetMention 필드만 채우는 것은 TARGET 인용을 대신하지 않는다.
-            먼저 TARGET.quote에서 targetMention을 그대로 복사하고, 다음에 해석한 대상 target을 적는다.
+            먼저 TARGET 역할로 선택한 segmentId의 raw.text에서 targetMention을 복사하고, 다음에 해석한 대상 target을 적는다.
             같은 원문 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. targetReason에 실제 연결을 설명한다.
             EXPLICIT은 target과 targetMention이 동일할 때만 사용한다. 서로 다르면 CONTEXTUAL과
             TARGET 인용과 다른 segmentId의 실제 CONTEXT 및 연결 설명이 필요하다.

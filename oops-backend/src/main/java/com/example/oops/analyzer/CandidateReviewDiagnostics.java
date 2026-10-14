@@ -20,7 +20,17 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
     }
     public record EvidenceCountTrace(String candidateId, String attempt, Integer evidenceCount,
                                      int uniqueSegments, int uniqueSegmentRoles, int duplicateRoleEntries,
-                                     int invalidEntries, int configuredLimit, String validationFailure) {}
+                                     int invalidEntries, int configuredLimit, String validationFailure,
+                                     TargetContractTrace targetContract) {
+        public EvidenceCountTrace(String id, String attempt, Integer count, int segments, int roles,
+                                  int duplicates, int invalid, int limit, String failure) {
+            this(id, attempt, count, segments, roles, duplicates, invalid, limit, failure, null);
+        }
+    }
+    /** Field/role checks, not a semantic validation of the target or a stored raw response. */
+    public record TargetContractTrace(String failureDetail, boolean explicitMentionProvided,
+                                     boolean targetNameValid, boolean mentionValid, boolean targetReasonValid,
+                                     int targetRoleCount, int matchingTargetRoleCount, int separateContextCount) {}
     public record RepairTrace(String candidateId, String initialFailureCode, String state, String finalFailureCode,
                               String initialDecision, String repairedDecision, Boolean decisionChanged) {
         public RepairTrace(String id, String initial, String state, String failure) {

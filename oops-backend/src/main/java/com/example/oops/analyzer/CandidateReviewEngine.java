@@ -8,7 +8,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-14-frozen-text-context-36";
+    static final String REVISION = "2026-10-14-target-contract-diagnostics-37";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -362,6 +362,9 @@ final class CandidateReviewEngine {
     }
 
     private static String verificationRequest(List<Candidate> candidates, String failure) {
+        return verificationRequest(candidates, failure, null);
+    }
+    private static String verificationRequest(List<Candidate> candidates, String failure, String detail) {
         Map<String, ReviewInput.Segment> raw = new LinkedHashMap<>();
         candidates.forEach(c -> c.raw().forEach(s -> raw.put(s.id(), s)));
         Map<String, Object> request = new LinkedHashMap<>();
@@ -374,7 +377,11 @@ final class CandidateReviewEngine {
                 "proposedEvidence", c.proposal().evidence(),
                 "contextExpanded", c.contextExpanded(), "contextLimited", c.contextLimited(),
                 "segmentIds", c.raw().stream().map(ReviewInput.Segment::id).toList())).toList());
-        if (failure != null) request.put("repair", Map.of("attempt", 1, "failureCode", failure));
+        if (failure != null) {
+            Map<String, Object> repair = new LinkedHashMap<>(Map.of("attempt", 1, "failureCode", failure));
+            if (detail != null) repair.put("failureDetail", detail);
+            request.put("repair", repair);
+        }
         return JSON.writeValueAsString(request);
     }
     private static Candidate repairProposal(OpenAiClient client, String id, Proposal original,
@@ -419,7 +426,7 @@ final class CandidateReviewEngine {
         try {
             var correction = repairPrompt(initial);
             var response = client.completeAsJson(verificationPrompt(evidenceLimit) + reference + "\n" + correction,
-                    verificationRequest(List.of(c), initial), VerificationResult.class).orElse(null);
+                    verificationRequest(List.of(c), initial, targetDetail(c, previous, initial)), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE");
             else if (response.verifications() == null || response.verifications().size() != 1
@@ -575,19 +582,12 @@ final class CandidateReviewEngine {
             }
             if (d.alternativeInterpretation() != null && d.alternativeInterpretation().length() > 300) return invalid("ALTERNATIVE_INTERPRETATION_LENGTH");
             if (d.target() != null) {
-                String mention = d.targetMention() == null ? d.target() : d.targetMention();
-                if (!useful(d.target(), 200) || !useful(mention, 200) || !useful(d.targetReason(), 300)
-                        || d.evidence().stream().noneMatch(e -> e != null && "TARGET".equals(e.role())
-                        && e.quote() != null && e.quote().contains(mention))) return invalid("TARGET_EVIDENCE_REQUIRED");
-                if (!mention.equals(d.target())) {
-                    if (!"CONTEXTUAL".equals(d.targetRelation())) return invalid("TARGET_MENTION_RELATION");
-                    Set<String> mentionIds = new HashSet<>();
-                    d.evidence().stream().filter(e -> e != null && "TARGET".equals(e.role())
-                            && e.quote() != null && e.quote().contains(mention)).forEach(e -> mentionIds.add(e.segmentId()));
-                    if (d.evidence().stream().noneMatch(e -> e != null && "CONTEXT".equals(e.role())
-                            && !mentionIds.contains(e.segmentId()) && e.quote() != null && !e.quote().isBlank()))
-                        return invalid("TARGET_CONTEXT_EVIDENCE_REQUIRED");
-                }
+                String detail = inspectTarget(d).failureDetail();
+                if (detail != null) return invalid(switch (detail) {
+                    case "TARGET_RELATION_MISMATCH" -> "TARGET_MENTION_RELATION";
+                    case "TARGET_SEPARATE_CONTEXT_MISSING" -> "TARGET_CONTEXT_EVIDENCE_REQUIRED";
+                    default -> "TARGET_EVIDENCE_REQUIRED";
+                });
             }
             if (decision == Decision.REVIEW_REQUIRED && "TARGET_TREATMENT".equals(c.proposal().axis())
                     && !"GRAPHIC_METAPHOR".equals(d.category())
@@ -615,6 +615,39 @@ final class CandidateReviewEngine {
     }
     private static boolean information(List<String> items, boolean required) {
         return items != null && (required ? !items.isEmpty() && items.size() <= 6 && items.stream().allMatch(s -> useful(s, 200)) : items.isEmpty());
+    }
+    private static TextReviewEngine.LlmDecision filled(Candidate c, TextReviewEngine.LlmDecision d) {
+        Map<String, ReviewInput.Segment> raw = new HashMap<>(); c.raw().forEach(s -> raw.put(s.id(), s));
+        return normalizeAssessment(d, raw);
+    }
+    private static String targetDetail(Candidate c, TextReviewEngine.LlmDecision d, String failure) {
+        if ("TARGET_REQUIRED".equals(failure)) return "TARGET_NAME_REQUIRED";
+        if (!Set.of("TARGET_EVIDENCE_REQUIRED", "TARGET_MENTION_RELATION", "TARGET_CONTEXT_EVIDENCE_REQUIRED")
+                .contains(failure == null ? "" : failure) || d == null) return null;
+        return inspectTarget(filled(c, d)).failureDetail();
+    }
+    /** Same predicate and precedence as the historic validator; no automatic role/target correction. */
+    static CandidateReviewDiagnostics.TargetContractTrace inspectTarget(TextReviewEngine.LlmDecision d) {
+        String mention = d.targetMention() == null ? d.target() : d.targetMention();
+        var evidence = d.evidence() == null ? List.<TextReviewEngine.LlmEvidence>of() : d.evidence();
+        var targets = evidence.stream().filter(e -> e != null && "TARGET".equals(e.role())).toList();
+        var matches = targets.stream().filter(e -> e.quote() != null && mention != null && e.quote().contains(mention)).toList();
+        Set<String> mentionIds = new HashSet<>(); matches.forEach(e -> mentionIds.add(e.segmentId()));
+        int separate = (int) evidence.stream().filter(e -> e != null && "CONTEXT".equals(e.role())
+                && !mentionIds.contains(e.segmentId()) && e.quote() != null && !e.quote().isBlank()).count();
+        boolean nameValid = useful(d.target(), 200), mentionValid = useful(mention, 200), reasonValid = useful(d.targetReason(), 300);
+        String detail = null;
+        if (d.target() != null) {
+            if (!nameValid) detail = "TARGET_NAME_INVALID";
+            else if (!mentionValid) detail = "TARGET_MENTION_INVALID";
+            else if (!reasonValid) detail = "TARGET_REASON_INVALID";
+            else if (targets.isEmpty()) detail = "TARGET_ROLE_MISSING";
+            else if (matches.isEmpty()) detail = "TARGET_MENTION_NOT_IN_TARGET_RAW";
+            else if (!mention.equals(d.target()) && !"CONTEXTUAL".equals(d.targetRelation())) detail = "TARGET_RELATION_MISMATCH";
+            else if (!mention.equals(d.target()) && separate == 0) detail = "TARGET_SEPARATE_CONTEXT_MISSING";
+        }
+        return new CandidateReviewDiagnostics.TargetContractTrace(detail, d.targetMention() != null,
+                nameValid, mentionValid, reasonValid, targets.size(), matches.size(), separate);
     }
     private static boolean useful(String text, int max) { return text != null && !text.isBlank() && text.length() <= max; }
     private static String clip(String text, int max) {
@@ -668,7 +701,8 @@ final class CandidateReviewEngine {
             }
             evidenceCounts.add(new CandidateReviewDiagnostics.EvidenceCountTrace(c.candidateId(), attempt,
                     d == null || d.evidence() == null ? null : d.evidence().size(), segments.size(), pairs.size(),
-                    duplicates, invalid, limit, failure));
+                    duplicates, invalid, limit, failure,
+                    d == null ? null : inspectTarget(filled(c, d))));
         }
         ReviewGuidelineLibrary.Trace guidelineReference;
         void invalidProposal(String id, Proposal p, TextReviewBatchPlanner.Batch batch,
