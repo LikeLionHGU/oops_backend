@@ -10,8 +10,8 @@
   convert 된 카드(legacyCard)가 무손실 보존돼 있으므로 convert·댓글 대조·catalog 순환이 전부
   불필요하다. compile 로직은 기존 함수를 그대로 재사용한다(전략 A — runtime 동치 보존).
 
-  --write : 입력(incidents/*.json)만 읽어 runtime 을 생성한다. 기존 출력물을 절대 읽지 않는다 → 순환 불가.
-  --verify: 출력(guidelines/runtime.json)만 읽어 재생성본과 refreshOrDeleteBy 제외 동치를 검증한다.
+  --write : incidents + definitions/build.json + 기사 발췌에서 runtime 생성. 기존 출력은 읽지 않는다.
+  --verify: 같은 입력에서 재생성하고 저장 runtime과 refreshOrDeleteBy 제외 동치를 비교한다.
 
 실제 incidents/*.json 은 /datasets/ 아래 Git 제외 로컬 생성물이다.
 """
@@ -40,7 +40,7 @@ def load_incidents(root: Path):
 
 
 def generate(root: Path):
-    """incidents/*.json(입력)만 읽어 runtime 을 생성한다. 기존 출력물을 읽지 않는다."""
+    """Read incidents, explicit shared definitions and snapshots; never old outputs."""
     incidents = load_incidents(root)
     # bundle/plan/catalog 조각을 incidents 에서 직접 재조립. 순환 검증(validate_catalog) 미경유.
     cards, gplan, dplan, catalog = mig.reassemble(root, incidents)

@@ -111,7 +111,8 @@ def emit_incidents(root: Path):
     from review_dataset_catalog import inside
 
     incidents = [load(root, "incidents/" + name) for name in written]
-    r_cards, r_gplan, r_dplan, r_catalog = reassemble(root, incidents)
+    from incident_build_definition import extract
+    r_cards, r_gplan, r_dplan, r_catalog = reassemble(root, incidents, extract(cards, gplan, dplan, catalog))
     checks = {
         "cards_json": r_cards == cards,
         "gplan_json": r_gplan == gplan,
@@ -134,28 +135,39 @@ def emit_incidents(root: Path):
     return written, checks
 
 
-def reassemble(root: Path, incidents):
+def reassemble(root: Path, incidents, definition=None):
     """6사건 incident 목록 -> 완전한 레거시 입력(cards/gplan/dplan/catalog) 재조립.
 
-    원본 top-level 객체를 베이스로 삼아 순서·메타(schemaVersion, condition 등)를 그대로 유지하고,
-    사건에서 복원한 조각만 끼워넣는다. runtime 바이트 동치의 전제인 '순서 보존'을 보장한다.
+    명시적 definitions/build.json의 공통 메타와 순서를 읽고 사건 조각만 결합한다.
+    레거시 파일을 자동으로 읽거나 정의를 추측 생성하지 않는다.
     """
-    base_cards = load(root, "drafts/cards.json")
-    base_gplan = load(root, "guidelines/plan.json")
-    base_dplan = load(root, "research/context-dictionary-plan.json")
-    base_catalog = load(root, "catalog.json")
+    import copy
+    from incident_build_definition import load as load_definition
+    definition = copy.deepcopy(definition if definition is not None else load_definition(root))
+    base_cards = definition["cards"]
+    base_gplan = definition["guidelines"]
+    base_dplan = definition["dictionary"]
+    base_catalog = definition["catalog"]
 
     by_family = {}
+    seen_statements = set()
     for inc in incidents:
+        from review_context_pilot import require
+        require(inc["incidentId"] not in by_family, "DUPLICATE_INCIDENT")
+        for s in inc["statements"]:
+            require(s["id"] not in seen_statements and s["id"] == s["legacyCard"]["id"]
+                    and s["legacyCard"]["familyId"] == inc["incidentId"], "STATEMENT_IDENTITY_INVALID")
+            require(s["mechanismIds"] and len(s["mechanismIds"]) == len(set(s["mechanismIds"])), "STATEMENT_MECHANISMS_REQUIRED")
+            seen_statements.add(s["id"])
         cards_inc, gplan_frag, dplan_cards, cat_entry = from_incident(inc)
         by_family[inc["incidentId"]] = (cards_inc, gplan_frag, dplan_cards, cat_entry)
 
     # 사건 처리 순서: 원본에 있던 familyId 는 원본 순서로 먼저, incidents 에만 있는
     # 새 사건은 incidents 순서로 뒤에 붙인다. 기존 사건만 있으면 결과가 원본과 동일(동치 보존),
     # 새 사건(기사-only 포함)은 cards/catalog/dplan/gplan 모두에 일관되게 추가된다(결함 B 제거).
-    orig_families = [i["familyId"] for i in base_cards["incidents"]]
+    orig_families = [f for f in definition["incidentOrder"] if f in by_family]
     orig_set = set(orig_families)
-    new_families = [inc["incidentId"] for inc in incidents if inc["incidentId"] not in orig_set]
+    new_families = sorted(f for f in by_family if f not in orig_set)
     ordered_families = orig_families + new_families
 
     # cards.incidents 재조립
@@ -178,8 +190,9 @@ def reassemble(root: Path, incidents):
     from review_context_pilot import require  # 지연 import — 모듈 관행 유지
     require(not unknown, "UNKNOWN_MECHANISM:" + ",".join(sorted(unknown)))
     for m in base_gplan["mechanisms"]:
-        if m["id"] in merged_map:
-            m["sourceCaseIds"] = merged_map[m["id"]]
+        cases = merged_map.get(m["id"], [])
+        order = {cid: i for i, cid in enumerate(definition["mechanismCaseOrder"][m["id"]])}
+        m["sourceCaseIds"] = sorted(cases, key=lambda cid: (order.get(cid, len(order)), cid))
     return base_cards, base_gplan, base_dplan, base_catalog
 
 
@@ -202,7 +215,8 @@ def runtime_equivalence(root: Path):
     catalog = load(root, "catalog.json")
 
     incidents = [to_incident(ci["familyId"], ci, gplan, dplan, catalog) for ci in cards["incidents"]]
-    r_cards, r_gplan, r_dplan, r_catalog = reassemble(root, incidents)
+    from incident_build_definition import extract
+    r_cards, r_gplan, r_dplan, r_catalog = reassemble(root, incidents, extract(cards, gplan, dplan, catalog))
 
     checks = {
         "cards_json": r_cards == cards,
@@ -270,7 +284,14 @@ def main():
     p.add_argument("--dump-incident", action="store_true", help="복원 incident JSON을 stdout에 출력")
     p.add_argument("--all", action="store_true", help="6사건 전부 변환->재조립->runtime 바이트 동치 검증")
     p.add_argument("--emit", action="store_true", help="incidents/{id}.json 6개를 디스크에 쓰고 동치 재검증(Git 제외 로컬)")
+    p.add_argument("--emit-definition", action="store_true", help="기존 자료에서 definitions/build.json 신규 생성(덮어쓰기 금지)")
     args = p.parse_args()
+    if args.emit_definition:
+        if args.emit or args.all or args.dump_incident:
+            p.error("DEFINITION_MIGRATION_MUST_BE_SEPARATE")
+        from incident_build_definition import emit
+        print(json.dumps({"definition": str(emit(args.dataset_root))}, ensure_ascii=False))
+        return
     if args.emit:
         written, checks = emit_incidents(args.dataset_root)
         ok = all(checks.values())

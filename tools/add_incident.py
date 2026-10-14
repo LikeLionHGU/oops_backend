@@ -5,7 +5,7 @@
 기사만으로(reactions 0, collectionId null) 사건이 성립한다(결함 B 제거, 5단계).
 
 중요 규칙(사용자 지정): 사례를 임의로 추가하지 않는다. **먼저 후보를 사용자에게 보여주고**
-확인받은 뒤 추가한다. 그래서 이 도구는:
+확인받은 뒤 추가한다. 공통 메커니즘은 definitions/build.json에서 읽는다. 그래서 이 도구는:
   - 기본값 = DRY-RUN. 조립될 사건을 '미리보기'로 출력만 하고 디스크를 바꾸지 않는다.
   - --apply 를 명시해야만 파일을 쓴다. 쓴 뒤 build_incident_dataset --verify 로 runtime 동치를
     자동 확인하고, 실패하면 방금 쓴 파일을 삭제(원자적 롤백).
@@ -88,7 +88,8 @@ def assemble(spec, root: Path):
         require(False, "INCIDENT_ALREADY_EXISTS")
 
     # gplan 에 등록된 mechanism 만 허용(UNKNOWN_MECHANISM 사전 차단, 친절한 메시지).
-    gplan = mig.load(root, "guidelines/plan.json")
+    from incident_build_definition import load as load_definition
+    gplan = load_definition(root)["guidelines"]
     known_mechanisms = {m["id"] for m in gplan["mechanisms"]}
 
     statements, case_ids = [], set()

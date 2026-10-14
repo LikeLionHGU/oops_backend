@@ -7,6 +7,10 @@
 """
 import sys
 import unittest
+import json
+import tempfile
+import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +18,30 @@ sys.path.insert(0, str(ROOT))
 import incidents_migration as tool
 
 DATASET_ROOT = ROOT.parent / "datasets/controversy"
-HAS_DATASET = (DATASET_ROOT / "drafts/cards.json").exists()
+HAS_DATASET = ((DATASET_ROOT / "drafts/cards.json").exists()
+               and any(i['familyId']=='pisik-yeongyang' for i in tool.load(DATASET_ROOT,'drafts/cards.json').get('incidents',[])))
+
+
+def definition():
+    from incident_build_definition import extract
+    return extract(*(tool.load(DATASET_ROOT,n) for n in
+        ('drafts/cards.json','guidelines/plan.json','research/context-dictionary-plan.json','catalog.json')))
+
+
+@contextmanager
+def isolated_inputs():
+    """No live dataset writes: only new inputs exist in this temporary tree."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root=Path(tmp);(root/'definitions').mkdir();(root/'incidents').mkdir()
+        (root/'definitions/build.json').write_text(json.dumps(definition(),ensure_ascii=False))
+        cards=tool.load(DATASET_ROOT,'drafts/cards.json');g=tool.load(DATASET_ROOT,'guidelines/plan.json')
+        d=tool.load(DATASET_ROOT,'research/context-dictionary-plan.json');c=tool.load(DATASET_ROOT,'catalog.json')
+        for i in cards['incidents']:
+            incident=tool.to_incident(i['familyId'],i,g,d,c)
+            (root/'incidents'/f'{i["familyId"]}.json').write_text(json.dumps(incident,ensure_ascii=False))
+        source=DATASET_ROOT/'research/source-snapshots'
+        if source.exists():shutil.copytree(source,root/'research/source-snapshots')
+        yield root
 
 
 def _synthetic():
@@ -84,10 +111,11 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
     def test_single_input_build_is_equivalent_and_circular_free(self):
         """4단계: incidents 단일 입력 빌드가 기존 runtime 과 동치 + 순환 입력 미경유."""
         import build_incident_dataset as build
-        # incidents 파일이 아직 없으면 먼저 생성(로컬 전용).
-        if not (DATASET_ROOT / "incidents").is_dir():
-            tool.emit_incidents(DATASET_ROOT)
-        runtime, _ = build.generate(DATASET_ROOT)
+        with isolated_inputs() as root:
+            runtime, _ = build.generate(root)
+            self.assertFalse((root/'drafts/cards.json').exists())
+            self.assertFalse((root/'guidelines/plan.json').exists())
+            self.assertFalse((root/'catalog.json').exists())
         saved = tool.load(DATASET_ROOT, "guidelines/runtime.json")
         self.assertEqual(build._strip_ts(runtime), tool._strip_ts(saved))
         # 순환 입력(cards/catalog)을 '코드에서 참조하지 않음'을 고정.
@@ -139,7 +167,7 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
                                                           "documents": []},
                                  "legacyCard": base}]}
 
-        rc, rg, rd, rcat = tool.reassemble(DATASET_ROOT, incidents + [dummy])
+        rc, rg, rd, rcat = tool.reassemble(DATASET_ROOT, incidents + [dummy], definition())
         # reassemble 이 새 사건을 cards/dplan/gplan 에 반영했는지
         self.assertTrue(any(c["id"] == "dummy-X" for i in rc["incidents"] for c in i["cards"]))
         self.assertIn("dummy-X", rd["cards"])
@@ -173,7 +201,8 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
                                 "knownPoint": "테스트 논란 지점",
                                 "mechanismIds": ["local-life-devaluation"],
                                 "topicTags": ["지역", "생활"]}]}
-        incident = add.assemble(spec, DATASET_ROOT)
+        with isolated_inputs() as root:
+            incident = add.assemble(spec, root)
         self.assertEqual(incident["catalogMeta"]["collectionId"], None)
         self.assertEqual(incident["catalogMeta"]["selectedReactions"], 0)
 
@@ -182,7 +211,7 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
         dplan = tool.load(DATASET_ROOT, "research/context-dictionary-plan.json")
         cat = tool.load(DATASET_ROOT, "catalog.json")
         incidents = [tool.to_incident(ci["familyId"], ci, gplan, dplan, cat) for ci in cards["incidents"]]
-        rc, rg, rd, rcat = tool.reassemble(DATASET_ROOT, incidents + [incident])
+        rc, rg, rd, rcat = tool.reassemble(DATASET_ROOT, incidents + [incident], definition())
         snaps = {}
         for cfg in rd["cards"].values():
             for d in cfg.get("documents", []):
@@ -199,8 +228,8 @@ class RealDatasetEquivalenceTests(unittest.TestCase):
         spec = {"incidentId": "unittest-bad-20260101",
                 "statements": [{"caseId": "x", "knownPoint": "y",
                                 "mechanismIds": ["no-such-mechanism"], "topicTags": ["t"]}]}
-        with self.assertRaises(PilotError):
-            add.assemble(spec, DATASET_ROOT)
+        with isolated_inputs() as root, self.assertRaises(PilotError):
+            add.assemble(spec, root)
 
 
 if __name__ == "__main__":
