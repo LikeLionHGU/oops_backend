@@ -68,7 +68,7 @@ if ($VideoId -eq 0 -and -not $Script) {
     $health = Get-Json "$Analysis/health"
     if (-not $health) { Fail "분석 서버 응답 없음. oops-analysis 에서 .\run.ps1 실행"; exit 1 }
     Ok "응답함"
-    if ($health.sttAvailable) { Ok "STT 사용 가능" } else { Warn "STT 불가 - .env 의 OPENAI_API_KEY 확인" }
+    if ($health.sttAvailable) { Ok "STT 사용 가능" } else { Warn "STT 불가 - oops-analysis/.env 의 GROQ_API_KEY(또는 OPENAI_API_KEY) 확인" }
     if ($Subtitle) { Ok "자막은 SRT 파일을 씁니다 (OCR 은 쓰지 않음)" }
     elseif ($health.ocrAvailable) { Ok "OCR 사용 가능" } else { Warn "OCR 불가 - 화면 분석은 건너뜁니다" }
 }

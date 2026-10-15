@@ -142,7 +142,9 @@ oops:
       input-per-1m: 0.10 # 1M 입력 토큰당 USD (gpt-6-luna. gpt-4o-mini 는 0.15)
       cached-input-per-1m: 0.01 # 같은 프롬프트 반복 시 캐시된 입력 (gpt-6-luna 는 90% 할인. gpt-4o-mini 는 0.075)
       output-per-1m: 0.50 # (gpt-4o-mini 는 0.60)
-      stt-per-minute: 0.006 # 음성 인식(whisper-1) 분당 USD
+      # 음성 인식 분당 USD. Groq Whisper large-v3 = $0.111/시간 ≈ 0.00185 (2026-10 기본)
+      # 분석 서버를 STT_PROVIDER=openai(whisper-1) 로 되돌리면 0.006 으로 바꿀 것
+      stt-per-minute: 0.00185
       usd-to-krw: 1400 # 원화 환산용. 대략치다
 
   # 뉴스 검색 소스는 자동 선택된다.

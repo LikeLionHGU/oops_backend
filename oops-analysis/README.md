@@ -1,14 +1,19 @@
 # oops-analysis
 
 Spring 백엔드가 호출하는 Python 분석 서버.
-STT(Whisper API)와 화면 자막 OCR(PaddleOCR)을 담당한다.
+STT(Whisper)와 화면 자막 OCR(PaddleOCR)을 담당한다.
+
+**음성 인식은 Groq Whisper(large-v3)가 기본이다.** (2026-10)
+OpenAI `whisper-1` 이 2027-02-26 에 종료되고, 대체로 권하는 `gpt-transcribe` 는 문장별 시각을 주지 않아서 옮겼다.
+`.env` 에 `GROQ_API_KEY` 를 넣으면 된다. 키가 없거나 Groq 호출이 실패하면 `OPENAI_API_KEY` 로 `whisper-1` 을 대신 쓴다.
+예전 방식으로 되돌리려면 `STT_PROVIDER=openai`.
 
 ## 실행
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env      # OPENAI_API_KEY 채우기
+cp .env.example .env      # GROQ_API_KEY (음성 인식), OPENAI_API_KEY (대체용) 채우기
 uvicorn app.main:app --reload --port 8000
 ```
 

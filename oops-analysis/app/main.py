@@ -10,6 +10,16 @@ from .config import get_settings
 from .media import MediaError, prepare, PreparedVideo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+# uvicorn 이 먼저 로그 설정을 잡아서 basicConfig 만으로는 우리 로그([stt], [ocr], [media])가
+# 화면에 안 나오는 경우가 있다. app.* 로거에 직접 출력 대상을 붙여 항상 보이게 한다.
+_app_logger = logging.getLogger("app")
+_app_logger.setLevel(logging.INFO)
+if not _app_logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    _app_logger.addHandler(_handler)
+    _app_logger.propagate = False   # 루트에도 출력 대상이 있으면 두 번 찍히지 않게
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="oops-analysis", version="0.1.0")
@@ -28,7 +38,8 @@ def health() -> dict:
     settings = get_settings()
     return {
         "status": "UP",
-        "sttAvailable": bool(settings.openai_api_key),
+        "sttAvailable": stt.is_available(settings),
+        "sttProvider": settings.stt_provider,
         "ocrAvailable": ocr.is_available(),
     }
 

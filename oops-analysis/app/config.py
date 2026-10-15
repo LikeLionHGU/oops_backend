@@ -11,6 +11,18 @@ class Settings(BaseSettings):
     openai_org_id: str = ""
     openai_project_id: str = ""
     whisper_model: str = "whisper-1"
+
+    # 음성 인식을 어디서 할지. (2026-10 고도화)
+    #   groq   Groq 의 Whisper large-v3 (기본). OpenAI whisper-1 이 2027-02-26 에 종료돼서 옮겼다.
+    #          OpenAI 와 같은 형식의 API 라 문장별 시각(segment)을 그대로 받는다. 분당 약 $0.0019.
+    #   openai OpenAI whisper-1 (예전 방식). 분당 $0.006, OpenAI 크레딧에서 차감.
+    # groq 로 두었는데 GROQ_API_KEY 가 없거나 Groq 호출이 실패하면 OpenAI 키로 대신 돌린다.
+    stt_provider: str = "groq"
+    groq_api_key: str = ""
+    groq_whisper_model: str = "whisper-large-v3"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    # 음성 언어 힌트 (ISO-639-1, 예: ko). 비우면 모델이 알아서 판별한다.
+    stt_language: str = ""
     work_dir: str = "./workdir"
     ocr_lang: str = "korean"
 
