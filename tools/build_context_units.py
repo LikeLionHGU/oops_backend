@@ -178,7 +178,9 @@ def main():
     require(not output.exists() and output.parent.resolve().is_relative_to(experiments), "NEW_PRIVATE_PREVIEW_REQUIRED")
     files = sorted((root / "context-units").glob("*.json"))
     require(files, "CONTEXT_UNITS_REQUIRED")
-    base = parse(read_bytes(root / "guidelines/runtime.json"))
+    # Rebuild the v4 base from source even when the active runtime is already v7.
+    from build_incident_dataset import generate
+    base, _ = generate(root, apply_runtime_selection=False)
     catalog = parse(read_bytes(root / "definitions/context-routing.json"))
     profiles = None
     if args.relation_profiles is not None:
@@ -188,7 +190,8 @@ def main():
     runtime, manifest = compile_preview(base, [parse(read_bytes(f)) for f in files], catalog, root, profiles)
     manifest["relationProfileCount"] = len(profiles or [])
     manifest["compilerSha256"] = digest(Path(__file__).read_bytes())
-    manifest["baseRuntimeFileSha256"] = digest(read_bytes(root / "guidelines/runtime.json"))
+    manifest["baseRuntimeFileSha256"] = digest((json.dumps(base, ensure_ascii=False, indent=2) + "\n").encode())
+    manifest["activeRuntimeFileSha256"] = digest(read_bytes(root / "guidelines/runtime.json"))
     require(len(json.dumps(runtime, ensure_ascii=False).encode()) <= 1_048_576, "PREVIEW_TOO_LARGE")
     output.mkdir(mode=0o700)
     write_private(output / "runtime.json", runtime)

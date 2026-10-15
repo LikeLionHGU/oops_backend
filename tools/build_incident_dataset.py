@@ -8,7 +8,7 @@
 
   이 빌드는 incidents/*.json 을 단일 입력으로 bundle 을 '직접 조립'한다. incidents 에는 이미
   convert 된 카드(legacyCard)가 무손실 보존돼 있으므로 convert·댓글 대조·catalog 순환이 전부
-  불필요하다. compile 로직은 기존 함수를 그대로 재사용한다(전략 A — runtime 동치 보존).
+  불필요하다. v4 기반을 재생성하고 명시적 runtime 정책에 따라 v7 맥락 단위를 결합한다.
 
   --write : incidents + definitions/build.json + 기사 발췌에서 runtime 생성. 기존 출력은 읽지 않는다.
   --verify: 같은 입력에서 재생성하고 저장 runtime 및 입력/출력 해시 manifest를 대조한다.
@@ -34,6 +34,27 @@ from review_dataset_catalog import inside
 import incidents_migration as mig
 
 DEFAULT_ROOT = ROOT / "datasets/controversy"
+POLICY = "definitions/runtime-selection.json"
+
+
+def runtime_target(root):
+    path = root / POLICY
+    require(not path.is_symlink(), "RUNTIME_POLICY_SYMLINK_REFUSED")
+    if not path.exists():
+        return "review-guidelines-4"  # Historical datasets are not implicitly promoted.
+    value = parse(read_bytes(path))
+    require(set(value) == {"schemaVersion", "targetSchema"}
+            and value["schemaVersion"] == "incident-runtime-selection-1"
+            and value["targetSchema"] in {"review-guidelines-4", "review-guidelines-7"}, "INVALID_RUNTIME_POLICY")
+    return value["targetSchema"]
+
+
+def context_inputs(root):
+    """Canonical authored inputs only, never a generated preview/runtime."""
+    units = sorted((root / "context-units").glob("*.json"))
+    profiles = sorted((root / "context-relations").glob("*.json"))
+    require(units and profiles, "V7_CONTEXT_UNITS_AND_PROFILES_REQUIRED")
+    return units, profiles
 
 
 def load_incidents(root: Path):
@@ -51,7 +72,7 @@ def load_incidents(root: Path):
     return incidents
 
 
-def generate(root: Path):
+def generate(root: Path, apply_runtime_selection=True):
     """Read incidents, explicit shared definitions and snapshots; never old outputs."""
     incidents = load_incidents(root)
     # bundle/plan/catalog 조각을 incidents 에서 직접 재조립. 순환 검증(validate_catalog) 미경유.
@@ -66,6 +87,13 @@ def generate(root: Path):
     source_bytes = (json.dumps(cards, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     dictionary = compile_dictionary(cards, dplan, gplan, source_bytes, snapshots)
     runtime = compile_guidelines(cards, gplan, source_bytes, dictionary)
+    if apply_runtime_selection and runtime_target(root) == "review-guidelines-7":
+        from build_context_units import compile_preview
+        units, profiles = context_inputs(root)
+        runtime, _ = compile_preview(runtime, [parse(read_bytes(p)) for p in units],
+                                     parse(read_bytes(inside(root, "definitions/context-routing.json"))), root,
+                                     [parse(read_bytes(p)) for p in profiles])
+        require(runtime["schemaVersion"] == "review-guidelines-7", "V7_COMPILE_REQUIRED")
     return runtime, dictionary
 
 
@@ -78,6 +106,15 @@ def _strip_ts(obj):
 def input_hashes(root):
     """Only canonical inputs; historical files and generated output never participate."""
     inputs = {"definitions/build.json"}
+    if (root / POLICY).exists():
+        inputs.add(POLICY)
+    if runtime_target(root) == "review-guidelines-7":
+        units, profiles = context_inputs(root)
+        inputs.add("definitions/context-routing.json")
+        for path in units + profiles:
+            inputs.add(path.relative_to(root).as_posix())
+        for path in units:
+            inputs.add(parse(read_bytes(path))["source"]["path"])
     for p in (root / "incidents").glob("*.json"):
         inputs.add(p.relative_to(root).as_posix())
         incident = parse(read_bytes(p))
@@ -100,6 +137,7 @@ def prepare(root):
     require(datetime.datetime.fromisoformat(runtime["refreshOrDeleteBy"]) >
             datetime.datetime.now(datetime.timezone.utc), "REFERENCE_EXPIRED")
     manifest = {"schemaVersion": "incident-build-manifest-1", "version": runtime["version"],
+                "runtimeSchema": runtime["schemaVersion"],
                 "inputHashes": hashes, "runtimeSha256": hashlib.sha256(raw).hexdigest(),
                 "sourceBundleSha256": runtime["sourceBundleSha256"],
                 "contextDictionarySha256": runtime["contextDictionarySha256"],
@@ -118,11 +156,14 @@ def verify(root):
     return expected
 
 
-def publish(root):
+def publish(root, allow_schema_downgrade=False):
     runtime, manifest = prepare(root)
     output = root / "guidelines/runtime.json"
     if output.exists():
         previous = read_bytes(output)
+        require(not (parse(previous).get("schemaVersion") == "review-guidelines-7"
+                     and runtime["schemaVersion"] == "review-guidelines-4") or allow_schema_downgrade,
+                "EXPLICIT_SCHEMA_DOWNGRADE_REQUIRED")
         sha = hashlib.sha256(previous).hexdigest()
         history = root / "legacy/runtime-history" / (sha + ".json")
         if history.exists():
@@ -145,14 +186,17 @@ def main():
     p.add_argument("--dataset-root", type=Path, default=DEFAULT_ROOT)
     p.add_argument("--write", action="store_true", help="runtime 을 생성해 기록(입력만 읽음)")
     p.add_argument("--verify", action="store_true", help="저장된 runtime 과 재생성본의 동치 검증(출력만 비교)")
+    p.add_argument("--allow-schema-downgrade", action="store_true", help="--write 시에만 명시적 v7→v4 복원 허용")
     args = p.parse_args()
     if args.write and args.verify:
         p.error("WRITE_OR_VERIFY_NOT_BOTH")
+    if args.allow_schema_downgrade and not args.write:
+        p.error("SCHEMA_DOWNGRADE_REQUIRES_WRITE")
     try:
         if args.verify:
             manifest = verify(args.dataset_root)
         elif args.write:
-            manifest = publish(args.dataset_root)
+            manifest = publish(args.dataset_root, args.allow_schema_downgrade)
         else:
             _, manifest = prepare(args.dataset_root)
         result = {k: v for k, v in manifest.items() if k != "inputHashes"}
