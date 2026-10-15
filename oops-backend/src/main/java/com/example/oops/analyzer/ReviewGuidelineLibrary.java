@@ -340,17 +340,22 @@ public class ReviewGuidelineLibrary {
         }
         List<ContextExample> selected = new ArrayList<>();
         Set<String> families = new HashSet<>(), skipped = new HashSet<>();
-        // Discovery prefers family diversity. Candidate validation preserves the interleaved
-        // relevance order: two different mechanisms from one incident can both be relevant.
-        for (int pass = 0; pass < 2; pass++) for (var match : ranked) {
-            var e = match.example();
-            if (selected.contains(e) || focus.isEmpty() && pass == 0 && families.contains(e.familyId())) continue;
-            if (selected.size() >= maxExamples) continue;
-            var proposed = new ArrayList<>(selected); proposed.add(e);
-            var contexts = proposed.stream().map(e2 -> new SelectedExample(e2.mechanismIds(), e2.context())).toList();
-            if (codePoints(JSON.writeValueAsString(contexts)) > exampleBudget
-                    || codePoints(payload(patterns, contexts)) > budget) { skipped.add(e.id()); continue; }
-            selected.add(e); families.add(e.familyId());
+        // Routing priority is resolved BEFORE family diversity. Otherwise discovery can fill
+        // the second slot with an unrelated family and never return to a routed same-family unit.
+        // Within each tier retain discovery's family diversity and candidate interleaving.
+        // Empty/unknown hints have no routed matches, so the lexical tier is exactly the old path.
+        for (boolean routedTier : List.of(true, false)) {
+            for (int pass = 0; pass < 2; pass++) for (var match : ranked) {
+                if (match.routed() != routedTier) continue;
+                var e = match.example();
+                if (selected.contains(e) || focus.isEmpty() && pass == 0 && families.contains(e.familyId())) continue;
+                if (selected.size() >= maxExamples) continue;
+                var proposed = new ArrayList<>(selected); proposed.add(e);
+                var contexts = proposed.stream().map(e2 -> new SelectedExample(e2.mechanismIds(), e2.context())).toList();
+                if (codePoints(JSON.writeValueAsString(contexts)) > exampleBudget
+                        || codePoints(payload(patterns, contexts)) > budget) { skipped.add(e.id()); continue; }
+                selected.add(e); families.add(e.familyId());
+            }
         }
         String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
         return new Selection("\n" + referenceContract() + "\ncontextReference=" + payload,
