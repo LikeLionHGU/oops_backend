@@ -82,6 +82,10 @@ public final class ContextRoutingProbePlan {
         }
     }
     static Outcome replay(Probe q,ReviewGuidelineLibrary library,String registry,ContextMechanismRouter.Response response) {
+        return replay(q,library,registry,response,true);
+    }
+    static Outcome replay(Probe q,ReviewGuidelineLibrary library,String registry,ContextMechanismRouter.Response response,
+                          boolean rewardNewKeys) {
         var client=new ScriptedClient(response);
         var routed=router(client,registry).session().route(library,q.raw(),q.id());
         var proposal=new CandidateReviewEngine.Proposal(q.anchorId(),"TARGET_TREATMENT",null,
@@ -91,8 +95,8 @@ public final class ContextRoutingProbePlan {
         var evidenceIds=new HashSet<>(q.roles().selectedIds());
         var focus=q.raw().stream().filter(s -> q.roles().evaluationIds().contains(s.id())).toList();
         var passed=routed.keysFor(evidenceIds);
-        var before=library.select(SPEECH,q.raw(),q.id(),focus,Set.of(),query);
-        var after=library.select(SPEECH,q.raw(),q.id(),focus,passed,query);
+        var before=library.select(SPEECH,q.raw(),q.id(),focus,Set.of(),query,rewardNewKeys);
+        var after=library.select(SPEECH,q.raw(),q.id(),focus,passed,query,rewardNewKeys);
         return new Outcome(routed.trace(),routed.linkFor(evidenceIds),routed.keys().contains(q.manualKey()),passed.contains(q.manualKey()),
                 before.trace().exampleIds().indexOf(q.expectedExampleId())+1,after.trace().exampleIds().indexOf(q.expectedExampleId())+1,
                 before.trace(),after.trace());

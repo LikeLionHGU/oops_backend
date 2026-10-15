@@ -23,6 +23,11 @@ final class ContextReferenceBalance {
 
     static Plan select(List<ContextExampleSelector.Match> matches, Set<String> hints, int max,
                        boolean diversifyFamilies, Predicate<List<ContextExample>> fits) {
+        return select(matches,hints,max,diversifyFamilies,fits,true);
+    }
+    /** Package-local experimental ablation; every existing runtime call retains the default bonus. */
+    static Plan select(List<ContextExampleSelector.Match> matches, Set<String> hints, int max,
+                       boolean diversifyFamilies, Predicate<List<ContextExample>> fits, boolean rewardNewKeys) {
         Map<String,ContextExampleSelector.Match> unique = new LinkedHashMap<>();
         for (var m : matches) unique.merge(m.example().id(),m,(a,b) -> a.score() >= b.score() ? a : b);
         var remaining = new ArrayList<>(unique.values());
@@ -35,7 +40,7 @@ final class ContextReferenceBalance {
         List<Omission> omissions = new ArrayList<>(); int sizeOmissions=0;
         while (!remaining.isEmpty() && selected.size()<max) {
             var sorted = remaining.stream().sorted(Comparator
-                    .comparingDouble((ContextExampleSelector.Match m) -> score(m,hints,covered)).reversed()
+                    .comparingDouble((ContextExampleSelector.Match m) -> score(m,hints,covered,rewardNewKeys)).reversed()
                     .thenComparingInt(m -> diversifyFamilies && families.contains(m.example().familyId()) ? 1 : 0)
                     .thenComparingInt(m -> order.get(m.example().id()))).toList();
             boolean added=false;
@@ -49,7 +54,7 @@ final class ContextReferenceBalance {
                 }
                 var keys = keys(m.example(),hints);
                 double lexical=lexical(m.score()), hint=keys.isEmpty()?0:HINT_BONUS,
-                        fresh=keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0;
+                        fresh=rewardNewKeys && keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0;
                 choices.add(new Choice(m.example().id(),lexical,hint,fresh,lexical+hint+fresh+m.relationComponent(),
                         List.copyOf(keys),m.relationComponent()));
                 selected.add(m.example()); covered.addAll(keys); families.add(m.example().familyId()); added=true;
@@ -63,6 +68,7 @@ final class ContextReferenceBalance {
         var missing = new TreeSet<>(available); missing.removeAll(covered);
         String revision = matches.stream().anyMatch(m -> m.relationComponent()>0)
                 ? "2026-10-15-reference-relation-balance-2" : REVISION;
+        if (!rewardNewKeys) revision+="-new-key-bonus-off-experiment";
         return new Plan(List.copyOf(selected),new Trace(revision,List.copyOf(available),List.copyOf(covered),List.copyOf(missing),
                 List.copyOf(choices),sizeOmissions,countOmissions,List.copyOf(omissions),sizeOmissions+countOmissions>omissions.size()));
     }
@@ -72,9 +78,9 @@ final class ContextReferenceBalance {
         return keys;
     }
     private static double lexical(double score) { return score/(1+score); }
-    private static double score(ContextExampleSelector.Match m,Set<String> hints,Set<String> covered) {
+    private static double score(ContextExampleSelector.Match m,Set<String> hints,Set<String> covered,boolean rewardNewKeys) {
         var keys = keys(m.example(),hints);
         return lexical(m.score())+m.relationComponent()+(keys.isEmpty()?0:HINT_BONUS)
-                +(keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0);
+                +(rewardNewKeys && keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0);
     }
 }

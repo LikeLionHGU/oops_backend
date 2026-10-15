@@ -330,6 +330,12 @@ public class ReviewGuidelineLibrary {
     Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
                      Collection<ReviewInput.Segment> focus, Set<String> mechanismCandidates,
                      ContextRelationRetrieval.Query suppliedRelation) {
+        return select(channel,raw,requestKey,focus,mechanismCandidates,suppliedRelation,true);
+    }
+    /** Internal test seam only: no property/API enables the ablation in the runtime pipeline. */
+    Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
+                     Collection<ReviewInput.Segment> focus, Set<String> mechanismCandidates,
+                     ContextRelationRetrieval.Query suppliedRelation, boolean rewardNewKeys) {
         var relation = relationArchive() ? suppliedRelation : ContextRelationRetrieval.Query.empty();
         var base = examples(channel);
         if (!splitArchive() || base.isEmpty() || selector == null) {
@@ -376,7 +382,7 @@ public class ReviewGuidelineLibrary {
                 var contexts = proposed.stream().map(e -> new SelectedExample(e.mechanismIds(),e.context())).toList();
                 return codePoints(JSON.writeValueAsString(contexts))<=exampleBudget
                         && codePoints(payload(patterns,contexts))<=budget;
-            });
+            },rewardNewKeys);
             selected.addAll(plan.selected()); balance=plan.trace();
         } else {
             // Preserve the previous path for v1-v5 and empty/unknown/excluded routing hints.
