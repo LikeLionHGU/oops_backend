@@ -163,6 +163,20 @@ tasks.register('mechanismRoutingTrial', JavaExec) {
     }
 }
 
+// Replay saved classifier routes into reference selection only. Never invokes a model.
+tasks.register('auditRoutingPriority', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RoutingPriorityAudit'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def results = providers.gradleProperty('trialResults').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        if (!plan || !results || !output) throw new GradleException('Set trialPlan, trialResults, new private auditOutput')
+        args plan, results, output
+    }
+}
+
 // Local retrieval only: manual hints are an audit control, not model predictions.
 tasks.register('auditContextUnitRetrieval', JavaExec) {
     dependsOn testClasses
