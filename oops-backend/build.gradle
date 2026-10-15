@@ -191,6 +191,19 @@ tasks.register('prepareSemanticReferenceRanking', JavaExec) {
     }
 }
 
+// Free audit of completed ranks and stored discovery input selection; no credentials/provider.
+tasks.register('auditSemanticRankReadiness', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextRankReadinessAudit'
+    doFirst {
+        def names = ['trialPlan', 'trialResults', 'storedDiscoveryResults', 'activeRuntime', 'previewRuntime', 'auditOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', ') + ' (offline only)')
+        args values
+    }
+}
+
 // Fresh exact-plan cost/profile consent; at most 24 single-attempt comparative requests.
 tasks.register('runSemanticReferenceRanking', JavaExec) {
     dependsOn testClasses
