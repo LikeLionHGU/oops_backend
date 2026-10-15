@@ -3138,3 +3138,27 @@ D는 각 묶음에 유효 GRAPHIC_METAPHOR가 있어 양쪽 6/6 검토를 유지
 private bd-hypothesis-37-20261015/에 requests/results/reservation/manifest를 저장했다. 소스 계획 SHA c97b04c4f606c6736ca6a144865544f74068f1f03401c5eaa8cca8798435db0e, 원본 결과 SHA ef1df17c20da9ea6fdcbf7558277d25e9c50cfffb1d145e1b83ec92074b61ba3, 실행기 SHA 4d8bd0fe13a30a79e6fd6bcbb1a46d16867b497f1033e672afaeaa6ba373c281로 추적한다. private 데이터는 Git 제외이며 키/인증 헤더는 저장하지 않는다.
 
 Java 전체 테스트 672개 통과(실패/오류/skip 0), git diff --check 통과다. 기본 test/bootRun은 유료 작업을 실행하지 않는다. 운영 개정 37/프롬프트/사전·서버는 그대로다. 고정 후보 검증만 시험했으며 탐색·STT/OCR·프레임·복구·병합·DB·전체 업로드 및 새 정상 대조는 이번 36회에 포함되지 않는다. 과거 별도 정상 시험과 섞어 이번 정밀도/범용 정확도로 계산하지 않는다.
+
+## 2026-10-15 · B의 생활·선택지 사례 분리와 무료 참고 배선 점검
+
+직전 저장 요청을 점검한 결과 B 탐색 가설 4개부터 음식·메뉴 가치 절하에 집중했고, 실제 참고는 피식대학 음식/메뉴/신체 훼손을 한데 묶은 s2-insult였다. B 계약 실패 7개는 TARGET 줄에 지칭어가 없는 5개와 지칭어가 원문의 단일 줄에 없는 2개로 나뉜다. 서버의 인용문 ID 복원은 이미 구현돼 있으므로 새 기능처럼 재구현하지 않는다. 참고 구성과 의미 판정의 인과관계가 확인됐다는 뜻은 아니다.
+
+기존 사건 파일에 s3-life-choice를 추가했다. 지역 선택지 부재 → 타인의 대체 선택 → 그 생활·선택을 낮추는 평가라는 개발 경계와 정상 가정 조리/메뉴 유래/가족 선호 대조를 보관했다. 동일 사건의 개별 쟁점 분리이며 새 독립 사건 수집이 아니다. 7개 텍스트를 SHA로 고정한 저장 결과와 대조했고 시험용 합성 시간을 원영상 시간으로 복사하지 않았다. 원음/억양/독립 검수 미완료와 모든 승인 false를 유지한다. 기존 s2의 model-facing flow에서 B를 분리하되 연구용 상세 boundaries는 보존했다. 공통 6기준·Java 개정 37·프롬프트·검색 알고리즘·대상 계약은 변경하지 않았다.
+
+incidents 빌드/출력 검증 후 32사건·38발언/예시·6기준이다. 버전 2026-10-15-life-choice-boundary-v1-patterns-4, runtime SHA f08f1dc40890e67871d1194b8acf67bd0e5d97ec382594412a5f37f058de1907, source SHA f0865e90c3688bb4fc1d2b8e042d533d31e619ea64999b36cb4a29c732dfb93e, dictionary SHA 9c897105d2887a667aab399a8fabdc2512892f1f5d1a61ca821776b697e05bdd다. 이전 runtime aa8e90044981fe403aa4ddce1c04102794ac54b4d828dc7d93a3e20e8aeaccbc는 해시 이름으로 history에 보존했다.
+
+| 고정 입력 | 이전 참고 → 분리 후 참고 | payload code points |
+|---|---|---:|
+| B 두 읽기 구간 | s2-insult → s3-life-choice | 각 3064 → 3203 |
+| 정상 N5 메뉴 유래 설명 | 없음 → s3-life-choice | 2378 → 3203 |
+| 정상 N1/2/3/4/6 | 없음 → 없음 | 각 2378 유지 |
+| C | s2-insult + 승우아빠 사례, ID 유지 | 3458 → 3417 |
+| D | s2-insult, ID 유지 | 3064 → 3023 |
+
+기존 payload 6000/예시 3000 code points·최대 2예시 제한을 유지했다. C/D의 ID가 같아도 s2 본문은 달라졌으므로 판정 유지로 해석하지 않는다. 정상 N5는 비슷한 상황이라 참고가 선택됐으며 오탐 경고를 관측한 것이 아니다. 다음 모델 비교에 이 정상 경계를 필수 포함한다. family 제외 설정에서는 모든 구간에서 피식대학 사례가 배제되는 것을 검사했다. 같은 사건 재현 시험을 독립 전이 평가로 바꾸지 않는다.
+
+GuidelineBoundaryWiringTest는 실제 CandidateReviewEngine에 중립 강제 후보와 mock 검증 응답을 넣어 참고가 최종 검증 요청에도 동일하게 고정되고 정상 경계가 포함됨을 검사한다. mock PASS를 B의 의미 판정/성능으로 세지 않는다. 관련 private 파일/버전이 없으면 해당 로컬 배선 시험은 skip하므로 새 체크아웃에서는 데이터 별도 전달 후 실행해야 한다. private b-context-wiring-37-20261015/audit.json에 결과를 기록했다.
+
+추가 provider 호출/과금 0이며 모델 비교·서버 재시작·AWS 배포는 하지 않았다. 데이터·runtime은 Git 제외이고 테스트 코드와 문서만 푸시한다. 대상 지칭 출력 변경은 이번에 섞지 않았다. 다음은 동일 후보/원문/탐색 가설을 유지한 참고 변경 비교이며, B·정상 6조건·C/D와 계약 오류를 함께 측정한 뒤 채택 여부를 판단한다.
+
+검증: Java 전체 673개 통과(실패/오류/skip 0), Python tools/tests 123개 통과·6개 skip, 사건 build --write/--verify 및 git diff --check 통과다. 공통 6기준 본문이 이전 runtime과 동일함도 확인했다. Python은 pytest가 설치된 기존 Anaconda 환경을 사용했다. Gradle은 기존 캐시 쓰기 권한과 프로젝트 Java 17을 지정해 실행했다.
