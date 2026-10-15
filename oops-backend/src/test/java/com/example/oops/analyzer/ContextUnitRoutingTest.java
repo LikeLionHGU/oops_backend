@@ -31,7 +31,7 @@ class ContextUnitRoutingTest {
         assertThat(l.select(TimelineEventType.SPEECH, raw, "q").trace().exampleIds()).isEmpty();
         var routed = l.select(TimelineEventType.SPEECH, raw, "q", List.of(), Set.of("graphic-body-metaphor"));
         assertThat(routed.trace().exampleIds()).containsExactly("source-0");
-        assertThat(routed.trace().retrievalMethod()).contains("NOT_CLASSIFICATION");
+        assertThat(routed.trace().retrievalMethod()).isEqualTo("V6_BALANCED_HINT_COVERAGE_NOT_SEMANTIC");
         assertThat(routed.prompt()).contains("normalContrasts", "합성 대조이며 실제 관측 아님");
         assertThat(l.select(TimelineEventType.SPEECH, List.of(), "q", List.of(), Set.of("graphic-body-metaphor"))
                 .trace().exampleIds()).isEmpty();

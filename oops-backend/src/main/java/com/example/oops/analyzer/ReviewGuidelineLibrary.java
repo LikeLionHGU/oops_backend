@@ -293,7 +293,12 @@ public class ReviewGuidelineLibrary {
     }
     public record SelectionTrace(String requestKey, String state, String retrievalMethod,
             int availableExamples, int matchedExamples, int budgetSkipped, int payloadCodePoints,
-            int baseCodePoints, List<String> exampleIds, List<String> mechanismIds) {
+            int baseCodePoints, List<String> exampleIds, List<String> mechanismIds,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ContextReferenceBalance.Trace balance) {
+        public SelectionTrace(String key,String state,String method,int available,int matched,int skipped,
+                int payload,int base,List<String> examples,List<String> mechanisms) {
+            this(key,state,method,available,matched,skipped,payload,base,examples,mechanisms,null);
+        }
         public SelectionTrace { exampleIds = List.copyOf(exampleIds); mechanismIds = List.copyOf(mechanismIds); }
     }
     record Selection(String prompt, SelectionTrace trace) {}
@@ -340,32 +345,44 @@ public class ReviewGuidelineLibrary {
         }
         List<ContextExample> selected = new ArrayList<>();
         Set<String> families = new HashSet<>(), skipped = new HashSet<>();
-        // Routing priority is resolved BEFORE family diversity. Otherwise discovery can fill
-        // the second slot with an unrelated family and never return to a routed same-family unit.
-        // Within each tier retain discovery's family diversity and candidate interleaving.
-        // Empty/unknown hints have no routed matches, so the lexical tier is exactly the old path.
-        for (boolean routedTier : List.of(true, false)) {
-            for (int pass = 0; pass < 2; pass++) for (var match : ranked) {
-                if (match.routed() != routedTier) continue;
-                var e = match.example();
-                if (selected.contains(e) || focus.isEmpty() && pass == 0 && families.contains(e.familyId())) continue;
-                if (selected.size() >= maxExamples) continue;
-                var proposed = new ArrayList<>(selected); proposed.add(e);
-                var contexts = proposed.stream().map(e2 -> new SelectedExample(e2.mechanismIds(), e2.context())).toList();
-                if (codePoints(JSON.writeValueAsString(contexts)) > exampleBudget
-                        || codePoints(payload(patterns, contexts)) > budget) { skipped.add(e.id()); continue; }
-                selected.add(e); families.add(e.familyId());
+        ContextReferenceBalance.Trace balance = null;
+        boolean balanced = contextUnitArchive() && ranked.stream().anyMatch(ContextExampleSelector.Match::routed);
+        if (balanced) {
+            // The key expands the pool, not an absolute priority tier. Preserve original text,
+            // complete comparison boundaries and budgets; report omitted keys rather than truncating them.
+            var pool = new ArrayList<>(focused); pool.addAll(contextual);
+            var plan = ContextReferenceBalance.select(pool,mechanismCandidates,maxExamples,focus.isEmpty(),proposed -> {
+                var contexts = proposed.stream().map(e -> new SelectedExample(e.mechanismIds(),e.context())).toList();
+                return codePoints(JSON.writeValueAsString(contexts))<=exampleBudget
+                        && codePoints(payload(patterns,contexts))<=budget;
+            });
+            selected.addAll(plan.selected()); balance=plan.trace();
+        } else {
+            // Preserve the previous path for v1-v5 and empty/unknown/excluded routing hints.
+            for (boolean routedTier : List.of(true, false)) {
+                for (int pass = 0; pass < 2; pass++) for (var match : ranked) {
+                    if (match.routed() != routedTier) continue;
+                    var e = match.example();
+                    if (selected.contains(e) || focus.isEmpty() && pass == 0 && families.contains(e.familyId())) continue;
+                    if (selected.size() >= maxExamples) continue;
+                    var proposed = new ArrayList<>(selected); proposed.add(e);
+                    var contexts = proposed.stream().map(e2 -> new SelectedExample(e2.mechanismIds(), e2.context())).toList();
+                    if (codePoints(JSON.writeValueAsString(contexts)) > exampleBudget
+                            || codePoints(payload(patterns, contexts)) > budget) { skipped.add(e.id()); continue; }
+                    selected.add(e); families.add(e.familyId());
+                }
             }
         }
         String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
         return new Selection("\n" + referenceContract() + "\ncontextReference=" + payload,
-                new SelectionTrace(requestKey, state, ranked.stream().anyMatch(ContextExampleSelector.Match::routed)
+                new SelectionTrace(requestKey, state, balanced ? "V6_BALANCED_HINT_COVERAGE_NOT_SEMANTIC"
+                        : ranked.stream().anyMatch(ContextExampleSelector.Match::routed)
                         ? "EXPLICIT_MECHANISM_HINT_SOFT_ROUTING_NOT_CLASSIFICATION"
                         : focus.isEmpty() ? "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC"
                         : "CANDIDATE_NEAR_CONTEXT_INTERLEAVED_LOCAL_NOT_SEMANTIC",
-                        trace(channel).availableExampleCount(), ranked.size(), skipped.size(), codePoints(payload),
+                        trace(channel).availableExampleCount(), ranked.size(), balance==null?skipped.size():balance.sizeOmissions(), codePoints(payload),
                         codePoints(payload(patterns, List.of())), selected.stream().map(ContextExample::id).toList(),
-                        patterns.stream().map(p -> p.get("id")).toList()));
+                        patterns.stream().map(p -> p.get("id")).toList(),balance));
     }
     private static String payload(Object patterns, Object contexts) {
         Map<String, Object> values = new LinkedHashMap<>();

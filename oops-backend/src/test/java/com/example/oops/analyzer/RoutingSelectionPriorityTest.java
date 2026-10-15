@@ -6,7 +6,7 @@ import java.util.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.*;
 import static org.assertj.core.api.Assertions.*;
 
-/** Routed examples win over family diversity without hard-filtering the lexical fallback. */
+/** At equal lexical relevance, distinct routed mechanisms are not displaced by family diversity. */
 class RoutingSelectionPriorityTest {
     Archive units() {
         var f = new ContextExampleSelectionTest(); var a = f.archive(3);
@@ -25,7 +25,7 @@ class RoutingSelectionPriorityTest {
         return new Archive("review-guidelines-6",a.version(),a.status(),false,a.usage(),a.sourceBundleSha256(),
                 a.refreshOrDeleteBy(),sources,a.guidelines(),a.contextDictionarySha256(),examples);
     }
-    @Test void secondRoutedMechanismFromTheSameIncidentWinsOverUnroutedDifferentFamily() {
+    @Test void equallyRelevantSecondRoutedMechanismWinsOverUnroutedDifferentFamily() {
         var f = new ContextExampleSelectionTest(); var units = units();
         String retrieval = units.examples().get(0).retrievalView().text();
         var examples = units.examples();
