@@ -17,9 +17,15 @@ record SourceRelations(List<String> situationIds, List<String> subjectIds, List<
         if(roles.stream().anyMatch(Objects::isNull)) return "PROPOSAL_RELATION_FIELDS";
         if(roles.stream().anyMatch(ids->ids.size()>8 || ids.stream().anyMatch(id->id==null||id.isBlank())
                 || new HashSet<>(ids).size()!=ids.size())) return "PROPOSAL_RELATION_IDS";
-        if(evaluationIds.isEmpty() || !evaluationIds.contains(anchor)) return "PROPOSAL_RELATION_ANCHOR";
+        // An anchor may introduce the situation/subject; do not relabel it as an evaluation.
+        if(evaluationIds.isEmpty() || !selectedIds().contains(anchor)) return "PROPOSAL_RELATION_ANCHOR";
         if(roles.stream().flatMap(Collection::stream).anyMatch(id->!evidenceIds.contains(id)))
             return "PROPOSAL_RELATION_NOT_IN_EVIDENCE";
         return null;
+    }
+    /** Call only after shape validation; preserves the model's roles and first-seen ID order. */
+    List<String> selectedIds() {
+        return java.util.stream.Stream.of(situationIds,subjectIds,actionIds,evaluationIds,referentIds)
+                .flatMap(Collection::stream).distinct().toList();
     }
 }

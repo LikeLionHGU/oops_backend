@@ -9,7 +9,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
     static final String REVISION = "2026-10-14-target-contract-diagnostics-37";
-    static final String RELATION_REVISION = "2026-10-15-source-relations-experiment-38";
+    static final String RELATION_REVISION = "2026-10-15-source-relations-contract-39";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -143,6 +143,8 @@ final class CandidateReviewEngine {
                         JSON.writeValueAsString(request), Discovery.class).orElse(null);
             } catch (RuntimeException ex) { response = null; }
             if (!validDiscovery(response, primaryIds)) {
+                if (sourceRelationsEnabled) stats.trace(discoveryRequestKey,null,null,"INVALID_DISCOVERY",
+                        response == null ? "DISCOVERY_NO_USABLE_RESPONSE" : "DISCOVERY_ENVELOPE_INVALID");
                 stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true; continue;
             }
             explored.addAll(response.reviewedSegmentIds());
@@ -560,7 +562,17 @@ final class CandidateReviewEngine {
     // (a short referent the model picks) is kept and still checked against the server-filled TARGET line.
     private static Proposal normalizeProposal(Proposal p, Map<String, ReviewInput.Segment> raw) {
         if (p == null || p.evidence() == null) return p;
-        var filled = p.evidence().stream().map(q -> {
+        // A role ID is already a model-selected source, not an inferred relationship. Materialize
+        // its evidence deterministically, but never remove existing entries or evade the 8-ID/window
+        // checks below. Malformed/unknown role IDs still fail closed; legacy proposals are unchanged.
+        List<Quote> selected = new ArrayList<>(p.evidence());
+        if (p.sourceRelations() != null && p.sourceRelations().failure(p.anchorId(),raw.keySet()) == null) {
+            Set<String> present = new HashSet<>();
+            selected.stream().filter(Objects::nonNull).forEach(q -> present.add(q.segmentId()));
+            for (String id : p.sourceRelations().selectedIds())
+                if (present.add(id)) selected.add(new Quote(id,null));
+        }
+        var filled = selected.stream().map(q -> {
             if (q == null) return q;
             var seg = raw.get(q.segmentId());
             return seg == null ? q : new Quote(q.segmentId(), seg.text());

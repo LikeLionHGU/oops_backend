@@ -102,9 +102,78 @@ class SourceRelationsTest {
             assertThat(result.findings()).isEmpty();
             verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
         }
-        var p=proposal(roles()); f.discovery(IDS,new Proposal(p.anchorId(),p.axis(),null,List.of(new Quote(IDS.get(2),null)),roles()));
+    }
+    @Test void roleOnlyEvidenceIsMaterializedWithoutRewritingRolesOrForcingReview() {
+        var p=proposal(roles());
+        f.discovery(IDS,new Proposal(p.anchorId(),p.axis(),null,List.of(new Quote(IDS.get(2),null)),roles()));
+        f.verification(new Verification("candidate-1",pass()));
         var result=runRelation();
-        assertThat(result.diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo("PROPOSAL_RELATION_NOT_IN_EVIDENCE");
+        var requests=ArgumentCaptor.forClass(String.class);
+        verify(f.client).completeAsJson(anyString(),requests.capture(),eq(VerificationResult.class));
+        var candidate=JSON.readTree(requests.getValue()).get("candidates").get(0);
+        assertThat(candidate.get("sourceRelations")).isEqualTo(JSON.valueToTree(roles()));
+        assertThat(candidate.get("proposedEvidence").size()).isEqualTo(3);
+        assertThat(candidate.get("proposedEvidence").toString()).contains(context.transcript().get(0).getText());
+        assertThat(result.diagnostics().candidatePipeline().invalidProposals()).isZero();
+        assertThat(result.diagnostics().candidatePipeline().repairCalls()).isZero();
+        assertThat(result.findings()).isEmpty();
+    }
+    @Test void situationAnchorIsNotSilentlyRelabeledAsEvaluation() {
+        var relations=roles();
+        f.discovery(IDS,new Proposal(IDS.get(0),"TARGET_TREATMENT",null,
+                IDS.stream().map(id->new Quote(id,null)).toList(),relations));
+        f.verification(new Verification("candidate-1",f.linkedPass(IDS.get(0),context.transcript().get(0).getText(),
+                IDS.get(2),context.transcript().get(2).getText())));
+        var result=runRelation();
+        var requests=ArgumentCaptor.forClass(String.class);
+        verify(f.client).completeAsJson(anyString(),requests.capture(),eq(VerificationResult.class));
+        assertThat(JSON.readTree(requests.getValue()).get("candidates").get(0).get("sourceRelations"))
+                .isEqualTo(JSON.valueToTree(relations));
+        assertThat(result.diagnostics().candidatePipeline().invalidProposals()).isZero();
+        assertThat(result.findings()).isEmpty();
+    }
+    @Test void unionNeverTrimsOverBudgetOrHidesUnknownEvidence() {
+        var fixture=new CandidateReviewEngineTest();
+        var c=fixture.context("줄0","줄1","줄2","줄3","줄4","줄5","줄6","줄7","줄8");
+        var ids=java.util.stream.IntStream.range(0,9).mapToObj(i->"stt-index-"+i).toList();
+        var relations=new SourceRelations(ids.subList(0,8),List.of(),List.of(),List.of(ids.get(8)),List.of());
+        fixture.discovery(ids,new Proposal(ids.get(8),"TARGET_TREATMENT",null,List.of(new Quote(ids.get(8),null)),relations));
+        var result=run(fixture.client,c,24,null,null,null,null,0,true);
+        assertThat(result.diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo("PROPOSAL_EVIDENCE_OVER_BUDGET");
+        verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
+        f.discovery(IDS,new Proposal(IDS.get(2),"TARGET_TREATMENT",null,List.of(new Quote("invented",null)),roles()));
+        assertThat(runRelation().diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo("PROPOSAL_UNKNOWN_EVIDENCE_ID");
+    }
+    @Test void missingResponseAndInvalidEnvelopeAreUnassessedNotPass() {
+        for(boolean absent:List.of(true,false)) {
+            var fixture=new CandidateReviewEngineTest();
+            when(fixture.client.completeAsJson(anyString(),anyString(),eq(Discovery.class)))
+                    .thenReturn(absent?Optional.empty():Optional.of(new Discovery(IDS,null,List.of(),false)));
+            var result=run(fixture.client,context,24,null,null,null,null,0,true);
+            assertThat(result.unassessedSegmentIds()).containsAll(IDS);
+            var trace=result.diagnostics().candidatePipeline().candidates().get(0);
+            assertThat(trace.state()).isEqualTo("INVALID_DISCOVERY");
+            assertThat(trace.failureCode()).isEqualTo(absent?"DISCOVERY_NO_USABLE_RESPONSE":"DISCOVERY_ENVELOPE_INVALID");
+            assertThat(trace.anchorId()).isNull();
+            assertThat(result.diagnostics().candidatePipeline().proposed()).isZero();
+            verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
+        }
+    }
+    @Test void materializedRoleEvidenceMustStillFitOneAdvertisedWindow() {
+        var fixture=new CandidateReviewEngineTest();
+        var c=fixture.context(java.util.stream.IntStream.range(0,21).mapToObj(i->"대화 "+i).toArray(String[]::new));
+        var relations=new SourceRelations(List.of("stt-index-0"),List.of(),List.of(),
+                List.of("stt-index-10"),List.of("stt-index-20"));
+        when(fixture.client.completeAsJson(anyString(),anyString(),eq(Discovery.class))).thenAnswer(invocation->{
+            var request=JSON.readTree((String)invocation.getArgument(1));
+            List<String> ids=new ArrayList<>(); request.get("primaryIds").forEach(n->ids.add(n.asText()));
+            return Optional.of(new Discovery(ids,ids.contains("stt-index-10")?List.of(new Proposal("stt-index-10",
+                    "EXPRESSION_CONTENT",null,List.of(new Quote("stt-index-10",null)),relations)):List.of(),List.of(),false));
+        });
+        var result=run(fixture.client,c,24,null,null,null,null,0,true);
+        assertThat(result.diagnostics().candidatePipeline().candidates()).singleElement()
+                .extracting(CandidateReviewDiagnostics.Trace::failureCode).isEqualTo("PROPOSAL_WINDOW_MISMATCH");
+        verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
     }
     @Test void sourceRoleListsAreImmutableAndLegacyProposalJsonShapeIsUnchanged() {
         var mutable=new ArrayList<>(List.of("s")); var roles=new SourceRelations(mutable,List.of(),List.of(),List.of("s"),List.of());
