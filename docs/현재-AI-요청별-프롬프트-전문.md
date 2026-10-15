@@ -1,5 +1,7 @@
 # 현재 AI 요청별 프롬프트 전문
 
+> 10/15 추가: 기본 실행은 아래 개정 37을 유지한다. 기본 OFF인 `CANDIDATE_SOURCE_RELATIONS_ENABLED=true`에서만 실험 38의 텍스트 탐색 지시문으로 교체하고 최종 검증에 원문 역할 대조 지침을 추가한다. 실험 전문은 [SourceRelationPrompts.java](../oops-backend/src/main/java/com/example/oops/analyzer/SourceRelationPrompts.java)에 있으며, 검증은 기존 `verificationPrompt(limit)` + 실험 역할 지침 + 고정 참고로 조립한다. [원문 관계 계약](AI-분석-로직.md#원문-관계-전달-실험--2026-10-15-개정-38기본-off)을 따른다. 정식 JSON Schema API 전환이나 기본 가설 제거를 의미하지 않는다.
+
 > 현재 실행 개정 `2026-10-14-target-contract-diagnostics-37`: 판단 기준은 유지하고 대상 출력 예시의 quote를 제거했다. 지칭어는 선택한 TARGET segmentId의 raw.text에서 복사하며 실제 응답은 ID·역할만 반환한다. 복구 입력의 failureDetail은 대상 계약의 첫 실패 조건이고 이전 응답/정답이 아니다. 아래 개정 36은 입력 고정 이력이다.
 
 > 현재 실행 개정은 `2026-10-14-frozen-text-context-36`이다. 아래 개정 35의 정적 판단/출력 프롬프트 본문은 유지하고 텍스트 입력 조립만 변경했다. 탐색 때 선택한 허용 창과 참고를 검증·복구에 고정 전달한다. 참고 재검색/원문 재확장 설명은 이전 구현이다. 승인 사례가 실제 선택된 경우 검증 시스템에 같은 CASE_REFERENCE_CONTRACT와 referenceCases JSON을 붙이며 현재 원문 근거와 구분한다. [현재 입력 경계](AI-분석-로직.md#현재-코드-경계--2026-10-14-개정-36)를 우선한다.

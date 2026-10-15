@@ -1,5 +1,46 @@
 # OoPs?! AI 분석 로직
 
+## 원문 관계 전달 실험 — 2026-10-15, 개정 38·기본 OFF
+
+기본 실행은 개정 37 그대로다. 비교용 `CANDIDATE_SOURCE_RELATIONS_ENABLED=true`를 명시한 경우에만
+텍스트 후보 탐색/검증이 개정 `2026-10-15-source-relations-experiment-38`로 동작한다.
+`candidate-review-enabled=false`인 구형 분석 경로에는 이 설정을 적용하지 않는다.
+서버 재시작·운영 전환·유료 모델 시험은 이번 작업에서 하지 않았다.
+
+변경 전은 원문 → 결론형 reason/강조 근거 → hypothesisNotEvidence 전달 → 독립 검증이다.
+실험안은 같은 두 단계 안에서 원문 → 역할별 원문 ID → 원문/관계 대조와 독립 검증으로 바꾼다.
+전용 추출 모델이나 배심원을 추가하지 않는다. 후보를 만들지 여부의 탐색 판단 자체는 여전히 존재한다.
+
+| sourceRelations 필드 | 의미 | 의미하지 않는 것 |
+|---|---|---|
+| situationIds | 장소·조건·상황을 말한 원문 줄 | 그 상황이 비하라는 판정 |
+| subjectIds | 원문에 등장한 행동·경험 주체의 줄 | 화자 신원·공격 대상 확정 |
+| actionIds | 행동·선택을 말한 줄 | 동기·궁핍함 추정 |
+| evaluationIds | 비교·평가·반문·표현 자체의 줄, anchor 포함 | 논란 확정 |
+| referentIds | 대상·장소·대명사 등 지칭 줄 | 그 지칭이 공격 대상이라는 확정 |
+
+실험 텍스트 후보는 reason을 반환하지 않고 검증 요청에도 hypothesisNotEvidence를 보내지 않는다.
+다섯 배열은 모두 필요하고 알 수 없는 역할은 []다. evaluationIds에는 anchor가 필요하다.
+역할 ID는 모두 evidence에 포함돼야 하며, evidence는 기존처럼 한 허용 창의 실제 ID 1~8개다.
+서버가 원문을 복원하며 관계 ID를 조용히 버리거나 창 밖으로 확장하지 않는다.
+역할 중복(같은 역할 배열 안), 미등록 ID·누락 배열·anchor 누락·reason 혼입은 미확인 후보로 남긴다.
+같은 줄이 서로 다른 역할에 속하는 것은 허용한다.
+
+원문 창·참고 고정, 최종 근거/대상 계약, 카드/병합/API/사전은 유지한다. 최종 target·category·판정은
+검증 단계에서 결정하며 PASS도 허용한다. 관계 슬롯은 모델의 제안이지 검증된 관계/사실이 아니다.
+선택적 장면 후보는 기존 reason/evidence 형식을 유지하고 장면 검증 경로를 변경하지 않는다.
+개정 38의 구조 불량 탐색 후보는 구형 reason 재탐색으로 fallback하지 않는다. 기본 37의 탐색 복구는 그대로다.
+유효한 관계 후보의 최종 근거 계약 복구는 같은 원문·역할·참고를 유지해 기존 한도 안에서 수행한다.
+
+진단에는 개정 38과 역할을 포함한 proposal SHA가 남는다. 기본 37의 Proposal JSON에는 새 필드를
+추가 출력하지 않아 이전 요청/저장 응답과의 비교를 유지한다. 역할별 ID를 최종 카드에 새 필드로 저장하거나
+설명 1000자·대표 후보 병합 문제까지 해결한 작업은 아니다. 검증이 역할을 어떻게 해석하는지는 별도 의미 평가 대상이다.
+
+코드 출처: [관계 형식](../oops-backend/src/main/java/com/example/oops/analyzer/SourceRelations.java),
+[실험 프롬프트](../oops-backend/src/main/java/com/example/oops/analyzer/SourceRelationPrompts.java),
+[연결·계약 테스트](../oops-backend/src/test/java/com/example/oops/analyzer/SourceRelationsTest.java).
+지시와 데이터의 역할을 분리하는 방향은 [OpenAI Docs의 프롬프트 지침](https://developers.openai.com/api/docs/guides/prompt-engineering)을 참고했다.
+
 ## 현재 참고 입력 — 2026-10-15, 파이프라인 개정 37 유지
 
 사전 버전은 2026-10-15-life-choice-boundary-v1-patterns-4(32사건·38예시·6기준)다.
