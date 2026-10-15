@@ -177,6 +177,20 @@ tasks.register('auditRoutingPriority', JavaExec) {
     }
 }
 
+// Local 2x2 selection replay of complete saved responses; no API, credentials or model changes.
+tasks.register('auditSelectionFactors', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextSelectionFactorialAudit'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def results = providers.gradleProperty('trialResults').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        if (!plan || !results || !output) throw new GradleException('Set trialPlan, trialResults, NEW private auditOutput')
+        args plan, results, output
+    }
+}
+
 // Fresh exact-plan cost and synthetic-text consent required; max 48 routing-only HTTP attempts.
 tasks.register('runRoutingProbes', JavaExec) {
     dependsOn testClasses
