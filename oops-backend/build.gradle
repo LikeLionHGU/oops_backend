@@ -144,6 +144,22 @@ tasks.register('prepareVerificationContractComparison', JavaExec) {
     }
 }
 
+// Local retrieval only: manual hints are an audit control, not model predictions.
+tasks.register('auditContextUnitRetrieval', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextUnitPreviewAudit'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def base = providers.gradleProperty('baselineRuntime').orNull
+        def preview = providers.gradleProperty('previewRuntime').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        def db = providers.gradleProperty('sourceDb').orNull
+        if (!plan || !base || !preview || !output || !db) throw new GradleException('Set trialPlan, baselineRuntime, previewRuntime, auditOutput, sourceDb')
+        args plan, base, preview, output, db
+    }
+}
+
 // Offline policy pairing only: no paid runner or automatic Spring promotion.
 tasks.register('prepareContextJudgmentComparison', JavaExec) {
     dependsOn testClasses

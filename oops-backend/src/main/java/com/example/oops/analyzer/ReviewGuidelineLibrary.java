@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +59,13 @@ public class ReviewGuidelineLibrary {
     }
     public record SourceInterpretation(String statementKind, String excerpt) {}
     public record Comparison(String coverage, List<String> flow, List<String> criticismHypotheses,
-                             List<String> missingContext, List<SourceInterpretation> sourceInterpretations) {}
+                             List<String> missingContext, List<SourceInterpretation> sourceInterpretations,
+                             @JsonInclude(JsonInclude.Include.NON_NULL) List<String> normalContrasts) {
+        public Comparison(String coverage, List<String> flow, List<String> criticismHypotheses,
+                          List<String> missingContext, List<SourceInterpretation> sourceInterpretations) {
+            this(coverage, flow, criticismHypotheses, missingContext, sourceInterpretations, null);
+        }
+    }
     public record Archive(String schemaVersion, String version, String status, Boolean humanValidated,
                           String usage, String sourceBundleSha256, String refreshOrDeleteBy,
                           List<SourceCase> sourceCases, List<Rule> guidelines, String contextDictionarySha256,
@@ -78,7 +85,12 @@ public class ReviewGuidelineLibrary {
     }
     public record RetrievalView(String version, String basis, String text, String sha256) {}
     public record ContextExample(String id, String familyId, List<String> mechanismIds,
-                                 List<String> channels, Comparison context, RetrievalView retrievalView) {
+                                 List<String> channels, Comparison context, RetrievalView retrievalView,
+                                 @JsonInclude(JsonInclude.Include.NON_NULL) List<String> routingKeys) {
+        public ContextExample(String id, String familyId, List<String> mechanismIds,
+                              List<String> channels, Comparison context, RetrievalView retrievalView) {
+            this(id, familyId, mechanismIds, channels, context, retrievalView, null);
+        }
         public ContextExample(String id, String familyId, List<String> mechanismIds,
                               List<String> channels, Comparison context) {
             this(id, familyId, mechanismIds, channels, context, null);
@@ -157,14 +169,15 @@ public class ReviewGuidelineLibrary {
         }
     }
     private static boolean valid(Archive a) {
-        if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2", "review-guidelines-3", "review-guidelines-4", "review-guidelines-5").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
+        if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2", "review-guidelines-3", "review-guidelines-4", "review-guidelines-5", "review-guidelines-6").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
                 || !"WORKING_REFERENCE_NOT_VALIDATED".equals(a.status()) || !Boolean.FALSE.equals(a.humanValidated())
                 || !"REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED".equals(a.usage())
                 || a.sourceBundleSha256() == null || !a.sourceBundleSha256().matches("[0-9a-f]{64}")
                 || a.sourceCases() == null || a.sourceCases().isEmpty() || a.sourceCases().size() > 1000
                 || a.guidelines() == null || a.guidelines().isEmpty() || a.guidelines().size() > 16) return false;
         try { OffsetDateTime.parse(a.refreshOrDeleteBy()); } catch (Exception ex) { return false; }
-        boolean frozenRetrieval = "review-guidelines-5".equals(a.schemaVersion());
+        boolean units = "review-guidelines-6".equals(a.schemaVersion());
+        boolean frozenRetrieval = units || "review-guidelines-5".equals(a.schemaVersion());
         boolean split = frozenRetrieval || "review-guidelines-4".equals(a.schemaVersion());
         boolean dictionary = split || "review-guidelines-3".equals(a.schemaVersion());
         if (dictionary && (a.contextDictionarySha256() == null || !a.contextDictionarySha256().matches("[0-9a-f]{64}"))) return false;
@@ -205,7 +218,10 @@ public class ReviewGuidelineLibrary {
                 if (e == null || !sources.contains(e.id()) || !examples.add(e.id()) || !id(e.familyId())
                         || a.sourceCases().stream().noneMatch(s -> s.caseId().equals(e.id()) && s.familyId().equals(e.familyId()))
                         || e.mechanismIds() == null || e.channels() == null || e.context() == null) return false;
-                if (frozenRetrieval ? !validRetrieval(e.retrievalView()) : e.retrievalView() != null) return false;
+                if (frozenRetrieval ? !validRetrieval(e.retrievalView(), units) : e.retrievalView() != null) return false;
+                if (units && (e.routingKeys() == null || e.routingKeys().size() > 4
+                        || e.routingKeys().size() != new HashSet<>(e.routingKeys()).size()
+                        || e.routingKeys().stream().anyMatch(k -> !id(k)))) return false;
                 Set<String> mapped = new HashSet<>(), channels = new HashSet<>();
                 a.guidelines().stream().filter(r -> r.sourceCaseIds().contains(e.id())).forEach(r -> {
                     mapped.add(r.id()); channels.addAll(r.channels());
@@ -213,6 +229,7 @@ public class ReviewGuidelineLibrary {
                 if (e.mechanismIds().size() != mapped.size() || !mapped.equals(new HashSet<>(e.mechanismIds()))
                         || e.channels().size() != channels.size() || !channels.equals(new HashSet<>(e.channels()))) return false;
                 var c = e.context();
+                if (units && !texts(c.normalContrasts(), 0, 4)) return false;
                 if (!Set.of("SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT").contains(c.coverage() == null ? "" : c.coverage())
                         || !texts(c.flow(), 1, 8) || !texts(c.criticismHypotheses(), 0, 16) || !texts(c.missingContext(), 1, 8)
                         || c.sourceInterpretations() == null || c.sourceInterpretations().size() > 16
@@ -228,12 +245,16 @@ public class ReviewGuidelineLibrary {
                     .digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
-    private static boolean validRetrieval(RetrievalView r) {
-        return r != null && "frozen-legacy-lexical-1".equals(r.version())
+    private static boolean validRetrieval(RetrievalView r, boolean units) {
+        return r != null && ("frozen-legacy-lexical-1".equals(r.version())
                 && "FROZEN_LEGACY_NOT_SOURCE_EVIDENCE".equals(r.basis())
+                || units && "context-unit-retrieval-1".equals(r.version())
+                && "AUTHORED_ROUTING_NOT_SOURCE_EVIDENCE".equals(r.basis()))
                 && text(r.text(), 8000) && retrievalHash(r.text()).equals(r.sha256());
     }
-    private boolean splitArchive() { return archive != null && Set.of("review-guidelines-4", "review-guidelines-5").contains(archive.schemaVersion()); }
+    private boolean splitArchive() { return archive != null && Set.of("review-guidelines-4", "review-guidelines-5", "review-guidelines-6").contains(archive.schemaVersion()); }
+    boolean contextUnitArchive() { return archive != null && "review-guidelines-6".equals(archive.schemaVersion())
+            && "READY_WORKING_REFERENCE".equals(state) && !expired(); }
     private boolean expired() { return archive != null && !OffsetDateTime.parse(archive.refreshOrDeleteBy()).isAfter(OffsetDateTime.now()); }
     List<Example> examples(TimelineEventType channel) {
         if (archive == null || expired() || !"READY_WORKING_REFERENCE".equals(state)) return List.of();
@@ -256,8 +277,12 @@ public class ReviewGuidelineLibrary {
     String prompt(TimelineEventType channel) {
         var examples = examples(channel);
         if (splitArchive() && !examples.isEmpty())
-            return "\n" + CONTRACT + "\ncontextReference=" + payload(patternRows(examples), List.of());
+            return "\n" + referenceContract() + "\ncontextReference=" + payload(patternRows(examples), List.of());
         return examples.isEmpty() ? "" : "\n" + CONTRACT + "\nreviewGuidelines=" + JSON.writeValueAsString(examples);
+    }
+    private String referenceContract() {
+        return CONTRACT + (contextUnitArchive() ? "\nnormalContrasts는 작성한 합성 개발 대조이며 실제 영상 관측·독립 정답이 아니다. "
+                + "현재 원문 근거를 대체하거나 정상 판정을 강제하지 않는다. routingKeys와 검색용 문구는 위험 라벨이 아니다.\n" : "");
     }
     public record SelectionTrace(String requestKey, String state, String retrievalMethod,
             int availableExamples, int matchedExamples, int budgetSkipped, int payloadCodePoints,
@@ -270,6 +295,11 @@ public class ReviewGuidelineLibrary {
     }
     Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
                      Collection<ReviewInput.Segment> focus) {
+        return select(channel, raw, requestKey, focus, Set.of());
+    }
+    /** Optional soft routing hints; current pipeline supplies none. Unknown/empty hints fall back to lexical search. */
+    Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
+                     Collection<ReviewInput.Segment> focus, Set<String> mechanismCandidates) {
         var base = examples(channel);
         if (!splitArchive() || base.isEmpty() || selector == null) {
             var t = trace(channel);
@@ -277,14 +307,14 @@ public class ReviewGuidelineLibrary {
                     t.availableExampleCount(), 0, 0, t.payloadCodePoints(), t.payloadCodePoints(), List.of(), t.guidelineIds()));
         }
         var patterns = patternRows(base);
-        var focused = selector.rank(channel, focus, excludedFamilies);
+        var focused = selector.rank(channel, focus, excludedFamilies, mechanismCandidates);
         // Prefer context near the proposed quotations before unrelated material at the far
         // ends of an expanded 60s validation window. This is lexical routing, not a decision.
         var near = focus.isEmpty() ? raw : raw.stream().filter(s -> focus.stream().anyMatch(f ->
                 s.startMs() >= f.startMs() - 15000 && s.startMs() <= f.endMs() + 15000)).toList();
-        var contextual = new ArrayList<>(selector.rank(channel, near, excludedFamilies));
+        var contextual = new ArrayList<>(selector.rank(channel, near, excludedFamilies, mechanismCandidates));
         Set<String> contextIds = new HashSet<>(); contextual.forEach(m -> contextIds.add(m.example().id()));
-        selector.rank(channel, raw, excludedFamilies).stream()
+        selector.rank(channel, raw, excludedFamilies, mechanismCandidates).stream()
                 .filter(m -> contextIds.add(m.example().id())).forEach(contextual::add);
         List<ContextExampleSelector.Match> ranked = new ArrayList<>();
         Set<String> rankedIds = new HashSet<>();
@@ -316,8 +346,10 @@ public class ReviewGuidelineLibrary {
             selected.add(e); families.add(e.familyId());
         }
         String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
-        return new Selection("\n" + CONTRACT + "\ncontextReference=" + payload,
-                new SelectionTrace(requestKey, state, focus.isEmpty() ? "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC"
+        return new Selection("\n" + referenceContract() + "\ncontextReference=" + payload,
+                new SelectionTrace(requestKey, state, ranked.stream().anyMatch(ContextExampleSelector.Match::routed)
+                        ? "EXPLICIT_MECHANISM_HINT_SOFT_ROUTING_NOT_CLASSIFICATION"
+                        : focus.isEmpty() ? "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC"
                         : "CANDIDATE_NEAR_CONTEXT_INTERLEAVED_LOCAL_NOT_SEMANTIC",
                         trace(channel).availableExampleCount(), ranked.size(), skipped.size(), codePoints(payload),
                         codePoints(payload(patterns, List.of())), selected.stream().map(ContextExample::id).toList(),

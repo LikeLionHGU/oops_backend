@@ -9,7 +9,9 @@ import java.util.regex.Pattern;
 final class ContextExampleSelector {
     private static final Pattern WORDS = Pattern.compile("[\\p{L}\\p{N}]+");
     private record Indexed(ReviewGuidelineLibrary.ContextExample example, Set<String> terms) {}
-    record Match(ReviewGuidelineLibrary.ContextExample example, double score) {}
+    record Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed) {
+        Match(ReviewGuidelineLibrary.ContextExample example, double score) { this(example, score, false); }
+    }
     private final List<Indexed> index;
     private final Map<String, Integer> frequencies = new HashMap<>();
 
@@ -29,6 +31,10 @@ final class ContextExampleSelector {
         }).toList();
     }
     List<Match> rank(TimelineEventType channel, Collection<ReviewInput.Segment> raw, Set<String> excludedFamilies) {
+        return rank(channel, raw, excludedFamilies, Set.of());
+    }
+    List<Match> rank(TimelineEventType channel, Collection<ReviewInput.Segment> raw, Set<String> excludedFamilies,
+                     Set<String> mechanismCandidates) {
         // Source IDs, hypotheses, URLs, popularity and article metadata are not queries.
         StringBuilder query = new StringBuilder();
         for (var s : raw) {
@@ -40,6 +46,7 @@ final class ContextExampleSelector {
             if (query.length() >= 24000) break;
         }
         Set<String> queryTerms = terms(query.toString());
+        if (queryTerms.isEmpty()) return List.of();
         List<Match> matches = new ArrayList<>();
         for (var item : index) {
             var e = item.example();
@@ -48,9 +55,11 @@ final class ContextExampleSelector {
             for (var t : item.terms()) if (queryTerms.contains(t)) {
                 hits++; score += 1 + Math.log((index.size() + 1.0) / (frequencies.get(t) + 1.0));
             }
-            if (hits >= 3) matches.add(new Match(e, score / Math.sqrt(Math.max(1, item.terms().size()))));
+            boolean routed = e.routingKeys() != null && e.routingKeys().stream().anyMatch(mechanismCandidates::contains);
+            if (hits >= 3 || routed) matches.add(new Match(e, score / Math.sqrt(Math.max(1, item.terms().size())), routed));
         }
-        matches.sort(Comparator.comparingDouble(Match::score).reversed().thenComparing(m -> m.example().id()));
+        matches.sort(Comparator.comparing(Match::routed).reversed()
+                .thenComparing(Comparator.comparingDouble(Match::score).reversed()).thenComparing(m -> m.example().id()));
         return matches;
     }
     private static Set<String> terms(String text) {

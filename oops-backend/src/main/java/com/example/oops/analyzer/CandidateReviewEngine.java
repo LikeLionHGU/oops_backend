@@ -228,9 +228,16 @@ final class CandidateReviewEngine {
                     candidates.add(candidate);
                     // Approved historical cases are copied too, never retrieved afresh at verification.
                     String reference = guidelinePrompt;
+                    String referenceKey = discoveryRequestKey;
+                    // Explicit v6 archive only: choose unit references once using the validated candidate,
+                    // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
+                    if (guidelines != null && guidelines.contextUnitArchive()) {
+                        referenceKey = "unit-" + id;
+                        reference = stats.candidateReference(guidelines, candidate, referenceKey);
+                    }
                     if (references != null && !references.examples().isEmpty()) reference += "\n" + CASE_REFERENCE_CONTRACT
                             + "\nreferenceCases: " + JSON.writeValueAsString(references.examples());
-                    var frozen = new FrozenReference(discoveryRequestKey, reference);
+                    var frozen = new FrozenReference(referenceKey, reference);
                     frozenReferences.put(id, frozen);
                     stats.snapshot(candidate, frozen);
                 }
