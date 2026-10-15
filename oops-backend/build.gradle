@@ -177,6 +177,35 @@ tasks.register('auditRoutingPriority', JavaExec) {
     }
 }
 
+// Blinded semantic ranking preparation only: no HTTP client or credentials.
+tasks.register('prepareSemanticReferenceRanking', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextSemanticRankPreparation'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def results = providers.gradleProperty('trialResults').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!plan || !results || !output) throw new GradleException('Set trialPlan, trialResults, NEW private trialOutput (prepare only)')
+        args plan, results, output
+    }
+}
+
+// Fresh exact-plan cost/profile consent; at most 24 single-attempt comparative requests.
+tasks.register('runSemanticReferenceRanking', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextSemanticRankExecution'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def sha = providers.gradleProperty('trialPlanSha').orNull
+        def consent = providers.gradleProperty('trialConsent').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!plan || !sha || !consent || !output) throw new GradleException('Exact-plan fresh cost/profile-text consent required')
+        args plan, sha, consent, output
+    }
+}
+
 // Local 2x2 selection replay of complete saved responses; no API, credentials or model changes.
 tasks.register('auditSelectionFactors', JavaExec) {
     dependsOn testClasses

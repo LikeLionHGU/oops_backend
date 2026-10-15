@@ -23,7 +23,10 @@ public final class ContextRoutingProbeExecution {
         private JsonNode expected; private boolean armed;
         Guard(TextBoundaryTrial.Budget budget) { this.budget=budget; }
         void arm(ContextRoutingProbePlan.Task task,OpenAiClient client) {
-            var body=new LinkedHashMap<>(client.replayRequestBody(task.system(),task.input()));
+            arm(task.system(),task.input(),client);
+        }
+        void arm(String system,String input,OpenAiClient client) {
+            var body=new LinkedHashMap<>(client.replayRequestBody(system,input));
             body.put("max_completion_tokens",1024);
             expected=JSON.valueToTree(body); armed=true;
         }
