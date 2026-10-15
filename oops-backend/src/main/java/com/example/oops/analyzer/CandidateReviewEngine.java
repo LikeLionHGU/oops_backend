@@ -69,7 +69,7 @@ final class CandidateReviewEngine {
         Candidate { raw = List.copyOf(raw); }
     }
     /** Frozen routing data, not evidence or an instruction to retain the discovery verdict. */
-    private record FrozenReference(String discoveryRequestKey, String prompt) {}
+    private record FrozenReference(String discoveryRequestKey, String prompt, ContextMechanismRouter.LinkTrace routingLink) {}
     private record VerificationScope(String reference, String rawSha256) {}
 
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates) {
@@ -240,17 +240,19 @@ final class CandidateReviewEngine {
                     // Approved historical cases are copied too, never retrieved afresh at verification.
                     String reference = guidelinePrompt;
                     String referenceKey = discoveryRequestKey;
+                    ContextMechanismRouter.LinkTrace routingLink = null;
                     // Explicit v6 archive only: choose unit references once using the validated candidate,
                     // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
                     if (guidelines != null && guidelines.contextUnitArchive()) {
                         referenceKey = "unit-" + id;
                         var evidenceIds = new HashSet<>(candidate.proposal().evidence().stream().map(Quote::segmentId).toList());
+                        routingLink = routed==null?null:routed.linkFor(evidenceIds);
                         reference = stats.candidateReference(guidelines, candidate, referenceKey,
                                 routed == null ? Set.of() : routed.keysFor(evidenceIds));
                     }
                     if (references != null && !references.examples().isEmpty()) reference += "\n" + CASE_REFERENCE_CONTRACT
                             + "\nreferenceCases: " + JSON.writeValueAsString(references.examples());
-                    var frozen = new FrozenReference(referenceKey, reference);
+                    var frozen = new FrozenReference(referenceKey, reference, routingLink);
                     frozenReferences.put(id, frozen);
                     stats.snapshot(candidate, frozen);
                 }
@@ -775,7 +777,7 @@ final class CandidateReviewEngine {
             snapshots.put(c.candidateId(), new CandidateReviewDiagnostics.InputSnapshot(reference.discoveryRequestKey(),
                     ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(compact(c.raw()))),
                     ReviewGuidelineLibrary.retrievalHash(reference.prompt()),
-                    ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal()))));
+                    ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal())),reference.routingLink()));
         }
         void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure) {
             if (evidenceCounts.size() >= MAX_TRACES) return;

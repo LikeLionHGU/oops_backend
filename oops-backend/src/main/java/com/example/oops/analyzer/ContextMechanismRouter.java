@@ -29,6 +29,7 @@ public final class ContextMechanismRouter {
     public record Response(List<Route> routes) {}
     public record Trace(String requestKey, String revision, String state, boolean attempted,
                         List<String> availableKeys, List<Route> routes, String inputSha256, long elapsedMs) {}
+    public record LinkTrace(String sourceRequestKey, String state, List<String> passedKeys, List<String> droppedKeys) {}
     record Result(Trace trace) {
         Set<String> keys() { return keysFor(null); }
         Set<String> keysFor(Set<String> evidenceIds) {
@@ -36,6 +37,14 @@ public final class ContextMechanismRouter {
             for (var route : trace.routes()) if (evidenceIds == null
                     || route.segmentIds().stream().anyMatch(evidenceIds::contains)) keys.add(route.key());
             return Collections.unmodifiableSet(keys);
+        }
+        LinkTrace linkFor(Set<String> evidenceIds) {
+            if (keys().isEmpty()) return null;
+            var passed = new TreeSet<>(keysFor(evidenceIds));
+            var dropped = new TreeSet<>(keys()); dropped.removeAll(passed);
+            return new LinkTrace(trace.requestKey(),dropped.isEmpty()?"ALL_KEYS_PASSED":passed.isEmpty()
+                    ?"ALL_KEYS_DROPPED_NO_EVIDENCE_OVERLAP":"SOME_KEYS_DROPPED_NO_EVIDENCE_OVERLAP",
+                    List.copyOf(passed),List.copyOf(dropped));
         }
     }
     /** Per-video state, not shared across concurrent users or cached across unrelated batches. */

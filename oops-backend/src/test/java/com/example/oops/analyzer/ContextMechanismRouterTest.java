@@ -38,6 +38,8 @@ class ContextMechanismRouterTest {
         assertThat(result.keys()).containsExactly("graphic-body-metaphor");
         assertThat(result.keysFor(Set.of("unrelated"))).isEmpty();
         assertThat(result.keysFor(Set.of("current-1"))).isEqualTo(result.keys());
+        assertThat(result.linkFor(Set.of("unrelated")).state()).isEqualTo("ALL_KEYS_DROPPED_NO_EVIDENCE_OVERLAP");
+        assertThat(result.linkFor(Set.of("unrelated")).sourceRequestKey()).isEqualTo("discovery-1");
         assertThat(result.trace().state()).isEqualTo("ROUTED");
         assertThat(result.trace().inputSha256()).hasSize(64);
         assertThat(JSON.writeValueAsString(result.trace())).doesNotContain("완전히 다른 표현");
@@ -148,6 +150,10 @@ class ContextMechanismRouterTest {
                 argThat(keys -> !keys.isEmpty()));
         assertThat(result.diagnostics().candidatePipeline().mechanismRouting()).singleElement()
                 .extracting(Trace::state).isEqualTo("ROUTED");
+        assertThat(result.diagnostics().candidatePipeline().candidates()).singleElement().satisfies(c -> {
+            assertThat(c.inputSnapshot().routingLink().passedKeys()).isEmpty();
+            assertThat(c.inputSnapshot().routingLink().droppedKeys()).containsExactly("graphic-body-metaphor");
+        });
     }
     @Test void failedRoutingAndDisabledRoutingPreserveExactCandidateSnapshotAndDecision() {
         var f = new CandidateReviewEngineTest();

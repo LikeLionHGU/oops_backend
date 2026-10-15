@@ -55,7 +55,11 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
     }
     /** No transcript, hypothesis text, or reference content is persisted in this metadata. */
     public record InputSnapshot(String discoveryRequestKey, String rawSha256, String referenceSha256,
-                                String proposalSha256) {}
+                                String proposalSha256,
+                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                ContextMechanismRouter.LinkTrace routingLink) {
+        public InputSnapshot(String key,String raw,String reference,String proposal) { this(key,raw,reference,proposal,null); }
+    }
     /** Structural permissions only; no raw quotes and no inferred topic relation. */
     public record WindowMatchTrace(String detail, int anchorWindowCount, int matchingWindowCount,
                                    int evidenceOutsideAllWindows, int minimumMissingEvidence) {}
