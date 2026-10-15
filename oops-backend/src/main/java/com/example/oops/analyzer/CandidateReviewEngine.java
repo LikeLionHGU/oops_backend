@@ -554,6 +554,19 @@ final class CandidateReviewEngine {
                 && u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()))) return "PROPOSAL_WINDOW_MISMATCH";
         return null;
     }
+    static CandidateReviewDiagnostics.WindowMatchTrace inspectWindows(Proposal p, List<ReviewUnit> units) {
+        var windows = units.stream().filter(u -> Objects.equals(u.anchorId(),p.anchorId())).toList();
+        Set<String> evidence = new HashSet<>();
+        if (p.evidence() != null) p.evidence().stream().filter(Objects::nonNull).map(Quote::segmentId).forEach(evidence::add);
+        Set<String> union = new HashSet<>(); windows.forEach(w -> union.addAll(w.segmentIds()));
+        int outside = (int)evidence.stream().filter(id -> !union.contains(id)).count();
+        int matching = (int)windows.stream().filter(w -> w.segmentIds().containsAll(evidence)).count();
+        int missing = windows.stream().mapToInt(w -> (int)evidence.stream().filter(id -> !w.segmentIds().contains(id)).count())
+                .min().orElse(evidence.size());
+        String detail = windows.isEmpty() ? "NO_ANCHOR_WINDOW" : outside > 0 ? "EVIDENCE_OUTSIDE_ALL_WINDOWS"
+                : matching == 0 ? "EVIDENCE_SPANS_DIFFERENT_WINDOWS" : "MATCHED";
+        return new CandidateReviewDiagnostics.WindowMatchTrace(detail,windows.size(),matching,outside,missing);
+    }
     record Validation(Observation observation, String failureCode) {}
     private static Validation invalid(String code) { return new Validation(null, code); }
 
@@ -778,11 +791,13 @@ final class CandidateReviewEngine {
                         && !allowed.contains(q.segmentId())).map(Quote::segmentId).distinct().count();
                 anchorQuotePresent = p.evidence().stream().anyMatch(q -> q != null && p.anchorId().equals(q.segmentId()));
             }
+            String failure = proposalFailure(p,batch,units,reviewed);
             if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id,
                     anchor == null ? null : anchor.id(), axis, "INVALID_PROPOSAL",
                     anchor == null ? null : anchor.startMs(), anchor == null ? null : anchor.endMs(),
-                    List.of(), false, false, proposalFailure(p, batch, units, reviewed),
-                    evidenceCount, outOfWindow, anchorQuotePresent));
+                    List.of(), false, false, failure,
+                    evidenceCount, outOfWindow, anchorQuotePresent,null,
+                    "PROPOSAL_WINDOW_MISMATCH".equals(failure) ? inspectWindows(p,units) : null));
         }
         String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey) {
             if (library == null) return "";

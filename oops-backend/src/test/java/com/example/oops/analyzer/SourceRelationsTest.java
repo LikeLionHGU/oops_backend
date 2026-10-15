@@ -173,6 +173,8 @@ class SourceRelationsTest {
         var result=run(fixture.client,c,24,null,null,null,null,0,true);
         assertThat(result.diagnostics().candidatePipeline().candidates()).singleElement()
                 .extracting(CandidateReviewDiagnostics.Trace::failureCode).isEqualTo("PROPOSAL_WINDOW_MISMATCH");
+        assertThat(result.diagnostics().candidatePipeline().candidates().get(0).windowMatch().detail())
+                .isEqualTo("EVIDENCE_SPANS_DIFFERENT_WINDOWS");
         verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
     }
     @Test void sourceRoleListsAreImmutableAndLegacyProposalJsonShapeIsUnchanged() {

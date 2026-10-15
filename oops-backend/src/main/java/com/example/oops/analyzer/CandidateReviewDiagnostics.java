@@ -40,11 +40,21 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
     /** No transcript, hypothesis text, or reference content is persisted in this metadata. */
     public record InputSnapshot(String discoveryRequestKey, String rawSha256, String referenceSha256,
                                 String proposalSha256) {}
+    /** Structural permissions only; no raw quotes and no inferred topic relation. */
+    public record WindowMatchTrace(String detail, int anchorWindowCount, int matchingWindowCount,
+                                   int evidenceOutsideAllWindows, int minimumMissingEvidence) {}
     public record Trace(String candidateId, String anchorId, String axis, String state,
                         Long contextStartMs, Long contextEndMs, List<String> contextSegmentIds,
                         boolean contextExpanded, boolean contextLimited, String failureCode,
                         Integer proposedEvidenceCount, Integer outOfWindowCount, Boolean anchorQuotePresent,
-                        InputSnapshot inputSnapshot) {
+                        InputSnapshot inputSnapshot,
+                        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                        WindowMatchTrace windowMatch) {
+        public Trace(String id, String anchor, String axis, String state, Long start, Long end,
+                     List<String> ids, boolean expanded, boolean limited, String failure,
+                     Integer evidenceCount, Integer outOfWindow, Boolean anchorPresent, InputSnapshot snapshot) {
+            this(id,anchor,axis,state,start,end,ids,expanded,limited,failure,evidenceCount,outOfWindow,anchorPresent,snapshot,null);
+        }
         public Trace(String id, String anchor, String axis, String state, Long start, Long end,
                      List<String> ids, boolean expanded, boolean limited, String failure,
                      Integer evidenceCount, Integer outOfWindow, Boolean anchorPresent) {
