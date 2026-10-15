@@ -9,6 +9,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
     static final String REVISION = "2026-10-14-target-contract-diagnostics-37";
+    static final String RELATION_REVISION = "2026-10-15-source-relations-experiment-38";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -45,8 +46,13 @@ final class CandidateReviewEngine {
     private CandidateReviewEngine() {}
 
     public record Quote(String segmentId, String quote) {}
-    public record Proposal(String anchorId, String axis, String reason, List<Quote> evidence) {
+    public record Proposal(String anchorId, String axis, String reason, List<Quote> evidence,
+                           @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                           SourceRelations sourceRelations) {
         public Proposal { evidence = evidence == null ? null : Collections.unmodifiableList(new ArrayList<>(evidence)); }
+        public Proposal(String anchorId, String axis, String reason, List<Quote> evidence) {
+            this(anchorId,axis,reason,evidence,null);
+        }
     }
     public record UncertainSegment(String segmentId, List<String> missingInformation) {}
     public record Discovery(List<String> reviewedSegmentIds, List<Proposal> candidates,
@@ -89,11 +95,18 @@ final class CandidateReviewEngine {
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit) {
+        return run(client,context,maxCandidates,visual,caseLibrary,guidelines,requestTrace,evidenceLimit,false);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
+                                      boolean sourceRelationsEnabled) {
         if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
         var stats = new Stats();
+        stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
@@ -120,12 +133,13 @@ final class CandidateReviewEngine {
             Discovery response;
             try {
                 Map<String, Object> request = new LinkedHashMap<>(Map.of(
-                        "promptRevision", REVISION, "primaryIds", primaryIds,
+                        "promptRevision", stats.revision, "primaryIds", primaryIds,
                         "raw", compact(raw), "windows", compactWindows(units), "targetWindows", compactWindows(targetUnits),
                         "contextLimited", batch.contextLimited()));
                 boolean hasReferences = references != null && !references.examples().isEmpty();
                 if (hasReferences) request.put("referenceCases", references.examples());
-                response = client.completeAsJson(DISCOVERY_PROMPT + guidelinePrompt + (hasReferences ? "\n" + CASE_REFERENCE_CONTRACT : ""),
+                response = client.completeAsJson((sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : DISCOVERY_PROMPT)
+                                + guidelinePrompt + (hasReferences ? "\n" + CASE_REFERENCE_CONTRACT : ""),
                         JSON.writeValueAsString(request), Discovery.class).orElse(null);
             } catch (RuntimeException ex) { response = null; }
             if (!validDiscovery(response, primaryIds)) {
@@ -159,6 +173,17 @@ final class CandidateReviewEngine {
                 boolean needsVisual = proposalIndex >= response.candidates().size();
                 stats.proposed++;
                 String id = "candidate-" + ++counter;
+                if (proposal != null && (sourceRelationsEnabled && !needsVisual
+                        ? proposal.sourceRelations() == null || proposal.reason() != null
+                        : proposal.sourceRelations() != null)) {
+                    stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true;
+                    String proposedAnchor = proposal.anchorId();
+                    String safeAnchor = raw.stream().anyMatch(s -> s.id().equals(proposedAnchor)) ? proposedAnchor : null;
+                    String safeAxis = Set.of("TARGET_TREATMENT","EXPRESSION_CONTENT").contains(proposal.axis() == null ? "" : proposal.axis())
+                            ? proposal.axis() : null;
+                    stats.trace(id,safeAnchor,safeAxis,"INVALID_PROPOSAL","PROPOSAL_RELATION_MODE");
+                    continue;
+                }
                 // Approach A: server supplies evidence quotes from raw; the model only picks line IDs/roles.
                 if (proposal != null) {
                     Map<String, ReviewInput.Segment> rawById = new HashMap<>();
@@ -169,7 +194,10 @@ final class CandidateReviewEngine {
                 Candidate candidate = candidate(id, proposal, batch, allowedUnits, response.reviewedSegmentIds(), input, !needsVisual);
                 if (candidate == null) {
                     String failure = proposalFailure(proposal, batch, allowedUnits, response.reviewedSegmentIds());
-                    if (REPAIRABLE_PROPOSALS.contains(failure == null ? "" : failure)) {
+                    // A relation proposal must not fall back to the legacy conclusion/reason repair schema.
+                    // Keep malformed roles unassessed; a relation-specific discovery repair is not enabled yet.
+                    if (REPAIRABLE_PROPOSALS.contains(failure == null ? "" : failure)
+                            && proposal.sourceRelations() == null) {
                         if (stats.discoveryRepairCalls < MAX_DISCOVERY_REPAIRS
                                 && stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                             var repaired = repairProposal(client, id, proposal, batch, allowedUnits,
@@ -185,7 +213,8 @@ final class CandidateReviewEngine {
                 }
                 // Deduplicate exact anchored evidence only; different criticisms of a quote are preserved.
                 String fingerprint = needsVisual + "|" + proposal.anchorId() + "|" + proposal.axis() + "|" + proposal.reason()
-                        + "|" + proposal.evidence().stream().map(q -> q.segmentId() + "=" + q.quote()).sorted().toList();
+                        + "|" + proposal.evidence().stream().map(q -> q.segmentId() + "=" + q.quote()).sorted().toList()
+                        + (proposal.sourceRelations() == null ? "" : "|" + JSON.writeValueAsString(proposal.sourceRelations()));
                 if (!fingerprints.add(fingerprint)) { stats.duplicates++; continue; }
                 if (candidates.size() + visualCandidates.size() >= maxCandidates
                         || needsVisual && visualCandidates.size() >= (visual == null ? 3 : visual.maxCandidates())) {
@@ -225,7 +254,8 @@ final class CandidateReviewEngine {
             VerificationResult response;
             String responseFailure = null;
             int failuresBefore = client.failureCount();
-            String requestSystem = verificationPrompt(evidenceLimit) + guidelinePrompt;
+            String requestSystem = (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
+                    : SourceRelationPrompts.verification(evidenceLimit)) + guidelinePrompt;
             String requestInput = verificationRequest(group, null);
             try {
                 response = client.completeAsJson(requestSystem, requestInput,
@@ -368,13 +398,19 @@ final class CandidateReviewEngine {
         Map<String, ReviewInput.Segment> raw = new LinkedHashMap<>();
         candidates.forEach(c -> c.raw().forEach(s -> raw.put(s.id(), s)));
         Map<String, Object> request = new LinkedHashMap<>();
-        request.put("promptRevision", REVISION);
+        boolean relations = candidates.stream().anyMatch(c -> c.proposal().sourceRelations() != null);
+        request.put("promptRevision", relations ? RELATION_REVISION : REVISION);
         request.put("raw", compact(raw.values().stream()
                 .sorted(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id)).toList()));
-        request.put("candidates", candidates.stream().map(c -> Map.of("candidateId", c.candidateId(),
+        if (!relations) request.put("candidates", candidates.stream().map(c -> Map.of("candidateId", c.candidateId(),
                 "anchorId", c.proposal().anchorId(), "axis", c.proposal().axis(),
                 "hypothesisNotEvidence", c.proposal().reason(),
                 "proposedEvidence", c.proposal().evidence(),
+                "contextExpanded", c.contextExpanded(), "contextLimited", c.contextLimited(),
+                "segmentIds", c.raw().stream().map(ReviewInput.Segment::id).toList())).toList());
+        else request.put("candidates", candidates.stream().map(c -> Map.of("candidateId", c.candidateId(),
+                "anchorId", c.proposal().anchorId(), "axis", c.proposal().axis(),
+                "sourceRelations", c.proposal().sourceRelations(), "proposedEvidence", c.proposal().evidence(),
                 "contextExpanded", c.contextExpanded(), "contextLimited", c.contextLimited(),
                 "segmentIds", c.raw().stream().map(ReviewInput.Segment::id).toList())).toList());
         if (failure != null) {
@@ -405,7 +441,8 @@ final class CandidateReviewEngine {
                 Map<String, ReviewInput.Segment> rawById = new HashMap<>();
                 raw(batch).forEach(s -> rawById.put(s.id(), s));
                 p = normalizeProposal(p, rawById);
-                if (!original.anchorId().equals(p.anchorId()) || !original.axis().equals(p.axis())) failure = "PROPOSAL_REPAIR_SCOPE_CHANGED";
+                if (p.sourceRelations() != null || !original.anchorId().equals(p.anchorId()) || !original.axis().equals(p.axis()))
+                    failure = "PROPOSAL_REPAIR_SCOPE_CHANGED";
                 else {
                     failure = proposalFailure(p, batch, units, reviewed);
                     if (failure == null) result = candidate(id, p, batch, units, reviewed, input, freezeWindow);
@@ -425,7 +462,8 @@ final class CandidateReviewEngine {
         int failuresBefore = client.failureCount();
         try {
             var correction = repairPrompt(initial);
-            var response = client.completeAsJson(verificationPrompt(evidenceLimit) + reference + "\n" + correction,
+            var response = client.completeAsJson((c.proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
+                            : SourceRelationPrompts.verification(evidenceLimit)) + reference + "\n" + correction,
                     verificationRequest(List.of(c), initial, targetDetail(c, previous, initial)), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE");
@@ -488,7 +526,8 @@ final class CandidateReviewEngine {
         if (p == null) return "PROPOSAL_NULL";
         if (p.anchorId() == null || !reviewed.contains(p.anchorId())) return "PROPOSAL_ANCHOR_NOT_REVIEWED";
         if (!Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis())) return "PROPOSAL_AXIS";
-        if (!useful(p.reason(), 300)) return "PROPOSAL_REASON";
+        if (p.sourceRelations() == null && !useful(p.reason(), 300)) return "PROPOSAL_REASON";
+        if (p.sourceRelations() != null && p.reason() != null) return "PROPOSAL_RELATION_MODE";
         // Previously all four shape failures collapsed into PROPOSAL_EVIDENCE_SHAPE, so a stored
         // INVALID_PROPOSAL could not be told apart (missing quotes vs over-budget) after the fact.
         if (p.evidence() == null) return "PROPOSAL_EVIDENCE_NULL";
@@ -504,6 +543,10 @@ final class CandidateReviewEngine {
         if (missingQuote) return "PROPOSAL_EVIDENCE_NULL_ITEM";
         if (p.evidence().size() > 8) return "PROPOSAL_EVIDENCE_OVER_BUDGET";
         if (new HashSet<>(p.evidence()).size() != p.evidence().size()) return "PROPOSAL_DUPLICATE_EVIDENCE";
+        if (p.sourceRelations() != null) {
+            String failure = p.sourceRelations().failure(p.anchorId(),p.evidence().stream().map(Quote::segmentId).toList());
+            if (failure != null) return failure;
+        }
         if (p.evidence().stream().noneMatch(q -> q.segmentId().equals(p.anchorId()))) return "PROPOSAL_ANCHOR_EVIDENCE_REQUIRED";
         if (units.stream().noneMatch(u -> u.anchorId().equals(p.anchorId())
                 && u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()))) return "PROPOSAL_WINDOW_MISMATCH";
@@ -522,7 +565,7 @@ final class CandidateReviewEngine {
             var seg = raw.get(q.segmentId());
             return seg == null ? q : new Quote(q.segmentId(), seg.text());
         }).toList();
-        return new Proposal(p.anchorId(), p.axis(), p.reason(), filled);
+        return new Proposal(p.anchorId(), p.axis(), p.reason(), filled, p.sourceRelations());
     }
     private static TextReviewEngine.LlmDecision normalizeAssessment(TextReviewEngine.LlmDecision d,
                                                                     Map<String, ReviewInput.Segment> raw) {
@@ -671,6 +714,7 @@ final class CandidateReviewEngine {
                 "segmentIds", e.getKey())).toList();
     }
     private static final class Stats {
+        String revision = REVISION;
         int discoveryCalls, verificationCalls, proposed, duplicates, invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches;
         int expandedCandidates, verificationLimitedCandidates, repairCalls, discoveryRepairCalls;
         int traceCount;
@@ -747,6 +791,11 @@ final class CandidateReviewEngine {
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();
         }
+        void trace(String id, String anchor, String axis, String state, String failure) {
+            traceCount++;
+            if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id,anchor,axis,state,
+                    null,null,List.of(),false,false,failure));
+        }
         void trace(String id, String anchor, String axis, String state) {
             traceCount++; if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id, anchor, axis, state));
         }
@@ -763,7 +812,7 @@ final class CandidateReviewEngine {
                     null, null, null, snapshots.get(candidate.candidateId())));
         }
         CandidateReviewDiagnostics finish(int explored) {
-            return new CandidateReviewDiagnostics(REVISION, discoveryCalls, verificationCalls, explored, proposed, duplicates,
+            return new CandidateReviewDiagnostics(revision, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
                     expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces,
                     guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts);

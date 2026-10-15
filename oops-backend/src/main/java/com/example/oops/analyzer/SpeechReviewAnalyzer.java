@@ -128,6 +128,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private final boolean candidateReviewEnabled;
     private final int maxCandidates;
     private int evidenceLimit;
+    private boolean sourceRelationsEnabled;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setSourceRelationsEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-source-relations-enabled:false}") boolean enabled) {
+        this.sourceRelationsEnabled = enabled;
+    }
     @org.springframework.beans.factory.annotation.Autowired
     void setEvidenceLimit(@org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-evidence-limit:0}") int limit) {
         if (limit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
@@ -208,7 +213,8 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
-            return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary, trace, evidenceLimit);
+            return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary,
+                    trace, evidenceLimit, sourceRelationsEnabled);
         }
     }
 
