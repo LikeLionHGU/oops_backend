@@ -1,5 +1,32 @@
 # OoPs?! AI 분석 로직
 
+## 관계 출력 계약 안정화 — 2026-10-15, 실험 개정 39
+
+`CANDIDATE_SOURCE_RELATIONS_ENABLED=true`의 현재 실행 개정은
+`2026-10-15-source-relations-contract-39`다. 기본 OFF/기본 개정 37은 유지한다.
+아래 개정 38은 최초 구현 이력이며 다음 차이를 우선 적용한다.
+
+- anchor는 평가뿐 아니라 상황/주체/행동/지칭 역할에도 있을 수 있다. 다섯 역할 중 하나에 anchor가
+  있어야 하고 evaluationIds는 비어 있으면 안 된다. 서버가 anchor를 평가 역할에 임의 추가하지 않는다.
+- 구조가 유효하고 제공된 raw에 실제 존재하는 역할 ID를 기존 evidence와 합친 후 원문을 복원한다.
+  모델이 이미 선택한 ID의 중복 목록을 동기화하는 처리이지 새 근거/대상/관계 생성이 아니다.
+  evidence 필드는 여전히 필요하다. 기존 항목을 삭제하지 않으며 합친 결과가 8개 초과이거나 한 허용 창에
+  속하지 않으면 거절한다. 미등록 ID·누락 역할·역할 내 중복·혼입 reason도 계속 거절한다.
+- 탐색 실패는 후보 trace 목록에 state=INVALID_DISCOVERY, candidateId=discovery-N으로 기록한다.
+  DISCOVERY_NO_USABLE_RESPONSE는 클라이언트 빈 결과/예외 등이며 JSON 파싱 오류만 뜻하지 않는다.
+  DISCOVERY_ENVELOPE_INVALID는 객체는 받았으나 탐색 계약이 잘못된 경우다. 둘 다 미확인으로 남긴다.
+  기존 invalidProposals 집계에는 배치 실패도 포함하므로 proposed나 카드 개수와 혼동하지 않는다.
+- 불확실 구간의 missingInformation 문자열 배열과 전체 응답 형식을 프롬프트에 명시했다.
+  전역 JSON 파서를 느슨하게 하거나 자동 유료 재탐색을 추가하지 않았다. 정식 JSON Schema API 전환도 아니다.
+
+63번은 개정 38 실행, 최종 C/D 두 카드다. B 후보 한 개는 관계/근거 불일치, 또 한 개는 anchor 역할
+계약으로 거절됐고 다른 B 후보는 검증 PASS였다. 별도 탐색 배치 실패 한 건도 있어 전체 탐지율로
+단순 비교하면 안 된다. 최신 사전과 B 참고 사례는 연결되어 있었다. 39는 형식 실패 안정화이며 B 의미 판단
+해결/실모델 개선은 아직 검증하지 않았다. 서버 재시작과 추가 유료 호출 없이 무료 회귀 테스트로 확인했다.
+
+OpenAI Docs의 [구조화 출력 지침](https://developers.openai.com/api/docs/guides/structured-outputs)을 참고해
+JSON 파싱 성공과 애플리케이션 계약 통과를 구분했다. 현재 JSON mode가 역할 ID 간 관계까지 보장하지는 않는다.
+
 ## 원문 관계 전달 실험 — 2026-10-15, 개정 38·기본 OFF
 
 기본 실행은 개정 37 그대로다. 비교용 `CANDIDATE_SOURCE_RELATIONS_ENABLED=true`를 명시한 경우에만
