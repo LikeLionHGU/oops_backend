@@ -141,6 +141,9 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private VisualContextReviewer visualReviewer;
     private ReviewCaseLibrary caseLibrary;
     private ReviewGuidelineLibrary guidelineLibrary;
+    private ContextMechanismRouter mechanismRouter;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setMechanismRouter(ContextMechanismRouter router) { this.mechanismRouter = router; }
     private com.example.oops.service.ReviewRequestTraceStore requestTraces;
     @org.springframework.beans.factory.annotation.Autowired
     void setRequestTraces(com.example.oops.service.ReviewRequestTraceStore store) { this.requestTraces = store; }
@@ -214,7 +217,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
             return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary,
-                    trace, evidenceLimit, sourceRelationsEnabled);
+                    trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter);
         }
     }
 

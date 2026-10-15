@@ -255,6 +255,13 @@ public class ReviewGuidelineLibrary {
     private boolean splitArchive() { return archive != null && Set.of("review-guidelines-4", "review-guidelines-5", "review-guidelines-6").contains(archive.schemaVersion()); }
     boolean contextUnitArchive() { return archive != null && "review-guidelines-6".equals(archive.schemaVersion())
             && "READY_WORKING_REFERENCE".equals(state) && !expired(); }
+    Set<String> routingKeys() {
+        if (!contextUnitArchive() || maxExamples == 0) return Set.of();
+        var keys = new TreeSet<String>();
+        archive.examples().stream().filter(e -> e.channels().contains("SPEECH") && !excludedFamilies.contains(e.familyId()))
+                .forEach(e -> keys.addAll(e.routingKeys()));
+        return Collections.unmodifiableSet(keys);
+    }
     private boolean expired() { return archive != null && !OffsetDateTime.parse(archive.refreshOrDeleteBy()).isAfter(OffsetDateTime.now()); }
     List<Example> examples(TimelineEventType channel) {
         if (archive == null || expired() || !"READY_WORKING_REFERENCE".equals(state)) return List.of();
@@ -297,7 +304,7 @@ public class ReviewGuidelineLibrary {
                      Collection<ReviewInput.Segment> focus) {
         return select(channel, raw, requestKey, focus, Set.of());
     }
-    /** Optional soft routing hints; current pipeline supplies none. Unknown/empty hints fall back to lexical search. */
+    /** Optional soft routing hints from the batch router. Unknown/empty hints fall back to lexical search. */
     Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
                      Collection<ReviewInput.Segment> focus, Set<String> mechanismCandidates) {
         var base = examples(channel);

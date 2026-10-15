@@ -10,13 +10,29 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         boolean truncated, List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
         List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
         List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
-        int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts) {
+        int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+        List<ContextMechanismRouter.Trace> mechanismRouting) {
+    public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
+            int exploredSegments, int proposed, int duplicates, int invalidProposals,
+            int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
+            int expandedCandidates, int verificationLimitedCandidates, boolean truncated,
+            List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
+            List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+            List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
+            int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts) {
+        this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,
+                rejected,uncertain,verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,
+                expandedCandidates,verificationLimitedCandidates,truncated,candidates,visualCandidates,caseRetrieval,
+                guidelineReference,contextSelections,repairCalls,repairs,discoveryRepairCalls,evidenceCounts,List.of());
+    }
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
         caseRetrieval = List.copyOf(caseRetrieval);
         contextSelections = List.copyOf(contextSelections);
         repairs = List.copyOf(repairs);
         evidenceCounts = evidenceCounts == null ? List.of() : List.copyOf(evidenceCounts);
+        mechanismRouting = mechanismRouting == null ? List.of() : List.copyOf(mechanismRouting);
     }
     public record EvidenceCountTrace(String candidateId, String attempt, Integer evidenceCount,
                                      int uniqueSegments, int uniqueSegmentRoles, int duplicateRoleEntries,

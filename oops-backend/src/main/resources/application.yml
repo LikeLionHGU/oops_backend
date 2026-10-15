@@ -134,6 +134,9 @@ oops:
     guidelines-example-max-cases: 2 # 원문별 로컬 검색. 검색되지 않아도 전체 원문 검수는 수행.
     guidelines-example-max-code-points: 3000 # 예시만의 상한. 잘라내지 않고 예시 전체를 제외.
     guidelines-excluded-families: ${REVIEW_GUIDELINES_EXCLUDED_FAMILIES:} # 독립 평가 시 사건 family를 제외. 공통 기준은 유지.
+    mechanism-routing-enabled: ${CONTEXT_MECHANISM_ROUTING_ENABLED:false} # v6에서만 배치별 검색 키 분류. 기본은 추가 과금 없이 기존 경로 유지.
+    mechanism-routing-location: ${CONTEXT_MECHANISM_ROUTING_LOCATION:file:../datasets/controversy/definitions/context-routing.json}
+    mechanism-routing-max-calls: ${CONTEXT_MECHANISM_ROUTING_MAX_CALLS:12} # 영상당 상한. 초과 배치도 어휘 검색·본 분석은 계속.
     candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
     candidate-source-relations-enabled: ${CANDIDATE_SOURCE_RELATIONS_ENABLED:false} # 실험 38: 결론형 가설 대신 원문 역할 ID 전달. 모델 비교 전 기본 OFF.
     candidate-review-max-candidates: 24 # 영상당 검증 후보 상한. 초과는 PARTIAL로 알린다.

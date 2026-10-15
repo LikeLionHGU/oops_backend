@@ -101,11 +101,19 @@ final class CandidateReviewEngine {
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
                                       boolean sourceRelationsEnabled) {
+        return run(client,context,maxCandidates,visual,caseLibrary,guidelines,requestTrace,evidenceLimit,
+                sourceRelationsEnabled,null);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
+                                      boolean sourceRelationsEnabled, ContextMechanismRouter router) {
         if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
         var stats = new Stats();
+        var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
@@ -126,7 +134,10 @@ final class CandidateReviewEngine {
             List<ReviewUnit> targetUnits = CandidateContextWindow.discoveryUnits(batch);
             List<ReviewInput.Segment> raw = raw(batch);
             String discoveryRequestKey = "discovery-" + (stats.discoveryCalls + 1);
-            String guidelinePrompt = stats.reference(guidelines, raw, discoveryRequestKey);
+            var routed = routing == null ? null : routing.route(guidelines, raw, discoveryRequestKey);
+            if (routed != null && stats.mechanismRouting.size() < MAX_TRACES) stats.mechanismRouting.add(routed.trace());
+            String guidelinePrompt = stats.reference(guidelines, raw, discoveryRequestKey,
+                    routed == null ? Set.of() : routed.keys());
             var references = caseLibrary == null ? null : caseLibrary.select(raw, sourceFingerprint);
             if (references != null && stats.retrievalTraces.size() < MAX_TRACES) stats.retrievalTraces.add(references.trace());
             stats.discoveryCalls++;
@@ -233,7 +244,9 @@ final class CandidateReviewEngine {
                     // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
                     if (guidelines != null && guidelines.contextUnitArchive()) {
                         referenceKey = "unit-" + id;
-                        reference = stats.candidateReference(guidelines, candidate, referenceKey);
+                        var evidenceIds = new HashSet<>(candidate.proposal().evidence().stream().map(Quote::segmentId).toList());
+                        reference = stats.candidateReference(guidelines, candidate, referenceKey,
+                                routed == null ? Set.of() : routed.keysFor(evidenceIds));
                     }
                     if (references != null && !references.examples().isEmpty()) reference += "\n" + CASE_REFERENCE_CONTRACT
                             + "\nreferenceCases: " + JSON.writeValueAsString(references.examples());
@@ -754,6 +767,7 @@ final class CandidateReviewEngine {
         final List<VisualContextReviewer.Trace> visualTraces = new ArrayList<>();
         final List<ReviewCaseLibrary.Trace> retrievalTraces = new ArrayList<>();
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
+        final List<ContextMechanismRouter.Trace> mechanismRouting = new ArrayList<>();
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
         final List<CandidateReviewDiagnostics.EvidenceCountTrace> evidenceCounts = new ArrayList<>();
         final Map<String, CandidateReviewDiagnostics.InputSnapshot> snapshots = new LinkedHashMap<>();
@@ -806,13 +820,17 @@ final class CandidateReviewEngine {
                     evidenceCount, outOfWindow, anchorQuotePresent,null,
                     "PROPOSAL_WINDOW_MISMATCH".equals(failure) ? inspectWindows(p,units) : null));
         }
-        String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey) {
+        String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey, Set<String> keys) {
             if (library == null) return "";
-            var selection = library.select(TimelineEventType.SPEECH, raw, requestKey);
+            var selection = keys.isEmpty() ? library.select(TimelineEventType.SPEECH, raw, requestKey)
+                    : library.select(TimelineEventType.SPEECH, raw, requestKey,List.of(),keys);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();
         }
         String candidateReference(ReviewGuidelineLibrary library, Candidate c, String requestKey) {
+            return candidateReference(library,c,requestKey,Set.of());
+        }
+        String candidateReference(ReviewGuidelineLibrary library, Candidate c, String requestKey, Set<String> keys) {
             if (library == null) return "";
             // Already-validated proposal quotes are routing text, not the model's reason or an inferred correction.
             var focus = c.proposal().evidence().stream().distinct().map(q -> {
@@ -821,7 +839,8 @@ final class CandidateReviewEngine {
             }).sorted(Comparator.comparingLong(ReviewInput.Segment::startMs)
                     .thenComparingLong(ReviewInput.Segment::endMs).thenComparing(ReviewInput.Segment::id)
                     .thenComparing(ReviewInput.Segment::text)).toList();
-            var selection = library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus);
+            var selection = keys.isEmpty() ? library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus)
+                    : library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus, keys);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();
         }
@@ -849,7 +868,7 @@ final class CandidateReviewEngine {
             return new CandidateReviewDiagnostics(revision, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
                     expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces,
-                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts);
+                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting);
         }
     }
 }
