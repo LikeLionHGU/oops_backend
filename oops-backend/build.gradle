@@ -84,6 +84,19 @@ tasks.register('bdHypothesisTrial', JavaExec) {
     }
 }
 
+// Offline policy pairing only: no paid runner or automatic Spring promotion.
+tasks.register('prepareContextJudgmentComparison', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.PrepareContextJudgmentComparison'
+    doFirst {
+        def trace = providers.gradleProperty('traceInput').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!trace || !output) throw new GradleException('Set traceInput and trialOutput private paths')
+        args trace, output
+    }
+}
+
 // Reference-only ablation: offline preparation and separately authorized paid execution.
 tasks.register('prepareReferenceTrial', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
