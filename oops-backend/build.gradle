@@ -84,6 +84,30 @@ tasks.register('bdHypothesisTrial', JavaExec) {
     }
 }
 
+// Reference-only ablation: offline preparation and separately authorized paid execution.
+tasks.register('prepareReferenceTrial', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReferenceOnlyTrial'
+    doFirst {
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!output) throw new GradleException('New private trialOutput required')
+        args 'prepare', '../datasets/controversy/legacy/runtime-history/aa8e90044981fe403aa4ddce1c04102794ac54b4d828dc7d93a3e20e8aeaccbc.json',
+                '../datasets/controversy/guidelines/runtime.json', '../datasets/controversy/experiments/text-boundary-37-20261014/results.json', output
+    }
+}
+tasks.register('referenceOnlyTrial', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReferenceOnlyTrial'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!plan || !output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved, trialPlan, trialOutput, trialBudget required')
+        args 'run', plan, output, budget
+    }
+}
+
 // No server startup or paid API calls: inspect curated-case eligibility/retrieval on saved text.
 tasks.register('reviewCaseReplay', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
