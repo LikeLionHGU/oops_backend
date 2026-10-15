@@ -191,6 +191,23 @@ tasks.register('prepareSemanticReferenceRanking', JavaExec) {
     }
 }
 
+// Explicit new USD1/text approval only: v1/v2, router OFF/ON, two repetitions.
+tasks.register('v7RoutingVideoTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.V7RoutingVideoTrial'
+    doFirst {
+        def mode = providers.gradleProperty('trialMode').orNull
+        def input = providers.gradleProperty('trialInput').orNull
+        def control = providers.gradleProperty('trialControl').orNull
+        def extra = providers.gradleProperty('trialExtra').orNull
+        def registry = providers.gradleProperty('trialRegistry').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!mode || !input || !control || !extra || !registry || !output) throw new GradleException('Explicit frozen prepare/run arguments required')
+        args mode, input, control, extra, registry, output
+    }
+}
+
 // Free audit of completed ranks and stored discovery input selection; no credentials/provider.
 tasks.register('auditSemanticRankReadiness', JavaExec) {
     dependsOn testClasses
