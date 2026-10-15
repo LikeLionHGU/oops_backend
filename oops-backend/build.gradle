@@ -144,6 +144,25 @@ tasks.register('prepareVerificationContractComparison', JavaExec) {
     }
 }
 
+// Real routing/discovery/verification on frozen excerpts. Paid only with fresh explicit opt-in.
+tasks.register('mechanismRoutingTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.MechanismRoutingTrial'
+    doFirst {
+        def mode = providers.gradleProperty('trialMode').orNull
+        def input = providers.gradleProperty('trialInput').orNull
+        def control = providers.gradleProperty('trialControl').orNull
+        def extra = providers.gradleProperty('trialExtra').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!mode || !input || !control || !extra || !output)
+            throw new GradleException('Set trialMode, trialInput, trialControl, trialExtra, trialOutput')
+        if (mode == 'run' && providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit fresh paid/text consent required')
+        args mode, input, control, extra, output
+    }
+}
+
 // Local retrieval only: manual hints are an audit control, not model predictions.
 tasks.register('auditContextUnitRetrieval', JavaExec) {
     dependsOn testClasses
