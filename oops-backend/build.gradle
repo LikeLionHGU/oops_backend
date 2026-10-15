@@ -98,6 +98,24 @@ tasks.register('contextPolicyTrial', JavaExec) {
     }
 }
 
+// Comparison 41: preparation is offline; run requires explicit consent and a frozen-plan hash.
+tasks.register('banterPolicyTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.BanterPolicyTrial'
+    doFirst {
+        def mode = providers.gradleProperty('trialMode').orNull
+        def input = providers.gradleProperty('trialInput').orNull
+        def control = providers.gradleProperty('trialControl').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!(mode in ['prepare', 'run']) || !input || !control || !output)
+            throw new GradleException('Set trialMode, trialInput, trialControl (packet or approved SHA), trialOutput')
+        if (mode == 'run' && providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Paid run requires explicit trialLiveApproved=true and user consent')
+        args mode, input, control, output
+    }
+}
+
 // Offline policy pairing only: no paid runner or automatic Spring promotion.
 tasks.register('prepareContextJudgmentComparison', JavaExec) {
     dependsOn testClasses
