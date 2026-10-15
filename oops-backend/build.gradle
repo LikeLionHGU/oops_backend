@@ -177,6 +177,21 @@ tasks.register('auditRoutingPriority', JavaExec) {
     }
 }
 
+// Local role-search ablation on frozen candidates; no provider or manual hints.
+tasks.register('auditContextRelations', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextRelationPreviewAudit'
+    doFirst {
+        def results = providers.gradleProperty('trialResults').orNull
+        def base = providers.gradleProperty('baselineRuntime').orNull
+        def preview = providers.gradleProperty('previewRuntime').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        if (!results || !base || !preview || !output) throw new GradleException('Set trialResults, baselineRuntime, previewRuntime, new private auditOutput')
+        args results, base, preview, output
+    }
+}
+
 // Local retrieval only: manual hints are an audit control, not model predictions.
 tasks.register('auditContextUnitRetrieval', JavaExec) {
     dependsOn testClasses
