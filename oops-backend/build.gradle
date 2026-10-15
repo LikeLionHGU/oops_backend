@@ -84,6 +84,20 @@ tasks.register('bdHypothesisTrial', JavaExec) {
     }
 }
 
+// Stored-STT preparation plus separately authorized paid comparison; never a server endpoint.
+tasks.register('contextPolicyTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextPolicyTrial'
+    doFirst {
+        def mode = providers.gradleProperty('trialMode').orNull
+        def input = providers.gradleProperty('trialInput').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!mode || !input || !output) throw new GradleException('Set trialMode, trialInput, trialOutput; run is paid and needs approval')
+        args mode, input, output
+    }
+}
+
 // Offline policy pairing only: no paid runner or automatic Spring promotion.
 tasks.register('prepareContextJudgmentComparison', JavaExec) {
     dependsOn testClasses
