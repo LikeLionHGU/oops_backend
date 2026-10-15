@@ -116,6 +116,21 @@ tasks.register('banterPolicyTrial', JavaExec) {
     }
 }
 
+// Read-only saved-response replay; never sends an API request or repairs model responses.
+tasks.register('auditDecisionContracts', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.OfflineDecisionContractAudit'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def results = providers.gradleProperty('trialResults').orNull
+        def report = providers.gradleProperty('auditOutput').orNull
+        if (!plan || !results || !report)
+            throw new GradleException('Set trialPlan, trialResults and a new private auditOutput')
+        args plan, results, report
+    }
+}
+
 // Offline policy pairing only: no paid runner or automatic Spring promotion.
 tasks.register('prepareContextJudgmentComparison', JavaExec) {
     dependsOn testClasses
