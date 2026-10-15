@@ -131,6 +131,19 @@ tasks.register('auditDecisionContracts', JavaExec) {
     }
 }
 
+// Comparison 42: output instruction pairs only; no live runner is selected by this task.
+tasks.register('prepareVerificationContractComparison', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.VerificationContractComparison'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!plan || !output) throw new GradleException('Set trialPlan and a new private trialOutput file')
+        args plan, output
+    }
+}
+
 // Offline policy pairing only: no paid runner or automatic Spring promotion.
 tasks.register('prepareContextJudgmentComparison', JavaExec) {
     dependsOn testClasses
