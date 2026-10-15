@@ -1,5 +1,7 @@
 # 현재 AI 요청별 프롬프트 전문
 
+> 10/15 비교 준비: [판단 기준 비교안40](판단-기준-비교안.md)은 테스트 전용이다. 기본37/실험39의 실제 업로드 프롬프트를 교체하지 않았다. POLICY만 교체하고 JSON 계약과 원문·후보·참고를 고정한 검증 비교를 준비한다. 실제 유료 비교·성능 평가는 아직 없다.
+
 > 10/15 안정화: 실험 실행은 이제 `2026-10-15-source-relations-contract-39`다. 상황 anchor를 평가 역할로 강제하지 않으며 유효한 역할 ID와 evidence를 서버에서 합친 뒤 동일한 원문/8개/창 검사를 적용한다. 불확실 구간 JSON 형식도 명시했다. [최신 계약](AI-분석-로직.md)을 우선하며 아래 38 설명은 최초 구현 이력이다. 기본 37·기본 OFF는 유지한다.
 
 > 10/15 추가: 기본 실행은 아래 개정 37을 유지한다. 기본 OFF인 `CANDIDATE_SOURCE_RELATIONS_ENABLED=true`에서만 실험 38의 텍스트 탐색 지시문으로 교체하고 최종 검증에 원문 역할 대조 지침을 추가한다. 실험 전문은 [SourceRelationPrompts.java](../oops-backend/src/main/java/com/example/oops/analyzer/SourceRelationPrompts.java)에 있으며, 검증은 기존 `verificationPrompt(limit)` + 실험 역할 지침 + 고정 참고로 조립한다. [원문 관계 계약](AI-분석-로직.md#원문-관계-전달-실험--2026-10-15-개정-38기본-off)을 따른다. 정식 JSON Schema API 전환이나 기본 가설 제거를 의미하지 않는다.
