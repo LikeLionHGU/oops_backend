@@ -177,6 +177,21 @@ tasks.register('auditRoutingPriority', JavaExec) {
     }
 }
 
+// Prepare frozen logical routing requests only; no HTTP client or credentials.
+tasks.register('prepareRoutingProbes', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextRoutingProbePlan'
+    doFirst {
+        def probes = providers.gradleProperty('probePlan').orNull
+        def preview = providers.gradleProperty('previewRuntime').orNull
+        def registry = providers.gradleProperty('routingRegistry').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!probes || !preview || !registry || !output) throw new GradleException('Set probePlan, previewRuntime, routingRegistry, new private trialOutput')
+        args probes, preview, registry, output
+    }
+}
+
 // Synthetic retrieval probes; oracle manual keys are controls, never model predictions.
 tasks.register('auditRetrievalContrasts', JavaExec) {
     dependsOn testClasses
