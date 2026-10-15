@@ -106,7 +106,9 @@ public final class ContextRankReadinessAudit {
         var source=JSON.readTree(bytes.get(2)); var arms=new LinkedHashMap<String,Object>();
         for(int i=3;i<=4;i++) {
             String text=new String(bytes.get(i),java.nio.charset.StandardCharsets.UTF_8);
-            arms.put(i==3?"ACTIVE_V4":"PREVIEW_V7",retrieval(source,JSON.readValue(text,ReviewGuidelineLibrary.Archive.class),library(text)));
+            var archive=JSON.readValue(text,ReviewGuidelineLibrary.Archive.class);
+            String label=(i==3?"ACTIVE_":"PREVIEW_")+archive.schemaVersion();
+            arms.put(label,retrieval(source,archive,library(text)));
         }
         var report=new LinkedHashMap<String,Object>(); report.put("schemaVersion","context-rank-readiness-audit-1");
         report.put("providerCalls",0); report.put("executionEnabled",false); report.put("authorizationState","NEW_RUN_REQUIRES_NEW_CONSENT");

@@ -129,7 +129,7 @@ oops:
     startup-recovery-enabled: true
     # 원댓글/사건 예시와 별개인 압축 맥락 기준. 로컬 데이터는 Git 제외; 배포 시 파일도 제공한다.
     guidelines-enabled: ${REVIEW_GUIDELINES_ENABLED:true}
-    guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json}
+    guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json} # 로컬 승격 기본 v7. build_incident_dataset.py의 runtime-selection 정책으로 재생성.
     guidelines-max-code-points: 6000 # 공통 패턴 + 선택 예시의 요청 JSON 상한. 토큰 수 자체는 아님.
     guidelines-example-max-cases: ${REVIEW_GUIDELINES_MAX_CASES:3} # 0: 예시 비활성화, 1~32: 보조 안전 상한. 실제 수는 관련성·크기 예산에 따라 0~상한.
     guidelines-example-max-code-points: 3000 # 예시만의 상한. 잘라내지 않고 예시 전체를 제외.
