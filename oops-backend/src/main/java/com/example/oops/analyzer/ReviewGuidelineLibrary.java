@@ -123,6 +123,7 @@ public class ReviewGuidelineLibrary {
 
     public ReviewGuidelineLibrary(ResourceLoader resources,
             boolean enabled, String location, int budget) {
+        // Preserve historical explicit-library trials; Spring uses the configurable constructor below.
         this(resources, enabled, location, budget, 2, 3000, "");
     }
     @Autowired
@@ -130,7 +131,7 @@ public class ReviewGuidelineLibrary {
             @Value("${oops.analysis.guidelines-enabled:true}") boolean enabled,
             @Value("${oops.analysis.guidelines-location:file:../datasets/controversy/guidelines/runtime.json}") String location,
             @Value("${oops.analysis.guidelines-max-code-points:6000}") int budget,
-            @Value("${oops.analysis.guidelines-example-max-cases:2}") int maxExamples,
+            @Value("${oops.analysis.guidelines-example-max-cases:3}") int maxExamples,
             @Value("${oops.analysis.guidelines-example-max-code-points:3000}") int exampleBudget,
             @Value("${oops.analysis.guidelines-excluded-families:}") String excludedFamilies) {
         if (location == null || !(location.startsWith("classpath:") || location.startsWith("file:"))
@@ -142,7 +143,8 @@ public class ReviewGuidelineLibrary {
                 throw new IllegalArgumentException("Guidelines do not allow remote file hosts");
         }
         this.resources = resources; this.enabled = enabled; this.location = location; this.budget = budget;
-        if (maxExamples < 0 || maxExamples > 3 || exampleBudget < 256 || exampleBudget > 4000)
+        // Count is a secondary operational guard, not the number of semantically relevant cases.
+        if (maxExamples < 0 || maxExamples > 32 || exampleBudget < 256 || exampleBudget > 4000)
             throw new IllegalArgumentException("Examples require bounded count and size");
         this.maxExamples = maxExamples; this.exampleBudget = exampleBudget;
         this.excludedFamilies = Set.copyOf(Arrays.stream(excludedFamilies.split(","))

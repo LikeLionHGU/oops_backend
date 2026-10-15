@@ -131,7 +131,7 @@ oops:
     guidelines-enabled: ${REVIEW_GUIDELINES_ENABLED:true}
     guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json}
     guidelines-max-code-points: 6000 # 공통 패턴 + 선택 예시의 요청 JSON 상한. 토큰 수 자체는 아님.
-    guidelines-example-max-cases: 2 # 원문별 로컬 검색. 검색되지 않아도 전체 원문 검수는 수행.
+    guidelines-example-max-cases: ${REVIEW_GUIDELINES_MAX_CASES:3} # 0: 예시 비활성화, 1~32: 보조 안전 상한. 실제 수는 관련성·크기 예산에 따라 0~상한.
     guidelines-example-max-code-points: 3000 # 예시만의 상한. 잘라내지 않고 예시 전체를 제외.
     guidelines-excluded-families: ${REVIEW_GUIDELINES_EXCLUDED_FAMILIES:} # 독립 평가 시 사건 family를 제외. 공통 기준은 유지.
     mechanism-routing-enabled: ${CONTEXT_MECHANISM_ROUTING_ENABLED:false} # v6/v7에서만 배치별 검색 키 분류. 기본은 추가 과금 없이 기존 경로 유지.
