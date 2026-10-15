@@ -3362,3 +3362,23 @@ alternativeInterpretation 누락으로LINKED_PASS_CONTRAST_REQUIRED였다. 의�
 41은 운영 승격하지 않았고 기본37/관계39·사전·서버를 유지했다. 완료 후추가유료호출0이다.
 다음 제안은 수신한 실패 응답으로 출력 계약을 무료 회귀하고66정보 충분성을 따로 점검하는 것이다.
 새 수정/추가모델비교는 이번에 하지 않았다. [결과·관찰·한계](판단-기준-비교안-41-결과.md)를 따른다.
+
+## 2026-10-15 · 판정/출력 계약 분리 무료 회귀 완료
+
+OfflineDecisionContractAudit와 합성 응답 회귀6개를 테스트 소스에 추가했다.
+현재 validator를 그대로 호출하고, 저장된41 plan/results72개에서 파싱 판정·개발 기대값 일치·계약 결과를 분리했다.
+원문·후보·참고·응답은 수정하지 않고 과거 accepted/failureCode/정규화 observation 전체의 변화도 거절한다.
+입력 변조·중복 튜플·잘못된 candidate/응답 모양·과거 판정 변경·미검수 라벨 승격 방지를 회귀로 확인했다.
+
+기준선/41각36건의 개발 기대값 대조는 MATCH8/MISMATCH1/UNLABELED27 대 MATCH6/MISMATCH3/UNLABELED27이다.
+기대값 대조 대상은64지역/신체 비유/65리뷰뿐이며 불일치는 지역 흐름PASS다.66/합성은 정답 집계에서 제외했다.
+계약 실패는 양쪽6건으로 대조 필드 누락1/3,대상·지칭관계3/3,대상근거2/0이다.
+필드 누락4건은 원판정PASS,대상계약 실패8건은 원판정REVIEW_REQUIRED이며 이를 정상·미탐으로 치환하지 않는다.
+라벨 일치/계약 통과만으로 이유·근거의 의미적 타당성을 승인하지 않으며 실제 의미 검수는 별도로 남긴다.
+
+private 산출물 banter-policy-results-41-20261015/decision-contract-audit-verified.json,
+SHA153a51a97c1c17a62615f922e305cf2dadccf3981f8640ba6bb884ac87aec89b다.
+기존 results SHA9339fac3c301ea40064166abcfcb35e886b8b9b19f09a41e68cb060faf6d233e 유지,
+72응답 과거 결과 변화0,Java전체714개(실패/오류/skip0),git diff --check 통과다.
+API호출/추가비용0,운영 프롬프트·validator·사전·서버 변경0이며 자동 보정·복구를 추가하지 않았다.
+[진단 해석과 무료 실행법](판단-기준-비교안-41-결과.md#후속-판정과-출력-계약을-분리한-무료-회귀)을 따른다.
