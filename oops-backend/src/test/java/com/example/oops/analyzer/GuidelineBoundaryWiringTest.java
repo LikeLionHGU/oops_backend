@@ -24,7 +24,12 @@ class GuidelineBoundaryWiringTest {
         return library;
     }
     @Test void splitBoundaryIsSelectedAndFrozenIntoActualCandidateRequestWithoutProvider() throws Exception {
-        Path runtime = ROOT.resolve("guidelines/runtime.json");
+        // This is a historical v4 boundary ablation, not a test of whichever runtime is active.
+        // Promotion to v7 must not silently skip the preserved v4 regression.
+        Path active = ROOT.resolve("guidelines/runtime.json");
+        Path runtime = Files.exists(active) && JSON.readTree(Files.readString(active)).path("version").asText()
+                .equals("2026-10-15-life-choice-boundary-v1-patterns-4") ? active
+                : ROOT.resolve("legacy/runtime-history/f08f1dc40890e67871d1194b8acf67bd0e5d97ec382594412a5f37f058de1907.json");
         Path baseline = ROOT.resolve("legacy/runtime-history/aa8e90044981fe403aa4ddce1c04102794ac54b4d828dc7d93a3e20e8aeaccbc.json");
         org.junit.jupiter.api.Assumptions.assumeTrue(Files.exists(runtime) && Files.exists(baseline));
         org.junit.jupiter.api.Assumptions.assumeTrue(JSON.readTree(Files.readString(runtime)).path("version").asText()
@@ -88,5 +93,23 @@ class GuidelineBoundaryWiringTest {
         System.out.println("BOUNDARY_WIRING_AUDIT=" + JSON.writeValueAsString(Map.of(
                 "providerCalls", 0, "semanticAccuracyMeasured", false,
                 "mockedVerificationIsNotModelDecision", true, "selections", rows)));
+    }
+
+    @Test void promotedV7SelectsSeparateDevelopmentUnitsWithoutRouterOrModel() throws Exception {
+        Path active=ROOT.resolve("guidelines/runtime.json");
+        org.junit.jupiter.api.Assumptions.assumeTrue(Files.exists(active));
+        String text=Files.readString(active);
+        org.junit.jupiter.api.Assumptions.assumeTrue(JSON.readTree(text).path("schemaVersion").asText().equals("review-guidelines-7"));
+        var promoted=ContextRankReadinessAudit.library(text);
+        var expected=Map.of("P-B-development-excerpt","pisik-yeongyang#u-life-choice",
+                "P-C-development-excerpt","pisik-yeongyang#u-menu","P-D-development-excerpt","pisik-yeongyang#u-graphic");
+        for(var item:TextBoundaryTrial.readSuite(Path.of("src/test/resources/evals/text-boundaries-37.json")).cases()) {
+            if(!expected.containsKey(item.id())) continue;
+            var context=new CandidateReviewEngineTest().context(item.speech().toArray(String[]::new));
+            var selected=promoted.select(TimelineEventType.SPEECH,context.reviewInput().segments(),item.id());
+            assertThat(selected.trace().exampleIds()).contains(expected.get(item.id()));
+            assertThat(selected.trace().payloadCodePoints()).isLessThanOrEqualTo(6000);
+            assertThat(selected.prompt()).contains("합성 개발 대조");
+        }
     }
 }
