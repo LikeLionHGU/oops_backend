@@ -11,6 +11,41 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class OpenAiClientTest {
+    @Test void optionalRoutingIsSingleAttemptAndDoesNotPoisonMandatoryFailureTracking() {
+        var builder = RestClient.builder().baseUrl("https://example.invalid");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andExpect(jsonPath("$.max_completion_tokens").value(1024))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS));
+        var client = new OpenAiClient(builder.build(),properties(null,null));
+        client.beginVideo(1L);
+        try {
+            assertThat(client.completeRoutingAsJson("JSON","raw",Answer.class)).isEmpty();
+            assertThat(client.failureCount()).isZero();
+            assertThat(client.failureReason()).isEmpty();
+        } finally { client.endVideo(); }
+        server.verify(); // A retry would fail the mock expectation.
+    }
+    @Test void optionalRoutingUsageIsIncludedAndEarlierFailureIsPreserved() {
+        var builder = RestClient.builder().baseUrl("https://example.invalid");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.BAD_REQUEST));
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andExpect(jsonPath("$.max_completion_tokens").value(1024))
+                .andRespond(withSuccess(mockResponse(),MediaType.APPLICATION_JSON));
+        var client = new OpenAiClient(builder.build(),properties(null,null));
+        client.beginVideo(1L);
+        try {
+            client.completeAsJson("JSON","mandatory",Answer.class);
+            String reason = client.failureReason().orElseThrow();
+            assertThat(client.completeRoutingAsJson("JSON","raw",Answer.class)).contains(new Answer(true));
+            assertThat(client.failureCount()).isOne();
+            assertThat(client.failureReason()).contains(reason);
+            assertThat(client.videoUsage().calls()).isOne();
+        } finally { client.endVideo(); }
+        server.verify();
+    }
     @Test void replayBodyMatchesActualPayloadWithoutCredentialOrHeaders() {
         var client = new OpenAiClient(RestClient.create(), properties(null, null));
         var replay = client.replayRequestBody("JSON system", "input");

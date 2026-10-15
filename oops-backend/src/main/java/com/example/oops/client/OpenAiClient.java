@@ -248,6 +248,22 @@ public class OpenAiClient {
         return executeJson(body, type);
     }
 
+    /** Optional search routing: one attempt, bounded output, same usage accounting.
+     * Its failure must not mark an otherwise successful mandatory review as failed. */
+    public <T> Optional<T> completeRoutingAsJson(String systemPrompt, String userPrompt, Class<T> type) {
+        if (!isEnabled() || Thread.currentThread().isInterrupted()) return Optional.empty();
+        int priorCount = failureCount.get()[0];
+        String priorReason = failureReason.get();
+        try {
+            var body = requestBody(systemPrompt, userPrompt);
+            body.put("max_completion_tokens", 1024);
+            return executeJson(body, type, 1);
+        } finally {
+            failureCount.get()[0] = priorCount;
+            if (priorReason == null) failureReason.remove(); else failureReason.set(priorReason);
+        }
+    }
+
     public record ImageInput(String id, long timestampMs, String jpegBase64) {}
 
     /** Inline JPEG only: never send local paths or fetch arbitrary external image URLs. */
@@ -275,9 +291,15 @@ public class OpenAiClient {
     }
 
     private <T> Optional<T> executeJson(Map<String, Object> body, Class<T> type) {
+        return executeJson(body, type, MAX_ATTEMPTS);
+    }
 
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    private <T> Optional<T> executeJson(Map<String, Object> body, Class<T> type, int attempts) {
+
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            if (Thread.currentThread().isInterrupted()) return Optional.empty();
             throttle();
+            if (Thread.currentThread().isInterrupted()) return Optional.empty();
             try {
                 var entity = restClient.post()
                         .uri("/chat/completions")
@@ -330,7 +352,7 @@ public class OpenAiClient {
                         return fail("AI 요청 한도를 모두 써서 이 단계를 수행하지 못했습니다.");
                     }
 
-                    if (attempt < MAX_ATTEMPTS) {
+                    if (attempt < attempts) {
                         log.warn("[openai] 요청 한도 초과. {}초 후 재시도 ({}/{})",
                                 waitMs / 1000, attempt, MAX_ATTEMPTS);
                         sleep(waitMs);
