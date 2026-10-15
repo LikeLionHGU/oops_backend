@@ -177,6 +177,22 @@ tasks.register('auditRoutingPriority', JavaExec) {
     }
 }
 
+// Fresh exact-plan cost and synthetic-text consent required; max 48 routing-only HTTP attempts.
+tasks.register('runRoutingProbes', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextRoutingProbeExecution'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def sha = providers.gradleProperty('approvedPlanSha').orNull
+        def consent = providers.gradleProperty('trialConsent').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!plan || !sha || !consent || !output || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Fresh trialLiveApproved, trialPlan, approvedPlanSha, trialConsent, NEW trialOutput required')
+        args plan, sha, consent, output
+    }
+}
+
 // Prepare frozen logical routing requests only; no HTTP client or credentials.
 tasks.register('prepareRoutingProbes', JavaExec) {
     dependsOn testClasses
