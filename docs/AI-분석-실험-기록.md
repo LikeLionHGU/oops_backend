@@ -3472,3 +3472,26 @@ results SHA967db2f55b1a46f9f07fb284d8baa507384f7357a4bd8f564770225ac76baed7이�
 무료 Java738개 통과(실패/오류/skip0),Python129개 통과/기존6skip,기본 사전 verify/불변,diff check 통과다.
 운영 승격·서버 재시작·영상/음성 전송0이며,추가 유료 시험은 별도 승인한다.
 [실험 전문·원인·다음 수정](맥락-자동분류-OFF-ON-비교.md)을 따른다.
+
+## 2026-10-15 · routed 우선 선택 수정과 저장 입력 무료 감사
+
+family 다양성 선택이 routed 사례를 밀어내는 문제를 수정했다. routed 묶음의 선택을 먼저 마친 뒤
+남은 슬롯에 어휘 후보를 채우며, 각 묶음 안에서는 기존 발견 다양성/후보 interleaving을 유지한다.
+빈/미지/제외 키는 기존 검색을 유지하고 최대2예시·예시3000/전체6000 codepoints도 그대로다.
+후보 freeze·판단 POLICY·validator·기본OFF·사전 내용은 변경하지 않았다.
+
+저장된 실제 분류 결과와 발견 원문으로24요청을 다시 선택했다. ON의 신체 비유2건만
+메뉴+당근→메뉴+신체 비유로 바뀌고 나머지ON10건/OFF12건은 동일했다.
+수동 정답 키를 새로 준 테스트가 아니며 LLM 발견/판정은 재실행하지 않았다. 66의 빈 키/당근 참고도 그대로다.
+기존 결과를 덮어쓰거나 새 판정처럼 해석하지 않는다. 추가 모델 호출/비용/서버 재시작0이다.
+
+최종 private 감사: mechanism-routing-results-20261015/routing-priority-audit-2.json,
+SHA fffa0684e2d578652f8328842e253696eb24b97a9cb8c989867b572ed9fb474d.
+audit-1 뒤 빈 키의 payload 보존 검사도 추가해 새 audit-2를 생성했다. 일반 test/bootRun에는 감사가 자동 실행되지 않는다.
+과거 유료 results SHA967db2f55b1a46f9f07fb284d8baa507384f7357a4bd8f564770225ac76baed7은 유지했다.
+기존 제한 재현 테스트는 RoutingSelectionPriorityTest로 교체하고 같은 사건 복수 관련 사례·미지/제외 키·
+남은 어휘 슬롯·개수/크기 한도를 검증했다. 큰 예시 fixture의 경계값을 보강한 뒤 전체 회귀를 통과했다.
+
+Java741개 통과(실패/오류/skip0),Python129개 통과/기존6skip,사전 verify/runtime SHA 불변,diff check 통과다.
+확인한 것은 실제 참고 선택의 변화이며 최종 정확도/오탐 개선은 아니다.
+[후속 수정·범위](맥락-자동분류-OFF-ON-비교.md#후속-검색-우선순위-수정--무료-회귀)를 따른다.
