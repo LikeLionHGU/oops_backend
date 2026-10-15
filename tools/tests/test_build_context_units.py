@@ -88,5 +88,38 @@ class ContextUnitTests(unittest.TestCase):
         _, manifest = self.compile()
         self.assertIsNone(manifest["sourceLinks"][0]["utterances"][0]["startMs"])
 
+    def profile(self):
+        return {"schemaVersion": "context-relation-profile-1", "unitId": self.unit["id"],
+                "status": "DRAFT", "humanVerified": False, "trainingUseAuthorized": False,
+                "sourceSha256": self.unit["source"]["sha256"], "utteranceIds": self.unit["utteranceIds"][:],
+                "situation": "작성한 상황 검색 설명", "target": "", "evaluation": "작성한 평가 검색 설명",
+                "linkage": "작성한 연결 검색 설명"}
+
+    def test_opt_in_profiles_change_only_search_metadata_not_quotes_or_approval(self):
+        before = copy.deepcopy((self.base, self.unit))
+        old, _ = self.compile()
+        profile = self.profile()
+        new, _ = compile_preview(self.base, [self.unit], self.catalog, self.root, [profile])
+        self.assertEqual(old["schemaVersion"], "review-guidelines-6")
+        self.assertEqual(new["schemaVersion"], "review-guidelines-7")
+        self.assertEqual((self.base, self.unit), before)
+        self.assertEqual(old["examples"][0]["context"], new["examples"][0]["context"])
+        self.assertNotIn("relationProfile", new["examples"][1])
+        self.assertEqual(new["examples"][0]["relationProfile"]["target"], "")
+        profile["evaluation"] = "다른 검색용 설명"
+        changed, _ = compile_preview(self.base, [self.unit], self.catalog, self.root, [profile])
+        self.assertNotEqual(new["sourceBundleSha256"], changed["sourceBundleSha256"])
+        self.assertEqual(new["examples"][0]["context"], changed["examples"][0]["context"])
+
+    def test_profiles_reject_changed_source_unknown_unit_duplicates_and_promotion(self):
+        for change in ({"sourceSha256": "a" * 64}, {"utteranceIds": ["s2", "s1"]},
+                       {"unitId": "unknown"}, {"humanVerified": True}, {"status": "APPROVED"},
+                       {"trainingUseAuthorized": True}, {"evaluation": ""}, {"target": " "},
+                       {"linkage": "x" * 351}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                compile_preview(self.base, [self.unit], self.catalog, self.root, [{**self.profile(), **change}])
+        with self.assertRaises(ValueError):
+            compile_preview(self.base, [self.unit], self.catalog, self.root, [self.profile(), self.profile()])
+
 
 if __name__ == "__main__": unittest.main()

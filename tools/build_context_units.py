@@ -62,7 +62,31 @@ def linked_lines(root, unit):
     return selected
 
 
-def compile_preview(base, units, catalog, root):
+def relation_profiles(profiles, units):
+    """Authored retrieval descriptions, never recovered quotes or promoted labels."""
+    if profiles is None:
+        return {}
+    require(isinstance(profiles, list) and 1 <= len(profiles) <= len(units), "RELATION_PROFILES_REQUIRED")
+    by_unit = {u["id"]: u for u in units}
+    result = {}
+    for p in profiles:
+        uid = p.get("unitId")
+        require(p.get("schemaVersion") == "context-relation-profile-1" and uid in by_unit
+                and uid not in result and p.get("status") == "DRAFT" and p.get("humanVerified") is False
+                and p.get("trainingUseAuthorized") is False, "RELATION_PROFILE_DRAFT_REQUIRED")
+        u = by_unit[uid]
+        require(p.get("sourceSha256") == u["source"]["sha256"]
+                and p.get("utteranceIds") == u["utteranceIds"], "RELATION_PROFILE_SOURCE_MISMATCH")
+        fields = ("situation", "target", "evaluation", "linkage")
+        require(all(isinstance(p.get(f), str) and (not p[f] or text(p[f], 350)) for f in fields)
+                and text(p["evaluation"], 350) and text(p["linkage"], 350), "RELATION_PROFILE_TEXT_INVALID")
+        result[uid] = {"version": "authored-relation-search-1", "basis": "AUTHORED_RETRIEVAL_NOT_SOURCE_EVIDENCE",
+                       "sourceSha256": p["sourceSha256"], "sourceIds": copy.deepcopy(p["utteranceIds"]),
+                       **{f: p[f] for f in fields}}
+    return result
+
+
+def compile_preview(base, units, catalog, root, profiles=None):
     require(base.get("schemaVersion") == "review-guidelines-4", "KNOWN_BASELINE_REQUIRED")
     require(catalog.get("schemaVersion") == "context-routing-keys-1", "ROUTING_CATALOG_REQUIRED")
     known = {r["id"] for r in catalog["keys"]}
@@ -70,6 +94,7 @@ def compile_preview(base, units, catalog, root):
     source = {e["id"]: e for e in base["examples"]}
     rules = {r["id"]: r for r in base["guidelines"]}
     out = copy.deepcopy(base)
+    relations = relation_profiles(profiles, units)
     replaced, seen, examples, links = set(), set(), [], []
     for u in units:
         require(u.get("schemaVersion") == "context-reference-unit-1" and u.get("status") == "DRAFT"
@@ -106,6 +131,8 @@ def compile_preview(base, units, catalog, root):
                    "retrievalView": {"version": "context-unit-retrieval-1", "basis": "AUTHORED_ROUTING_NOT_SOURCE_EVIDENCE",
                                      "text": u["retrievalText"], "sha256": digest(u["retrievalText"].encode())}}
         examples.append(example)
+        if uid in relations:
+            example["relationProfile"] = copy.deepcopy(relations[uid])
         links.append({"unitId": uid, "parentCaseId": parent, "source": copy.deepcopy(u["source"]), "utterances": lines})
         replaced.add(parent)
     # Uncurated examples remain visible, never silently relabeled as curated units.
@@ -120,14 +147,16 @@ def compile_preview(base, units, catalog, root):
         e["routingKeys"] = []
         e["context"]["normalContrasts"] = []
         examples.append(e)
-    out["schemaVersion"] = "review-guidelines-6"
-    out["version"] = "2026-10-15-context-units-v1"
+    out["schemaVersion"] = "review-guidelines-7" if relations else "review-guidelines-6"
+    out["version"] = "2026-10-15-context-relations-v1" if relations else "2026-10-15-context-units-v1"
     out["examples"] = examples
     out["sourceCases"] = [{"caseId": e["id"], "familyId": e["familyId"], "status": "UNREVIEWED_DRAFT"} for e in examples]
     for r in out["guidelines"]:
         r["sourceCaseIds"] = [e["id"] for e in examples if r["id"] in e["mechanismIds"]]
     provenance = {"baseRuntimeSha256": digest(json.dumps(base, sort_keys=True, ensure_ascii=False).encode()),
                   "units": units, "routingCatalog": catalog}
+    if profiles is not None:
+        provenance["authoredRelationProfiles"] = profiles
     sha = digest(json.dumps(provenance, sort_keys=True, ensure_ascii=False).encode())
     out["sourceBundleSha256"] = sha
     out["contextDictionarySha256"] = sha
@@ -141,6 +170,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--dataset-root", type=Path, default=ROOT)
     p.add_argument("--output", type=Path, required=True, help="New directory below experiments; never active runtime")
+    p.add_argument("--relation-profiles", type=Path, help="Explicit authored profile directory below dataset root; opt-in v7")
     args = p.parse_args()
     root = args.dataset_root.resolve()
     output = args.output.absolute()
@@ -150,7 +180,13 @@ def main():
     require(files, "CONTEXT_UNITS_REQUIRED")
     base = parse(read_bytes(root / "guidelines/runtime.json"))
     catalog = parse(read_bytes(root / "definitions/context-routing.json"))
-    runtime, manifest = compile_preview(base, [parse(read_bytes(f)) for f in files], catalog, root)
+    profiles = None
+    if args.relation_profiles is not None:
+        directory = args.relation_profiles.resolve()
+        require(directory.is_relative_to(root), "RELATION_PROFILES_MUST_BE_PRIVATE")
+        profiles = [parse(read_bytes(f)) for f in sorted(directory.glob("*.json"))]
+    runtime, manifest = compile_preview(base, [parse(read_bytes(f)) for f in files], catalog, root, profiles)
+    manifest["relationProfileCount"] = len(profiles or [])
     manifest["compilerSha256"] = digest(Path(__file__).read_bytes())
     manifest["baseRuntimeFileSha256"] = digest(read_bytes(root / "guidelines/runtime.json"))
     require(len(json.dumps(runtime, ensure_ascii=False).encode()) <= 1_048_576, "PREVIEW_TOO_LARGE")
