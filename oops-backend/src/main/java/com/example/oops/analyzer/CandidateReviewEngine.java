@@ -841,7 +841,9 @@ final class CandidateReviewEngine {
             }).sorted(Comparator.comparingLong(ReviewInput.Segment::startMs)
                     .thenComparingLong(ReviewInput.Segment::endMs).thenComparing(ReviewInput.Segment::id)
                     .thenComparing(ReviewInput.Segment::text)).toList();
-            var selection = keys.isEmpty() ? library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus)
+            var selection = library.relationArchive()
+                    ? library.select(TimelineEventType.SPEECH,c.raw(),requestKey,focus,keys,ContextRelationRetrieval.from(c))
+                    : keys.isEmpty() ? library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus)
                     : library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus, keys);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();

@@ -9,7 +9,8 @@ import java.util.regex.Pattern;
 final class ContextExampleSelector {
     private static final Pattern WORDS = Pattern.compile("[\\p{L}\\p{N}]+");
     private record Indexed(ReviewGuidelineLibrary.ContextExample example, Set<String> terms) {}
-    record Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed) {
+    record Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed, double relationComponent) {
+        Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed) { this(example, score, routed, 0); }
         Match(ReviewGuidelineLibrary.ContextExample example, double score) { this(example, score, false); }
     }
     private final List<Indexed> index;
@@ -35,6 +36,10 @@ final class ContextExampleSelector {
     }
     List<Match> rank(TimelineEventType channel, Collection<ReviewInput.Segment> raw, Set<String> excludedFamilies,
                      Set<String> mechanismCandidates) {
+        return rank(channel, raw, excludedFamilies, mechanismCandidates, ContextRelationRetrieval.Query.empty());
+    }
+    List<Match> rank(TimelineEventType channel, Collection<ReviewInput.Segment> raw, Set<String> excludedFamilies,
+                     Set<String> mechanismCandidates, ContextRelationRetrieval.Query relation) {
         // Source IDs, hypotheses, URLs, popularity and article metadata are not queries.
         StringBuilder query = new StringBuilder();
         for (var s : raw) {
@@ -56,13 +61,16 @@ final class ContextExampleSelector {
                 hits++; score += 1 + Math.log((index.size() + 1.0) / (frequencies.get(t) + 1.0));
             }
             boolean routed = e.routingKeys() != null && e.routingKeys().stream().anyMatch(mechanismCandidates::contains);
-            if (hits >= 3 || routed) matches.add(new Match(e, score / Math.sqrt(Math.max(1, item.terms().size())), routed));
+            if (hits >= 3 || routed) matches.add(new Match(e, score / Math.sqrt(Math.max(1, item.terms().size())), routed,
+                    ContextRelationRetrieval.component(e.relationProfile(), relation)));
         }
         matches.sort(Comparator.comparing(Match::routed).reversed()
-                .thenComparing(Comparator.comparingDouble(Match::score).reversed()).thenComparing(m -> m.example().id()));
+                .thenComparing(Comparator.comparingDouble((Match m) -> relation.present()
+                        ? m.score()/(1+m.score())+m.relationComponent() : m.score()).reversed())
+                .thenComparing(m -> m.example().id()));
         return matches;
     }
-    private static Set<String> terms(String text) {
+    static Set<String> terms(String text) {
         Set<String> result = new HashSet<>();
         var matcher = WORDS.matcher(Normalizer.normalize(text, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT));
         int[] previous = null;

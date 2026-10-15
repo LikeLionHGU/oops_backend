@@ -12,7 +12,9 @@ final class ContextReferenceBalance {
     private static final double NEW_KEY_BONUS = .10;
     private static final int MAX_OMISSION_TRACES = 20;
     public record Choice(String exampleId, double lexicalComponent, double hintBonus,
-                         double newKeyBonus, double selectionScore, List<String> matchedKeys) {}
+                         double newKeyBonus, double selectionScore, List<String> matchedKeys,
+                         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
+                         double relationComponent) {}
     public record Omission(String exampleId, String reason) {}
     public record Trace(String revision, List<String> availableKeys, List<String> selectedKeys,
                         List<String> uncoveredKeys, List<Choice> choices, int sizeOmissions,
@@ -48,7 +50,8 @@ final class ContextReferenceBalance {
                 var keys = keys(m.example(),hints);
                 double lexical=lexical(m.score()), hint=keys.isEmpty()?0:HINT_BONUS,
                         fresh=keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0;
-                choices.add(new Choice(m.example().id(),lexical,hint,fresh,lexical+hint+fresh,List.copyOf(keys)));
+                choices.add(new Choice(m.example().id(),lexical,hint,fresh,lexical+hint+fresh+m.relationComponent(),
+                        List.copyOf(keys),m.relationComponent()));
                 selected.add(m.example()); covered.addAll(keys); families.add(m.example().familyId()); added=true;
                 break;
             }
@@ -58,7 +61,9 @@ final class ContextReferenceBalance {
         remaining.forEach(m -> { if (omissions.size()<MAX_OMISSION_TRACES)
             omissions.add(new Omission(m.example().id(),"COUNT_LIMIT")); });
         var missing = new TreeSet<>(available); missing.removeAll(covered);
-        return new Plan(List.copyOf(selected),new Trace(REVISION,List.copyOf(available),List.copyOf(covered),List.copyOf(missing),
+        String revision = matches.stream().anyMatch(m -> m.relationComponent()>0)
+                ? "2026-10-15-reference-relation-balance-2" : REVISION;
+        return new Plan(List.copyOf(selected),new Trace(revision,List.copyOf(available),List.copyOf(covered),List.copyOf(missing),
                 List.copyOf(choices),sizeOmissions,countOmissions,List.copyOf(omissions),sizeOmissions+countOmissions>omissions.size()));
     }
     private static SortedSet<String> keys(ContextExample e,Set<String> hints) {
@@ -69,7 +74,7 @@ final class ContextReferenceBalance {
     private static double lexical(double score) { return score/(1+score); }
     private static double score(ContextExampleSelector.Match m,Set<String> hints,Set<String> covered) {
         var keys = keys(m.example(),hints);
-        return lexical(m.score())+(keys.isEmpty()?0:HINT_BONUS)
+        return lexical(m.score())+m.relationComponent()+(keys.isEmpty()?0:HINT_BONUS)
                 +(keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0);
     }
 }
