@@ -30,6 +30,8 @@
 
 최신 [출력 계약 분리 비교](탐색-출력계약-JSON-스키마-비교.md)는 검색 ON을 고정하고 JSON/STRICT를 비교했다. 정상 초안 완전 무경고 10/12→12/12, 탐색 Boolean 누락 2/18→0/18을 확인해 strict 탐색을 기본 ON으로 승격했다. primary/context ID 혼동과 요청/제안 의미 변화·집단 단정 경계는 별개로 남는다. 서빙 프로세스 재시작·배포는 하지 않았다.
 
+후속 `candidate_discovery_scoped_v2`는 배치별 primary/raw ID를 별도 enum으로 전달한다. reviewed·anchor·uncertain ID는 primary만, evidence·관계 역할 ID는 보조 문맥을 포함한 raw를 허용한다. anchor/uncertain이 실제 reviewed에 속하는지, 근거가 같은 허용 창에 속하는지는 서버에서 계속 검증한다. ID를 삭제·교정해 통과시키지 않는다. 판단 정책·원문·창 크기는 바꾸지 않았고 범위 안내만 보강했다. 이 변경의 실호출 호환·정확도 효과는 아직 미검증이다.
+
 다음 수정 순서는 [개선 계획](AI-분석-개선-계획.md)을 따른다. 사전 빌드·서버 반영은 [파일 관리](데이터셋-파일-관리.md), 전체 탐색은 [문서 안내](README.md)를 참고한다.
 
 ## 이전 개정과 설계 기록

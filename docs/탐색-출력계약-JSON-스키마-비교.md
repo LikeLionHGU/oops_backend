@@ -70,3 +70,24 @@ Git 제외 계획: `datasets/controversy/experiments/discovery-schema-plan-20261
 도구는 기존 `StructuredSearchBoundaryTrial`의 prepare-schema/run-schema 모드다. 비교 축·출력 스키마 해시·새 $0.50을 계획에 고정하므로 이전 SEARCH/$1 계획과 혼용할 수 없다. 실행 응답은 파싱 결과이며 원문·서버 DB·정답 상태를 변경하지 않는다.
 
 기본 ON 반영 후 전체 `./gradlew --offline test`는 **822개 통과·실패 0·skip 0**이다. 새 무료 테스트 2개는 비교 축·검색 고정·스키마 해시와 별도 $0.50 상한을 확인한다. 실제 사용량·메타데이터 제외·원본 사전 해시도 재확인했다. 남은 승인액을 다음 실험에 자동 재사용하지 않는다.
+
+## 후속 · primary/context ID 범위 분리 (무료 검증)
+
+위 실험의 출력 스키마와 구별되는 `candidate_discovery_scoped_v2`를 반영했다. 판단 정책·원문·검색·창 크기는 유지하고 탐색의 범위 안내와 반환 가능 ID만 바꿨다. 이전 실험 결과를 이 변경의 검증 결과로 재사용하지 않는다.
+
+| 반환 위치 | 허용 ID |
+|---|---|
+| reviewedSegmentIds | 현재 요청 primaryIds |
+| 텍스트·화면 후보 anchorId | 현재 요청 primaryIds |
+| uncertainSegments.segmentId | 현재 요청 primaryIds |
+| evidence.segmentId · sourceRelations 역할 ID | 보조 문맥을 포함한 현재 raw 전체 |
+
+`JsonSchemaOutput.discoveryIdScope`를 명시한 DTO만 요청 JSON에서 ID를 읽어 스키마의 primaryId/rawId 공유 정의에 enum을 넣는다. [공식 구조화 출력 문서](https://developers.openai.com/api/docs/guides/structured-outputs)의 enum 계약을 사용한다. 본문을 추가 복제하거나 보조 문맥을 지우지 않으며, 매 요청 새 트리를 사용해 다른 배치의 허용 ID가 섞이지 않는다. 실제 요청과 typed replay는 같은 생성 경로다.
+
+ID 목록은 비어 있지 않은 문자열·중복 없음·primary⊆raw를 요구한다. 각 목록 최대 128개·ID 최대 256자라는 구현 보호 한도를 두었다. 현재 운영 배치는 primary 최대 20개·context 최대 16개로 이 한도 안이다. 잘못된 메타데이터는 HTTP 호출 전에 실패하며, 임의 축소·ID 교정·JSON 자동 재전송은 하지 않는다. 향후 배치/ID 형식 변경 시 이 보호 한도도 함께 점검한다.
+
+스키마만으로 `anchor/uncertain ⊆ 실제 reviewed`나 같은 허용 창의 근거 연결을 보장하지 못하므로 기존 서버 검증은 유지했다. 범위가 맞아도 원문의 ‘제안’을 ‘요구’로 바꾸는 해석 오류는 여전히 별도 문제다.
+
+무료 회귀는 **826개 통과·실패 0·skip 0**이다. 새 4개는 슬롯별 범위·배치 간 격리, 잘못된 메타데이터의 호출 전 차단, primary이지만 미검토한 불확실 구간 거절, 21줄/2배치에서 보조 문맥 ID 오반환의 PARTIAL 보존을 확인한다. 프롬프트 전문 문서도 코드와 동기화했다. 모의 전송에서 제공자가 범위를 어겼을 때도 기존 서버 검증이 거절하는 것을 확인했으며, 모델의 실제 준수율을 측정한 것은 아니다.
+
+이번에는 유료 호출·데이터 외부 전송·서버 재시작·배포를 하지 않았다. 요청별 스키마가 바뀌므로 실제 API 호환·지연·입력 토큰 및 오류 감소는 새 계획/승인으로 재시험해야 한다. 이전 고정 계획은 프롬프트·스키마 해시가 달라 재사용할 수 없다. 이 후속 변경의 정확도 향상을 아직 주장하지 않는다.
