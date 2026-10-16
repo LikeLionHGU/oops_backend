@@ -234,6 +234,17 @@ tasks.register('utteranceDirectionTrial', JavaExec) {
     }
 }
 
+// Offline plan generation only: no API key, consent or provider execution path.
+tasks.register('verificationFactorialPlan', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.VerificationFactorialPlan'
+    doFirst {
+        def names = ['factorialSource', 'factorialReview', 'factorialMappings', 'factorialOutput']
+        args(names.collect { providers.gradleProperty(it).get() })
+    }
+}
+
 // User-requested one-time rerun, carrying the original attempt's budget forward.
 tasks.register('longVideoRoutingRetry', JavaExec) {
     dependsOn testClasses
