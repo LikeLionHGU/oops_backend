@@ -10,11 +10,14 @@ final class ContextReferenceBalance {
     // Experimental search weights. Lexical relevance can beat an unrelated routed example.
     private static final double HINT_BONUS = .15;
     private static final double NEW_KEY_BONUS = .10;
+    private static final double CONCEPT_BONUS = .20;
     private static final int MAX_OMISSION_TRACES = 20;
     public record Choice(String exampleId, double lexicalComponent, double hintBonus,
                          double newKeyBonus, double selectionScore, List<String> matchedKeys,
                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
-                         double relationComponent) {}
+                         double relationComponent,
+                         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
+                         double conceptComponent) {}
     public record Omission(String exampleId, String reason) {}
     public record Trace(String revision, List<String> availableKeys, List<String> selectedKeys,
                         List<String> uncoveredKeys, List<Choice> choices, int sizeOmissions,
@@ -29,7 +32,8 @@ final class ContextReferenceBalance {
     static Plan select(List<ContextExampleSelector.Match> matches, Set<String> hints, int max,
                        boolean diversifyFamilies, Predicate<List<ContextExample>> fits, boolean rewardNewKeys) {
         Map<String,ContextExampleSelector.Match> unique = new LinkedHashMap<>();
-        for (var m : matches) unique.merge(m.example().id(),m,(a,b) -> a.score() >= b.score() ? a : b);
+        for (var m : matches) unique.merge(m.example().id(),m,(a,b) ->
+                a.score()+concept(a) >= b.score()+concept(b) ? a : b);
         var remaining = new ArrayList<>(unique.values());
         Map<String,Integer> order = new HashMap<>();
         for (var m : remaining) order.put(m.example().id(),order.size());
@@ -55,8 +59,8 @@ final class ContextReferenceBalance {
                 var keys = keys(m.example(),hints);
                 double lexical=lexical(m.score()), hint=keys.isEmpty()?0:HINT_BONUS,
                         fresh=rewardNewKeys && keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0;
-                choices.add(new Choice(m.example().id(),lexical,hint,fresh,lexical+hint+fresh+m.relationComponent(),
-                        List.copyOf(keys),m.relationComponent()));
+                choices.add(new Choice(m.example().id(),lexical,hint,fresh,lexical+hint+fresh+m.relationComponent()+concept(m),
+                        List.copyOf(keys),m.relationComponent(),concept(m)));
                 selected.add(m.example()); covered.addAll(keys); families.add(m.example().familyId()); added=true;
                 break;
             }
@@ -68,6 +72,7 @@ final class ContextReferenceBalance {
         var missing = new TreeSet<>(available); missing.removeAll(covered);
         String revision = matches.stream().anyMatch(m -> m.relationComponent()>0)
                 ? "2026-10-15-reference-relation-balance-2" : REVISION;
+        if (matches.stream().anyMatch(m -> !m.searchProfiles().isEmpty())) revision += "-structured-concepts-1";
         if (!rewardNewKeys) revision+="-new-key-bonus-off-experiment";
         return new Plan(List.copyOf(selected),new Trace(revision,List.copyOf(available),List.copyOf(covered),List.copyOf(missing),
                 List.copyOf(choices),sizeOmissions,countOmissions,List.copyOf(omissions),sizeOmissions+countOmissions>omissions.size()));
@@ -78,9 +83,10 @@ final class ContextReferenceBalance {
         return keys;
     }
     private static double lexical(double score) { return score/(1+score); }
+    private static double concept(ContextExampleSelector.Match m) { return m.searchProfiles().isEmpty()?0:CONCEPT_BONUS; }
     private static double score(ContextExampleSelector.Match m,Set<String> hints,Set<String> covered,boolean rewardNewKeys) {
         var keys = keys(m.example(),hints);
-        return lexical(m.score())+m.relationComponent()+(keys.isEmpty()?0:HINT_BONUS)
+        return lexical(m.score())+m.relationComponent()+concept(m)+(keys.isEmpty()?0:HINT_BONUS)
                 +(rewardNewKeys && keys.stream().anyMatch(k -> !covered.contains(k))?NEW_KEY_BONUS:0);
     }
 }

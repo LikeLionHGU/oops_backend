@@ -1,0 +1,17 @@
+{
+  "revision": "2026-10-16-local-context-search-1",
+  "profiles": [
+    {
+      "id": "intimate-information-question",
+      "mechanismIds": ["sexual-objectification"],
+      "queryAll": ["팬티|속옷|브래지어|잠자리|성생활|성관계", "무슨|어떤|색깔|색이|보여|입었|입어|안 입|물어|묻|질문"],
+      "referenceAll": ["성적|잠자리|성관계", "묻|질문|잠자리|성적 관계|하반신", "잠자리|성적 관계|성관계|자위|성생활|속옷|하반신"]
+    },
+    {
+      "id": "collective-evaluation",
+      "mechanismIds": ["group-generalization"],
+      "queryAll": ["진영|집단|사람들|남자들|여자들|주민|이용자|유저|직업|세대", "모두|전체|전부|하나같이|다들|싸잡", "공격|역겹|열등|못하|무능|문제|비하|잘못|가해|짓밟"],
+      "referenceAll": ["집단|진영|주민|이용자|유저", "일반화|싸잡|전체|전반"]
+    }
+  ]
+}

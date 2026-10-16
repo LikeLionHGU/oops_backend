@@ -5,19 +5,29 @@ import java.text.Normalizer;
 import java.util.*;
 import java.util.regex.Pattern;
 
-/** Local lexical routing only. Similarity is NOT a risk score or semantic proof. */
+/** Local lexical routing with optional authored concept expansion; never semantic proof or a risk score. */
 final class ContextExampleSelector {
     private static final Pattern WORDS = Pattern.compile("[\\p{L}\\p{N}]+");
     private record Indexed(ReviewGuidelineLibrary.ContextExample example, Set<String> terms) {}
-    record Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed, double relationComponent) {
+    record Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed, double relationComponent,
+                 List<String> searchProfiles) {
+        Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed, double relationComponent) {
+            this(example, score, routed, relationComponent, List.of());
+        }
         Match(ReviewGuidelineLibrary.ContextExample example, double score, boolean routed) { this(example, score, routed, 0); }
         Match(ReviewGuidelineLibrary.ContextExample example, double score) { this(example, score, false); }
     }
     private final List<Indexed> index;
+    private final StructuredContextSearch structuredSearch;
     private final Map<String, Integer> frequencies = new HashMap<>();
 
     ContextExampleSelector(List<ReviewGuidelineLibrary.ContextExample> examples,
                            List<ReviewGuidelineLibrary.Rule> rules) {
+        this(examples, rules, null);
+    }
+    ContextExampleSelector(List<ReviewGuidelineLibrary.ContextExample> examples,
+                           List<ReviewGuidelineLibrary.Rule> rules, StructuredContextSearch structuredSearch) {
+        this.structuredSearch = structuredSearch;
         Map<String, String> conditions = new HashMap<>();
         rules.forEach(r -> conditions.put(r.id(), r.condition()));
         index = examples.stream().map(e -> {
@@ -51,7 +61,8 @@ final class ContextExampleSelector {
             if (query.length() >= 24000) break;
         }
         Set<String> queryTerms = terms(query.toString());
-        if (queryTerms.isEmpty()) return List.of();
+        Set<String> concepts = structuredSearch == null ? Set.of() : structuredSearch.queryProfiles(channel, raw);
+        if (queryTerms.isEmpty() && concepts.isEmpty()) return List.of();
         List<Match> matches = new ArrayList<>();
         for (var item : index) {
             var e = item.example();
@@ -61,10 +72,13 @@ final class ContextExampleSelector {
                 hits++; score += 1 + Math.log((index.size() + 1.0) / (frequencies.get(t) + 1.0));
             }
             boolean routed = e.routingKeys() != null && e.routingKeys().stream().anyMatch(mechanismCandidates::contains);
-            if (hits >= 3 || routed) matches.add(new Match(e, score / Math.sqrt(Math.max(1, item.terms().size())), routed,
-                    ContextRelationRetrieval.component(e.relationProfile(), relation)));
+            var profiles = structuredSearch == null ? List.<String>of() : structuredSearch.match(e, concepts);
+            if (hits >= 3 || routed || !profiles.isEmpty()) matches.add(new Match(e,
+                    score / Math.sqrt(Math.max(1, item.terms().size())), routed,
+                    ContextRelationRetrieval.component(e.relationProfile(), relation), profiles));
         }
         matches.sort(Comparator.comparing(Match::routed).reversed()
+                .thenComparing(m -> m.searchProfiles().isEmpty())
                 .thenComparing(Comparator.comparingDouble((Match m) -> relation.present()
                         ? m.score()/(1+m.score())+m.relationComponent() : m.score()).reversed())
                 .thenComparing(m -> m.example().id()));

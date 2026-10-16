@@ -118,6 +118,8 @@ public class ReviewGuidelineLibrary {
     private final int exampleBudget;
     private final Set<String> excludedFamilies;
     private ContextExampleSelector selector;
+    private final boolean structuredSearchEnabled;
+    private StructuredContextSearch structuredSearch;
     private Archive archive;
     private String state = "NOT_LOADED";
 
@@ -126,6 +128,10 @@ public class ReviewGuidelineLibrary {
         // Preserve historical explicit-library trials; Spring uses the configurable constructor below.
         this(resources, enabled, location, budget, 2, 3000, "");
     }
+    public ReviewGuidelineLibrary(ResourceLoader resources,
+            boolean enabled, String location, int budget, int maxExamples, int exampleBudget, String excludedFamilies) {
+        this(resources, enabled, location, budget, maxExamples, exampleBudget, excludedFamilies, false);
+    }
     @Autowired
     public ReviewGuidelineLibrary(ResourceLoader resources,
             @Value("${oops.analysis.guidelines-enabled:true}") boolean enabled,
@@ -133,7 +139,8 @@ public class ReviewGuidelineLibrary {
             @Value("${oops.analysis.guidelines-max-code-points:6000}") int budget,
             @Value("${oops.analysis.guidelines-example-max-cases:3}") int maxExamples,
             @Value("${oops.analysis.guidelines-example-max-code-points:3000}") int exampleBudget,
-            @Value("${oops.analysis.guidelines-excluded-families:}") String excludedFamilies) {
+            @Value("${oops.analysis.guidelines-excluded-families:}") String excludedFamilies,
+            @Value("${oops.analysis.structured-context-search-enabled:true}") boolean structuredSearchEnabled) {
         if (location == null || !(location.startsWith("classpath:") || location.startsWith("file:"))
                 || budget < 256 || budget > 8000)
             throw new IllegalArgumentException("Guidelines require a local archive and bounded budget");
@@ -147,12 +154,14 @@ public class ReviewGuidelineLibrary {
         if (maxExamples < 0 || maxExamples > 32 || exampleBudget < 256 || exampleBudget > 4000)
             throw new IllegalArgumentException("Examples require bounded count and size");
         this.maxExamples = maxExamples; this.exampleBudget = exampleBudget;
+        this.structuredSearchEnabled = structuredSearchEnabled;
         this.excludedFamilies = Set.copyOf(Arrays.stream(excludedFamilies.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList());
     }
     @PostConstruct void load() {
         archive = null;
         selector = null;
+        structuredSearch = null;
         if (!enabled) { state = "DISABLED"; return; }
         try (var in = resources.getResource(location).getInputStream()) {
             byte[] bytes = in.readNBytes(1_048_577);
@@ -166,13 +175,16 @@ public class ReviewGuidelineLibrary {
                 if (baseSize > budget) { archive = null; state = "BUDGET_EXCEEDED"; return; }
             }
             if (expired()) state = "EXPIRED";
-            if (splitArchive() && !expired()) selector = new ContextExampleSelector(archive.examples(), archive.guidelines());
+            if (splitArchive() && !expired()) {
+                if (structuredSearchEnabled && relationArchive()) structuredSearch = StructuredContextSearch.load();
+                selector = new ContextExampleSelector(archive.examples(), archive.guidelines(), structuredSearch);
+            }
         } catch (Exception ex) { archive = null; state = "UNAVAILABLE_OR_INVALID"; }
         finally {
-            log.info("[context-dictionary] state={} location={} version={} sourceSha256={} examples={}",
+            log.info("[context-dictionary] state={} location={} version={} sourceSha256={} examples={} structuredSearch={}",
                     state, location, archive == null ? null : archive.version(),
                     archive == null ? null : archive.sourceBundleSha256(),
-                    archive == null || archive.examples() == null ? 0 : archive.examples().size());
+                    archive == null || archive.examples() == null ? 0 : archive.examples().size(), structuredSearch != null);
         }
     }
     private static boolean valid(Archive a) {
@@ -305,7 +317,13 @@ public class ReviewGuidelineLibrary {
             int availableExamples, int matchedExamples, int budgetSkipped, int payloadCodePoints,
             int baseCodePoints, List<String> exampleIds, List<String> mechanismIds,
             @JsonInclude(JsonInclude.Include.NON_NULL) ContextReferenceBalance.Trace balance,
-            @JsonInclude(JsonInclude.Include.NON_NULL) ContextRelationRetrieval.Trace relation) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) ContextRelationRetrieval.Trace relation,
+            @JsonInclude(JsonInclude.Include.NON_NULL) StructuredContextSearch.Trace structuredSearch) {
+        public SelectionTrace(String key,String state,String method,int available,int matched,int skipped,
+                int payload,int base,List<String> examples,List<String> mechanisms,ContextReferenceBalance.Trace balance,
+                ContextRelationRetrieval.Trace relation) {
+            this(key,state,method,available,matched,skipped,payload,base,examples,mechanisms,balance,relation,null);
+        }
         public SelectionTrace(String key,String state,String method,int available,int matched,int skipped,
                 int payload,int base,List<String> examples,List<String> mechanisms,ContextReferenceBalance.Trace balance) {
             this(key,state,method,available,matched,skipped,payload,base,examples,mechanisms,balance,null);
@@ -408,6 +426,7 @@ public class ReviewGuidelineLibrary {
                         : balanced ? "V6_BALANCED_HINT_COVERAGE_NOT_SEMANTIC"
                         : ranked.stream().anyMatch(ContextExampleSelector.Match::routed)
                         ? "EXPLICIT_MECHANISM_HINT_SOFT_ROUTING_NOT_CLASSIFICATION"
+                        : structuredSearch != null ? "LOCAL_STRUCTURED_CONCEPTS_AND_TRIGRAM_NOT_SEMANTIC"
                         : focus.isEmpty() ? "LOCAL_CHARACTER_TRIGRAM_NOT_SEMANTIC"
                         : "CANDIDATE_NEAR_CONTEXT_INTERLEAVED_LOCAL_NOT_SEMANTIC",
                         trace(channel).availableExampleCount(), ranked.size(), balance==null?skipped.size():balance.sizeOmissions(), codePoints(payload),
@@ -415,7 +434,9 @@ public class ReviewGuidelineLibrary {
                         patterns.stream().map(p -> p.get("id")).toList(),balance, relation.present()
                         ? ContextRelationRetrieval.trace(relation,(int) archive.examples().stream()
                             .filter(e -> e.channels().contains(channel.name()) && !excludedFamilies.contains(e.familyId())
-                                && e.relationProfile()!=null).count(),selected) : null));
+                                && e.relationProfile()!=null).count(),selected) : null,
+                        structuredSearch == null ? null : structuredSearch.trace(
+                                structuredSearch.queryProfiles(channel, raw), ranked, selected)));
     }
     private static String payload(Object patterns, Object contexts) {
         Map<String, Object> values = new LinkedHashMap<>();

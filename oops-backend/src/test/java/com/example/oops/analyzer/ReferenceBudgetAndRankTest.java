@@ -20,9 +20,12 @@ class ReferenceBudgetAndRankTest {
         assertThatThrownBy(() -> f.library(a,-1,3000,"")).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void springDefaultIsThreeWhileHistoricalExplicitConstructorRemainsCompatible() throws Exception {
-        var constructor=Arrays.stream(ReviewGuidelineLibrary.class.getConstructors()).filter(c -> c.getParameterCount()==7).findFirst().orElseThrow();
+        var constructor=Arrays.stream(ReviewGuidelineLibrary.class.getConstructors())
+                .filter(c -> c.isAnnotationPresent(org.springframework.beans.factory.annotation.Autowired.class)).findFirst().orElseThrow();
         var value=constructor.getParameters()[4].getAnnotation(org.springframework.beans.factory.annotation.Value.class);
         assertThat(value.value()).isEqualTo("${oops.analysis.guidelines-example-max-cases:3}");
+        assertThat(constructor.getParameters()[7].getAnnotation(org.springframework.beans.factory.annotation.Value.class).value())
+                .isEqualTo("${oops.analysis.structured-context-search-enabled:true}");
         try(var input=getClass().getResourceAsStream("/application.yml")) {
             assertThat(new String(Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8))
                     .contains("guidelines-example-max-cases: ${REVIEW_GUIDELINES_MAX_CASES:3}");

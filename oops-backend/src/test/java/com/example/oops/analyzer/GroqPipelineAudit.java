@@ -29,7 +29,7 @@ public final class GroqPipelineAudit {
         }
     }
     public static void main(String[] args) throws Exception {
-        check(args.length == 4 && Set.of("inspect", "run").contains(args[0]), "inspect/run input runtime NEW-output required");
+        check(args.length == 4 && Set.of("inspect", "inspect-structured", "run").contains(args[0]), "inspect/inspect-structured/run input runtime NEW-output required");
         Path output = Path.of(args[3]).toAbsolutePath().normalize();
         check(output.getParent().startsWith(Path.of("../datasets/controversy/experiments").toRealPath())
                 && !Files.exists(output), "New private output only");
@@ -45,16 +45,22 @@ public final class GroqPipelineAudit {
             new ReviewInput(c.raw()); cases.add(c);
         }
         check(cases.size() == 16 && cases.stream().map(Case::id).distinct().count() == 16, "Sixteen distinct paired/draft cases required");
-        var library = ContextRankReadinessAudit.library(new String(runtimeBytes, java.nio.charset.StandardCharsets.UTF_8));
+        boolean structured = args[0].equals("inspect-structured");
+        var library = new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(
+                new String(runtimeBytes, java.nio.charset.StandardCharsets.UTF_8)), true,
+                "classpath:frozen.json", 6000, 3, 3000, "", structured);
+        library.load();
+        check("READY_WORKING_REFERENCE".equals(library.trace(TimelineEventType.SPEECH).state()), "Ready archive required");
         var report = new LinkedHashMap<String,Object>();
         report.put("inputSha256", ReferenceOnlyTrial.sha(inputBytes));
         report.put("runtimeSha256", ReferenceOnlyTrial.sha(runtimeBytes));
         report.put("scope", "SELECTED_EXCERPTS_NOT_FULL_VIDEO_OCR_VISUAL_FUSION_OR_DB");
         report.put("pipelineRevision", CandidateReviewEngine.REVISION);
         report.put("routerEnabled", false); report.put("sourceRelationsEnabled", false);
+        report.put("structuredSearchEnabled", structured);
         report.put("normalDraftsHumanApproved", false); report.put("repeats", 1);
         var rows = new ArrayList<Map<String,Object>>(); report.put("results", rows);
-        if (args[0].equals("inspect")) {
+        if (args[0].startsWith("inspect")) {
             for (var c : cases) {
                 var selections = new ArrayList<Map<String,Object>>();
                 for (var batch : TextReviewBatchPlanner.plan(new ReviewInput(c.raw()), TimelineEventType.SPEECH, 3)) {
