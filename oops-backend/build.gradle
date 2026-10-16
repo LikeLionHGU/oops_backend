@@ -191,6 +191,19 @@ tasks.register('prepareSemanticReferenceRanking', JavaExec) {
     }
 }
 
+// Separate new USD3/text scope: read-only v4/v6 snapshots, eight long-video analyses.
+tasks.register('longVideoRoutingTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.LongVideoRoutingTrial'
+    doFirst {
+        def names = ['trialMode', 'trialInput', 'trialControl', 'trialExtra', 'trialOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Explicit frozen prepare/run arguments required')
+        args values
+    }
+}
+
 // Explicit new USD1/text approval only: v1/v2, router OFF/ON, two repetitions.
 tasks.register('v7RoutingVideoTrial', JavaExec) {
     dependsOn testClasses
