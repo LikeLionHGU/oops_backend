@@ -191,6 +191,19 @@ tasks.register('prepareSemanticReferenceRanking', JavaExec) {
     }
 }
 
+// User-requested one-time rerun, carrying the original attempt's budget forward.
+tasks.register('longVideoRoutingRetry', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.LongVideoRoutingRetry'
+    doFirst {
+        def names = ['trialPlan', 'trialPrevious', 'trialConsent', 'trialOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Explicit frozen rerun arguments required')
+        args values
+    }
+}
+
 // Separate new USD3/text scope: read-only v4/v6 snapshots, eight long-video analyses.
 tasks.register('longVideoRoutingTrial', JavaExec) {
     dependsOn testClasses
