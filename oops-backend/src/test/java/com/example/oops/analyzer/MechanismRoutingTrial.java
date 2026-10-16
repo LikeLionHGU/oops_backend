@@ -70,18 +70,37 @@ public final class MechanismRoutingTrial {
     }
     static final class Client extends OpenAiClient {
         final List<Map<String,Object>> calls = new ArrayList<>();
+        private final boolean scopedIds;
         Client(RestClient rest, OpenAiProperties properties) { this(rest,properties,false); }
-        Client(RestClient rest, OpenAiProperties properties, boolean strictDiscovery) { super(rest,properties,strictDiscovery); }
+        Client(RestClient rest, OpenAiProperties properties, boolean strictDiscovery) { this(rest,properties,strictDiscovery,true); }
+        Client(RestClient rest, OpenAiProperties properties, boolean strictDiscovery, boolean scopedIds) {
+            super(rest,properties,strictDiscovery);this.scopedIds=scopedIds;
+        }
+        // Test-only control arm: identical DTO/schema, without dynamic enum binding. Never wired in Spring.
+        @com.example.oops.client.JsonSchemaOutput(name="candidate_discovery_scoped_v2",resource="/candidate-discovery-output.schema.json")
+        public record UnscopedDiscovery(List<String> reviewedSegmentIds,List<CandidateReviewEngine.Proposal> candidates,
+                List<CandidateReviewEngine.UncertainSegment> uncertainSegments,Boolean truncated,
+                List<CandidateReviewEngine.Proposal> visualCandidates) {}
         private <T> Optional<T> record(String kind, String system, String input, Optional<T> output) {
             var row = new LinkedHashMap<String,Object>();
             row.put("kind",kind); row.put("system",system); row.put("input",JSON.readTree(input)); row.put("output",output.orElse(null));
             row.put("failureCode",failureCode().orElse(null)); calls.add(row); return output;
         }
         @Override public <T> Optional<T> completeAsJson(String system,String input,Class<T> type) {
-            var result=record(type.getSimpleName(),system,input,super.completeAsJson(system,input,type));
+            Optional<T> parsed;
+            if (!scopedIds && type==CandidateReviewEngine.Discovery.class) {
+                parsed=super.completeAsJson(system,input,UnscopedDiscovery.class).map(d -> type.cast(
+                        new CandidateReviewEngine.Discovery(d.reviewedSegmentIds(),d.candidates(),d.uncertainSegments(),d.truncated(),d.visualCandidates())));
+            } else parsed=super.completeAsJson(system,input,type);
+            var result=record(type.getSimpleName(),system,input,parsed);
             var format=JSON.readTree(JSON.writeValueAsString(replayRequestBody(system,input,type))).path("response_format");
             calls.get(calls.size()-1).put("responseFormatType",format.path("type").asText());
+            calls.get(calls.size()-1).put("responseFormatSha256",ReviewGuidelineLibrary.retrievalHash(format.toString()));
+            calls.get(calls.size()-1).put("discoveryIdScopeEnabled",format.at("/json_schema/schema/$defs/primaryId/enum").isArray());
             return result;
+        }
+        @Override public Map<String,Object> replayRequestBody(String system,String input,Class<?> type) {
+            return super.replayRequestBody(system,input,!scopedIds && type==CandidateReviewEngine.Discovery.class?UnscopedDiscovery.class:type);
         }
         @Override public <T> Optional<T> completeRoutingAsJson(String system,String input,Class<T> type) {
             return record("MECHANISM_ROUTING",system,input,super.completeRoutingAsJson(system,input,type));

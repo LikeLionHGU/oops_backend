@@ -143,6 +143,30 @@ class DiscoveryStructuredOutputTest {
                 assertThat(e.getValue().at("/items/$ref").asText()).isEqualTo("#/$defs/rawId"));
         assertThat(first.at("/properties/visualCandidates/items/$ref").asText()).isEqualTo("#/$defs/proposal");
     }
+    @Test void testOnlyControlChangesJustEnumBindingAndPreservesActualHttpAndReplay() {
+        var builder=RestClient.builder().baseUrl("https://example.invalid");var server=MockRestServiceServer.bindTo(builder).build();
+        var control=new MechanismRoutingTrial.Client(builder.build(),properties(),true,false);
+        var scoped=new MechanismRoutingTrial.Client(RestClient.create(),properties(),true);
+        String input=request("s");
+        var scopedBody=JSON.valueToTree(scoped.replayRequestBody("JSON",input,CandidateReviewEngine.Discovery.class));
+        var controlBody=JSON.valueToTree(control.replayRequestBody("JSON",input,CandidateReviewEngine.Discovery.class));
+        for(String definition:List.of("primaryId","rawId"))
+            ((tools.jackson.databind.node.ObjectNode)scopedBody.at("/response_format/json_schema/schema/$defs/"+definition)).remove("enum");
+        assertThat(scopedBody).isEqualTo(controlBody);
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andExpect(jsonPath("$.response_format.type").value("json_schema"))
+                .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.primaryId.enum").doesNotExist())
+                .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.rawId.enum").doesNotExist())
+                .andRespond(withSuccess(response(emptyDiscovery("[\"s\"]","false"),"stop",null),MediaType.APPLICATION_JSON));
+        var parsed=control.completeAsJson("JSON",input,CandidateReviewEngine.Discovery.class).orElseThrow();
+        assertThat(parsed.reviewedSegmentIds()).containsExactly("s");assertThat(parsed.truncated()).isFalse();
+        assertThat(control.calls).singleElement().satisfies(c -> {
+            assertThat(c.get("kind")).isEqualTo("Discovery");
+            assertThat(c.get("discoveryIdScopeEnabled")).isEqualTo(false);
+            assertThat(c.get("responseFormatSha256")).isEqualTo(ReviewGuidelineLibrary.retrievalHash(controlBody.path("response_format").toString()));
+        });
+        server.verify();
+    }
     @Test void malformedScopeFailsBeforeHttpWithoutJsonFallback() {
         var builder=RestClient.builder();var server=MockRestServiceServer.bindTo(builder).build();
         var client=new OpenAiClient(builder.build(),properties(),true);

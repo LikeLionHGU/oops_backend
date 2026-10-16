@@ -75,4 +75,24 @@ class StructuredSearchBoundaryTrialTest {
         assertThat(budget.attempts).isZero();assertThat(budget.reserved).isZero();
         assertThatThrownBy(() -> new StructuredSearchBoundaryTrial.Budget(temporary,.75)).hasMessageContaining("Known fresh budget");
     }
+    @Test void scopeComparisonKeepsStrictSearchAndPromptsFixedWithDistinctConsent() throws Exception {
+        var original=plan();var p=StructuredSearchBoundaryTrial.scopePlan(original);
+        assertThat(p.conditions()).isEqualTo(original.conditions());
+        assertThat(p.engineContractSha256()).isEqualTo(original.engineContractSha256());
+        assertThat(p.runtimeSha256()).isEqualTo(original.runtimeSha256());
+        assertThat(p.estimatedCapUsd()).isEqualTo(.50);
+        assertThat(StructuredSearchBoundaryTrial.arms(p,1)).containsExactly("UNSCOPED","SCOPED");
+        assertThat(StructuredSearchBoundaryTrial.arms(p,2)).containsExactly("SCOPED","UNSCOPED");
+        for(String arm:StructuredSearchBoundaryTrial.arms(p,1)) {
+            assertThat(StructuredSearchBoundaryTrial.searchEnabled(p,arm)).isTrue();
+            assertThat(StructuredSearchBoundaryTrial.strictEnabled(p,arm)).isTrue();
+        }
+        assertThat(StructuredSearchBoundaryTrial.consent(p)).isEqualTo(StructuredSearchBoundaryTrial.SCOPE_CONSENT)
+                .isNotEqualTo(StructuredSearchBoundaryTrial.SCHEMA_CONSENT).isNotEqualTo(StructuredSearchBoundaryTrial.CONSENT);
+        assertThat(StructuredSearchBoundaryTrial.runMode(p)).isEqualTo("run-scope");
+        var tree=(tools.jackson.databind.node.ObjectNode)JSON.valueToTree(p);
+        tree.put("comparisonFactor","OUTPUT_CONTRACT");
+        assertThatThrownBy(() -> StructuredSearchBoundaryTrial.validate(JSON.readValue(tree.toString(),StructuredSearchBoundaryTrial.Plan.class)))
+                .hasMessageContaining("Known 32-slot plan");
+    }
 }

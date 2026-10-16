@@ -16,6 +16,7 @@ import static com.example.oops.domain.TimelineEventType.SPEECH;
 public final class StructuredSearchBoundaryTrial {
     static final String CONSENT = "NEW_USD1_STRUCTURED_SEARCH_TEXT_EGRESS_APPROVED";
     static final String SCHEMA_CONSENT = "NEW_USD050_DISCOVERY_SCHEMA_TEXT_EGRESS_APPROVED";
+    static final String SCOPE_CONSENT = "NEW_USD050_DISCOVERY_ID_SCOPE_TEXT_EGRESS_APPROVED";
     record Boundary(String id, String expectedDecision, String boundary, List<String> speech) {}
     record Suite(String schemaVersion, String labelStatus, List<Boundary> cases) {}
     record Condition(String id, String labelStatus, String expectedDecision, String boundary, List<ReviewInput.Segment> raw) {}
@@ -32,6 +33,14 @@ public final class StructuredSearchBoundaryTrial {
         }
     }
     static boolean schemaComparison(Plan p) { return "OUTPUT_CONTRACT".equals(p.comparisonFactor()); }
+    static boolean scopeComparison(Plan p) { return "ID_SCOPE".equals(p.comparisonFactor()); }
+    static boolean outputComparison(Plan p) { return schemaComparison(p) || scopeComparison(p); }
+    static Plan scopePlan(Plan p) throws Exception {
+        var result=new Plan("discovery-id-scope-trial-1",p.model(),p.repeats(),.50,p.sourceSha256(),p.fixtureSha256(),
+                p.runtimeText(),p.runtimeSha256(),p.searchCatalogSha256(),p.engineContractSha256(),p.conditions(),
+                "ID_SCOPE",ReferenceOnlyTrial.sha(outputSchemaBytes()));
+        validate(result);return result;
+    }
     static Plan schemaPlan(Plan p) throws Exception {
         var result=new Plan("structured-discovery-boundary-trial-1",p.model(),p.repeats(),.50,p.sourceSha256(),p.fixtureSha256(),
                 p.runtimeText(),p.runtimeSha256(),p.searchCatalogSha256(),p.engineContractSha256(),p.conditions(),
@@ -83,8 +92,8 @@ public final class StructuredSearchBoundaryTrial {
         validate(p); return p;
     }
     static void validate(Plan p) throws Exception {
-        boolean schema=schemaComparison(p);
-        check((schema ? "structured-discovery-boundary-trial-1".equals(p.schemaVersion()) && p.estimatedCapUsd()==.50
+        boolean schema=outputComparison(p);
+        check((schema ? (scopeComparison(p)?"discovery-id-scope-trial-1":"structured-discovery-boundary-trial-1").equals(p.schemaVersion()) && p.estimatedCapUsd()==.50
                 : "SEARCH".equals(p.comparisonFactor()) && "structured-search-boundary-trial-1".equals(p.schemaVersion())
                         && p.estimatedCapUsd()==1 && p.outputSchemaSha256()==null)
                 && "gpt-6-luna".equals(p.model()) && p.repeats() == 2 && p.conditions() != null && p.conditions().size() == 8
@@ -107,10 +116,13 @@ public final class StructuredSearchBoundaryTrial {
     }
     static List<String> arms(int repeat) { return repeat == 1 ? List.of("OFF","ON") : List.of("ON","OFF"); }
     static List<String> arms(Plan p,int repeat) {
+        if(scopeComparison(p)) return repeat==1?List.of("UNSCOPED","SCOPED"):List.of("SCOPED","UNSCOPED");
         return !schemaComparison(p)?arms(repeat):repeat==1?List.of("JSON","STRICT"):List.of("STRICT","JSON");
     }
-    static boolean searchEnabled(Plan p,String arm) { return schemaComparison(p) || "ON".equals(arm); }
-    static boolean strictEnabled(Plan p,String arm) { return schemaComparison(p) && "STRICT".equals(arm); }
+    static boolean searchEnabled(Plan p,String arm) { return outputComparison(p) || "ON".equals(arm); }
+    static boolean strictEnabled(Plan p,String arm) { return scopeComparison(p) || schemaComparison(p) && "STRICT".equals(arm); }
+    static String consent(Plan p) { return scopeComparison(p)?SCOPE_CONSENT:schemaComparison(p)?SCHEMA_CONSENT:CONSENT; }
+    static String runMode(Plan p) { return scopeComparison(p)?"run-scope":schemaComparison(p)?"run-schema":"run"; }
     static final class Budget {
         final Path output; final double cap; int attempts; double reserved; boolean exhausted;
         Budget(Path output) { this(output,1); }
@@ -125,14 +137,14 @@ public final class StructuredSearchBoundaryTrial {
         }
     }
     static void save(Path output, Plan plan, String sha, List<Map<String,Object>> rows, Budget budget, double cost, String state) throws Exception {
-        Files.writeString(output.resolve("results.json"), JSON.writeValueAsString(Map.of("schemaVersion",schemaComparison(plan)
-                        ?"structured-discovery-results-1":"structured-search-results-1","comparisonFactor",plan.comparisonFactor(),
+        Files.writeString(output.resolve("results.json"), JSON.writeValueAsString(Map.of("schemaVersion",scopeComparison(plan)
+                        ?"discovery-id-scope-results-1":schemaComparison(plan)?"structured-discovery-results-1":"structured-search-results-1","comparisonFactor",plan.comparisonFactor(),
                 "planSha256",sha,"state",state,"results",rows,"httpAttempts",budget.attempts,
                 "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false)));
     }
     public static void main(String[] args) throws Exception {
-        check(args.length == 5 && Set.of("prepare","run","prepare-schema","run-schema").contains(args[0]),
-                "prepare[-schema] source runtime fixture NEW-directory OR run[-schema] plan approved-sha consent NEW-directory");
+        check(args.length == 5 && Set.of("prepare","run","prepare-schema","run-schema","prepare-scope","run-scope").contains(args[0]),
+                "prepare[-schema/-scope] source runtime fixture NEW-directory OR run[-schema/-scope] plan approved-sha consent NEW-directory");
         Path root = Path.of("../datasets/controversy/experiments").toRealPath();
         Path output = Path.of(args[4]).toAbsolutePath().normalize();
         check(!Files.exists(output) && output.getParent().toRealPath().startsWith(root), "New private output directory required");
@@ -140,6 +152,7 @@ public final class StructuredSearchBoundaryTrial {
             var p = prepare(OfflineDecisionContractAudit.bounded(Path.of(args[1])),
                     OfflineDecisionContractAudit.bounded(Path.of(args[2])), OfflineDecisionContractAudit.bounded(Path.of(args[3])));
             if(args[0].equals("prepare-schema")) p=schemaPlan(p);
+            if(args[0].equals("prepare-scope")) p=scopePlan(p);
             Files.createDirectory(output);
             byte[] bytes = JSON.writeValueAsBytes(p); Files.write(output.resolve("plan.json"), bytes, StandardOpenOption.CREATE_NEW);
             List<Map<String,Object>> rows = new ArrayList<>();
@@ -158,7 +171,7 @@ public final class StructuredSearchBoundaryTrial {
         byte[] bytes = OfflineDecisionContractAudit.bounded(Path.of(args[1]));
         check(ReferenceOnlyTrial.sha(bytes).equals(args[2]),"Frozen plan hash required");
         var p = JSON.readValue(bytes, Plan.class); validate(p);
-        check(schemaComparison(p)==args[0].equals("run-schema") && (schemaComparison(p)?SCHEMA_CONSENT:CONSENT).equals(args[3]),
+        check(runMode(p).equals(args[0]) && consent(p).equals(args[3]),
                 "Fresh factor-specific budget/text consent required");
         String key = System.getenv("OPENAI_API_KEY"); check(key != null && !key.isBlank(), "OPENAI_API_KEY required; never print");
         Files.createDirectory(output); Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
@@ -180,11 +193,12 @@ public final class StructuredSearchBoundaryTrial {
         var rest=builder.build();
         var jsonClient=new MechanismRoutingTrial.Client(rest,props);
         var strictClient=new MechanismRoutingTrial.Client(rest,props,true);
+        var unscopedClient=new MechanismRoutingTrial.Client(rest,props,true,false);
         var off = library(p,false); var on = library(p,true);
         List<Map<String,Object>> rows = new ArrayList<>(); double cost=0;
         save(output,p,args[2],rows,budget,cost,"RUNNING");
         try {
-            if(schemaComparison(p)) {
+            if(outputComparison(p)) {
                 var c=p.conditions().stream().filter(x -> x.id().equals("normal-underwear-product")).findFirst().orElseThrow();
                 strictClient.beginVideo(0L);strictClient.beginAnalyzer("schema-preflight");
                 var probe=CandidateReviewEngine.run(strictClient,MechanismRoutingTrial.context(
@@ -200,7 +214,7 @@ public final class StructuredSearchBoundaryTrial {
                 check(ready,"Schema preflight failed; do not start comparison or auto-fallback");
             }
             for(int repeat=1;repeat<=p.repeats();repeat++) for(var c:p.conditions()) for(String arm:arms(p,repeat)) {
-                var client=strictEnabled(p,arm)?strictClient:jsonClient;
+                var client=scopeComparison(p) && "UNSCOPED".equals(arm)?unscopedClient:strictEnabled(p,arm)?strictClient:jsonClient;
                 client.calls.clear(); client.beginVideo(0L); client.beginAnalyzer("structured-search-boundary");
                 long started = System.nanoTime();
                 var condition = new MechanismRoutingTrial.Condition(c.id(),c.labelStatus(),c.raw());
@@ -211,6 +225,7 @@ public final class StructuredSearchBoundaryTrial {
                 row.put("labelStatus",c.labelStatus()); row.put("expectedDecision",c.expectedDecision()); row.put("status",result.status());
                 row.put("comparisonFactor",p.comparisonFactor());row.put("structuredSearchEnabled",searchEnabled(p,arm));
                 row.put("strictDiscoveryOutputEnabled",strictEnabled(p,arm));
+                row.put("discoveryIdScopeEnabled",strictEnabled(p,arm) && !"UNSCOPED".equals(arm));
                 row.put("elapsedMs",(System.nanoTime()-started)/1_000_000); row.put("diagnostics",result.diagnostics());
                 row.put("evaluations",result.evaluations()); row.put("unassessedSegmentIds",result.unassessedSegmentIds());
                 row.put("calls",List.copyOf(client.calls)); row.put("usage",usage);
