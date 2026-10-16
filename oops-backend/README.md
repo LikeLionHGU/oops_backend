@@ -80,6 +80,7 @@ WebSocket은 `/ws` → `/topic/videos/{videoId}/progress`다. `GET /health`에�
 | `REVIEW_GUIDELINES_MAX_CASES` | 기본 3, 관련성·크기 예산에 따라 더 적게 선택 가능 |
 | `CONTEXT_MECHANISM_ROUTING_ENABLED` | 추가 검색 키 분류, 기본 false |
 | `CANDIDATE_SOURCE_RELATIONS_ENABLED` | 원문 관계 전달 실험, 기본 false |
+| `FINAL_REVIEW_BASIS_ENABLED` | 텍스트 검증의 최종 근거 분리, 기본 false. [계약·검증 상태](../docs/최종-판단-근거-분리.md) |
 | `GROQ_STT_USD_PER_MINUTE` | 비용 추정용 기본 $0.00185. Groq 키 설정이 아님 |
 
 실제 Groq 키는 **Python 서버**에 설정한다. `datasets/**`는 Git 제외이므로 배포 서버에도 사전·입력 파일을 따로 제공해야 한다. 사전은 시작 시 로드하며 빌드만으로 실행 중인 서버가 갱신되지 않는다. [파일 관리와 재빌드 절차](../docs/데이터셋-파일-관리.md)를 따른다.

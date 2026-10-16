@@ -116,6 +116,8 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 탐색 출력은 [JSON/strict 비교](docs/탐색-출력계약-JSON-스키마-비교.md) 후 strict JSON Schema 기본 ON이다. 후속 ID 범위 비교 32회도 완료했다. 정상 초안은 양쪽 12/12 완전 무경고, 범위 오류도 양쪽 0건이라 제한 추가의 감소 효과는 입증하지 못했다. 검토·대표 ID는 현재 배치, 근거 ID는 보조 문맥까지 허용한다. 행위·대상 의미 보존과 문맥 제한은 남는다. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED=false`로 이전 JSON 모드를 선택할 수 있다.
 
+[최종 판단 근거 분리](docs/최종-판단-근거-분리.md)는 기본 OFF 선택 기능이다. 탐색의 읽기 범위와 최종 검토 근거를 분리하며 기존 대상 검사를 유지한다. 무료 회귀는 통과했지만 실호출 효과 검증 전이므로 `FINAL_REVIEW_BASIS_ENABLED` 기본값은 false다.
+
 ## 문서
 
 - [문서 안내와 현재 상태](docs/README.md)
