@@ -1,5 +1,7 @@
 # 현재 AI 요청별 프롬프트 전문
 
+> 10/17 최신: 기본 `2026-10-17-direct-target-writing-40`, 관계 실험 `2026-10-17-source-relations-direct-target-40`이다. 직접 지칭의 원문은 target/targetMention에 같게 쓰고 풀이는 targetReason에 두도록 최초 검증·대상 복구 지침을 정리했다. 검증기·판단 POLICY·기본 ON/OFF는 유지한다. 아래37/39 설명은 이력이며 실제 모델 오류 감소는 아직 미검증이다.
+
 > 10/15 출력 지침42 준비: 테스트 전용 `VerificationContractComparison.java`의 CONTRAST/RELATION/JSON_INTRO만 교체한다. 판단 POLICY·기본37/관계39·validator는 유지한다. [전문 코드](../oops-backend/src/test/java/com/example/oops/analyzer/VerificationContractComparison.java), [준비 범위](판단-기준-비교안-41-결과.md#후속42-출력-지침만-바꾸는-비교-준비--실모델-미실행)를 따른다. 새 모델 응답이나 개선 확인은 없고 운영 요청 전문은 아래와 같다.
 
 > 10/15 후속: 비교안41도72회 고정 검증 후 채택하지 않았다. 지역 흐름 검토2/3→0/3,66공방은 수정안도3/3경고다. 호출당 입력+272토큰, 사용량 추정$0.0219771이다. [41 결과](판단-기준-비교안-41-결과.md)를 따르며 기본37/관계39 프롬프트는 그대로다.
@@ -72,7 +74,11 @@ JSON: {"proposal":{"anchorId":"고정 원문 ID","axis":"고정 축","reason":"�
 현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
 대상 평가로 REVIEW_REQUIRED를 반환하면 evidence에 실제 TARGET 역할 인용을 반드시 포함한다.
 지칭어를 CONTEXT로만 적거나 targetMention 필드만 채우는 것은 TARGET 인용을 대신하지 않는다.
-먼저 TARGET 역할로 선택한 segmentId의 raw.text에서 targetMention을 복사하고, 다음에 해석한 대상 target을 적는다.
+먼저 TARGET 역할로 선택한 segmentId의 raw.text에서 실제 대상 지칭어를 targetMention으로 복사한다.
+직접 지칭이면 target에도 같은 원문을 쓰고 대상 풀이는 targetReason에 둔다.
+예: '당신'은 target='당신', targetMention='당신', EXPLICIT이며 '질문을 받은 상대'라는 풀이는 targetReason이다.
+다른 발언으로 대상을 식별해야 할 때만 해석 대상명과 CONTEXTUAL 근거를 반환한다.
+부사·행동어를 사람 지칭으로 쓰거나 다른 사람을 연결해 필드를 채우지 않는다.
 같은 원문 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. targetReason에 실제 연결을 설명한다.
 EXPLICIT은 target과 targetMention이 동일할 때만 사용한다. 서로 다르면 CONTEXTUAL과
 TARGET 인용과 다른 segmentId의 실제 CONTEXT 및 연결 설명이 필요하다.
@@ -224,7 +230,7 @@ evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quo
   PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
   TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
 대상 평가가 이유이면 target과 TARGET 인용 및 targetType·targetRelation·targetReason이 필요하다.
-  target은 문맥상 해석한 대상, targetMention은 TARGET 인용에 그대로 있는 지칭어(각 200자 이내)다.
+  targetMention은 TARGET 인용에 그대로 있는 지칭어, target은 아래 관계에 맞춘 대상명(각 200자 이내)다.
   EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
   별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
   시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
@@ -234,7 +240,12 @@ evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quo
   탐색 axis는 가설이다. 검증 결과가 GRAPHIC_METAPHOR이고 대상 공격 없이 구체적 신체 훼손 비유 자체를
   검토하는 경우에는 탐색 axis가 TARGET_TREATMENT였어도 target과 대상 관계 필드를 null로 반환할 수 있다.
 출력 순서: 먼저 TARGET 원문을 고르고 그 안의 연속 문자열을 targetMention으로 복사한다.
-  다음에 해석한 대상 target을 적는다. 해석한 대상 이름을 원문 인용으로 바꾸거나 역으로 꾸미지 않는다.
+  직접 지칭이면 target에도 같은 원문 지칭어를 적고, 대상 풀이는 targetReason에 둔다.
+  예: 원문의 '당신'이 요청받는 상대라면 target='당신', targetMention='당신', EXPLICIT이다.
+  '질문을 받은 상대'라는 풀이는 targetReason에 적는다. 이 재표현만으로 CONTEXTUAL을 만들지 않는다.
+  다른 발언을 연결해야 대상을 식별할 때만 그 해석 대상명을 target에 적고 CONTEXTUAL 근거를 반환한다.
+  '살짝' 같은 부사·행동어를 사람 지칭어로 쓰거나, 다른 사람을 같은 대상으로 바꾸지 않는다.
+  계약을 맞추려고 판단·원문 인용·실제 대상 관계를 바꾸지 않는다.
   같은 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. CONTEXTUAL의 별도 CONTEXT는
   다른 segmentId에서 복사한다. 실제 대상 연결 근거가 없으면 UNCERTAIN이지 근거 생성이 아니다.
 targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
@@ -1957,7 +1968,7 @@ evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quo
   PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
   TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
 대상 평가가 이유이면 target과 TARGET 인용 및 targetType·targetRelation·targetReason이 필요하다.
-  target은 문맥상 해석한 대상, targetMention은 TARGET 인용에 그대로 있는 지칭어(각 200자 이내)다.
+  targetMention은 TARGET 인용에 그대로 있는 지칭어, target은 아래 관계에 맞춘 대상명(각 200자 이내)다.
   EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
   별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
   시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
@@ -1967,7 +1978,12 @@ evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quo
   탐색 axis는 가설이다. 검증 결과가 GRAPHIC_METAPHOR이고 대상 공격 없이 구체적 신체 훼손 비유 자체를
   검토하는 경우에는 탐색 axis가 TARGET_TREATMENT였어도 target과 대상 관계 필드를 null로 반환할 수 있다.
 출력 순서: 먼저 TARGET 원문을 고르고 그 안의 연속 문자열을 targetMention으로 복사한다.
-  다음에 해석한 대상 target을 적는다. 해석한 대상 이름을 원문 인용으로 바꾸거나 역으로 꾸미지 않는다.
+  직접 지칭이면 target에도 같은 원문 지칭어를 적고, 대상 풀이는 targetReason에 둔다.
+  예: 원문의 '당신'이 요청받는 상대라면 target='당신', targetMention='당신', EXPLICIT이다.
+  '질문을 받은 상대'라는 풀이는 targetReason에 적는다. 이 재표현만으로 CONTEXTUAL을 만들지 않는다.
+  다른 발언을 연결해야 대상을 식별할 때만 그 해석 대상명을 target에 적고 CONTEXTUAL 근거를 반환한다.
+  '살짝' 같은 부사·행동어를 사람 지칭어로 쓰거나, 다른 사람을 같은 대상으로 바꾸지 않는다.
+  계약을 맞추려고 판단·원문 인용·실제 대상 관계를 바꾸지 않는다.
   같은 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. CONTEXTUAL의 별도 CONTEXT는
   다른 segmentId에서 복사한다. 실제 대상 연결 근거가 없으면 UNCERTAIN이지 근거 생성이 아니다.
 targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
