@@ -55,7 +55,7 @@ final class CandidateReviewEngine {
         }
     }
     public record UncertainSegment(String segmentId, List<String> missingInformation) {}
-    @com.example.oops.client.JsonSchemaOutput(name = "candidate_discovery_v1", resource = "/candidate-discovery-output.schema.json")
+    @com.example.oops.client.JsonSchemaOutput(name = "candidate_discovery_scoped_v2", resource = "/candidate-discovery-output.schema.json", discoveryIdScope = true)
     public record Discovery(List<String> reviewedSegmentIds, List<Proposal> candidates,
                             List<UncertainSegment> uncertainSegments, Boolean truncated, List<Proposal> visualCandidates) {
         public Discovery(List<String> ids, List<Proposal> candidates, List<UncertainSegment> uncertain, Boolean truncated) {

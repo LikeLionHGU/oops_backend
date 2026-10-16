@@ -1,7 +1,7 @@
 {
   "type": "object",
   "properties": {
-    "reviewedSegmentIds": {"type": "array", "items": {"type": "string"}},
+    "reviewedSegmentIds": {"type": "array", "items": {"$ref": "#/$defs/primaryId"}},
     "candidates": {"type": "array", "items": {"anyOf": [
       {"$ref": "#/$defs/proposal"}, {"$ref": "#/$defs/relationProposal"}
     ]}},
@@ -12,15 +12,17 @@
   "required": ["reviewedSegmentIds", "candidates", "uncertainSegments", "truncated", "visualCandidates"],
   "additionalProperties": false,
   "$defs": {
+    "primaryId": {"type": "string"},
+    "rawId": {"type": "string"},
     "evidence": {
       "type": "object",
-      "properties": {"segmentId": {"type": "string"}},
+      "properties": {"segmentId": {"$ref": "#/$defs/rawId"}},
       "required": ["segmentId"], "additionalProperties": false
     },
     "proposal": {
       "type": "object",
       "properties": {
-        "anchorId": {"type": "string"},
+        "anchorId": {"$ref": "#/$defs/primaryId"},
         "axis": {"type": "string", "enum": ["TARGET_TREATMENT", "EXPRESSION_CONTENT"]},
         "reason": {"type": "string"},
         "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
@@ -30,7 +32,7 @@
     "relationProposal": {
       "type": "object",
       "properties": {
-        "anchorId": {"type": "string"},
+        "anchorId": {"$ref": "#/$defs/primaryId"},
         "axis": {"type": "string", "enum": ["TARGET_TREATMENT", "EXPRESSION_CONTENT"]},
         "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
         "sourceRelations": {"$ref": "#/$defs/relations"}
@@ -40,11 +42,11 @@
     "relations": {
       "type": "object",
       "properties": {
-        "situationIds": {"type": "array", "items": {"type": "string"}},
-        "subjectIds": {"type": "array", "items": {"type": "string"}},
-        "actionIds": {"type": "array", "items": {"type": "string"}},
-        "evaluationIds": {"type": "array", "items": {"type": "string"}},
-        "referentIds": {"type": "array", "items": {"type": "string"}}
+        "situationIds": {"type": "array", "items": {"$ref": "#/$defs/rawId"}},
+        "subjectIds": {"type": "array", "items": {"$ref": "#/$defs/rawId"}},
+        "actionIds": {"type": "array", "items": {"$ref": "#/$defs/rawId"}},
+        "evaluationIds": {"type": "array", "items": {"$ref": "#/$defs/rawId"}},
+        "referentIds": {"type": "array", "items": {"$ref": "#/$defs/rawId"}}
       },
       "required": ["situationIds", "subjectIds", "actionIds", "evaluationIds", "referentIds"],
       "additionalProperties": false
@@ -52,7 +54,7 @@
     "uncertain": {
       "type": "object",
       "properties": {
-        "segmentId": {"type": "string"},
+        "segmentId": {"$ref": "#/$defs/primaryId"},
         "missingInformation": {"type": "array", "items": {"type": "string"}}
       },
       "required": ["segmentId", "missingInformation"], "additionalProperties": false

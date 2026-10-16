@@ -6,6 +6,8 @@ final class SourceRelationPrompts {
     static final String DISCOVERY = CandidateReviewPrompts.POLICY + """
             # 원문 관계 후보 탐색 (실험)
             primaryIds를 모두 검토하고 실제 읽은 ID만 reviewedSegmentIds에 반환한다.
+            raw의 보조 문맥 ID는 evidence·sourceRelations에 인용할 수 있지만 reviewedSegmentIds·anchorId·
+              uncertainSegments.segmentId로 반환하지 않는다. anchorId·불확실 구간 ID는 reviewedSegmentIds에도 포함한다.
             재검토할 구체적인 표현 또는 연결을 찾되, 이 단계에서 비하 대상이나 논란 판정을 확정하지 않는다.
             정상적인 리뷰·대체 행동·메뉴 유래 설명만 있으면 candidates에 넣지 않는다.
             필요한 정보가 없으면 uncertainSegments에 {"segmentId":"실제 원문 ID","missingInformation":["부족한 정보"]}를 반환한다.

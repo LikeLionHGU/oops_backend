@@ -8,4 +8,6 @@ import java.lang.annotation.*;
 public @interface JsonSchemaOutput {
     String name();
     String resource();
+    /** Bind discovery ID slots to primaryIds/raw in the trusted request envelope. */
+    boolean discoveryIdScope() default false;
 }

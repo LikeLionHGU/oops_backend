@@ -403,7 +403,7 @@ public class OpenAiClient {
 
     private Map<String, Object> requestBody(String systemPrompt, String userPrompt, Class<?> type) {
         var body = requestBody(systemPrompt, userPrompt);
-        if (structuredDiscoveryOutput) body.put("response_format", JsonSchemaResponseFormat.forType(type));
+        if (structuredDiscoveryOutput) body.put("response_format", JsonSchemaResponseFormat.forType(type, userPrompt));
         return body;
     }
 

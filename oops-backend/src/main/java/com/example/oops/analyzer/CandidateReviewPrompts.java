@@ -39,6 +39,8 @@ final class CandidateReviewPrompts {
             당사자의 입장과 비판적인 온라인 시청자의 관점으로 원문에 근거한 이의 제기 후보를 찾는다.
             무조건 비난하지 않는다. 악의적으로 맥락을 삭제해야만 성립하는 비판은 만들지 않는다.
             primaryIds의 모든 발언을 검토하고 reviewedSegmentIds에 실제 검토한 ID만 반환한다.
+            raw의 보조 문맥 ID는 evidence에 인용할 수 있지만 reviewedSegmentIds·anchorId·uncertainSegments.segmentId로
+              반환하지 않는다. anchorId와 uncertainSegments.segmentId는 reviewedSegmentIds에도 포함되어야 한다.
             문제를 못 찾은 구간은 후보를 만들지 않는다. 필수 정보가 부족해 판단할 수 없는 구간은
               uncertainSegments에 segmentId와 구체적인 missingInformation을 반환한다.
             후보의 anchorId는 primaryIds에서 실제 검토 표현을 고른다.
