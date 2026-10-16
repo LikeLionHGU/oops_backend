@@ -245,6 +245,18 @@ tasks.register('verificationFactorialPlan', JavaExec) {
     }
 }
 
+// Separate paid entry point. A fresh USD1/text approval is mandatory; prepare remains offline.
+tasks.register('verificationFactorialTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.VerificationFactorialTrial'
+    doFirst {
+        def names = ['factorialPlan', 'factorialSha', 'factorialConsent', 'factorialSource',
+                     'factorialReview', 'factorialMappings', 'factorialOutput']
+        args(names.collect { providers.gradleProperty(it).get() })
+    }
+}
+
 // User-requested one-time rerun, carrying the original attempt's budget forward.
 tasks.register('longVideoRoutingRetry', JavaExec) {
     dependsOn testClasses
