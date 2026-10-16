@@ -86,3 +86,22 @@ v6 ON 1회에서는 ‘진영이 모두’라는 원래 표현 `groq-v6-140`이 
 검색 기본값은 이번 작업에서 추가 변경하지 않았다. 정상 초안은 검수 전 상태이며, 이번 비교를 범용 정확도·안정화 완료로 보지 않는다. 무료 도구 회귀와 실제 모델 시험 결과도 분리한다.
 
 전체 `./gradlew --offline test`는 811개 통과·실패 0·skip 0이다. 신규 테스트 4개는 입력 고정·초안 상태·모델 입력에서 메타데이터 제외·검색 활성·순서 교차·해시 변경 차단·예산/시도 상한을 검증한다. 이번 승인 실행은 완료됐으며 재시험은 별도 새 실행 승인 범위에서 진행한다.
+
+## 후속 · 출력 계약 안정화 연결 (무료)
+
+5건의 빈 후보 실패를 대상으로 탐색 응답에만 Structured Outputs를 요청할 수 있게 연결했다. [OpenAI 공식 문서](https://developers.openai.com/api/docs/guides/structured-outputs)에 따라 JSON 객체만 보장하는 모드와 필수 필드·타입을 지정하는 스키마 모드를 구분한다. 이 문서는 특정 Luna 계정·모델의 실제 지원 확인을 대신하지 않는다.
+
+- 설정: `oops.openai.structured-discovery-output-enabled`, 환경변수 `STRUCTURED_DISCOVERY_OUTPUT_ENABLED`. **실제 제공자 호환 시험 전이므로 기본 false**다. 이 작업만으로 실행 중 서버의 출력 형식이 바뀌지는 않는다.
+- 대상: `CandidateReviewEngine.Discovery`만 opt-in annotation을 갖는다. 검증·복구·선택적 라우팅·이미지 요청과 과거 명시적 2인자 클라이언트는 기존 JSON 모드를 유지한다.
+- 스키마: `oops-backend/src/main/resources/candidate-discovery-output.schema.json`. 최상위 5개 필드를 모두 필수로 지정하고 `truncated`는 null 없는 Boolean이다. 빈 후보도 필드를 생략하지 않는다. true도 허용하며 임의로 false를 채우지 않는다.
+- 일반 제안은 reason을, 원문 관계 실험 제안은 sourceRelations를 갖는 별도 구조로 정의한다. 서로 사용하지 않는 필드를 억지로 생성하지 않는다. 근거는 기존처럼 segmentId만 요구한다.
+- 원문 ID·최대 후보 수·허용 창·근거·대상 검증은 서버에서 계속 검사한다. 형식 준수는 의미·논란 판단의 정답 보증이 아니다.
+- 미지원 스키마/HTTP 오류를 기존 JSON 모드로 조용히 재전송하지 않는다. 거절·응답 중단도 실패로 남긴다.
+- 기존 모드에서도 `truncated` 누락/null은 `INVALID_DISCOVERY / DISCOVERY_TRUNCATED_REQUIRED` 진단으로 구분한다. 실패를 PASS로 바꾸는 정책 변경은 없다.
+- 타입을 받는 `replayRequestBody` overload는 실제 opt-in 요청과 같은 response_format을 재현한다. 기존 타입 없는 재현은 JSON 모드를 유지한다.
+
+저장된 실패 5건의 빈 후보 파싱 응답을 오프라인 JSON Schema로 대조했고 모두 `truncated` 타입 한 곳에서만 거절됐다. 과거 응답은 수정하지 않았다. 모의 HTTP 테스트는 정상 false 통과, 누락/null 실패 보존, 허구 ID 거절, HTTP 400의 비전환, 거절/길이 중단 실패, DTO별 적용 범위, 스키마의 중첩 필수 필드를 확인한다.
+
+이 단계는 **구현·무료 계약 검증**이며 실모델의 실패 감소를 검증한 결과가 아니다. 다음은 새 승인 범위의 소규모 실제 호환 시험 후 스위치 활성화 판단이다. 그 전에는 프로덕션 기본값을 켜거나 과거 32회 결과를 새 결과처럼 재집계하지 않는다. 사전·판단 프롬프트·원문·정상 초안 승인 상태·서버 배포는 변경하지 않았다.
+
+후속 전체 회귀는 820개 통과·실패 0·skip 0이다. 신규 모의 HTTP/스키마 테스트는 9개이며 실제 모델 호출은 0회다. 과거 비교 도구의 명시적 클라이언트는 기본 JSON 모드이므로 환경변수만 바꿔 기존 승인 plan을 strict 시험으로 재사용하지 않는다. 새 시험에서는 출력 계약 여부를 별도 고정해야 한다.
