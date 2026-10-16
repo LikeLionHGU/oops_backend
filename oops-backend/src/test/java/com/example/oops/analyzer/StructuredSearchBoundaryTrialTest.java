@@ -54,4 +54,25 @@ class StructuredSearchBoundaryTrialTest {
         assertThatThrownBy(() -> expensive.reserve(10_000_000)).hasMessageContaining("Reservation exhausted");
         assertThat(expensive.attempts).isZero();
     }
+    @Test void schemaComparisonChangesOnlyOutputContractWithSeparateFreshBudgetAndHash() throws Exception {
+        var original=plan();var p=StructuredSearchBoundaryTrial.schemaPlan(original);
+        assertThat(p.conditions()).isEqualTo(original.conditions());assertThat(p.runtimeText()).isEqualTo(original.runtimeText());
+        assertThat(p.engineContractSha256()).isEqualTo(original.engineContractSha256());assertThat(p.estimatedCapUsd()).isEqualTo(.50);
+        assertThat(p.outputSchemaSha256()).matches("[a-f0-9]{64}");
+        assertThat(StructuredSearchBoundaryTrial.arms(p,1)).containsExactly("JSON","STRICT");
+        assertThat(StructuredSearchBoundaryTrial.arms(p,2)).containsExactly("STRICT","JSON");
+        for(String arm:List.of("JSON","STRICT")) assertThat(StructuredSearchBoundaryTrial.searchEnabled(p,arm)).isTrue();
+        assertThat(StructuredSearchBoundaryTrial.strictEnabled(p,"JSON")).isFalse();
+        assertThat(StructuredSearchBoundaryTrial.strictEnabled(p,"STRICT")).isTrue();
+        var tree=(tools.jackson.databind.node.ObjectNode)JSON.readTree(JSON.writeValueAsString(p));
+        tree.put("outputSchemaSha256","a".repeat(64));
+        assertThatThrownBy(() -> StructuredSearchBoundaryTrial.validate(JSON.readValue(tree.toString(),StructuredSearchBoundaryTrial.Plan.class)))
+                .hasMessageContaining("Output schema changed");
+    }
+    @Test void halfDollarBudgetCannotUseTheOldDollarAllowance() {
+        var budget=new StructuredSearchBoundaryTrial.Budget(temporary,.50);
+        assertThatThrownBy(() -> budget.reserve(5_000_000)).hasMessageContaining("Reservation exhausted");
+        assertThat(budget.attempts).isZero();assertThat(budget.reserved).isZero();
+        assertThatThrownBy(() -> new StructuredSearchBoundaryTrial.Budget(temporary,.75)).hasMessageContaining("Known fresh budget");
+    }
 }

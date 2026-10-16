@@ -70,14 +70,18 @@ public final class MechanismRoutingTrial {
     }
     static final class Client extends OpenAiClient {
         final List<Map<String,Object>> calls = new ArrayList<>();
-        Client(RestClient rest, OpenAiProperties properties) { super(rest,properties); }
+        Client(RestClient rest, OpenAiProperties properties) { this(rest,properties,false); }
+        Client(RestClient rest, OpenAiProperties properties, boolean strictDiscovery) { super(rest,properties,strictDiscovery); }
         private <T> Optional<T> record(String kind, String system, String input, Optional<T> output) {
             var row = new LinkedHashMap<String,Object>();
             row.put("kind",kind); row.put("system",system); row.put("input",JSON.readTree(input)); row.put("output",output.orElse(null));
             row.put("failureCode",failureCode().orElse(null)); calls.add(row); return output;
         }
         @Override public <T> Optional<T> completeAsJson(String system,String input,Class<T> type) {
-            return record(type.getSimpleName(),system,input,super.completeAsJson(system,input,type));
+            var result=record(type.getSimpleName(),system,input,super.completeAsJson(system,input,type));
+            var format=JSON.readTree(JSON.writeValueAsString(replayRequestBody(system,input,type))).path("response_format");
+            calls.get(calls.size()-1).put("responseFormatType",format.path("type").asText());
+            return result;
         }
         @Override public <T> Optional<T> completeRoutingAsJson(String system,String input,Class<T> type) {
             return record("MECHANISM_ROUTING",system,input,super.completeRoutingAsJson(system,input,type));
