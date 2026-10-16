@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "utterance-direction-boundaries-1",
+  "labelStatus": "SYNTHETIC_RELATION_DRAFT_NOT_CONTROVERSY_GOLD_NOT_PROMOTED",
+  "cases": [
+    {
+      "id": "self-offer",
+      "relationDraft": "SELF_DISCLOSURE_OFFER",
+      "unsupportedInference": "상대에게 신체 공개를 요구했다",
+      "speech": ["제 개인적인 생활을 이야기하는 중이에요.", "제가 살짝 보여드릴까요?"]
+    },
+    {
+      "id": "other-request",
+      "relationDraft": "OTHER_DISCLOSURE_REQUEST",
+      "unsupportedInference": "요청을 받은 사람이 먼저 자발적으로 공개를 제안했다",
+      "speech": ["지금 당신이 입은 속옷 색을 알고 싶어요.", "제게 한번 보여 주세요."]
+    },
+    {
+      "id": "term-definition",
+      "relationDraft": "TERM_EXPLANATION",
+      "unsupportedInference": "설명자가 상대에게 실제 속옷 색을 답하라고 질문했다",
+      "speech": ["오팬무가 무슨 뜻인가요?", "오늘 팬티는 무슨 색깔이라는 문장을 줄인 말입니다.", "지금 당신에게 묻는 게 아니라 단어의 뜻을 설명한 겁니다."]
+    },
+    {
+      "id": "critical-quotation",
+      "relationDraft": "CRITICAL_QUOTATION",
+      "unsupportedInference": "인용한 질문에 설명자가 동의하거나 그대로 답변을 요구했다",
+      "speech": ["오늘 팬티는 무슨 색깔이냐는 질문 사례가 있었습니다.", "그 질문을 따라 하려는 게 아니라, 인터뷰에서 사생활 질문을 피하자는 취지입니다."]
+    },
+    {
+      "id": "ambiguous-actor",
+      "relationDraft": "ACTOR_UNRESOLVED",
+      "unsupportedInference": "서로 다른 전사 줄이 반드시 같은 사람의 말이다",
+      "speech": ["제가 살짝 보여드릴까요?", "그건 다음에 이야기하죠.", "아까 대답한 분이 누구였죠?"]
+    },
+    {
+      "id": "refusal-not-acceptance",
+      "relationDraft": "REFUSAL_PRESENT",
+      "unsupportedInference": "상대가 질문에 동의했고 실제 신체 공개도 이루어졌다",
+      "speech": ["지금 당신이 입은 속옷 색을 알려 주세요.", "그 질문에는 대답하고 싶지 않아요.", "그럼 다른 주제로 넘어가겠습니다."]
+    }
+  ]
+}
