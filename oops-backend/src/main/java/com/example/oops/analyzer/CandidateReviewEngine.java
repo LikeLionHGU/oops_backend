@@ -55,6 +55,7 @@ final class CandidateReviewEngine {
         }
     }
     public record UncertainSegment(String segmentId, List<String> missingInformation) {}
+    @com.example.oops.client.JsonSchemaOutput(name = "candidate_discovery_v1", resource = "/candidate-discovery-output.schema.json")
     public record Discovery(List<String> reviewedSegmentIds, List<Proposal> candidates,
                             List<UncertainSegment> uncertainSegments, Boolean truncated, List<Proposal> visualCandidates) {
         public Discovery(List<String> ids, List<Proposal> candidates, List<UncertainSegment> uncertain, Boolean truncated) {
@@ -154,8 +155,9 @@ final class CandidateReviewEngine {
                         JSON.writeValueAsString(request), Discovery.class).orElse(null);
             } catch (RuntimeException ex) { response = null; }
             if (!validDiscovery(response, primaryIds)) {
-                if (sourceRelationsEnabled) stats.trace(discoveryRequestKey,null,null,"INVALID_DISCOVERY",
-                        response == null ? "DISCOVERY_NO_USABLE_RESPONSE" : "DISCOVERY_ENVELOPE_INVALID");
+                stats.trace(discoveryRequestKey,null,null,"INVALID_DISCOVERY",
+                        response == null ? "DISCOVERY_NO_USABLE_RESPONSE" : response.truncated() == null
+                                ? "DISCOVERY_TRUNCATED_REQUIRED" : "DISCOVERY_ENVELOPE_INVALID");
                 stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true; continue;
             }
             explored.addAll(response.reviewedSegmentIds());

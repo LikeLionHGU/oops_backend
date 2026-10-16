@@ -62,6 +62,7 @@ public class OpenAiClient {
 
     private final RestClient restClient;
     private final OpenAiProperties properties;
+    private final boolean structuredDiscoveryOutput;
 
     /**
      * LLM 응답 문자열을 파싱하는 용도로만 쓴다.
@@ -75,8 +76,16 @@ public class OpenAiClient {
 
     public OpenAiClient(@Qualifier("openAiRestClient") RestClient restClient,
                         OpenAiProperties properties) {
+        this(restClient, properties, false);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OpenAiClient(@Qualifier("openAiRestClient") RestClient restClient, OpenAiProperties properties,
+            @org.springframework.beans.factory.annotation.Value("${oops.openai.structured-discovery-output-enabled:false}")
+            boolean structuredDiscoveryOutput) {
         this.restClient = restClient;
         this.properties = properties;
+        this.structuredDiscoveryOutput = structuredDiscoveryOutput;
     }
 
     public boolean isEnabled() {
@@ -244,7 +253,7 @@ public class OpenAiClient {
             return Optional.empty();
         }
 
-        Map<String, Object> body = requestBody(systemPrompt, userPrompt);
+        Map<String, Object> body = requestBody(systemPrompt, userPrompt, type);
         return executeJson(body, type);
     }
 
@@ -385,6 +394,17 @@ public class OpenAiClient {
     public Map<String, Object> replayRequestBody(String systemPrompt, String userPrompt) {
         // Body only: no RestClient, API key, organization/project headers or endpoint credentials.
         return Map.copyOf(requestBody(systemPrompt, userPrompt));
+    }
+
+    /** Typed replay includes the same opt-in response contract as the actual text request. */
+    public Map<String, Object> replayRequestBody(String systemPrompt, String userPrompt, Class<?> type) {
+        return Map.copyOf(requestBody(systemPrompt, userPrompt, type));
+    }
+
+    private Map<String, Object> requestBody(String systemPrompt, String userPrompt, Class<?> type) {
+        var body = requestBody(systemPrompt, userPrompt);
+        if (structuredDiscoveryOutput) body.put("response_format", JsonSchemaResponseFormat.forType(type));
+        return body;
     }
 
     Map<String, Object> requestBody(String systemPrompt, String userPrompt) {
