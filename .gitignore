@@ -11,7 +11,7 @@ bin/
 out/
 *.class
 *.jar
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 
 # ===== 파이썬 =====
 .venv/
