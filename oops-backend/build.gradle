@@ -219,6 +219,21 @@ tasks.register('structuredSearchBoundaryTrial', JavaExec) {
     }
 }
 
+// Fixed verification-only comparison; prepare is free, run requires a fresh USD0.50/text approval.
+tasks.register('utteranceDirectionTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.UtteranceDirectionTrial'
+    doFirst {
+        def mode = providers.gradleProperty('directionMode').get()
+        def input = providers.gradleProperty('directionInput').get()
+        def second = providers.gradleProperty('directionSecond').get()
+        def output = providers.gradleProperty('directionOutput').get()
+        args mode == 'prepare' ? [mode, input, second, output] :
+                [mode, input, second, providers.gradleProperty('directionConsent').get(), output]
+    }
+}
+
 // User-requested one-time rerun, carrying the original attempt's budget forward.
 tasks.register('longVideoRoutingRetry', JavaExec) {
     dependsOn testClasses
