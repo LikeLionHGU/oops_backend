@@ -27,6 +27,29 @@ public final class UtteranceDirectionTrial {
     record Plan(String schemaVersion,String model,int repeats,double estimatedCapUsd,String sourceSha256,
                 String runtimeSha256,String normalFixtureSha256,String relationFixtureSha256,List<Task> tasks) {}
     static boolean basis(Plan plan) { return BASIS_REVISION.equals(plan.schemaVersion()); }
+    static boolean direct(Plan plan) { return DirectTargetWritingComparison.VERSION.equals(plan.schemaVersion()); }
+    static void consent(Plan plan,String mode,String consent) {
+        check(basis(plan)==mode.equals("run-basis") && direct(plan)==mode.equals("run-direct-writing")
+                        && (direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
+                "Selected contract and fresh cost/text approval required");
+    }
+    static Plan directPlan(byte[] factorialBytes,byte[] historyBytes) throws Exception {
+        var source=JSON.readValue(factorialBytes,VerificationFactorialPlan.Plan.class);
+        var history=JSON.readValue(historyBytes,Plan.class);validate(history);
+        check(basis(history) && ReferenceOnlyTrial.sha(historyBytes).equals(source.sourcePlanSha256())
+                && VerificationFactorialPlan.VERSION.equals(source.schemaVersion()) && source.requests().size()==56,
+                "Frozen factorial source/history mismatch");
+        var tasks=new ArrayList<Task>();
+        for(var r:source.requests()) if(r.arm()==VerificationFactorialPlan.Arm.BASELINE) {
+            var original=history.tasks().stream().filter(t -> t.id().equals(r.caseId())).findFirst().orElseThrow();
+            check(original.baselineSystem().equals(r.system()) && original.input().equals(r.input()),"Frozen baseline input/system mismatch");
+            tasks.add(new Task(r.caseId(),r.labelStatus(),r.expectedDecision(),null,null,r.system(),
+                    DirectTargetWritingComparison.comparison(r.system()),r.input()));
+        }
+        var plan=new Plan(DirectTargetWritingComparison.VERSION,source.model(),2,.50,ReferenceOnlyTrial.sha(factorialBytes),
+                history.runtimeSha256(),history.normalFixtureSha256(),history.relationFixtureSha256(),List.copyOf(tasks));
+        validate(plan);return plan;
+    }
     static Plan basisPlan(Plan original) throws Exception {
         validate(original);
         var tasks=original.tasks().stream().map(t -> new Task(t.id(),t.labelStatus(),t.expectedDecision(),
@@ -100,18 +123,24 @@ public final class UtteranceDirectionTrial {
         validate(plan);return plan;
     }
     static void validate(Plan plan) throws Exception {
-        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan)) && "gpt-6-luna".equals(plan.model())
+        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan)) && "gpt-6-luna".equals(plan.model())
                 && plan.repeats()==2 && plan.estimatedCapUsd()==.50 && plan.tasks()!=null && plan.tasks().size()==14
                 && plan.tasks().stream().map(Task::id).distinct().count()==14,"Known 56-call plan required");
         check(ReferenceOnlyTrial.sha(fixture("/structured-search-boundaries.json")).equals(plan.normalFixtureSha256())
                 && ReferenceOnlyTrial.sha(fixture("/utterance-direction-boundaries.json")).equals(plan.relationFixtureSha256()),"Boundary fixtures changed");
         for(var task:plan.tasks()) {
-            check((basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
+            check((direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
                     .equals(task.comparisonSystem()),"Comparison changes only direction guidance or selected final basis contract");
             var input=JSON.readTree(task.input());
             check(input.path("raw").isArray() && !input.path("raw").isEmpty() && input.path("raw").size()<=48
                     && input.path("candidates").size()==1 && !input.has("repair") && !input.has("expectedDecision")
                     && !input.has("relationDraft") && !input.has("unsupportedInference") && !input.has("verificationContract"),"Fixed unlabeled verification input required");
+        }
+        if(direct(plan)) {
+            check(plan.tasks().stream().filter(t -> t.expectedDecision()!=null).count()==8
+                    && plan.tasks().stream().filter(t -> "PASS".equals(t.expectedDecision())).count()==6
+                    && plan.tasks().stream().filter(t -> "REVIEW_REQUIRED".equals(t.expectedDecision())).count()==2,
+                    "Eight approved boundaries and six unlabeled drafts required");
         }
         check(reservationEstimate(plan)<=plan.estimatedCapUsd(),"Frozen request reservation exceeds fresh cap");
     }
@@ -130,6 +159,9 @@ public final class UtteranceDirectionTrial {
     static void reserve(StructuredSearchBoundaryTrial.Budget budget,int bytes) throws Exception {
         if(budget.attempts>=MAX_HTTP_ATTEMPTS) { budget.exhausted=true;throw new IllegalArgumentException("56 HTTP attempt cap reached"); }
         budget.reserve(bytes);
+        Files.writeString(budget.output.resolve("reservation.json"),JSON.writeValueAsString(Map.of(
+                "newEstimatedCapUsd",budget.cap,"httpAttempts",budget.attempts,"maxHttpAttempts",MAX_HTTP_ATTEMPTS,
+                "reservedEstimatedUsd",budget.reserved,"inputPer1m",.10,"outputPer1m",.50,"actualBillingConfirmed",false)));
     }
     static Map<String,Object> assess(Task task,VerificationResult response) {
         return assess(task,response,null);
@@ -157,14 +189,16 @@ public final class UtteranceDirectionTrial {
                 "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false,"maxHttpAttempts",MAX_HTTP_ATTEMPTS)));
     }
     public static void main(String[] args) throws Exception {
-        check(args.length>=1 && (Set.of("prepare","prepare-basis").contains(args[0]) && args.length==4
-                        || Set.of("run","run-basis").contains(args[0]) && args.length==5),
+        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing").contains(args[0]) && args.length==4
+                        || Set.of("run","run-basis","run-direct-writing").contains(args[0]) && args.length==5),
                 "prepare saved-results runtime NEW-dir OR run plan approved-sha fresh-consent NEW-dir");
         Path output=Path.of(args[args.length-1]).toAbsolutePath().normalize();
         Path root=Path.of("../datasets/controversy/experiments").toRealPath();
         check(!Files.exists(output) && output.getParent().toRealPath().startsWith(root),"New private output required");
         if(args[0].startsWith("prepare")) {
-            var plan=prepare(OfflineDecisionContractAudit.bounded(Path.of(args[1])),OfflineDecisionContractAudit.bounded(Path.of(args[2])));
+            byte[] sourceBytes=OfflineDecisionContractAudit.bounded(Path.of(args[1])),secondBytes=OfflineDecisionContractAudit.bounded(Path.of(args[2]));
+            if(args[0].equals("prepare-direct-writing")) check(ReferenceOnlyTrial.sha(sourceBytes).equals(DirectTargetWritingComparison.SOURCE_SHA),"Approved historical factorial source required");
+            var plan=args[0].equals("prepare-direct-writing")?directPlan(sourceBytes,secondBytes):prepare(sourceBytes,secondBytes);
             if(args[0].equals("prepare-basis")) plan=basisPlan(plan);
             Files.createDirectory(output);byte[] bytes=JSON.writeValueAsBytes(plan);
             Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
@@ -173,10 +207,12 @@ public final class UtteranceDirectionTrial {
         byte[] bytes=OfflineDecisionContractAudit.bounded(Path.of(args[1]));
         check(ReferenceOnlyTrial.sha(bytes).equals(args[2]),"Frozen plan required");
         var plan=JSON.readValue(bytes,Plan.class);validate(plan);
-        check(basis(plan)==args[0].equals("run-basis") && (basis(plan)?BASIS_CONSENT:CONSENT).equals(args[3]),
-                "Selected contract and fresh cost/text approval required");
+        consent(plan,args[0],args[3]);
+        if(direct(plan)) check(DirectTargetWritingComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Approved direct-writing source hash required");
         String key=System.getenv("OPENAI_API_KEY");check(key!=null && !key.isBlank(),"OPENAI_API_KEY required; never print");
         Files.createDirectory(output);Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
+        Files.writeString(output.resolve("authorization.json"),JSON.writeValueAsString(Map.of("newEstimatedCapUsd",.50,
+                "consent",args[3],"planSha256",args[2],"textEgressApproved",true,"audioVideoEgressApproved",false,"previousBudgetReused",false)));
         var budget=new StructuredSearchBoundaryTrial.Budget(output,.50);
         var props=new OpenAiProperties(key,System.getenv("OPENAI_ORG_ID"),System.getenv("OPENAI_PROJECT_ID"),
                 "https://api.openai.com/v1",plan.model(),"none",Duration.ofSeconds(90),new OpenAiProperties.Pricing(.10,.01,.50,null,null));
@@ -209,6 +245,7 @@ public final class UtteranceDirectionTrial {
                     client.endVideo();System.out.println("DIRECTION_TRIAL "+rows.size()+"/56 "+task.id()+" "+arm+" repeat="+repeat);
                     check(ok,"Provider/budget/usage failure; stop without retries of the study");
                 }
+            check(rows.size()==MAX_HTTP_ATTEMPTS && budget.attempts==MAX_HTTP_ATTEMPTS,"Incomplete HTTP accounting; no completion");
             save(output,plan,args[2],rows,budget,cost,"COMPLETE");
         } catch(Exception ex) { save(output,plan,args[2],rows,budget,cost,"STOPPED");throw ex; }
     }
