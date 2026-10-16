@@ -191,6 +191,20 @@ tasks.register('prepareSemanticReferenceRanking', JavaExec) {
     }
 }
 
+// Paired Groq/OpenAI transcript excerpts and normal drafts, with offline retrieval mode.
+tasks.register('groqPipelineAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.GroqPipelineAudit'
+    doFirst {
+        def values = ['auditMode', 'auditInput', 'auditRuntime', 'auditOutput'].collect {
+            providers.gradleProperty(it).orNull
+        }
+        if (values.any { !it }) throw new GradleException('Explicit Groq audit mode, input, runtime and new private output required')
+        args values
+    }
+}
+
 // User-requested one-time rerun, carrying the original attempt's budget forward.
 tasks.register('longVideoRoutingRetry', JavaExec) {
     dependsOn testClasses
