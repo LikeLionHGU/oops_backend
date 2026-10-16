@@ -182,7 +182,10 @@ oops:
     # 자료 하나당 AI 에게 넘길 최대 글자 수. 웹 페이지 본문이 길어서 자르지 않으면 대조 입력이 커진다
     max-snippet-chars: 400
 
+  # 네이버 뉴스 검색. 저작권·이용약관 문제로 기본 꺼짐. 키가 있어도 enabled: true 일 때만 쓴다.
+  # 꺼져 있으면 웹 검색이 비었을 때 구글 뉴스 RSS(제목·링크)로 대신 찾는다.
   naver:
+    enabled: ${NAVER_ENABLED:false}
     client-id: ${NAVER_CLIENT_ID:}
     client-secret: ${NAVER_CLIENT_SECRET:}
 

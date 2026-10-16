@@ -9,7 +9,7 @@ import java.util.List;
  * "지금 이 주제가 민감한가" 를 판단하려면 최신 기사를 직접 넣어줘야 해서 만들었다.
  *
  * 구현체가 여러 개면 @Order 가 앞선 것 중 사용 가능한 첫 번째를 쓴다.
- *   - NaverNewsSearchClient   : 키가 있으면 사용. 한국 언론사 커버리지가 넓다.
+ *   - NaverNewsSearchClient   : oops.naver.enabled=true 이고 키가 있을 때만 사용 (기본 꺼짐, 저작권 문제).
  *   - GoogleNewsRssSearchClient : 키 불필요. 기본 폴백.
  */
 public interface NewsSearchClient {
