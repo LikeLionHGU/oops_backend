@@ -119,17 +119,88 @@ public final class OfflineDecisionContractAudit {
         return Files.readAllBytes(path);
     }
 
+    /** One-field counterfactuals on copies, never repairs or semantic judgments. */
+    static List<Map<String,Object>> factorialProbes(VerificationFactorialPlan.Request request,JsonNode output,String failure) {
+        if (!Set.of("TARGET_MENTION_RELATION","LINKED_PASS_CONTRAST_REQUIRED").contains(Objects.toString(failure,""))) return List.of();
+        var item=output.path("verifications").path(0);var assessment=item.path("assessment");
+        if (!assessment.isObject()) return List.of();
+        var changes=new LinkedHashMap<String,String>();
+        if ("TARGET_MENTION_RELATION".equals(failure)) {
+            if (assessment.path("targetMention").isString() && !assessment.path("targetMention").asText().isBlank())
+                changes.put("target",assessment.path("targetMention").asText());
+            changes.put("targetRelation","CONTEXTUAL");
+        } else {
+            changes.put("alternativeInterpretation","대조 설명 필드의 존재만 검사하는 합성 진단 문장입니다. 의미상 충분한 대조라는 승인은 아닙니다.");
+        }
+        var probes=new ArrayList<Map<String,Object>>();
+        for (var change:changes.entrySet()) {
+            JsonNode copy=output.deepCopy();
+            ((tools.jackson.databind.node.ObjectNode)copy.path("verifications").get(0).path("assessment")).put(change.getKey(),change.getValue());
+            var replay=VerificationFactorialPlan.assess(request,JSON.treeToValue(copy,CandidateReviewEngine.VerificationResult.class));
+            var probe=new LinkedHashMap<String,Object>();probe.put("changedField",change.getKey());
+            probe.put("counterfactualOnly",true);probe.put("originalDecisionPreserved",assessment.path("decision").equals(copy.at("/verifications/0/assessment/decision")));
+            probe.put("contractAccepted",replay.get("accepted"));probe.put("failureCode",replay.get("failureCode"));
+            probe.put("semanticCorrectnessEstablished",false);probes.add(probe);
+        }
+        return List.copyOf(probes);
+    }
+
+    static Map<String,Object> auditFactorial(JsonNode planNode,JsonNode saved) {
+        var plan=JSON.treeToValue(planNode,VerificationFactorialPlan.Plan.class);
+        check(VerificationFactorialPlan.VERSION.equals(plan.schemaVersion()) && plan.requests().size()==56
+                && plan.maxRequests()==112 && plan.repeats()==2,"Known factorial plan required");
+        check("verification-factorial-results-1".equals(saved.path("schemaVersion").asText())
+                && "COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==112
+                && saved.path("results").size()==112,"Complete 112-row study required");
+        var slots=VerificationFactorialTrial.schedule(plan);var rows=new ArrayList<Map<String,Object>>();
+        for (int i=0;i<slots.size();i++) {
+            var slot=slots.get(i);var request=slot.request();var result=saved.path("results").get(i);
+            check(request.caseId().equals(result.path("caseId").asText()) && request.arm().name().equals(result.path("arm").asText())
+                    && slot.repeat()==result.path("repeat").asInt() && result.path("calls").size()==1,"Frozen ordered study tuple required");
+            var call=result.path("calls").get(0);
+            check(request.system().equals(call.path("system").asText()) && JSON.readTree(request.input()).equals(call.path("input"))
+                    && call.path("failureCode").isNull() && Objects.equals(request.expectedDecision(),result.path("expectedDecision").isNull()?null:result.path("expectedDecision").asText()),
+                    "Frozen factorial request/label mismatch or provider failure");
+            var output=call.path("output");var response=JSON.treeToValue(output,CandidateReviewEngine.VerificationResult.class);
+            var replay=VerificationFactorialPlan.assess(request,response);var prior=result.path("assessment");
+            check(prior.equals(JSON.valueToTree(replay)),"Factorial validator replay drift; preserve historical outcomes");
+            check(result.path("boundaryEvaluation").equals(JSON.valueToTree(VerificationFactorialTrial.score(request,response,replay))),"Boundary score drift");
+            var d=output.at("/verifications/0/assessment");String failure=(String)replay.get("failureCode");
+            var row=new LinkedHashMap<String,Object>();row.put("caseId",request.caseId());row.put("arm",request.arm());row.put("repeat",slot.repeat());
+            row.put("developmentExpected",request.expectedDecision());row.put("parsedModelDecision",d.path("decision").asText(null));
+            row.put("contractAccepted",replay.get("accepted"));row.put("contractFailureCode",failure);
+            row.put("contractFailureKind",failure==null?"NONE":failureKind(failure));
+            row.put("evidenceMeaningReview","NOT_AUTOMATICALLY_ASSESSED");
+            if ("TARGET_MENTION_RELATION".equals(failure)) {
+                row.put("declaredRelation",d.path("targetRelation").asText(null));
+                row.put("targetEqualsMention",d.path("target").equals(d.path("targetMention")));
+                row.put("mechanicalTrigger","DIFFERENT_TARGET_AND_MENTION_REQUIRE_CONTEXTUAL");
+            }
+            if ("LINKED_PASS_CONTRAST_REQUIRED".equals(failure)) {
+                row.put("contrastFieldPresent",!d.path("alternativeInterpretation").isNull() && !d.path("alternativeInterpretation").isMissingNode());
+                row.put("reasonStillPresent",!d.path("reason").asText().isBlank());
+            }
+            row.put("counterfactuals",factorialProbes(request,output,failure));rows.add(row);
+        }
+        return Map.of("schemaVersion","offline-factorial-contract-audit-1","providerCalls",0,
+                "historicalContractDrift",0,"semanticCorrectnessAutomaticallyEstablished",false,
+                "contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
+    }
+
     public static void main(String[] args) throws Exception {
         check(args.length == 3, "Frozen plan, saved results and new private report path required");
         byte[] plan = bounded(Path.of(args[0])), saved = bounded(Path.of(args[1]));
-        var report = new LinkedHashMap<>(audit(JSON.readTree(plan), JSON.readTree(saved)));
+        var planNode=JSON.readTree(plan);var savedNode=JSON.readTree(saved);
+        boolean factorial=VerificationFactorialPlan.VERSION.equals(planNode.path("schemaVersion").asText());
+        if (factorial) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen factorial plan hash mismatch");
+        var report = new LinkedHashMap<>(factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
         report.put("planSha256", ReferenceOnlyTrial.sha(plan));
         report.put("resultsSha256", ReferenceOnlyTrial.sha(saved));
         Path root = Path.of("../datasets/controversy/experiments").toRealPath();
         Path output = Path.of(args[2]).toAbsolutePath().normalize();
         check(!Files.exists(output) && output.getParent().toRealPath().startsWith(root), "New private report path required");
         Files.writeString(output, JSON.writeValueAsString(report), StandardOpenOption.CREATE_NEW);
-        System.out.println("OFFLINE_AUDIT rows=72 providerCalls=0 historicalContractDrift=0");
-        System.out.println(JSON.writeValueAsString(report.get("summary")));
+        System.out.println("OFFLINE_AUDIT rows="+((List<?>)report.get("rows")).size()+" providerCalls=0 historicalContractDrift=0");
+        System.out.println(JSON.writeValueAsString(report.get(factorial?"contractFailureCodes":"summary")));
     }
 }
