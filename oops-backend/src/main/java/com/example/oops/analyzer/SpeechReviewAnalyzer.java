@@ -129,6 +129,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private final int maxCandidates;
     private int evidenceLimit;
     private boolean sourceRelationsEnabled;
+    private boolean finalReviewBasisEnabled;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setFinalReviewBasisEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.final-review-basis-enabled:false}") boolean enabled) {
+        this.finalReviewBasisEnabled=enabled;
+    }
     @org.springframework.beans.factory.annotation.Autowired
     void setSourceRelationsEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-source-relations-enabled:false}") boolean enabled) {
         this.sourceRelationsEnabled = enabled;
@@ -217,7 +222,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
             return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary,
-                    trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter);
+                    trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter, finalReviewBasisEnabled);
         }
     }
 

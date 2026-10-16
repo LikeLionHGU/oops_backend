@@ -144,6 +144,7 @@ oops:
     mechanism-routing-max-calls: ${CONTEXT_MECHANISM_ROUTING_MAX_CALLS:12} # 영상당 상한. 초과 배치도 어휘 검색·본 분석은 계속.
     candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
     candidate-source-relations-enabled: ${CANDIDATE_SOURCE_RELATIONS_ENABLED:false} # 실험 38: 결론형 가설 대신 원문 역할 ID 전달. 모델 비교 전 기본 OFF.
+    final-review-basis-enabled: ${FINAL_REVIEW_BASIS_ENABLED:false} # 텍스트 검증 최종 근거 분리. 실호출 효과 검증 전 기본 OFF.
     candidate-review-max-candidates: 24 # 영상당 검증 후보 상한. 초과는 PARTIAL로 알린다.
     candidate-review-evidence-limit: ${CANDIDATE_REVIEW_EVIDENCE_LIMIT:0} # 0: 검증 응답의 고정 인용 개수 상한 해제. 원문/역할/중복 검증은 유지.
     review-cases-enabled: ${REVIEW_CASES_ENABLED:true} # 검수·권한 확인된 사례만 탐색에 참고. 기본 파일은 비어 있다.

@@ -62,7 +62,14 @@ final class CandidateReviewEngine {
             this(ids, candidates, uncertain, truncated, List.of());
         }
     }
-    public record Verification(String candidateId, TextReviewEngine.LlmDecision assessment) {}
+    public record ReviewBasis(String axis,String reason,List<String> evidenceIds) {
+        public ReviewBasis { evidenceIds=evidenceIds==null?null:Collections.unmodifiableList(new ArrayList<>(evidenceIds)); }
+    }
+    public record Verification(String candidateId, TextReviewEngine.LlmDecision assessment,
+                               @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                               ReviewBasis reviewBasis) {
+        public Verification(String id,TextReviewEngine.LlmDecision assessment) { this(id,assessment,null); }
+    }
     public record ProposalRepairResult(Proposal proposal) {}
     public record VerificationResult(List<Verification> verifications) {}
     record Candidate(String candidateId, Proposal proposal, List<ReviewInput.Segment> raw,
@@ -109,6 +116,12 @@ final class CandidateReviewEngine {
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
                                       boolean sourceRelationsEnabled, ContextMechanismRouter router) {
+        return run(client,context,maxCandidates,visual,caseLibrary,guidelines,requestTrace,evidenceLimit,sourceRelationsEnabled,router,false);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
+                                      boolean sourceRelationsEnabled, ContextMechanismRouter router, boolean finalReviewBasisEnabled) {
         if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
@@ -116,6 +129,7 @@ final class CandidateReviewEngine {
         var stats = new Stats();
         var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
+        if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
@@ -282,7 +296,8 @@ final class CandidateReviewEngine {
             int failuresBefore = client.failureCount();
             String requestSystem = (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
                     : SourceRelationPrompts.verification(evidenceLimit)) + guidelinePrompt;
-            String requestInput = verificationRequest(group, null);
+            if(finalReviewBasisEnabled) requestSystem=FinalReviewBasisContract.prompt(requestSystem);
+            String requestInput = verificationRequest(group, null, null, finalReviewBasisEnabled);
             try {
                 response = client.completeAsJson(requestSystem, requestInput,
                         VerificationResult.class).orElse(null);
@@ -306,14 +321,14 @@ final class CandidateReviewEngine {
             for (var c : group) {
                 var matches = returned == null || returned.verifications() == null ? List.<Verification>of()
                         : returned.verifications().stream().filter(v -> v != null && c.candidateId().equals(v.candidateId())).toList();
-                Validation validation = matches.size() == 1 ? validate(c, matches.get(0).assessment(), input, evidenceLimit)
+                Validation validation = matches.size() == 1 ? FinalReviewBasisContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled)
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
                 stats.evidenceCount(c, "INITIAL", matches.size() == 1 ? matches.get(0).assessment() : null,
-                        evidenceLimit, validation.failureCode());
+                        evidenceLimit, validation.failureCode(), finalReviewBasisEnabled, matches.size()==1?matches.get(0).reviewBasis():null);
                 if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                         validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
-                                matches.size() == 1 ? matches.get(0).assessment() : null);
+                                matches.size() == 1 ? matches.get(0).assessment() : null, finalReviewBasisEnabled);
                     } else if (stats.repairs.size() < MAX_TRACES) {
                         stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
                                 validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
@@ -417,15 +432,13 @@ final class CandidateReviewEngine {
         return new TextReviewEngine.Result(findings, evaluations, status, notice, unresolved.stream().sorted().toList(), List.of(), diagnostic);
     }
 
-    private static String verificationRequest(List<Candidate> candidates, String failure) {
-        return verificationRequest(candidates, failure, null);
-    }
-    private static String verificationRequest(List<Candidate> candidates, String failure, String detail) {
+    private static String verificationRequest(List<Candidate> candidates, String failure, String detail,boolean finalReviewBasisEnabled) {
         Map<String, ReviewInput.Segment> raw = new LinkedHashMap<>();
         candidates.forEach(c -> c.raw().forEach(s -> raw.put(s.id(), s)));
         Map<String, Object> request = new LinkedHashMap<>();
         boolean relations = candidates.stream().anyMatch(c -> c.proposal().sourceRelations() != null);
         request.put("promptRevision", relations ? RELATION_REVISION : REVISION);
+        if(finalReviewBasisEnabled) request.put("verificationContract",FinalReviewBasisContract.VERSION);
         request.put("raw", compact(raw.values().stream()
                 .sorted(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id)).toList()));
         if (!relations) request.put("candidates", candidates.stream().map(c -> Map.of("candidateId", c.candidateId(),
@@ -481,16 +494,17 @@ final class CandidateReviewEngine {
     }
     private static Validation repairContract(OpenAiClient client, Candidate c, ReviewInput input,
                                              String reference, Stats stats, String initial, int evidenceLimit,
-                                             TextReviewEngine.LlmDecision previous) {
+                                             TextReviewEngine.LlmDecision previous, boolean finalReviewBasisEnabled) {
         stats.repairCalls++; stats.verificationCalls++;
         Validation result;
         TextReviewEngine.LlmDecision repaired = null;
         int failuresBefore = client.failureCount();
         try {
             var correction = repairPrompt(initial);
-            var response = client.completeAsJson((c.proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
-                            : SourceRelationPrompts.verification(evidenceLimit)) + reference + "\n" + correction,
-                    verificationRequest(List.of(c), initial, targetDetail(c, previous, initial)), VerificationResult.class).orElse(null);
+            String system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
+            if(finalReviewBasisEnabled) system=FinalReviewBasisContract.prompt(system);
+            var response = client.completeAsJson(system,
+                    verificationRequest(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE");
             else if (response.verifications() == null || response.verifications().size() != 1
@@ -499,11 +513,13 @@ final class CandidateReviewEngine {
                 result = invalid("REPAIR_RESPONSE_SHAPE");
             else {
                 repaired = response.verifications().get(0).assessment();
-                result = validate(c, repaired, input, evidenceLimit);
+                result = FinalReviewBasisContract.validate(c, response.verifications().get(0), input, evidenceLimit,finalReviewBasisEnabled);
             }
             stats.evidenceCount(c, "REPAIR", response != null && response.verifications() != null
                     && response.verifications().size() == 1 && response.verifications().get(0) != null
-                    ? response.verifications().get(0).assessment() : null, evidenceLimit, result.failureCode());
+                    ? response.verifications().get(0).assessment() : null, evidenceLimit, result.failureCode(), finalReviewBasisEnabled,
+                    response!=null && response.verifications()!=null && response.verifications().size()==1 && response.verifications().get(0)!=null
+                            ?response.verifications().get(0).reviewBasis():null);
         } catch (RuntimeException ex) { result = invalid("REQUEST_EXCEPTION"); }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
                 c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode(),
@@ -781,7 +797,8 @@ final class CandidateReviewEngine {
                     ReviewGuidelineLibrary.retrievalHash(reference.prompt()),
                     ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal())),reference.routingLink()));
         }
-        void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure) {
+        void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure,
+                           boolean finalReviewBasisEnabled,ReviewBasis basis) {
             if (evidenceCounts.size() >= MAX_TRACES) return;
             Set<String> segments = new HashSet<>();
             Set<List<String>> pairs = new HashSet<>();
@@ -793,10 +810,15 @@ final class CandidateReviewEngine {
                 if (!Set.of("PRIMARY", "TARGET", "CONTEXT").contains(e.role())
                         || c.raw().stream().noneMatch(s -> s.id().equals(e.segmentId()))) invalid++;
             }
+            String returnedAxis=basis==null?null:basis.axis();
+            if(!Set.of("TARGET_TREATMENT","EXPRESSION_CONTENT").contains(returnedAxis==null?"":returnedAxis)) returnedAxis=null;
+            var basisTrace=finalReviewBasisEnabled ? new CandidateReviewDiagnostics.ReviewBasisTrace(
+                    c.proposal().axis(),returnedAxis,basis!=null,
+                    basis==null || basis.evidenceIds()==null?null:basis.evidenceIds().size(),failure==null) : null;
             evidenceCounts.add(new CandidateReviewDiagnostics.EvidenceCountTrace(c.candidateId(), attempt,
                     d == null || d.evidence() == null ? null : d.evidence().size(), segments.size(), pairs.size(),
                     duplicates, invalid, limit, failure,
-                    d == null ? null : inspectTarget(filled(c, d))));
+                    d == null ? null : inspectTarget(filled(c, d)),basisTrace));
         }
         ReviewGuidelineLibrary.Trace guidelineReference;
         void invalidProposal(String id, Proposal p, TextReviewBatchPlanner.Batch batch,
