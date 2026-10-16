@@ -1,4 +1,4 @@
-"""Timestamp-preserving STT adapters. Whisper remains the default; no paid fallback."""
+"""Timestamp-preserving STT adapters. Groq Whisper Large v3 is the default; no paid fallback."""
 from __future__ import annotations
 
 import logging
@@ -12,7 +12,7 @@ from .media import MediaError, PreparedVideo, extract_audio, run_command
 
 log = logging.getLogger(__name__)
 
-# Whisper API 업로드 상한이 25MB 라 긴 영상은 잘라서 보낸다
+# 긴 영상의 안정적인 업로드와 타임스탬프 보존을 위해 10분 단위로 처리한다.
 CHUNK_SEC = 600
 GROQ_STT_MODELS = {"whisper-large-v3"}
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"

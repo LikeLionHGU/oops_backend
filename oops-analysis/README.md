@@ -8,7 +8,7 @@ STT(Whisper API)와 화면 자막 OCR(PaddleOCR)을 담당한다.
 ```bash
 python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env      # OPENAI_API_KEY 채우기
+cp .env.example .env      # 기본 전사에는 GROQ_API_KEY 필요; OpenAI Whisper 선택 시 OPENAI_API_KEY도 입력
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -32,8 +32,8 @@ OCR 없이 STT만 먼저 테스트하려면 `pip install`에서 paddle 계열을
 
 ### STT 모델 비교: 기본값은 유지
 
-`STT_MODEL`이 비어 있으면 기존 `WHISPER_MODEL`(기본 `whisper-1`)을 사용한다.
-선택 실험용으로 `STT_MODEL=whisper-large-v3`(Groq)와 `STT_MODEL=gpt-4o-transcribe-diarize`(OpenAI)를 지원한다. 모델 변경은 Python 프로세스에 설정을 적용해 다시 시작해야 반영된다. 자동 재전사나 유료 fallback은 없다.
+`STT_MODEL`이 비어 있으면 `WHISPER_MODEL`(기본 `whisper-large-v3`)을 사용한다.
+기본 전사는 Groq `whisper-large-v3`이며, `STT_MODEL=whisper-1`로 OpenAI Whisper를 선택하거나 `STT_MODEL=gpt-4o-transcribe-diarize`로 OpenAI 화자 분리 모델을 선택할 수 있다. 모델 변경은 Python 프로세스 재시작 후 반영된다. 자동 재전사나 유료 fallback은 없다.
 
 - `whisper-1`은 OpenAI 키, `whisper-large-v3`는 `GROQ_API_KEY`를 사용하며 각각 해당 제공자의 API로 직접 요청한다. Groq 키가 없으면 OpenAI로 자동 fallback하지 않는다.
 - 두 Whisper 경로 모두 `verbose_json`의 구간 시간 정보를 요청한다. Diarize는 `diarized_json`과 `chunking_strategy=auto`를 요청한다.
@@ -47,7 +47,7 @@ OCR 없이 STT만 먼저 테스트하려면 `pip install`에서 paddle 계열을
 타깃이 20~60분 롱폼인데 실제로는 70~80분짜리도 흔해서 **90분까지** 받는다.
 
 > 긴 영상은 비용과 시간이 크게 는다.
-> 60분이면 음성 인식만 약 500원, 대본이 300줄을 넘어 LLM 호출이 수십 번 나간다.
+> 60분이면 Groq 음성 인식만 약 155원(USD/KRW 1,400원 가정), 대본이 300줄을 넘어 LLM 호출이 수십 번 나간다.
 > 요청 한도가 낮은 계정에서는 중간에 끊길 수 있다.
 > **시연은 3~5분짜리로 하는 것을 권한다.**
 

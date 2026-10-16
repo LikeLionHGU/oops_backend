@@ -162,7 +162,7 @@ class OpenAiClientTest {
         var pricing = properties(null, null).pricing();
         var usage = new OpenAiClient.TokenUsage(1, 2_000_000, 1_000_000, 1_000_000, "gpt-6-luna", pricing);
         assertThat(usage.costUsd()).isCloseTo(0.61, within(0.000001));
-        assertThat(pricing.sttUsdPerMinute()).isEqualTo(0.006); // Whisper remains active.
+        assertThat(pricing.sttUsdPerMinute()).isEqualTo(0.00185); // Groq Whisper Large v3 default.
     }
 
     @Test

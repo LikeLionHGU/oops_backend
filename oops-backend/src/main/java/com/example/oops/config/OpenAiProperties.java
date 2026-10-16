@@ -44,7 +44,7 @@ public record OpenAiProperties(
         public double inputUsd()        { return inputPer1m       == null ? 0.10  : inputPer1m; }
         public double cachedInputUsd()  { return cachedInputPer1m == null ? 0.01 : cachedInputPer1m; }
         public double outputUsd()       { return outputPer1m      == null ? 0.50  : outputPer1m; }
-        public double sttUsdPerMinute() { return sttPerMinute     == null ? 0.006 : sttPerMinute; }
+        public double sttUsdPerMinute() { return sttPerMinute     == null ? 0.00185 : sttPerMinute; }
         public double krwRate()         { return usdToKrw         == null ? 1400  : usdToKrw; }
     }
 

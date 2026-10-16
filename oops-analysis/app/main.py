@@ -46,9 +46,11 @@ def scene(request: SceneRequest) -> dict:
 @app.get("/health")
 def health() -> dict:
     settings = get_settings()
+    model = settings.stt_model or settings.whisper_model
+    stt_key = settings.groq_api_key if model in stt.GROQ_STT_MODELS else settings.openai_api_key
     return {
         "status": "UP",
-        "sttAvailable": bool(settings.openai_api_key),
+        "sttAvailable": bool(stt_key),
         "ocrAvailable": ocr.is_available(),
     }
 

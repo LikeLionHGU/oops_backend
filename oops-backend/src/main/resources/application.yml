@@ -108,12 +108,13 @@ oops:
     # 로그 숫자가 조용히 틀리기 시작하는데 틀린 줄도 모르게 되기 때문이다.
     # 모델을 바꿀 때도 여기만 고치면 된다.
     #
-    # 최신 단가: https://openai.com/api/pricing
+    # 텍스트 모델 단가: https://openai.com/api/pricing
+    # STT 기본 Groq whisper-large-v3 단가: https://console.groq.com/docs/model/whisper-large-v3
     pricing:
       input-per-1m: ${OPENAI_INPUT_PER_1M:0.10} # GPT-6 Luna Standard; 2026-10-08 공식 단가
       cached-input-per-1m: ${OPENAI_CACHED_INPUT_PER_1M:0.01}
       output-per-1m: ${OPENAI_OUTPUT_PER_1M:0.50}
-      stt-per-minute: 0.006 # 음성 인식(whisper-1) 분당 USD
+      stt-per-minute: ${GROQ_STT_USD_PER_MINUTE:0.00185} # Groq whisper-large-v3, $0.111/hour ÷ 60
       usd-to-krw: 1400 # 원화 환산용. 대략치다
 
   # 뉴스 검색 소스는 자동 선택된다.

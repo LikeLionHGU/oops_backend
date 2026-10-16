@@ -8,6 +8,19 @@ from fastapi.testclient import TestClient
 from app import main, media, ocr, stt
 
 
+@pytest.mark.parametrize(("model", "groq_key", "openai_key", "expected"), [
+    ("whisper-large-v3", "groq-fixture", "", True),
+    ("whisper-large-v3", "", "openai-fixture", False),
+    ("whisper-1", "groq-fixture", "openai-fixture", True),
+    ("whisper-1", "groq-fixture", "", False),
+])
+def test_health_checks_key_for_the_selected_stt_provider(monkeypatch, model, groq_key, openai_key, expected):
+    monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(
+        stt_model=None, whisper_model=model, groq_api_key=groq_key, openai_api_key=openai_key))
+    monkeypatch.setattr(main.ocr, "is_available", lambda: False)
+    assert main.health()["sttAvailable"] is expected
+
+
 @pytest.mark.parametrize("endpoint", ["probe", "transcribe", "ocr"])
 @pytest.mark.parametrize("file_upload", [True, False])
 @pytest.mark.parametrize("fail", [True, False])

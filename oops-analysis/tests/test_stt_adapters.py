@@ -5,6 +5,7 @@ import httpx
 import pytest
 from openai import OpenAI
 from app import stt
+from app.config import Settings
 from app.media import MediaError
 
 
@@ -17,6 +18,12 @@ def test_groq_whisper_large_v3_requests_segment_timestamps():
     assert stt._request_options("whisper-large-v3") == {
         "model": "whisper-large-v3", "response_format": "verbose_json",
         "timestamp_granularities": ["segment"]}
+
+
+def test_groq_whisper_large_v3_is_the_default_stt_model(monkeypatch):
+    monkeypatch.delenv("WHISPER_MODEL", raising=False)
+    monkeypatch.delenv("STT_MODEL", raising=False)
+    assert Settings(_env_file=None).whisper_model == "whisper-large-v3"
 
 
 def test_groq_whisper_uses_groq_key_and_openai_compatible_endpoint():

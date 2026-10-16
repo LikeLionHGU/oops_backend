@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     # 지원 크레딧이 특정 조직에 붙어 있을 때만 채운다 (org-...)
     openai_org_id: str = ""
     openai_project_id: str = ""
-    whisper_model: str = "whisper-1"
-    # 비교 실험용 opt-in. 비어 있으면 기존 WHISPER_MODEL을 유지한다.
+    whisper_model: str = "whisper-large-v3"
+    # 명시적 모델 재정의. 비어 있으면 기본 WHISPER_MODEL을 사용한다.
     stt_model: str | None = None
     work_dir: str = "./workdir"
     # Spring 의 storage.location 과 같은 디렉터리. 서버 배포 환경에서는 절대 경로로 지정한다.
@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # 90분까지 받는다.
     #
     # 다만 긴 영상은 비용과 시간이 크게 늘어난다.
-    #   60분: 음성 인식만 약 500원, 대본 300줄 이상 → LLM 호출 수십 번
-    #   90분: 그보다 1.5배
+    #   60분: Groq 음성 인식만 약 155원(USD/KRW 1,400원 가정), 대본 300줄 이상 → LLM 호출 수십 번
+    #   90분: 음성 인식만 약 233원
     # 요청 한도가 낮은 계정에서는 중간에 끊길 수 있다.
     # 시연은 3~5분짜리로 하는 것을 권한다.
     max_duration_sec: int = 5400

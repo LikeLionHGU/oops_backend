@@ -344,11 +344,11 @@ public class AnalysisPipeline {
             return;
         }
 
-        log.info("[openai-cost] videoId={} 호출 {}회 · 입력 {}토큰(캐시 {}) · 출력 {}토큰",
+        log.info("[ai-cost] videoId={} 호출 {}회 · 입력 {}토큰(캐시 {}) · 출력 {}토큰",
                 videoId, usage.calls(), usage.promptTokens(),
                 usage.cachedTokens(), usage.completionTokens());
 
-        log.info("[openai-cost] videoId={} 분석 ${} + 음성인식 ${} = ${} (약 {}원)",
+        log.info("[ai-cost] videoId={} 분석 ${} + 음성인식 ${} = ${} (약 {}원)",
                 videoId,
                 "%.5f".formatted(usage.costUsd()),
                 "%.5f".formatted(sttUsd),
@@ -356,7 +356,7 @@ public class AnalysisPipeline {
                 Math.round(krw));
 
         if (durationSec != null && durationSec > 0) {
-            log.info("[openai-cost] videoId={} 1분당 약 {}원 (영상 {}분)",
+            log.info("[ai-cost] videoId={} 1분당 약 {}원 (영상 {}분)",
                     videoId,
                     Math.round(krw / (durationSec / 60.0)),
                     "%.1f".formatted(durationSec / 60.0));
