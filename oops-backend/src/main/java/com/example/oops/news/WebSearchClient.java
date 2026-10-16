@@ -65,15 +65,21 @@ public class WebSearchClient implements NewsSearchClient {
 
     private List<NewsItem> search(String query, int display, boolean recent) {
         Map<String, NewsItem> merged = new LinkedHashMap<>();
-        addAll(merged, perplexity.search(query, display, recent));
+        List<NewsItem> fromPerplexity = perplexity.search(query, display, recent);
+        if (perplexity.isEnabled()) SearchTrace.search("perplexity", query, recent, fromPerplexity);
+        addAll(merged, fromPerplexity);
         if (merged.size() < Math.min(MIN_RESULTS, display)) {
-            addAll(merged, serper.search(query, display, recent));
+            List<NewsItem> fromSerper = serper.search(query, display, recent);
+            if (serper.isEnabled()) SearchTrace.search("serper", query, recent, fromSerper);
+            addAll(merged, fromSerper);
         }
         if (merged.isEmpty()) {
             NewsSearchClient fallback = naver.isEnabled() ? naver : googleRss;
             SearchUsage.newsFallback();
             log.info("[search] 웹 검색 결과가 없어 {} 로 찾습니다. query='{}'", fallback.providerName(), query);
-            addAll(merged, recent ? fallback.searchRecent(query, display) : fallback.searchArchive(query, display));
+            List<NewsItem> fromNews = recent ? fallback.searchRecent(query, display) : fallback.searchArchive(query, display);
+            SearchTrace.search(fallback.providerName(), query, recent, fromNews);
+            addAll(merged, fromNews);
         }
         List<NewsItem> result = new ArrayList<>(merged.values());
         return result.size() > display ? result.subList(0, display) : result;

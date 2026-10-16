@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,7 +35,37 @@ class PreparedVideo:
         shutil.rmtree(self.workdir, ignore_errors=True)
 
 
+# 이보다 오래된 작업 폴더는 남은 찌꺼기로 보고 지운다. 분석 한 건은 길어야 수십 분이다.
+STALE_WORKDIR_HOURS = 24
+
+
+def cleanup_stale_workdirs(max_age_hours: float = STALE_WORKDIR_HOURS) -> int:
+    """오래된 작업 폴더를 지운다. (2026-10)
+
+    작업 폴더는 요청이 끝나면 지워지지만, 분석 도중 서버가 꺼지거나 예전 버그로 안 지워진 것이
+    남는다. 로컬에서 8월 것만 117개, 98MB 가 쌓여 있었다.
+    서버가 켜질 때, 그리고 새 작업 폴더를 만들 때마다 확인한다. 지금 돌고 있는 분석은
+    하루가 넘지 않으므로 건드리지 않는다.
+    """
+    root = Path(get_settings().work_dir)
+    if not root.is_dir():
+        return 0
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    for child in root.iterdir():
+        try:
+            if child.is_dir() and child.stat().st_mtime < cutoff:
+                shutil.rmtree(child, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        log.info("[workdir] %d시간 지난 작업 폴더 %d개를 지웠습니다", int(max_age_hours), removed)
+    return removed
+
+
 def _new_workdir() -> Path:
+    cleanup_stale_workdirs()
     base = Path(get_settings().work_dir) / uuid.uuid4().hex
     base.mkdir(parents=True, exist_ok=True)
     return base

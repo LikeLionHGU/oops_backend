@@ -50,6 +50,7 @@ public class VideoDeletionService {
     private final TranscriptSegmentRepository transcriptRepository;
     private final VideoFrameRepository videoFrameRepository;
     private final StorageService storageService;
+    private final SearchLogService searchLogService;
 
     @Transactional
     public void delete(Long videoId) {
@@ -67,6 +68,7 @@ public class VideoDeletionService {
         deleteChildren(videoId);
         videoRepository.delete(video);
         storageService.deleteVideoFiles(videoId);
+        searchLogService.delete(videoId);   // 검색 기록 파일도 같이
 
         log.info("[delete] videoId={} 삭제 완료 (DB + 파일)", videoId);
     }

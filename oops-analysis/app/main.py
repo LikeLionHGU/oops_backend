@@ -25,6 +25,13 @@ log = logging.getLogger(__name__)
 app = FastAPI(title="oops-analysis", version="0.1.0")
 
 
+@app.on_event("startup")
+def _clean_workdir_on_startup() -> None:
+    # 지난번에 분석 도중 꺼져서 남은 작업 폴더를 정리한다
+    from .media import cleanup_stale_workdirs
+    cleanup_stale_workdirs()
+
+
 class MediaRequest(BaseModel):
     videoUrl: str | None = None
     filePath: str | None = None

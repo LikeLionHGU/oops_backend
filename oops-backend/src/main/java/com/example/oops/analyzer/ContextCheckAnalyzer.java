@@ -2,6 +2,7 @@ package com.example.oops.analyzer;
 
 import com.example.oops.client.OpenAiClient;
 import com.example.oops.news.NewsSearchClient;
+import com.example.oops.news.SearchTrace;
 import com.example.oops.domain.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -232,20 +233,33 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
                 continue;
             }
             Line line = lines.get(lineIndex);
+            SearchTrace.beginGroup(keyword, line.text());
 
             // 2단계 — 최근 뉴스 검색
             List<NewsSearchClient.NewsItem> news =
                     newsClient.searchRecent(keyword, NEWS_PER_TOPIC);
             if (news.isEmpty()) {
                 log.info("[timeliness] '{}' 관련 최근 기사 없음 → 건너뜀", keyword);
+                SearchTrace.outcome("최근 기사 없음");
                 continue;
             }
+            List<SearchTrace.Evidence> traced = new ArrayList<>();
+            for (int i = 0; i < news.size(); i++) {
+                traced.add(new SearchTrace.Evidence(i, news.get(i).title(), news.get(i).link(), null));
+            }
+            SearchTrace.evidence(traced);
 
             // 3단계 — 영상의 말과 관련 있는 최근 이슈인지 판정
             Judgement judgement = judge(today, context.genreOrGeneral(), topic, news,
                     contextAround(lines, lineIndex));
-            if (judgement == null || !Boolean.TRUE.equals(judgement.risky())
-                    || Boolean.FALSE.equals(judgement.related())) {
+            if (judgement == null) {
+                SearchTrace.outcome("AI 판정 실패");
+                continue;
+            }
+            String verdictLabel = "related=" + judgement.related() + " risky=" + judgement.risky();
+            if (!Boolean.TRUE.equals(judgement.risky()) || Boolean.FALSE.equals(judgement.related())) {
+                SearchTrace.decide(verdictLabel, judgement.score(), judgement.reason(), judgement.sources(),
+                        Boolean.FALSE.equals(judgement.related()) ? "카드 안 만듦 (영상의 말과 무관)" : "카드 안 만듦 (알릴 이슈 아님)");
                 continue;
             }
 
@@ -253,8 +267,12 @@ public class ContextCheckAnalyzer implements ContentAnalyzer {
                     ? 0.6 : Math.max(0.0, Math.min(1.0, judgement.score()));
             if (score < MIN_SCORE) {
                 log.info("[timeliness] '{}' 점수 {} 가 기준({}) 미만이라 건너뜁니다", keyword, score, MIN_SCORE);
+                SearchTrace.decide(verdictLabel, score, judgement.reason(), judgement.sources(),
+                        "카드 안 만듦 (점수 " + MIN_SCORE + " 미만)");
                 continue;
             }
+            SearchTrace.decide(verdictLabel, score, "(관련 이슈: " + judgement.issue() + ") " + judgement.reason(),
+                    judgement.sources(), "카드");
 
             RiskFinding finding = build(context, line, topic, judgement, score);
 

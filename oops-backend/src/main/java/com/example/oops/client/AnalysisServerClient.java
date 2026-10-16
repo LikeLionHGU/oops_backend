@@ -171,7 +171,10 @@ public class AnalysisServerClient {
 
     public Optional<OcrResponse> ocr(Video video) {
         try {
-            String frameDir = storageService.frameDir(video.getId()).toString();
+            // 캡처 저장을 끄면 frameDir 을 보내지 않는다. 분석 서버는 그러면 프레임을 복사하지 않고
+            // 작업 폴더와 함께 지운다. 화면 글자(텍스트)는 그대로 돌려준다. (2026-10 고도화)
+            String frameDir = properties.saveFramesOrDefault()
+                    ? storageService.frameDir(video.getId()).toString() : null;
             OcrResponse response = restClient.post()
                     .uri("/ocr")
                     .body(toRequest(video, properties.ocrIntervalOrDefault(), frameDir))

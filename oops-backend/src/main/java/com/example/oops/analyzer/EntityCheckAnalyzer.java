@@ -3,6 +3,7 @@ package com.example.oops.analyzer;
 import com.example.oops.client.OpenAiClient;
 import com.example.oops.domain.*;
 import com.example.oops.news.NewsSearchClient;
+import com.example.oops.news.SearchTrace;
 import com.example.oops.news.SourceClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -342,6 +343,7 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
                 continue;
             }
             String query = queries.get(0);
+            SearchTrace.beginGroup(claim.claim(), lines.get(claim.index()).text());
 
             // 기간 제한 없이 찾는다.
             // 예전에는 searchRecent 를 써서 최근 30일 기사만 뒤졌다.
@@ -349,12 +351,24 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             List<Evidence> evidence = gather(newsClient, queries, claim);
             if (evidence.isEmpty()) {
                 log.info("[fact-check] '{}' 관련 자료 없음 → 건너뜀", query);
+                SearchTrace.outcome("자료 없음");
                 continue;
             }
+            List<SearchTrace.Evidence> traced = new ArrayList<>();
+            for (int i = 0; i < evidence.size(); i++) {
+                traced.add(new SearchTrace.Evidence(i, evidence.get(i).item().title(), evidence.get(i).item().link(),
+                        evidence.get(i).sourceType().getLabel()));
+            }
+            SearchTrace.evidence(traced);
 
             List<NewsSearchClient.NewsItem> news = evidence.stream().map(Evidence::item).toList();
             Verdict verdict = verify(today, claim, lines, claim.index(), evidence);
-            if (verdict == null || verdict.verdict() == null || "OK".equalsIgnoreCase(verdict.verdict())) {
+            if (verdict == null || verdict.verdict() == null) {
+                SearchTrace.outcome("AI 판정 실패");
+                continue;
+            }
+            if ("OK".equalsIgnoreCase(verdict.verdict())) {
+                SearchTrace.decide("OK", verdict.score(), verdict.reason(), verdict.sources(), "OK (카드 없음)");
                 continue;
             }
 
@@ -366,11 +380,15 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
             // 자료와 분명히 다를 때만 올린다 (2026-10 고도화)
             if (category != RiskCategory.FACT_ERROR) {
                 log.info("[fact-check] '{}' {} 판정은 카드로 올리지 않습니다", query, category);
+                SearchTrace.decide(verdict.verdict(), verdict.score(), verdict.reason(), verdict.sources(),
+                        "카드 안 만듦 (FACT_ERROR 만 카드)");
                 continue;
             }
             if (score < MIN_SCORE || verdict.sources() == null || verdict.sources().isEmpty()) {
                 log.info("[fact-check] '{}' 근거가 약해(score={}, 자료 {}건) 건너뜁니다", query, score,
                         verdict.sources() == null ? 0 : verdict.sources().size());
+                SearchTrace.decide(verdict.verdict(), verdict.score(), verdict.reason(), verdict.sources(),
+                        "카드 안 만듦 (점수 " + MIN_SCORE + " 미만 또는 근거 자료 번호 없음)");
                 continue;
             }
 
@@ -386,8 +404,12 @@ public class EntityCheckAnalyzer implements ContentAnalyzer {
 
             if (!hasEvidence) {
                 log.info("[fact-check] '{}' 자료에서 확인된 내용이 없어 건너뜁니다", query);
+                SearchTrace.decide(verdict.verdict(), verdict.score(), verdict.reason(), verdict.sources(),
+                        "카드 안 만듦 (자료에서 확인된 내용 없음)");
                 continue;
             }
+            SearchTrace.decide(verdict.verdict(), verdict.score(), reason + " · 자료 내용: " + correction,
+                    verdict.sources(), "카드");
             if (hasEvidence) {
                 reason = reason + " · 기사 내용: " + correction;
             }

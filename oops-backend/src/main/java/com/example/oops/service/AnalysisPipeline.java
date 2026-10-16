@@ -76,6 +76,7 @@ public class AnalysisPipeline {
     private final com.example.oops.config.OpenAiProperties openAiProperties;
     private final ReviewReferenceRepository referenceRepository;
     private final AnalysisReportRepository reportRepository;
+    private final SearchLogService searchLogService;
 
     @Async(AsyncConfig.ANALYSIS_EXECUTOR)
     @Transactional
@@ -103,6 +104,7 @@ public class AnalysisPipeline {
             video.updateStatus(AnalysisStatus.PROCESSING);
             openAiClient.beginVideo(videoId);   // 토큰 사용량 누적 시작
             com.example.oops.news.SearchUsage.begin();   // 검색 API 호출 수 누적 시작
+            com.example.oops.news.SearchTrace.begin(videoId);   // 검색어·결과·판정 기록 시작
 
             // 지난 분석 결과를 먼저 지운다. **OCR 보다 앞이어야 한다.**
             //
@@ -275,6 +277,7 @@ public class AnalysisPipeline {
                 try {
                     long analyzerStart = System.currentTimeMillis();
                     openAiClient.beginAnalyzer(analyzer.key());
+                    com.example.oops.news.SearchTrace.analyzer(analyzer.key());
 
                     List<RiskFinding> produced = analyzer.analyze(context);
 
@@ -356,6 +359,9 @@ public class AnalysisPipeline {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             video.updateStatus(AnalysisStatus.FAILED);
             progressService.fail(jobId, "ANALYSIS_FAILED", e.getMessage());
+        } finally {
+            // 검색 기록은 성공·실패·취소 모두 남긴다. 실패한 분석일수록 무엇을 검색했는지가 궁금하다.
+            searchLogService.saveCurrent(videoId);
         }
     }
 
