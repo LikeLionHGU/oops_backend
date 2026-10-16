@@ -10,6 +10,69 @@ import static org.mockito.Mockito.*;
 
 /** Structural diagnostics, not ground truth or real-model accuracy tests. */
 class TargetContractDiagnosticsTest {
+    private LlmDecision direct(String target, String mention, String relation, List<LlmEvidence> evidence) {
+        return new LlmDecision("stt-index-1", "REVIEW_REQUIRED", null,
+                "합성 직접 요청의 대상 연결을 검사합니다.", "SEXUAL", target, .5, null, null, List.of(), evidence,
+                "PERSON", relation, "당신은 이 요청을 받은 상대라는 원문 지칭의 풀이입니다.",
+                "뜻풀이가 아니라 실제 상대에게 요청하는 대화라는 합성 조건입니다.", mention);
+    }
+
+    private List<LlmEvidence> directEvidence() {
+        return List.of(new LlmEvidence("stt-index-1", null, "PRIMARY"),
+                new LlmEvidence("stt-index-0", null, "TARGET"));
+    }
+
+    @Test void directPronounKeepsLiteralTargetAndExplanationWithoutInventingSeparateContext() {
+        var f=new CandidateReviewEngineTest();
+        var input=f.context("지금 당신이 입은 속옷 색을 알고 싶어요.", "제게 한번 보여 주세요.").reviewInput();
+        var proposal=new Proposal("stt-index-1","TARGET_TREATMENT","직접 요청의 대상 확인",
+                List.of(new Quote("stt-index-0",null),new Quote("stt-index-1",null)));
+        var candidate=new Candidate("c",proposal,input.segments(),false,false);
+        var original=direct("질문을 받은 상대","당신","EXPLICIT",directEvidence());
+        assertThat(validate(candidate,original,input).failureCode()).isEqualTo("TARGET_MENTION_RELATION");
+        var canonical=direct("당신","당신","EXPLICIT",directEvidence());
+        var result=validate(candidate,canonical,input);
+        assertThat(result.failureCode()).isNull();
+        assertThat(canonical.targetReason()).contains("요청을 받은 상대");
+        assertThat(original.target()).isEqualTo("질문을 받은 상대"); // No automatic rewriting.
+        assertThat(original.decision()).isEqualTo(canonical.decision());
+        assertThat(canonical.evidence()).noneMatch(e -> "CONTEXT".equals(e.role()));
+    }
+
+    @Test void canonicalFieldNamesDoNotBypassRawGroundingOrMissingTargetRole() {
+        var f=new CandidateReviewEngineTest();
+        var input=f.context("지금 당신이 입은 속옷 색을 알고 싶어요.","제게 한번 보여 주세요.").reviewInput();
+        var candidate=new Candidate("c",new Proposal("stt-index-1","TARGET_TREATMENT","합성 대상 연결",
+                List.of(new Quote("stt-index-0",null),new Quote("stt-index-1",null))),input.segments(),false,false);
+        assertThat(validate(candidate,direct("다른 사람","다른 사람","EXPLICIT",directEvidence()),input).failureCode())
+                .isEqualTo("TARGET_EVIDENCE_REQUIRED");
+        assertThat(validate(candidate,direct("당신","당신","EXPLICIT",
+                List.of(new LlmEvidence("stt-index-1",null,"PRIMARY"))),input).failureCode())
+                .isEqualTo("TARGET_EVIDENCE_REQUIRED");
+        assertThat(validate(candidate,direct("질문을 받은 상대","당신","CONTEXTUAL",directEvidence()),input).failureCode())
+                .isEqualTo("TARGET_CONTEXT_EVIDENCE_REQUIRED");
+    }
+
+    @Test void contextualInterpretationStillRequiresRealSeparateRawEvidence() {
+        var d=direct("앞서 소개한 사람","그분","CONTEXTUAL",List.of(
+                new LlmEvidence("a","그분을 이야기합니다.","TARGET"),
+                new LlmEvidence("b","다음으로 이 사람을 소개합니다.","CONTEXT")));
+        assertThat(inspectTarget(d).failureDetail()).isNull();
+        var missing=direct(d.target(),d.targetMention(),d.targetRelation(),
+                List.of(new LlmEvidence("a","그분을 이야기합니다.","TARGET"),
+                        new LlmEvidence("a","그분을 이야기합니다.","CONTEXT")));
+        assertThat(inspectTarget(missing).failureDetail()).isEqualTo("TARGET_SEPARATE_CONTEXT_MISSING");
+        // Structural acceptance is not a semantic proof that two people are the same person.
+    }
+
+    @Test void initialAndRepairInstructionsUseTheSameDirectReferentConvention() {
+        for(String prompt:List.of(VERIFICATION_PROMPT,TARGET_REPAIR_PROMPT)) {
+            assertThat(prompt).contains("target='당신', targetMention='당신'", "targetReason", "직접 지칭이면");
+        }
+        assertThat(VERIFICATION_PROMPT).contains("부사·행동어를 사람 지칭어로 쓰거나", "다른 사람을 같은 대상으로 바꾸지 않는다");
+        assertThat(TARGET_REPAIR_PROMPT).contains("다른 사람을 연결해 필드를 채우지 않는다");
+    }
+
     private LlmDecision fields(LlmDecision d, String target, String mention, String reason,
                                String relation, List<LlmEvidence> evidence) {
         return new LlmDecision(d.segmentId(), d.decision(), d.evidenceText(), d.reason(), d.category(),

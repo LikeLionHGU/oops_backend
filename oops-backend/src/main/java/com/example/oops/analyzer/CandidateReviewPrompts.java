@@ -106,7 +106,7 @@ final class CandidateReviewPrompts {
               PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
               TARGET은 실제 평가 대상을 식별하는 원문, CONTEXT는 연결 상황이다.
             대상 평가가 이유이면 target과 TARGET 인용 및 targetType·targetRelation·targetReason이 필요하다.
-              target은 문맥상 해석한 대상, targetMention은 TARGET 인용에 그대로 있는 지칭어(각 200자 이내)다.
+              targetMention은 TARGET 인용에 그대로 있는 지칭어, target은 아래 관계에 맞춘 대상명(각 200자 이내)다.
               EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
               별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
               시간상 인접함만으로 대상을 연결하지 않는다. 연결이 불분명하면 UNCERTAIN이다.
@@ -116,7 +116,12 @@ final class CandidateReviewPrompts {
               탐색 axis는 가설이다. 검증 결과가 GRAPHIC_METAPHOR이고 대상 공격 없이 구체적 신체 훼손 비유 자체를
               검토하는 경우에는 탐색 axis가 TARGET_TREATMENT였어도 target과 대상 관계 필드를 null로 반환할 수 있다.
             출력 순서: 먼저 TARGET 원문을 고르고 그 안의 연속 문자열을 targetMention으로 복사한다.
-              다음에 해석한 대상 target을 적는다. 해석한 대상 이름을 원문 인용으로 바꾸거나 역으로 꾸미지 않는다.
+              직접 지칭이면 target에도 같은 원문 지칭어를 적고, 대상 풀이는 targetReason에 둔다.
+              예: 원문의 '당신'이 요청받는 상대라면 target='당신', targetMention='당신', EXPLICIT이다.
+              '질문을 받은 상대'라는 풀이는 targetReason에 적는다. 이 재표현만으로 CONTEXTUAL을 만들지 않는다.
+              다른 발언을 연결해야 대상을 식별할 때만 그 해석 대상명을 target에 적고 CONTEXTUAL 근거를 반환한다.
+              '살짝' 같은 부사·행동어를 사람 지칭어로 쓰거나, 다른 사람을 같은 대상으로 바꾸지 않는다.
+              계약을 맞추려고 판단·원문 인용·실제 대상 관계를 바꾸지 않는다.
               같은 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. CONTEXTUAL의 별도 CONTEXT는
               다른 segmentId에서 복사한다. 실제 대상 연결 근거가 없으면 UNCERTAIN이지 근거 생성이 아니다.
             targetType: PERSON/GROUP/REGION/RESIDENT_GROUP/BUSINESS/PRODUCT/WORK/OTHER.
@@ -183,7 +188,11 @@ final class CandidateReviewPrompts {
             현재 후보 하나의 raw와 segmentIds만 다시 읽고 새 판단을 반환한다. 이전 판단을 유지할 의무가 없다.
             대상 평가로 REVIEW_REQUIRED를 반환하면 evidence에 실제 TARGET 역할 인용을 반드시 포함한다.
             지칭어를 CONTEXT로만 적거나 targetMention 필드만 채우는 것은 TARGET 인용을 대신하지 않는다.
-            먼저 TARGET 역할로 선택한 segmentId의 raw.text에서 targetMention을 복사하고, 다음에 해석한 대상 target을 적는다.
+            먼저 TARGET 역할로 선택한 segmentId의 raw.text에서 실제 대상 지칭어를 targetMention으로 복사한다.
+            직접 지칭이면 target에도 같은 원문을 쓰고 대상 풀이는 targetReason에 둔다.
+            예: '당신'은 target='당신', targetMention='당신', EXPLICIT이며 '질문을 받은 상대'라는 풀이는 targetReason이다.
+            다른 발언으로 대상을 식별해야 할 때만 해석 대상명과 CONTEXTUAL 근거를 반환한다.
+            부사·행동어를 사람 지칭으로 쓰거나 다른 사람을 연결해 필드를 채우지 않는다.
             같은 원문 줄을 PRIMARY와 TARGET으로 각각 인용해도 된다. targetReason에 실제 연결을 설명한다.
             EXPLICIT은 target과 targetMention이 동일할 때만 사용한다. 서로 다르면 CONTEXTUAL과
             TARGET 인용과 다른 segmentId의 실제 CONTEXT 및 연결 설명이 필요하다.

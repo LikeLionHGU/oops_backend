@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-14-target-contract-diagnostics-37";
-    static final String RELATION_REVISION = "2026-10-15-source-relations-contract-39";
+    static final String REVISION = "2026-10-17-direct-target-writing-40";
+    static final String RELATION_REVISION = "2026-10-17-source-relations-direct-target-40";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
