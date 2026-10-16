@@ -114,7 +114,7 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 설정된 STT 비용 추정은 분당 $0.00185이며 `[ai-cost]` 로그에 텍스트 비용과 함께 계산된다. 실제 청구액과 다를 수 있다. 모델을 바꾸면 가격 설정도 맞춰야 한다.
 
-탐색 출력은 [JSON/strict 비교](docs/탐색-출력계약-JSON-스키마-비교.md) 후 strict JSON Schema 기본 ON이다. 해당 정상 초안에서 완전 무경고 10/12→12/12와 필수 Boolean 누락 감소를 확인했다. 후속으로 검토·대표 ID는 현재 배치, 근거 ID는 보조 문맥까지 허용하는 요청별 범위를 반영했다. ID 범위 변경은 무료 회귀 검증 단계이며 실제 감소 효과·행위 방향 보존은 미검증이다. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED=false`로 이전 JSON 모드를 선택할 수 있다.
+탐색 출력은 [JSON/strict 비교](docs/탐색-출력계약-JSON-스키마-비교.md) 후 strict JSON Schema 기본 ON이다. 후속 ID 범위 비교 32회도 완료했다. 정상 초안은 양쪽 12/12 완전 무경고, 범위 오류도 양쪽 0건이라 제한 추가의 감소 효과는 입증하지 못했다. 검토·대표 ID는 현재 배치, 근거 ID는 보조 문맥까지 허용한다. 행위·대상 의미 보존과 문맥 제한은 남는다. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED=false`로 이전 JSON 모드를 선택할 수 있다.
 
 ## 문서
 
