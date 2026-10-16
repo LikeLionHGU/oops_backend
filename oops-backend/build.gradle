@@ -205,6 +205,20 @@ tasks.register('groqPipelineAudit', JavaExec) {
     }
 }
 
+// Frozen text-only structured search OFF/ON trial; prepare is free, run requires fresh consent/hash.
+tasks.register('structuredSearchBoundaryTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.StructuredSearchBoundaryTrial'
+    doFirst {
+        def values = ['boundaryMode', 'boundaryInput', 'boundarySecond', 'boundaryThird', 'boundaryOutput'].collect {
+            providers.gradleProperty(it).orNull
+        }
+        if (values.any { !it }) throw new GradleException('Explicit boundary mode, input, second, third and NEW private output required')
+        args values
+    }
+}
+
 // User-requested one-time rerun, carrying the original attempt's budget forward.
 tasks.register('longVideoRoutingRetry', JavaExec) {
     dependsOn testClasses
