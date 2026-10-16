@@ -62,4 +62,51 @@ class UtteranceDirectionTrialTest {
         assertThatThrownBy(() -> UtteranceDirectionTrial.reserve(budget,0)).hasMessageContaining("56 HTTP attempt cap");
         assertThat(budget.exhausted).isTrue();assertThat(budget.reserved).isZero();
     }
+    @Test void basisComparisonChangesOnlyContractAndNeverAddsUnadoptedGuidance() throws Exception {
+        var old=plan();var newer=UtteranceDirectionTrial.basisPlan(old);
+        assertThat(newer.schemaVersion()).isEqualTo(UtteranceDirectionTrial.BASIS_REVISION);
+        assertThat(UtteranceDirectionTrial.BASIS_CONSENT).isNotEqualTo(UtteranceDirectionTrial.CONSENT);
+        assertThat(newer.sourceSha256()).isEqualTo(old.sourceSha256());
+        assertThat(UtteranceDirectionTrial.reservationEstimate(newer)).isLessThanOrEqualTo(.50);
+        for(int i=0;i<14;i++) {
+            var t=newer.tasks().get(i);var original=old.tasks().get(i);
+            assertThat(t.input()).isEqualTo(original.input());
+            assertThat(t.baselineSystem()).isEqualTo(original.baselineSystem());
+            assertThat(t.comparisonSystem()).isEqualTo(FinalReviewBasisContract.prompt(original.baselineSystem()));
+            assertThat(t.comparisonSystem()).doesNotContain(UtteranceDirectionPolicy.GUIDANCE);
+            assertThat(UtteranceDirectionTrial.requestInput(newer,t,false)).isEqualTo(t.input());
+            var changed=(tools.jackson.databind.node.ObjectNode)JSON.readTree(UtteranceDirectionTrial.requestInput(newer,t,true));
+            assertThat(changed.remove("verificationContract").asText()).isEqualTo(FinalReviewBasisContract.VERSION);
+            assertThat(changed).isEqualTo(JSON.readTree(t.input()));
+        }
+    }
+    @Test void basisAssessorUsesSelectedContractAndPreservesReturnedBasis() throws Exception {
+        var t=UtteranceDirectionTrial.basisPlan(plan()).tasks().get(0);
+        var input=JSON.readTree(t.input());var c=input.path("candidates").get(0);
+        String anchor=c.path("anchorId").asText(),candidateId=c.path("candidateId").asText();
+        var raw=CandidateHypothesisTrial.raw(input);
+        String text=raw.segments().stream().filter(s -> s.id().equals(anchor)).findFirst().orElseThrow().text();
+        var d=new TextReviewEngine.LlmDecision(anchor,"REVIEW_REQUIRED",text,"표현 자체에 대한 합성 검토 근거입니다.","SEXUAL",
+                null,.5,null,null,List.of(),List.of(new TextReviewEngine.LlmEvidence(anchor,text,"PRIMARY")),null,null,null,
+                "대상 평가와 별개인 표현 자체에 대한 합성 검토입니다.");
+        var missing=new CandidateReviewEngine.VerificationResult(List.of(new CandidateReviewEngine.Verification(candidateId,d)));
+        assertThat(UtteranceDirectionTrial.assess(t,missing,true)).containsEntry("failureCode","REVIEW_BASIS_REQUIRED");
+        var provided=new CandidateReviewEngine.VerificationResult(List.of(new CandidateReviewEngine.Verification(candidateId,d,
+                new CandidateReviewEngine.ReviewBasis("EXPRESSION_CONTENT","인용 표현 자체를 검토합니다.",List.of(anchor)))));
+        assertThat(UtteranceDirectionTrial.assess(t,provided,false)).containsEntry("failureCode","UNEXPECTED_REVIEW_BASIS");
+        assertThat(UtteranceDirectionTrial.assess(t,provided,true)).containsEntry("accepted",true);
+    }
+    @Test void basisPlanCannotMixOldGuidanceOrCarryContractInBaselineInput() throws Exception {
+        var p=UtteranceDirectionTrial.basisPlan(plan());
+        var tree=(tools.jackson.databind.node.ObjectNode)JSON.valueToTree(p);
+        ((tools.jackson.databind.node.ObjectNode)tree.path("tasks").get(0)).put("comparisonSystem",p.tasks().get(0).baselineSystem());
+        assertThatThrownBy(() -> UtteranceDirectionTrial.validate(JSON.treeToValue(tree,UtteranceDirectionTrial.Plan.class)))
+                .hasMessageContaining("Comparison changes only");
+        var inputTree=(tools.jackson.databind.node.ObjectNode)JSON.valueToTree(p);
+        var first=(tools.jackson.databind.node.ObjectNode)inputTree.path("tasks").get(0);
+        var input=(tools.jackson.databind.node.ObjectNode)JSON.readTree(first.path("input").asText());
+        input.put("verificationContract",FinalReviewBasisContract.VERSION);first.put("input",input.toString());
+        assertThatThrownBy(() -> UtteranceDirectionTrial.validate(JSON.treeToValue(inputTree,UtteranceDirectionTrial.Plan.class)))
+                .hasMessageContaining("Fixed unlabeled verification input required");
+    }
 }
