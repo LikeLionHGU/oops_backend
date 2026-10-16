@@ -81,7 +81,7 @@ public class OpenAiClient {
 
     @org.springframework.beans.factory.annotation.Autowired
     public OpenAiClient(@Qualifier("openAiRestClient") RestClient restClient, OpenAiProperties properties,
-            @org.springframework.beans.factory.annotation.Value("${oops.openai.structured-discovery-output-enabled:false}")
+            @org.springframework.beans.factory.annotation.Value("${oops.openai.structured-discovery-output-enabled:true}")
             boolean structuredDiscoveryOutput) {
         this.restClient = restClient;
         this.properties = properties;

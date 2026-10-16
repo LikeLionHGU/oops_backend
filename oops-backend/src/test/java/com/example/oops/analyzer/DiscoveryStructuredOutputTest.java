@@ -139,14 +139,14 @@ class DiscoveryStructuredOutputTest {
         } finally { client.endVideo(); }
         server.verify();
     }
-    @Test void springOptInDefaultRemainsOff() throws Exception {
+    @Test void springDefaultUsesVerifiedDiscoverySchemaWithExplicitOptOut() throws Exception {
         var constructor=Arrays.stream(OpenAiClient.class.getConstructors())
                 .filter(c -> c.isAnnotationPresent(org.springframework.beans.factory.annotation.Autowired.class)).findFirst().orElseThrow();
         assertThat(constructor.getParameters()[2].getAnnotation(org.springframework.beans.factory.annotation.Value.class).value())
-                .isEqualTo("${oops.openai.structured-discovery-output-enabled:false}");
+                .isEqualTo("${oops.openai.structured-discovery-output-enabled:true}");
         try(var in=getClass().getResourceAsStream("/application.yml")) {
             assertThat(new String(Objects.requireNonNull(in).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8))
-                    .contains("structured-discovery-output-enabled: ${STRUCTURED_DISCOVERY_OUTPUT_ENABLED:false}");
+                    .contains("structured-discovery-output-enabled: ${STRUCTURED_DISCOVERY_OUTPUT_ENABLED:true}");
         }
     }
     @Test void schemaRequiresBooleanAndModelsBothProposalVariantsWithoutForcedNullableFields() throws Exception {

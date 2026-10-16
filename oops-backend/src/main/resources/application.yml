@@ -100,8 +100,9 @@ oops:
     model: ${OPENAI_MODEL:gpt-6-luna}
     # 기존 비추론 경로와 비교하기 위한 기본값. low 등으로 변경하면 temperature는 전송하지 않는다.
     reasoning-effort: ${OPENAI_REASONING_EFFORT:none}
-    # 탐색 DTO만 strict schema 적용. 실제 제공자 호환 시험 전 기본 OFF, 실패 시 JSON mode 자동 전환 없음.
-    structured-discovery-output-enabled: ${STRUCTURED_DISCOVERY_OUTPUT_ENABLED:false}
+    # Luna 호환·정상 대조 확인 후 탐색 DTO만 기본 ON. 다른 모델/제공자는 재확인하고 필요하면 false.
+    # 형식 보장과 내용 판단은 별개이며 실패 시 JSON mode 자동 전환은 하지 않는다.
+    structured-discovery-output-enabled: ${STRUCTURED_DISCOVERY_OUTPUT_ENABLED:true}
     timeout: 90s
 
     # 토큰 단가. 분석이 끝나면 로그에 [openai-cost] 로 원가가 찍힌다.
