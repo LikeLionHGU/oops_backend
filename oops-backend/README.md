@@ -1,474 +1,92 @@
 # oops-backend
 
-AI로 영상의 논란 소지를 잡아주는 서비스 — 백엔드
+2026-10-16 · `minwook` 코드 기준. Spring Boot 4·Java 17 기반 API·분석 오케스트레이터다.
 
-영상을 넣으면 **몇 분 몇 초에 어떤 논란이 있는지** Timeline Report로 돌려준다.
-외부 API는 팀 API 명세(Creator Risk Manager v2.0)를 따른다.
-
-## 시스템 구성
-
-```
-[프론트]
-   │  REST /api/v1  +  STOMP WebSocket /ws
-[oops-backend]  Spring Boot 4 / Java 17 / JPA
-   │                    └─ OpenAI Chat API (발언 리스크·자막 비교 판정)
-   │  HTTP
-[oops-analysis] FastAPI / Python
-   ├─ yt-dlp + ffmpeg   (영상 확보, 오디오·프레임 추출)
-   ├─ OpenAI Whisper    (STT → 타임스탬프 대본)
-   └─ PaddleOCR         (화면 자막 인식 + 프레임 보관)
-```
-
-명세 §11은 Python이 분석 전부를 하고 Spring에 콜백하는 구조지만,
-현재 구현은 **Spring이 오케스트레이터**이고 Python은 STT/OCR 전용이다.
-프론트가 보는 `/api/v1/**` 계약은 명세와 100% 동일하므로 프론트 개발에는 영향이 없다.
+Spring은 영상·작업·리포트를 저장하고 Python에 전사·OCR·프레임 추출을 요청한다. 전사는 Python이 Groq `whisper-large-v3`로 처리하고, 후보 탐색·검증은 Spring이 OpenAI `gpt-6-luna`로 요청한다. Python 콜백 구조는 사용하지 않는다.
 
 ## 실행
 
-```bash
-# 1) Python 분석 서버 (별도 터미널)
-cd ../oops-analysis && .\run.ps1
+`oops-backend`를 작업 디렉터리로 실행한다. Python 서버를 별도 터미널에서 먼저 켜며 [Python README](../oops-analysis/README.md)를 따른다.
 
-# 2) 백엔드
-$env:OPENAI_API_KEY="sk-..."
-./gradlew bootRun          # 또는 IntelliJ 에서 실행 + 환경변수 등록
+macOS zsh:
+
+```zsh
+read -s "OPENAI_API_KEY?OpenAI API 키 입력: "
+export OPENAI_API_KEY
+echo
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+bash ./gradlew bootRun --args='--spring.profiles.active=local --server.address=127.0.0.1'
 ```
 
-기본 프로파일이 `local`이라 DB 설치 없이 뜬다(H2 인메모리).
-공용 MySQL은 `--spring.profiles.active=dev`.
+Java 경로는 설치 환경에 맞춘다. IntelliJ 실행 시에도 같은 환경변수·프로필을 지정한다. `application-secret.yml.example`을 최초에만 복사해 키를 입력하는 방식도 지원한다. Python `.env`나 루트 `.env`를 Spring이 자동으로 읽는 것은 아니다.
+
+Windows PowerShell:
 
 ```powershell
-.\scripts\smoke-test.ps1 -File "C:\경로\영상.mp4"
+.\gradlew.bat bootRun --args="--spring.profiles.active=local --server.address=127.0.0.1"
 ```
 
-> **윈도우에서 curl 쓸 때**
-> PowerShell의 `curl`은 `Invoke-WebRequest` 별칭이라 보안 경고가 뜬다.
-> `curl.exe` 또는 `Invoke-RestMethod` 를 쓸 것.
-
-## API
-
-Base URL: `/api/v1`
-
-| Method | Path | 설명 | Status |
-|---|---|---|---|
-| POST | `/videos` | 영상 업로드 (multipart `file`). **업로드 즉시 분석 시작** | 201 |
-| POST | `/videos` | 유튜브 URL 등록 (JSON `{url}`) — 명세 외 확장 | 201 |
-| GET | `/videos/{id}/status` | 분석 상태 | 200 |
-| GET | `/videos/{id}/report` | Timeline Report | 200 |
-| POST | `/videos/{id}/analysis/retry` | 분석 재시도 (새 jobId 발급) | 202 |
-| GET | `/videos/{id}/stream` | 영상 재생 (HTTP Range) | 200 / 206 |
-| GET | `/videos/{id}/frames/{frameId}` | 프레임 이미지 | 200 |
-| GET | `/videos` | 영상 목록 (최근 100건) | 200 |
-| DELETE | `/videos/{id}` | 영상 + 분석 결과 + 파일 삭제 | 200 |
-| GET | `/videos/{id}/transcript` | STT 대본 원문 (디버깅) | 200 |
-| GET | `/videos/{id}/screen-texts` | OCR 화면 자막 원문 (디버깅) | 200 |
-
-WebSocket: `/ws` (STOMP, SockJS 폴백) → `/topic/videos/{videoId}/progress` 구독
-
-### 응답 형식
-
-성공:
-
-```json
-{ "success": true, "message": "요청 성공", "data": { } }
-```
-
-에러:
-
-```json
-{
-  "success": false,
-  "message": "지원하지 않는 영상 형식입니다.",
-  "error": { "code": "UNSUPPORTED_VIDEO_FORMAT", "traceId": "6adf4c7c2f8a4b42" }
-}
-```
-
-`traceId`는 서버 로그에서 같은 요청을 찾는 데 쓴다. 에러 문의할 때 이 값을 알려주면 된다.
-
-### 에러 코드
-
-`VIDEO_NOT_FOUND` `FRAME_NOT_FOUND` `UNSUPPORTED_VIDEO_FORMAT` `MAX_UPLOAD_SIZE_EXCEEDED`
-`ANALYSIS_IN_PROGRESS` `ANALYSIS_NOT_COMPLETED` `INVALID_ANALYSIS_STATE`
-`WORKER_UNAVAILABLE` `ANALYSIS_FAILED` `INVALID_REQUEST` `INTERNAL_SERVER_ERROR`
-`RATE_LIMIT_EXCEEDED`
-
-### 업로드·재분석 요청 제한
-
-인증이 아직 없는 데모 배포 환경에서 반복 업로드와 재분석 요청이 분석 자원과
-OpenAI 비용을 과도하게 사용하지 않도록 요청 IP 기준의 제한을 둔다.
-
-```yaml
-oops:
-  rate-limit:
-    uploads-per-minute: 10
-    retries-per-minute: 5
-```
-
-`0`으로 설정하면 해당 제한을 끈다. 단일 Spring 인스턴스 메모리에서 동작하므로,
-서버를 여러 대로 늘릴 때는 Redis 같은 공유 저장소 기반 제한기로 교체해야 한다.
-제한에 걸리면 `429 RATE_LIMIT_EXCEEDED`와 `Retry-After: 60`이 반환된다.
-
-### 상태 확인과 요청 추적
-
-- `GET /health` 또는 `GET /api/v1/health`에서 Spring, Python 분석 서버, 파일 저장소 상태를 확인한다.
-- 모든 응답에 `X-Request-Id`가 붙는다. 오류 응답의 `error.traceId`와 같은 값이므로
-  문의가 들어오면 이 값을 서버 로그와 함께 확인한다.
-
-### `/report` 응답
-
-```json
-{
-  "success": true,
-  "message": "분석 결과 조회 성공",
-  "data": {
-    "videoId": 123,
-    "jobId": "job_8fc391",
-    "status": "COMPLETED",
-    "summary": { "high": 2, "medium": 3, "low": 5 },
-    "events": [
-      {
-        "id": 1,
-        "startMs": 42300, "endMs": 46100,
-        "type": "SPEECH", "severity": "HIGH",
-        "text": "문제가 될 수 있는 발언",
-        "riskTypes": ["GENERALIZATION"],
-        "reason": "특정 집단에 대한 일반화 표현입니다."
-      },
-      {
-        "id": 2,
-        "startMs": 73100, "endMs": 76000,
-        "type": "CAPTION", "severity": "MEDIUM",
-        "speechText": "원래 발언",
-        "captionText": "화면에 나온 자막",
-        "reason": "실제 발언보다 자극적으로 표현되었습니다.",
-        "frameUrl": "/api/v1/videos/123/frames/2"
-      }
-    ]
-  }
-}
-```
+실행 터미널에 `OPENAI_API_KEY`를 설정하거나 secret YAML을 먼저 준비한다. PowerShell에서 HTTP 요청은 `curl.exe`를 사용한다.
 
-`events`는 **우선순위 내림차순**이다. 프론트는 위에서부터 그리면 된다.
-`type`이 discriminator이고, 해당 타입에 없는 필드는 JSON에서 아예 빠진다
-(`default-property-inclusion: non_null`).
+기본 로컬 DB는 H2 **파일 모드** `./data/oops`다. 기본 파일 저장소는 `./uploads`이며 Python의 `MEDIA_STORAGE_ROOT`와 동일한 실제 디렉터리여야 한다. 설정 파일은 [application.yml](src/main/resources/application.yml), [local 프로필](src/main/resources/application-local.yml)이다.
 
-## 유튜브 링크 분석
+## 현재 분석 경로
 
-```powershell
-.\scripts\smoke-test.ps1 -Url "https://www.youtube.com/watch?v=..."
-```
+업로드·YouTube 등록 → 분석 접수 → Python 길이 확인·STT·OCR → 별도 표현 등장 목록 → 맥락 사전과 후보 탐색 → 후보별 원문 검증 → 근거 기반 병합 → 결과·완료 상태 저장.
 
-또는 `POST /api/v1/videos` 에 `{"url": "..."}` 를 JSON 으로 보낸다.
-응답 형태는 파일 업로드와 같다.
+- 기본 후보 엔진 개정은 `2026-10-14-target-contract-diagnostics-37`이다.
+- 기본 맥락 사전은 외부 파일의 v7 작업 참고다. 사람 검수 완료·학습 완료 데이터라는 뜻은 아니다.
+- 자동 검색 키 분류와 원문 관계 추가 기능은 기본 OFF다.
+- 선택적 프레임 검증 코드는 기본 활성화돼 있지만 전체 영상·음성의 분위기나 포즈를 분석하는 기능은 아니다.
+- 일반 분석은 사실 대조·최근 뉴스 검색을 실행하지 않는다. 기존 검색 경로를 시험할 때만 `local,external-review` 프로필을 선택한다.
+- 욕설·논쟁 표현 등장은 별도 저장/API 트랙이다. 적중 자체가 위험 카드를 만들지는 않는다.
 
-**주의할 점**
+## 주요 API
 
-- `GET /stream` 이 동작하지 않는다. 로컬에 파일이 남지 않기 때문이다.
-  프론트에서는 유튜브 임베드를 쓰거나 파일 업로드를 안내한다.
-- yt-dlp 가 오래되면 유튜브가 막는다. 다운로드 실패 시 먼저 이것부터 시도할 것.
-  ```powershell
-  cd ..\oops-analysis
-  .\.venv\Scripts\activate
-  pip install --upgrade yt-dlp
-  ```
-- 연령 제한·비공개·지역 제한 영상은 받을 수 없다.
-- 분석 서버가 영상을 임시 폴더에 받았다가 끝나면 지운다. 디스크 여유가 필요하다.
+기본 경로는 `/api/v1`이다. 구체적인 DTO·권한·옵션은 [API 대조표](../docs/API명세-구현-대조표.md)와 Swagger `/swagger-ui.html`을 함께 확인한다.
 
-## 실패를 성공으로 보고하지 않는다
+| 메서드·경로 | 기능 |
+|---|---|
+| POST `/videos` · multipart | 파일 업로드 후 분석 시작 |
+| POST `/videos` · JSON | YouTube URL 등록 후 분석 시작 |
+| GET `/videos/{id}/status` | 분석 상태·진행률 |
+| GET `/videos/{id}/report` | 리포트·분석 범위·경고·검수 상태 |
+| GET `/videos/{id}/transcript` | 저장된 STT 원문과 시간 |
+| GET `/videos/{id}/screen-texts` | 저장된 OCR 원문 |
+| GET `/videos/history` | 검수 이력·페이지 |
+| POST `/videos/{id}/analysis/retry` | 실패·취소 분석만 재시도 |
+| POST `/videos/{id}/analysis/cancel` | 진행 중 분석 취소 |
+| PUT `/videos/{id}/review-actions/{eventId}` | 후보별 검수 결정 |
+| POST `/videos/{id}/review-completion` | 검수 완료 |
+| GET `/videos/{id}/stream` | 업로드 원본 재생 |
+| GET `/videos/{id}/frames/{frameId}` | 저장 프레임 |
+| DELETE `/videos/{id}` | 영상·분석 결과 삭제 |
 
-발언도 자막도 못 뽑았으면 잡을 `FAILED` 로 끝낸다.
+WebSocket은 `/ws` → `/topic/videos/{videoId}/progress`다. `GET /health`에서 Python·저장소 상태를 확인한다. YouTube 등록은 로컬 스트림 대신 프론트의 YouTube 재생 처리가 필요하다.
 
-그냥 진행하면 모든 분석기가 `supports()` 에서 걸러져 스킵되고
-`완료 · events=0` 으로 끝난다. 화면에는 "확인할 지점을 찾지 못했습니다" 가 뜬다.
-사용자에게는 검수 결과로 읽히지만 실제로는 아무것도 보지 못한 것이다.
+응답은 `success`, `data`, `error` 구조이고 null 필드는 생략될 수 있다. ID는 문자열, 시간 구간은 밀리초 정수다. 오류 추적 값은 `error.details.traceId`와 `X-Request-Id`를 확인한다. 예전 최상위 `message`·숫자 ID·severity 중심 리포트 예시는 현재 계약으로 사용하지 않는다.
 
-같은 종류의 버그를 두 번 겪었다.
-- OpenAI 요청 한도에 걸렸는데 빈 결과를 돌려줘서 "논란 없음" 으로 보였다
-- 영상 길이 초과로 STT/OCR 이 모두 실패했는데 "완료" 로 끝났다
+## 설정과 사전 반영
 
-`AnalysisServerClient.lastFailureDetail()` 이 분석 서버가 준 `detail` 을 들고 있다가
-그대로 사용자에게 전달한다. `영상이 너무 깁니다 (4330초)` 처럼 원인이 바로 보인다.
+| 설정 | 용도 |
+|---|---|
+| `OPENAI_API_KEY` | Spring 텍스트·선택 이미지 판단 |
+| `OPENAI_MODEL` / `OPENAI_REASONING_EFFORT` | 기본 `gpt-6-luna` / `none` |
+| `ANALYSIS_SERVER_URL` | 기본 `http://localhost:8000` |
+| `REVIEW_GUIDELINES_LOCATION` | 기본 `file:../datasets/controversy/guidelines/runtime.json` |
+| `REVIEW_GUIDELINES_MAX_CASES` | 기본 3, 관련성·크기 예산에 따라 더 적게 선택 가능 |
+| `CONTEXT_MECHANISM_ROUTING_ENABLED` | 추가 검색 키 분류, 기본 false |
+| `CANDIDATE_SOURCE_RELATIONS_ENABLED` | 원문 관계 전달 실험, 기본 false |
+| `GROQ_STT_USD_PER_MINUTE` | 비용 추정용 기본 $0.00185. Groq 키 설정이 아님 |
 
-**새 단계를 추가할 때도 같은 원칙을 지킬 것.**
+실제 Groq 키는 **Python 서버**에 설정한다. `datasets/**`는 Git 제외이므로 배포 서버에도 사전·입력 파일을 따로 제공해야 한다. 사전은 시작 시 로드하며 빌드만으로 실행 중인 서버가 갱신되지 않는다. [파일 관리와 재빌드 절차](../docs/데이터셋-파일-관리.md)를 따른다.
 
-## 분석 흐름
+로컬 프로필은 진단을 활성화한다. 실제 요청 trace는 별도 토큰·보존 제한을 사용하는 선택 기능이다. 공개 환경 설정은 [보안·운영 정책](../docs/보안-운영정책.md)을 확인한다.
 
-| stage | progress | 하는 일 |
-|---|---|---|
-| `STT` | 15 | Whisper로 타임스탬프 대본 생성 |
-| `OCR` | 35 | 2초 간격 프레임에서 화면 자막 인식 + 프레임 보관 |
-| `TEXT_RISK` / `OCR` / `MULTIMODAL` | 45~80 | 활성 분석기 실행 |
-| `MULTIMODAL` | 85 | 후보 병합 + 우선순위 |
-| `FINALIZING` | 92 | 리포트 집계 |
-| `COMPLETED` | 100 | 완료 |
+## 현재 확인된 한계
 
-단계가 바뀔 때마다 `/topic/videos/{id}/progress`로 `ProgressMessage`가 나간다.
+[Groq 후속 점검](../docs/Groq-전사-후속-점검.md)에서 전사 복원 이후에도 사례 회수 누락, 후보 쟁점 이동, `targetRelation` 불일치, 필수 `truncated` 누락이 남았다. FAILED/PARTIAL·미판정을 경고 0개라는 이유로 정상 처리하지 않는다.
 
-### 분석기
+원본은 기본 설정에서 24시간 뒤 정리 대상이 될 수 있다. `source-retention-hours`·프로필 설정과 실제 파일 존재를 확인한다. 기존 완료 리포트는 모델 교체로 자동 갱신되지 않으며 완료 영상의 새 비교는 재업로드로 진행한다.
 
-| key | 클래스 | 필요한 키 | 하는 일 | 이벤트 타입 |
-|---|---|---|---|---|
-| `entity-check` | `EntityCheckAnalyzer` | OpenAI | **이름·날짜·수치 확인** | SPEECH |
-| `context-check` | `ContextCheckAnalyzer` | OpenAI | **언급된 주제의 최근 배경** | SPEECH/CAPTION |
-| `speech-review` | `SpeechReviewAnalyzer` | OpenAI | 발언 중 확인할 지점 | SPEECH |
-| `screen-text-review` | `ScreenTextReviewAnalyzer` | OpenAI | 화면 자막 중 확인할 지점 | CAPTION |
-| `subtitle` | `SubtitleAnalyzer` | 없음 | 대본 금지어·개인정보 (안전망) | SPEECH |
-| `screen-text` | `ScreenTextAnalyzer` | 없음 | 화면 자막 금지어 (안전망) | CAPTION |
-| `caption-mismatch` | `CaptionMismatchAnalyzer` | OpenAI | 발언↔자막 비교 — **기본 비활성** | CAPTION |
-| `monetization` | `MonetizationRiskAnalyzer` | OpenAI | 노란딱지 예측 — **기본 비활성** | SPEECH/CAPTION |
-| `comment`, `pose` | — | — | **범위에서 제외** | — |
-
-`entity-check` 와 `context-check` 가 P0 핵심입니다.
-
-### 발언과 자막은 따로 봅니다
-
-`subtitle`, `speech-review`, `entity-check` 는 STT 대본만 봅니다.
-`screen-text`, `screen-text-review` 는 OCR 자막만 봅니다.
-서로 참조하지 않습니다.
-
-각자 찾은 것을 마지막 병합 단계에서 합칩니다.
-같은 지점이 양쪽에서 나오면 한 건으로 묶고 `crossModal` 로 표시합니다.
-
-### 발언↔자막 비교를 왜 껐나
-
-OCR 은 화면의 모든 글자를 읽습니다.
-편집 자막과 간판, 메뉴판, 채널 로고를 구분하지 못합니다.
-
-그래서 "발언은 '할머니의 살을 뜯는 거 같다' 인데 자막은 'POGUES' 다" 같은
-결과가 대부분이었습니다. 확인할 가치가 없습니다.
-
-자막이 발언과 다른 것 자체는 알릴 이유가 없고,
-**자막이나 발언의 내용에 확인할 것이 있을 때만** 알리는 것이 맞습니다.
-화면 텍스트에서 편집 자막만 골라낼 수 있게 되면 다시 켭니다.
-
-### 화면 로고와 자막 구분
-
-OCR 은 화면의 모든 글자를 읽는다. 채널 로고와 편집 자막을 구분하지 못한다.
-실제로 `POGUES` 로고가 프레임마다 `PO6UFS`, `피F LOGUES`, `동행마스` 로
-읽히면서 자막에 계속 섞여 들어갔다.
-
-두 조건을 모두 만족할 때만 로고로 보고 버린다.
-
-1. 전체 프레임의 절반 이상에서 **같은 자리**에 글자가 있다
-2. 그 글자들이 매번 **사실상 같은 내용**이다
-
-위치만 보면 안 된다. 자막도 하단 같은 자리에 계속 나온다.
-글자만 봐도 안 된다. OCR 이 로고를 매번 다르게 읽는다.
-둘을 같이 봐야 갈린다.
-
-대표 글자를 고를 때는 첫 번째를 그냥 쓰지 않고
-서로 가장 비슷한 것을 기준으로 삼는다.
-첫 프레임에서 로고가 유독 심하게 깨진 경우가 있었다.
-
-### 알맹이 없는 사유는 버린다
-
-LLM 이 확신이 없을 때 이런 문장을 만들어 낸다.
-
-```
-"특정한 상황이나 맥락에서 사용될 수 있는 표현입니다"
-"문화적 맥락과 관련이 있을 수 있습니다"
-```
-
-형식은 갖췄지만 제작자가 무엇을 확인해야 할지 알 수 없다. 없느니만 못하다.
-프롬프트로 막고, `VagueReasonFilter` 로 한 겹 더 거른다.
-
-### 커뮤니티 은어는 사전 + LLM 양쪽으로
-
-기획서에서 말한 "편집자가 모르는 사회적 맥락" 사각지대다.
-겉보기엔 평범한데 특정 커뮤니티 안에서만 다른 뜻으로 쓰이는 말이 있다.
-출연자도 편집자도 모르고 썼다가 나중에 문제가 되는 일이 실제로 있었다.
-
-LLM 만으로는 부족하다. 사투리나 일상 표현과 겹치는 것이 많아
-모델이 애매하면 그냥 넘어간다. 그래서 두 겹으로 본다.
-
-**사전** (`CommunitySlangRules`)
-- 널리 알려진 은어 목록. 걸리면 "확인해 볼 지점" 으로 낮은 점수를 준다
-- 문장 끝 `~노` 어미 패턴. 경상도 사투리와 구분이 어려우므로
-  사투리 어휘가 함께 나오면 넘어가고, 아니면 아주 낮은 점수로만 알린다
-
-**LLM** (`speech-review`)
-- 사전에 없는 표현을 문맥으로 판단
-- 이 유형은 애매해도 올리라고 지시했다.
-  화자가 몰랐을 가능성이 크므로 알려주는 것만으로 가치가 있다
-
-> 이 목록은 "쓰면 안 되는 말" 이 아니라
-> "이 표현이 나왔으니 어떤 맥락으로 쓴 건지 한 번 보라" 는 목록이다.
-> 판정은 하지 않는다.
-
-`CommunitySlangRules.SLANG` 에 한 줄씩 추가하면 된다.
-개발 지식이 거의 필요 없으므로 팀에서 계속 채우면 좋다.
-
-### 같은 지적은 한 번만
-
-같은 것을 두고 분석기마다 다른 유형으로 보고합니다.
-"패스트푸드" 를 한쪽은 비하로, 다른 쪽은 일반화로 잡는 식입니다.
-사용자에게는 같은 지적이므로 합칩니다.
-
-병합 조건은 셋입니다.
-
-1. **대상이 같으면** 유형이 달라도 한 건 (`target` 비교)
-2. 문장이 사실상 같으면 한 건 (고정 자막이 프레임마다 잡히는 경우)
-3. 같은 유형이고 시간이 3초 이내면 한 건
-
-병합된 건은 등장 시각을 함께 보여줍니다.
-`(등장: 00:26, 00:35, 00:44)` 처럼 나가므로 어디를 봐야 할지 바로 압니다.
-
-발언과 화면을 각각 **룰 + LLM 두 겹**으로 본다.
-룰은 키가 없어도 도는 안전망이고, 열거할 수 없는 유형은 LLM이 맡는다.
-
-### 판정하지 않는다
-
-모든 프롬프트에 같은 원칙을 넣었다.
-
-제작자는 영상을 수십 번 봤고, 알면서 넣은 장면도 있다.
-"이 발언은 부적절합니다", "논란 가능성 85%" 같은 출력은
-제작자의 가치판단과 충돌하고 "나도 알아, 그래서 넣은 건데" 로 끝난다.
-
-그래서 출력을 이렇게 바꿨다.
-
-```
-전: 논란 위험 85% — 이 표현은 문제가 있습니다
-후: 확인 필요 — 특정 세대를 하나로 묶는 표현입니다.
-    의도한 범위가 맞는지 확인해 보세요. 최종 판단은 제작자가 하시면 됩니다.
-```
-
-### 노란 딱지 예측 (기본 비활성)
-
-유튜브 광고주 친화 가이드라인 14개 주제로 판정하는 기능이 구현돼 있지만
-`enabled-analyzers` 에서 빼 두었다.
-
-광고 정책 문제라서 지금 풀려는 편집·정확성 문제와 성격이 다르다.
-별도 기능으로 분리하는 것이 맞다고 보고 보류했다.
-필요하면 yml 에서 주석 한 줄만 풀면 된다.
-
-### 영상 유형
-
-`TALK_PODCAST` 와 `GENERAL` 두 가지다.
-토크·인터뷰일 때 배경 확인 범위를 넓게(주제 8개까지) 잡는다.
-
-경제·정책·투자 유형은 뺐다. 대본 기반이라 대본만 검토해도 대부분 해결되고,
-영상 단위로 볼 이유가 약했다.
-
-### 배경 확인 (`ContextCheckAnalyzer`)
-
-"재선거" 같은 표현은 그 자체로는 문제가 없다. 그런데 마침 재선거가 진행 중인 시점이라면
-같은 영상이라도 반응이 완전히 달라진다. LLM은 학습 시점 이후의 뉴스를 모르므로
-혼자서는 이 판단을 할 수 없다. 그래서 세 단계로 나눴다.
-
-1. 대본·자막에서 시사성 있는 주제를 뽑는다 (LLM)
-2. 그 주제로 최근 뉴스를 검색한다 (네이버, 최신순)
-3. **오늘 날짜**와 기사 목록을 함께 주고 위험한지 판단하게 한다 (LLM)
-
-주제는 최대 5개까지만 검색해서 비용과 시간을 제한한다.
-
-뉴스 소스는 `NewsSearchClient` 구현체 중 사용 가능한 것을 자동으로 고른다.
-
-| 구현체 | 키 | 비고 |
-|---|---|---|
-| `NaverNewsSearchClient` | 필요 | 키가 있으면 우선. 국내 매체 커버리지가 넓다 |
-| `GoogleNewsRssSearchClient` | **불필요** | 기본값. 공개 RSS 라 비용 0 |
-
-**추가 키 없이 바로 동작한다.** 네이버 키는 정확도를 올리고 싶을 때만 넣으면 된다.
-
-`application.yml`의 `oops.analysis.enabled-analyzers`에서 켜고 끈다.
-새 분석기는 `ContentAnalyzer` 구현체를 `@Component`로 만들고 key만 추가하면 되며,
-파이프라인 코드는 건드리지 않는다.
-
-### 다중 후보 병합 (`FindingFusionService`)
-
-음성과 화면을 따로 분석하면 같은 장면이 여러 번 잡힌다.
-
-1. **클러스터링** — 카테고리가 같고 시간이 3초 이내면 한 묶음
-2. **대표 선정** — 확신도 최고 1건만 남김 (`mergedCount`에 원래 개수 기록)
-3. **교차 검증** — 발언·화면 양쪽에서 잡힌 묶음은 점수 ×1.25, 화면 캡처를 대표에 붙여줌
-4. **우선순위** — `확신도(600) + 카테고리 중요도(100) + 교차검증(150) + 중복보고(60)`
-
-그래서 `events[0]`이 "가장 먼저 확인해야 할 논란"이 된다.
-
-## 데이터 관리
-
-### 스키마
-
-`ddl-auto: update` 로 엔티티에서 자동 생성한다. 마이그레이션 도구는 아직 없다.
-엔티티를 계속 고치는 중이라 손으로 SQL 을 관리하면 속도가 떨어져서 미뤘다.
-**배포할 때는 Flyway 를 붙이는 것을 권한다.** `update` 는 컬럼 삭제나 타입 변경을 하지 않는다.
-
-### 삭제
-
-`DELETE /api/v1/videos/{id}` 는 DB 행과 디스크 파일을 함께 지운다.
-
-JPA cascade 대신 `VideoDeletionService` 가 순서를 직접 관리한다.
-`risk_finding` 과 `screen_text` 가 `video_frame` 을 참조하므로 프레임보다 먼저 지워야 한다.
-순서를 틀리면 외래키 제약에 걸린다.
-
-분석이 진행 중이면 409 로 거절한다. 백그라운드 작업이 사라진 데이터를 건드리면 깨진다.
-
-### 자동 정리
-
-영상 하나에 원본 수십 MB 와 프레임 이미지가 쌓인다. 지우지 않으면 디스크가 조용히 찬다.
-
-```yaml
-oops:
-  storage:
-    retention-days: 0     # 0 이면 정리하지 않음
-    source-retention-hours: 0  # 원본만 먼저 지우려면 24 등으로 설정
-```
-
-`0` 보다 크면 매일 새벽 4시에 그만큼 지난 영상을 지운다.
-분석이 끝난 것만 대상이며 진행 중인 것은 건드리지 않는다.
-
-`source-retention-hours`를 0보다 크게 설정하면 매시 정각에 원본 영상만 먼저 지운다.
-리포트·대본·OCR 프레임은 남기므로 원본 보관 기간과 결과 보관 기간을 분리할 수 있다.
-
-로컬은 `0` 으로 두었다. 개발 중에 테스트 영상이 사라지면 곤란하다.
-**배포 서버에서는 7 정도로 켜는 것을 권한다.**
-
-### 분석 동시성 설정
-
-분석은 메모리와 외부 API 호출을 많이 사용하므로 기본값은 동시에 2개, 대기열 50개다.
-운영 서버 자원에 맞춰 코드 수정 없이 조절할 수 있다.
-
-```yaml
-oops:
-  analysis-executor:
-    core-pool-size: 1
-    max-pool-size: 2
-    queue-capacity: 50
-```
-
-## 저장소 규칙
-
-절대경로 대신 `storageKey`를 쓴다. 로컬에서는 `oops.storage.location` 기준 상대 경로다.
-
-```
-videos/{videoId}/original.mp4     원본 영상
-frames/{videoId}/{timeMs}.jpg     OCR 에 쓰인 화면 캡처
-```
-
-나중에 S3로 바꿀 때 `StorageService`만 교체하면 된다.
-
-## 환경변수
-
-| 변수 | 필요한 곳 | 없으면 |
-|---|---|---|
-| `OPENAI_API_KEY` | Spring, Python | LLM 분석기 4종 스킵, 룰만 동작 |
-| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | Spring | 구글 뉴스 RSS 로 자동 폴백 (선택 사항) |
-| `OPENAI_ORG_ID` | Spring, Python | 계정 기본 조직으로 과금 |
-
-네이버 키는 **선택 사항**이다. 없으면 구글 뉴스 RSS 를 쓴다.
-정확도를 올리고 싶으면 [developers.naver.com](https://developers.naver.com/apps/#/register)에서
-애플리케이션 등록 → **검색 API** 선택으로 무료 발급받으면 된다.
-
-분석 서버 없이 파이프라인만 보려면 `oops.use-dummy-transcript: true`.
-
-> **코드를 고쳤으면 반드시 재시작할 것**
-> Python(`ocr.py`, `media.py`)과 Spring은 별개 프로세스다.
-> 한쪽만 재시작하면 결과가 이전과 똑같이 나와서 수정이 반영 안 된 걸 눈치채기 어렵다.
-
-## 명세 대비 아직 안 한 것
-
-- **§11 Python 콜백 구조** — 현재는 Spring 오케스트레이션. 프론트 계약에는 영향 없음
-- **§12 Internal API 보안** — internal 엔드포인트를 안 만들었으므로 해당 없음
-- **§13 Idempotency** — 재시도 시 새 jobId 발급과 진행 중 409는 구현됨. 콜백 중복 방어는 콜백 도입 시 필요
-- Swagger/OpenAPI 자동 문서 — `build.gradle`에 주석 처리해 둠
-- `CommentAnalyzer`, `PoseAnalyzer`
+최신 우선순위는 [개선 계획](../docs/AI-분석-개선-계획.md), 서버 확장 과제는 [아키텍처](../docs/서버-아키텍처.md)에 정리한다.

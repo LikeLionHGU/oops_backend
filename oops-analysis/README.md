@@ -1,85 +1,84 @@
 # oops-analysis
 
-Spring 백엔드가 호출하는 Python 분석 서버.
-STT(Whisper API)와 화면 자막 OCR(PaddleOCR)을 담당한다.
+2026-10-16 · Spring이 호출하는 Python FastAPI 분석 서버다. 기본 전사는 Groq `whisper-large-v3`이며 OCR·선택 프레임 추출은 로컬에서 수행한다.
 
-## 실행
+## 설치·실행
+
+`ffmpeg`·`ffprobe`가 PATH에 있어야 한다. 설치 예시는 Python 3.11 환경을 기준으로 한다. 기존 환경이 있으면 해당 환경을 활성화한다.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # 윈도우: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env      # 기본 전사에는 GROQ_API_KEY 필요; OpenAI Whisper 선택 시 OPENAI_API_KEY도 입력
-uvicorn app.main:app --reload --port 8000
+cd oops-analysis
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-**ffmpeg가 PATH에 있어야 한다.**
-- Windows: `winget install Gyan.FFmpeg`
-- Mac: `brew install ffmpeg`
+STT만 설치하려면 `requirements-core.txt`를 사용하고, OCR은 `requirements-ocr.txt`로 추가한다. PaddleOCR은 첫 실행에 모델 다운로드가 필요할 수 있다.
 
-PaddleOCR은 첫 실행 때 모델을 자동 다운로드한다 (수백 MB, 몇 분 걸림).
-OCR 없이 STT만 먼저 테스트하려면 `pip install`에서 paddle 계열을 빼도 되고,
-그 경우 `/ocr`은 503을 돌려주며 Spring 쪽에서 자동으로 건너뛴다.
+최초에만 `.env.example`을 `.env`로 복사한다. 기존 파일은 덮어쓰지 않고 수정한다.
 
-> **윈도우에서 curl 쓸 때**
-> PowerShell의 `curl`은 진짜 curl이 아니라 `Invoke-WebRequest` 별칭이라 보안 경고가 뜬다.
-> `curl.exe` 로 쓰거나 `Invoke-RestMethod` 를 쓰면 된다.
-> ```powershell
-> curl.exe http://localhost:8000/health
-> Invoke-RestMethod http://localhost:8000/health
-> ```
+```env
+GROQ_API_KEY=발급받은_Groq_키
+STT_MODEL=whisper-large-v3
+MEDIA_STORAGE_ROOT=../oops-backend/uploads
+```
 
-## 긴 영상
+```bash
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-### STT 모델 비교: 기본값은 유지
+Windows는 `.venv\Scripts\Activate.ps1`로 환경을 활성화한 뒤 같은 Python 명령을 사용한다. HTTP 요청은 PowerShell 별칭인 `curl` 대신 `curl.exe` 또는 `Invoke-RestMethod`를 사용한다.
 
-`STT_MODEL`이 비어 있으면 `WHISPER_MODEL`(기본 `whisper-large-v3`)을 사용한다.
-기본 전사는 Groq `whisper-large-v3`이며, `STT_MODEL=whisper-1`로 OpenAI Whisper를 선택하거나 `STT_MODEL=gpt-4o-transcribe-diarize`로 OpenAI 화자 분리 모델을 선택할 수 있다. 모델 변경은 Python 프로세스 재시작 후 반영된다. 자동 재전사나 유료 fallback은 없다.
+`.env`는 실행 디렉터리를 기준으로 읽는다. 설정·키 변경은 프로세스 재시작 후 반영되며, 이미 켠 다른 터미널의 프로세스에 `export`가 소급 전달되지는 않는다.
 
-- `whisper-1`은 OpenAI 키, `whisper-large-v3`는 `GROQ_API_KEY`를 사용하며 각각 해당 제공자의 API로 직접 요청한다. Groq 키가 없으면 OpenAI로 자동 fallback하지 않는다.
-- 두 Whisper 경로 모두 `verbose_json`의 구간 시간 정보를 요청한다. Diarize는 `diarized_json`과 `chunking_strategy=auto`를 요청한다.
-- 구간 시간이 없거나 잘못된 응답은 실패 처리한다. 임의로 0초를 붙이거나 원문을 추측해 교정하지 않는다.
-- Python 응답에 `model`, `timestampSource`, 선택적 `speaker`를 제공한다. 청크별 화자 ID는 별개이며 Spring 저장/판정 연결은 아직 구현하지 않았다.
-- `gpt-transcribe` 등 정렬 미지원 모델을 이름만 바꿔 쓰지 않는다. 별도 시간 정렬 설계가 필요하다.
-- Diarize의 방언 정확도 우위는 미검증이다. 실제 비교 전 사람 확인 대본·시간 기준이 필요하고, Spring 비용 추정도 해당 모델 요금에 맞춰 별도로 수정해야 한다.
+## STT 모델과 동일 기능 계약
 
-요청 제약은 [OpenAI 음성 전사 공식 문서](https://developers.openai.com/api/docs/guides/speech-to-text#speaker-diarization)를 따른다. SDK 1.59.6의 실제 요청/응답 처리는 네트워크 없는 모의 HTTP 테스트로 검증했다. 실제 API 접근 가능성·품질을 검증한 것은 아니다.
-
-타깃이 20~60분 롱폼인데 실제로는 70~80분짜리도 흔해서 **90분까지** 받는다.
-
-> 긴 영상은 비용과 시간이 크게 는다.
-> 60분이면 Groq 음성 인식만 약 155원(USD/KRW 1,400원 가정), 대본이 300줄을 넘어 LLM 호출이 수십 번 나간다.
-> 요청 한도가 낮은 계정에서는 중간에 끊길 수 있다.
-> **시연은 3~5분짜리로 하는 것을 권한다.**
-
-프레임 수는 영상 길이와 무관하게 **300장으로 묶여 있다.**
-간격을 고정하면 60분 영상에 900장이 되어 인식에만 7분 넘게 걸린다.
-길면 간격이 자동으로 늘어난다.
-
-| 영상 길이 | 간격 | 프레임 |
+| 선택 | 키 | 시간 응답 |
 |---|---|---|
-| 5분 | 4초 | 75장 |
-| 20분 | 4초 | 300장 |
-| 40분 | 8초 | 300장 |
-| 60분 | 12초 | 300장 |
+| 기본 `whisper-large-v3` · Groq | `GROQ_API_KEY` | `verbose_json`, 구간 시작·끝 |
+| `STT_MODEL=whisper-1` · OpenAI | `OPENAI_API_KEY` | 같은 구간 시간 요청 |
+| `STT_MODEL=gpt-4o-transcribe-diarize` · 선택 실험 | `OPENAI_API_KEY` | `diarized_json`, 구간·화자 |
 
-자막은 보통 몇 초씩 유지되므로 간격이 벌어져도 대부분 잡힌다.
-놓치는 것보다 아예 끝나지 않는 게 더 나쁘다.
+선택 순서는 `STT_MODEL` → `WHISPER_MODEL` → 코드 기본 `whisper-large-v3`다. 환경변수나 기존 `.env`에 모델을 명시하면 그 값이 기본값보다 우선한다. 지원하지 않는 모델명이나 키 누락은 실패하며 다른 제공자로 자동 전환하지 않는다.
 
-상한은 `.env` 에서 조절한다 (`MAX_DURATION_SEC`, `MAX_OCR_FRAMES`).
+Groq와 OpenAI Whisper는 동일한 16kHz mono·64kbps MP3 변환, 600초 분할, `timestamp_granularities=["segment"]` 요청, 원본 기준 밀리초 변환을 사용한다. 단어별 시간은 요청하지 않는다. 모델에 따라 전사 문구·구간 경계는 달라질 수 있다.
+
+응답에는 `segments[].startMs/endMs/text`, `model`, `timestampSource`가 포함된다. Groq의 시간 출처는 `groq_segment`, OpenAI Whisper는 `whisper_segment`다. 유효한 구간 시간 없이 텍스트만 오면 성공 대본으로 처리하지 않는다. 전사 내용을 문맥으로 조용히 교정하지 않는다.
+
+Diarize의 청크별 화자 ID는 전역 인물 ID가 아니다. Python 화자 응답을 Spring의 화자별 판정에 연결하는 기능은 후속이다.
 
 ## 엔드포인트
 
-| Method | Path | 설명 |
-|---|---|---|
-| GET | `/health` | 헬스체크 + 기능별 사용 가능 여부 |
-| POST | `/transcribe` | 음성 → 타임스탬프 대본 |
-| POST | `/ocr` | 프레임 → 화면 자막 텍스트 |
+| 메서드·경로 | 기능 |
+|---|---|
+| GET `/health` | 서버 상태·선택 STT의 키 설정·OCR 사용 가능 여부 |
+| POST `/probe` | 길이·제한 확인 |
+| POST `/transcribe` | 전사와 구간 시간 |
+| POST `/ocr` | 화면 글자·영역·프레임 |
+| POST `/scene-frames` | 지정 시각의 선택 프레임 |
 
-두 엔드포인트 모두 요청 바디는 같다:
+`sttAvailable=true`는 선택 모델의 키가 설정됐다는 의미이며 외부 API 인증·과금·전사 품질 검증은 아니다. OCR 미설치·처리 실패는 `/ocr`에서 503으로 전달한다.
+
+probe/transcribe/ocr 요청 예시:
 
 ```json
-{ "videoUrl": "https://youtube.com/watch?v=...", "filePath": null, "intervalSec": 2.0 }
+{
+  "videoUrl": null,
+  "filePath": "/실제_공유저장소/videos/1/original.mp4",
+  "intervalSec": 4.0
+}
 ```
 
-`videoUrl`이면 yt-dlp로 받고, `filePath`면 로컬 파일을 쓴다.
-`filePath`는 `MEDIA_STORAGE_ROOT/videos/` 아래 원본만 허용하고, OCR 프레임은 같은 저장소의 `frames/` 아래에만 쓴다. 로컬 기본값은 `../oops-backend/uploads`이며, 배포 시 Spring의 `oops.storage.location`과 같은 공유 경로로 `MEDIA_STORAGE_ROOT`를 설정한다. YouTube 등록은 HTTPS YouTube 도메인 URL만 허용한다.
+로컬 원본은 `MEDIA_STORAGE_ROOT/videos/` 아래만 허용한다. OCR의 `frameDir`은 같은 저장소 `frames/` 하위여야 한다. `videoUrl`을 사용하면 HTTPS YouTube URL을 전달하며 yt-dlp 다운로드 가능 여부에 영향을 받는다.
+
+장면 요청은 업로드 원본의 `filePath`와 최대 3개의 정수 `timestampsMs`를 사용한다.
+
+## 길이·비용·관측 한계
+
+기본 `MAX_DURATION_SEC=5400`은 90분이다. `MAX_OCR_FRAMES=300`을 넘으면 프레임 간격이 늘어나므로 짧게 표시된 자막을 놓칠 수 있다. OCR 글자가 없다고 자막이 없다고 확정하지 않는다.
+
+Groq STT의 현재 설정 단가 추정은 분당 $0.00185다. 60분은 약 $0.111이며 환율 1,400원 가정 시 약 155원이다. 텍스트 판단 비용·실제 청구액은 별도다. Spring 비용 추정 단가는 Spring 설정에서 관리한다.
+
+[Groq 후속 점검](../docs/Groq-전사-후속-점검.md)에서 v4·v6 전사가 실제 완료됐다. 핵심 질문과 일부 누락 대화는 개선됐으나 줄임말 오류·전체 정확도·실제 음성 정렬 오차는 남은 평가 과제다. 후속 후보 엔진의 실패를 전사 성공과 혼동하지 않는다.
+
+전체 실행 순서는 [루트 README](../README.md), 서버 구조는 [아키텍처](../docs/서버-아키텍처.md)를 따른다.
