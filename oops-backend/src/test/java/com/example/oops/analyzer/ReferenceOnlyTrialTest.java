@@ -41,5 +41,9 @@ class ReferenceOnlyTrialTest {
         assertThat(work.stream().filter(t->t.caseId().startsWith("P-D")))
                 .allSatisfy(t->assertThat(t.input().get("candidates").size()).isEqualTo(2));
         assertThat(work).allSatisfy(t->t.input().get("candidates").forEach(c->assertThat(c.has("hypothesisNotEvidence")).isTrue()));
+        for(var task:work) assertThat(ReferenceOnlyTrial.sha(ReferenceOnlyTrial.prefix(task.system())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8))).isEqualTo(ReferenceOnlyTrial.FROZEN_PREFIX_SHA);
+        assertThatThrownBy(() -> ReferenceOnlyTrial.knownPrefix("changed frozen instruction\n"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Verification instruction changed");
     }
 }

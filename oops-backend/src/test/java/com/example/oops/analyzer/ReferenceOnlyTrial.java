@@ -11,6 +11,18 @@ import static com.example.oops.analyzer.TextBoundaryTrial.*;
 
 /** Fixed requests: only selected historical reference changes. Prepare is entirely offline. */
 public final class ReferenceOnlyTrial {
+    // Exact instruction + reference-contract prefix from the hash-bound 2026-10-14 study.
+    static final String FROZEN_PREFIX_SHA="0eaa34b033939b7c96f7ecc7396e1e5ae7bc8e20a74d26d38598f3c565781ed6";
+    static String prefix(String system) {
+        reference(system); // Require a unique, parseable reference payload before splitting.
+        return system.substring(0,system.indexOf("contextReference="));
+    }
+    static void knownPrefix(String prefix) {
+        boolean historical;
+        try { historical=FROZEN_PREFIX_SHA.equals(sha(prefix.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
+        catch(Exception ex) { throw new IllegalStateException("Cannot verify frozen instruction hash",ex); }
+        check(historical || prefix.startsWith(CandidateReviewEngine.verificationPrompt(0)+"\n"),"Verification instruction changed");
+    }
     record Task(String caseId, int sourceRepeat, int sourceCallIndex, String armId, String system,
                 JsonNode input, int repeats, ReviewGuidelineLibrary.SelectionTrace referenceTrace) {}
     static String sha(byte[] bytes) throws Exception {
@@ -46,12 +58,20 @@ public final class ReferenceOnlyTrial {
     static List<Task> pair(String id, int repeat, int index, JsonNode input, ReviewInput selectionRaw,
                            ReviewGuidelineLibrary before, ReviewGuidelineLibrary after, int repeats,
                            String originalSystem) {
+        return pair(id,repeat,index,input,selectionRaw,before,after,repeats,originalSystem,null);
+    }
+    private static List<Task> pair(String id,int repeat,int index,JsonNode input,ReviewInput selectionRaw,
+                                   ReviewGuidelineLibrary before,ReviewGuidelineLibrary after,int repeats,
+                                   String originalSystem,String frozenPrefix) {
         List<Task> pair=new ArrayList<>();
         for(int arm=0;arm<2;arm++) {
             var selection=(arm==0?before:after).select(TimelineEventType.SPEECH,selectionRaw.segments(),"fixed-reference-trial");
             String system=CandidateReviewEngine.verificationPrompt(0)+selection.prompt();
+            String instruction=frozenPrefix!=null?frozenPrefix:originalSystem!=null?prefix(originalSystem):prefix(system);
+            knownPrefix(instruction);
+            system=instruction+"contextReference="+JSON.writeValueAsString(reference(system));
             if(arm==0 && originalSystem!=null) {
-                check(system.substring(0,system.indexOf("contextReference=")).equals(originalSystem.substring(0,originalSystem.indexOf("contextReference=")))
+                check(prefix(system).equals(prefix(originalSystem))
                         && reference(system).equals(reference(originalSystem)),"Baseline does not reproduce saved frozen reference");
                 system=originalSystem;
             }
@@ -95,7 +115,7 @@ public final class ReferenceOnlyTrial {
         }
         check(groups==8,"Expected four B, two C and two D request groups");
         for(var item:suite.cases()) if(item.expected().equals("PASS")) {
-            var input=JSON.createObjectNode(); input.put("promptRevision",CandidateReviewEngine.REVISION);
+            var input=JSON.createObjectNode(); input.put("promptRevision",work.get(0).input().path("promptRevision").asText());
             var raw=input.putArray("raw"); var ids=JSON.createArrayNode(); var quotes=JSON.createArrayNode();
             for(int i=0;i<item.speech().size();i++) {
                 String id="stt-index-"+i; ids.add(id);
@@ -106,7 +126,8 @@ public final class ReferenceOnlyTrial {
             c.put("axis",item.id().equals("N3-memory")?"EXPRESSION_CONTENT":"TARGET_TREATMENT");
             c.put("contextExpanded",false); c.put("contextLimited",false); c.set("segmentIds",ids); c.set("proposedEvidence",quotes);
             c.put("hypothesisNotEvidence","제공된 원문 연결에 검토 이유가 있는지 확인한다. 구체적인 문제는 아직 확정하지 않았다.");
-            work.addAll(pair(item.id(),0,-1,input,CandidateHypothesisTrial.raw(input),before,after,2,null));
+            // Keep normal controls on the same frozen instructions as the historical positive excerpts.
+            work.addAll(pair(item.id(),0,-1,input,CandidateHypothesisTrial.raw(input),before,after,2,null,prefix(work.get(0).system())));
         }
         check(work.size()==28 && work.stream().mapToInt(Task::repeats).sum()==72,"Expected 72 requests");
         return List.copyOf(work);
@@ -118,10 +139,7 @@ public final class ReferenceOnlyTrial {
             check(a.armId().equals("BEFORE_REFERENCE") && b.armId().equals("AFTER_REFERENCE")
                     && a.caseId().equals(b.caseId()) && a.sourceRepeat()==b.sourceRepeat() && a.sourceCallIndex()==b.sourceCallIndex()
                     && a.repeats()==b.repeats() && a.input().equals(b.input()),"Unpaired or changed fixed input");
-            String prefix=CandidateReviewEngine.verificationPrompt(0);
-            check(a.system().startsWith(prefix) && b.system().startsWith(prefix)
-                    && a.system().substring(prefix.length()).startsWith("\n")
-                    && b.system().substring(prefix.length()).startsWith("\n"),"Verification instruction changed");
+            knownPrefix(prefix(a.system())); knownPrefix(prefix(b.system()));
             check(a.system().substring(0,a.system().indexOf("contextReference=")).equals(b.system().substring(0,b.system().indexOf("contextReference=")))
                     && reference(a.system()).get("reviewGuidelines").equals(reference(b.system()).get("reviewGuidelines")),"Common contract/criteria changed");
         }
@@ -140,7 +158,7 @@ public final class ReferenceOnlyTrial {
             check(directory.startsWith(root) && !directory.equals(root) && !Files.exists(directory),"New private plan directory required");
             Files.createDirectory(directory);
             Files.writeString(directory.resolve("plan.json"),JSON.writeValueAsString(Map.of("schemaVersion","reference-only-trial-1",
-                    "executionEnabled",false,"revision",CandidateReviewEngine.REVISION,"baselineSha256",sha(Files.readAllBytes(baseline)),
+                    "executionEnabled",false,"revision",work.get(0).input().path("promptRevision").asText(),"baselineSha256",sha(Files.readAllBytes(baseline)),
                     "currentSha256",sha(Files.readAllBytes(current)),"sourceSha256",sha(bytes),"tasks",work,"plannedCalls",72)));
             System.out.println("REFERENCE_PREPARED calls=72 providerCalls=0"); return;
         }
