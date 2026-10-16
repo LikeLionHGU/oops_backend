@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     openai_api_key: str = ""
+    groq_api_key: str = ""
     # 지원 크레딧이 특정 조직에 붙어 있을 때만 채운다 (org-...)
     openai_org_id: str = ""
     openai_project_id: str = ""

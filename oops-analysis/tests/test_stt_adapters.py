@@ -13,6 +13,50 @@ def test_whisper_keeps_existing_timestamp_request():
         "model": "whisper-1", "response_format": "verbose_json", "timestamp_granularities": ["segment"]}
 
 
+def test_groq_whisper_large_v3_requests_segment_timestamps():
+    assert stt._request_options("whisper-large-v3") == {
+        "model": "whisper-large-v3", "response_format": "verbose_json",
+        "timestamp_granularities": ["segment"]}
+
+
+def test_groq_whisper_uses_groq_key_and_openai_compatible_endpoint():
+    settings = SimpleNamespace(groq_api_key="offline-test-key")
+    assert stt._client_options("whisper-large-v3", settings) == {
+        "api_key": "offline-test-key", "base_url": "https://api.groq.com/openai/v1"}
+
+
+def test_groq_whisper_sends_timestamped_transcription_request_without_network():
+    def handler(request):
+        assert request.url.host == "api.groq.com"
+        assert request.url.path == "/openai/v1/audio/transcriptions"
+        body = request.read().decode()
+        assert 'name="model"\r\n\r\nwhisper-large-v3' in body
+        assert 'name="response_format"\r\n\r\nverbose_json' in body
+        assert 'name="timestamp_granularities[]"\r\n\r\nsegment' in body
+        return httpx.Response(200, json={"text": "확인된 발언", "segments": [
+            {"start": 0.5, "end": 1.5, "text": " 확인된 발언"}]})
+
+    client_options = stt._client_options("whisper-large-v3", SimpleNamespace(groq_api_key="offline-test-key"))
+    with OpenAI(**client_options, http_client=httpx.Client(transport=httpx.MockTransport(handler))) as client:
+        result = client.audio.transcriptions.create(file=("clip.wav", io.BytesIO(b"fake")),
+                                                    **stt._request_options("whisper-large-v3"))
+    assert stt._normalize_segments(result, 0, 0, False) == [
+        {"startMs": 500, "endMs": 1500, "text": "확인된 발언"}]
+
+
+def test_groq_whisper_requires_groq_key_without_openai_fallback():
+    settings = SimpleNamespace(groq_api_key="")
+    with pytest.raises(MediaError, match="GROQ_API_KEY"):
+        stt._client_options("whisper-large-v3", settings)
+
+
+def test_openai_whisper_keeps_openai_client_configuration():
+    settings = SimpleNamespace(openai_api_key="openai-test-key", openai_org_id="org-test",
+                               openai_project_id="project-test")
+    assert stt._client_options("whisper-1", settings) == {
+        "api_key": "openai-test-key", "organization": "org-test", "project": "project-test"}
+
+
 @pytest.mark.parametrize("model", ["gpt-transcribe", "gpt-4o-transcribe", "unknown"])
 def test_timestamp_less_models_are_rejected_instead_of_fabricating_times(model):
     with pytest.raises(MediaError):

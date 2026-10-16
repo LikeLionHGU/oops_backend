@@ -14,10 +14,12 @@ log = logging.getLogger(__name__)
 
 # Whisper API 업로드 상한이 25MB 라 긴 영상은 잘라서 보낸다
 CHUNK_SEC = 600
+GROQ_STT_MODELS = {"whisper-large-v3"}
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 def _request_options(model: str) -> dict:
-    if model == "whisper-1":
+    if model == "whisper-1" or model in GROQ_STT_MODELS:
         return {"model": model, "response_format": "verbose_json",
                 "timestamp_granularities": ["segment"]}
     if model == "gpt-4o-transcribe-diarize":
@@ -26,6 +28,20 @@ def _request_options(model: str) -> dict:
         return {"model": model, "response_format": "json",
                 "extra_body": {"response_format": "diarized_json", "chunking_strategy": "auto"}}
     raise MediaError("구간 시간 정보를 보존하는 STT 모델만 사용할 수 있습니다.")
+
+
+def _client_options(model: str, settings) -> dict:
+    if model in GROQ_STT_MODELS:
+        if not settings.groq_api_key:
+            raise MediaError("GROQ_API_KEY 가 설정되지 않았습니다.")
+        return {"api_key": settings.groq_api_key, "base_url": GROQ_BASE_URL}
+    if not settings.openai_api_key:
+        raise MediaError("OPENAI_API_KEY 가 설정되지 않았습니다.")
+    return {
+        "api_key": settings.openai_api_key,
+        "organization": settings.openai_org_id or None,
+        "project": settings.openai_project_id or None,
+    }
 
 
 def _field(value, name: str, default=None):
@@ -87,18 +103,10 @@ def transcribe(video: PreparedVideo) -> dict:
     settings = get_settings()
     model = settings.stt_model or settings.whisper_model
     options = _request_options(model)
-    if not settings.openai_api_key:
-        raise MediaError("OPENAI_API_KEY 가 설정되지 않았습니다.")
-
     from openai import OpenAI
 
-    # 조직/프로젝트를 지정하면 그쪽 크레딧에서 차감된다. 비어 있으면 기본 조직.
     started = time.time()
-    client = OpenAI(
-        api_key=settings.openai_api_key,
-        organization=settings.openai_org_id or None,
-        project=settings.openai_project_id or None,
-    )
+    client = OpenAI(**_client_options(model, settings))
     audio = extract_audio(video)
 
     segments: list[dict] = []
@@ -117,4 +125,5 @@ def transcribe(video: PreparedVideo) -> dict:
     log.info("[stt] model=%s segments=%d language=%s | 소요 %.1f초", model, len(segments), language,
              time.time() - started)
     return {"language": language or "ko", "segments": segments, "model": model,
-            "timestampSource": "diarized_segment" if model == "gpt-4o-transcribe-diarize" else "whisper_segment"}
+            "timestampSource": "diarized_segment" if model == "gpt-4o-transcribe-diarize"
+            else "groq_segment" if model in GROQ_STT_MODELS else "whisper_segment"}

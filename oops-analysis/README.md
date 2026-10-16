@@ -33,9 +33,10 @@ OCR 없이 STT만 먼저 테스트하려면 `pip install`에서 paddle 계열을
 ### STT 모델 비교: 기본값은 유지
 
 `STT_MODEL`이 비어 있으면 기존 `WHISPER_MODEL`(기본 `whisper-1`)을 사용한다.
-선택 실험용으로 `STT_MODEL=gpt-4o-transcribe-diarize`를 지원한다. 모델 변경은 Python 프로세스에 설정을 적용해 다시 시작해야 반영된다. 자동 재전사나 유료 fallback은 없다.
+선택 실험용으로 `STT_MODEL=whisper-large-v3`(Groq)와 `STT_MODEL=gpt-4o-transcribe-diarize`(OpenAI)를 지원한다. 모델 변경은 Python 프로세스에 설정을 적용해 다시 시작해야 반영된다. 자동 재전사나 유료 fallback은 없다.
 
-- Whisper는 기존 구간 시간 요청을 유지한다. Diarize는 `diarized_json`과 `chunking_strategy=auto`를 요청한다.
+- `whisper-1`은 OpenAI 키, `whisper-large-v3`는 `GROQ_API_KEY`를 사용하며 각각 해당 제공자의 API로 직접 요청한다. Groq 키가 없으면 OpenAI로 자동 fallback하지 않는다.
+- 두 Whisper 경로 모두 `verbose_json`의 구간 시간 정보를 요청한다. Diarize는 `diarized_json`과 `chunking_strategy=auto`를 요청한다.
 - 구간 시간이 없거나 잘못된 응답은 실패 처리한다. 임의로 0초를 붙이거나 원문을 추측해 교정하지 않는다.
 - Python 응답에 `model`, `timestampSource`, 선택적 `speaker`를 제공한다. 청크별 화자 ID는 별개이며 Spring 저장/판정 연결은 아직 구현하지 않았다.
 - `gpt-transcribe` 등 정렬 미지원 모델을 이름만 바꿔 쓰지 않는다. 별도 시간 정렬 설계가 필요하다.
