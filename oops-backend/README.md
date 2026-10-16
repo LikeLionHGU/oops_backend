@@ -38,7 +38,7 @@ Windows PowerShell:
 - 기본 맥락 사전은 외부 파일의 v7 작업 참고다. 사람 검수 완료·학습 완료 데이터라는 뜻은 아니다.
 - v7의 로컬 개념 조합 검색은 기본 ON이다. [구조화 검색 보완](../docs/맥락사전-구조화검색-보완.md)은 기존 문자 검색을 보완하며 외부 호출이나 최종 판정을 추가하지 않는다. `STRUCTURED_CONTEXT_SEARCH_ENABLED=false`로 이전 검색을 재현한다.
 - 자동 검색 키 분류와 원문 관계 추가 기능은 기본 OFF다.
-- 탐색 응답 전용 strict JSON Schema는 연결·무료 검증 상태다. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED` 기본 false이며 실제 제공자 호환 확인 후 켠다. [출력 계약 후속](../docs/구조화검색-OFF-ON-정상경계-비교.md)을 따른다.
+- 탐색 응답 전용 strict JSON Schema는 Luna 호환·32회 비교 후 기본 ON이다. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED=false`로 기존 JSON 모드를 선택할 수 있다. [실제 출력 계약 비교](../docs/탐색-출력계약-JSON-스키마-비교.md)를 따른다. 형식 준수와 판단 정확도는 별개다.
 - 선택적 프레임 검증 코드는 기본 활성화돼 있지만 전체 영상·음성의 분위기나 포즈를 분석하는 기능은 아니다.
 - 일반 분석은 사실 대조·최근 뉴스 검색을 실행하지 않는다. 기존 검색 경로를 시험할 때만 `local,external-review` 프로필을 선택한다.
 - 욕설·논쟁 표현 등장은 별도 저장/API 트랙이다. 적중 자체가 위험 카드를 만들지는 않는다.

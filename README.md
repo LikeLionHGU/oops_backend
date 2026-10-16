@@ -114,6 +114,8 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 설정된 STT 비용 추정은 분당 $0.00185이며 `[ai-cost]` 로그에 텍스트 비용과 함께 계산된다. 실제 청구액과 다를 수 있다. 모델을 바꾸면 가격 설정도 맞춰야 한다.
 
+탐색 출력은 [JSON/strict 비교](docs/탐색-출력계약-JSON-스키마-비교.md) 후 strict JSON Schema 기본 ON이다. 해당 정상 초안에서 완전 무경고 10/12→12/12와 필수 Boolean 누락 감소를 확인했다. 원문 ID 범위·행위 방향 문제는 남으며 탐지 정확도 전체 개선을 보증하지 않는다. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED=false`로 이전 모드를 선택할 수 있다.
+
 ## 문서
 
 - [문서 안내와 현재 상태](docs/README.md)
