@@ -100,7 +100,8 @@ final class CandidateReviewPrompts {
               TARGET_TREATMENT의 proposedEvidence가 서로 다른 두 줄 이상이면 PASS에도 대조 해석이 필수다.
               이 PASS의 reason에는 전체 연결의 정상 해석을, alternativeInterpretation에는 가장 강한 비판 가설과
               그 가설을 현재 원문이 뒷받침하지 않는 이유를 적는다. 후보 이유를 사실로 받아들이지 않는다.
-              또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
+              또한 해당 후보의 허용 raw 중 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
+              정상 해석의 근거는 proposedEvidence에 선택되지 않은 허용 원문에서도 고를 수 있다. 창 밖 근거는 금지다.
               필요한 연결을 확인할 수 없으면 UNCERTAIN이다. 통과·경고 어느 쪽도 강제하지 않는다.
             evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다. quote는 넣지 않으며 서버가 원문을 채운다.
               PRIMARY는 anchorId의 줄이며 evidenceText도 서버가 그 줄의 원문으로 채운다.
@@ -179,6 +180,7 @@ final class CandidateReviewPrompts {
             이전 응답은 여러 줄로 연결된 후보의 PASS 대조 또는 CONTEXT 계약을 충족하지 않아 채택되지 않았다.
             허용 raw만 다시 읽고 정상 해석과 가장 강한 비판 가설을 대조한다. 가설은 사실이 아니다.
             PASS이면 전체 연결이 정상인 이유와 비판 가설의 근거 부족을 설명하고 실제 별도 CONTEXT를 인용한다.
+            CONTEXT는 해당 후보의 허용 raw에서 고르며 proposedEvidence에 포함될 필요는 없다. 창 밖 근거는 금지다.
             원문에 구체적인 문제 연결이 있으면 REVIEW_REQUIRED, 필수 정보가 없으면 UNCERTAIN도 가능하다.
             이전 판정을 유지하거나 경고를 만들 의무가 없다. 원문·대상·동기를 만들어 보충하지 않는다.
             """;

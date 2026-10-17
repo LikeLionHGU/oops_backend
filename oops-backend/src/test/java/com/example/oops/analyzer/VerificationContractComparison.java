@@ -31,6 +31,13 @@ public final class VerificationContractComparison {
               후보 가설은 사실이 아니다. 비판 근거를 꾸며 대조를 채우지 않는다. 필요한 연결 정보가 없으면 UNCERTAIN이다.
               출력 계약을 맞추려고 판정을 바꾸거나 없는 근거를 만들지 않는다.
             """;
+    static final String CURRENT_CONTRAST=OLD_CONTRAST.replace(
+            "  또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.\n",
+            "  또한 해당 후보의 허용 raw 중 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.\n"
+            +"  정상 해석의 근거는 proposedEvidence에 선택되지 않은 허용 원문에서도 고를 수 있다. 창 밖 근거는 금지다.\n");
+    static final String CURRENT_REPLACEMENT=CONTRAST.replace(
+            "evidence에는 proposedEvidence 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.",
+            "evidence에는 해당 후보의 허용 raw 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.");
     static final String OLD_RELATION = """
               EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
               별도 발언의 CONTEXT 인용을 함께 반환하고 targetReason에 둘의 연결 근거를 설명한다.
@@ -55,10 +62,11 @@ public final class VerificationContractComparison {
     }
 
     static String replaceContract(String baseline) {
-        check(baseline != null && (baseline.startsWith(SourceRelationPrompts.verification(0))
-                || baseline.startsWith(CandidateReviewPrompts.VERIFICATION_PROMPT)), "Known baseline verification required");
+        check(baseline != null && java.util.stream.Stream.of(SourceRelationPrompts.verification(0),CandidateReviewPrompts.VERIFICATION_PROMPT)
+                .anyMatch(p -> baseline.startsWith(p) || baseline.startsWith(p.replace(CURRENT_CONTRAST,OLD_CONTRAST))), "Known baseline verification required");
         // Only verification output sections; shared judgment policy and reference suffix remain unchanged.
-        String updated = replaceOnce(baseline, OLD_CONTRAST, CONTRAST);
+        boolean current=baseline.contains(CURRENT_CONTRAST);
+        String updated = replaceOnce(baseline, current?CURRENT_CONTRAST:OLD_CONTRAST, current?CURRENT_REPLACEMENT:CONTRAST);
         updated = replaceOnce(updated, OLD_RELATION, RELATION);
         return replaceOnce(updated, OLD_JSON_INTRO, JSON_INTRO);
     }

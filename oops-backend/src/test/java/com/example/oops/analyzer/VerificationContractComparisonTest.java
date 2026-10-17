@@ -14,7 +14,7 @@ class VerificationContractComparisonTest {
             String baseline = original + reference;
             String updated = VerificationContractComparison.replaceContract(baseline);
             assertThat(updated).startsWith(CandidateReviewPrompts.POLICY).endsWith(reference);
-            String restored = updated.replace(VerificationContractComparison.CONTRAST, VerificationContractComparison.OLD_CONTRAST)
+            String restored = updated.replace(VerificationContractComparison.CURRENT_REPLACEMENT, VerificationContractComparison.CURRENT_CONTRAST)
                     .replace(VerificationContractComparison.RELATION, VerificationContractComparison.OLD_RELATION)
                     .replace(VerificationContractComparison.JSON_INTRO, VerificationContractComparison.OLD_JSON_INTRO);
             assertThat(restored).isEqualTo(baseline);

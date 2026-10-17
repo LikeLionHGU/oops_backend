@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-17-direct-target-writing-40";
-    static final String RELATION_REVISION = "2026-10-17-source-relations-direct-target-40";
+    static final String REVISION = "2026-10-17-pass-context-scope-41";
+    static final String RELATION_REVISION = "2026-10-17-source-relations-pass-context-41";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -718,10 +718,12 @@ final class CandidateReviewEngine {
             if (decision == Decision.PASS && "TARGET_TREATMENT".equals(c.proposal().axis())
                     && c.proposal().evidence().stream().map(Quote::segmentId).distinct().count() > 1) {
                 if (!useful(d.alternativeInterpretation(), 300)) return invalid("LINKED_PASS_CONTRAST_REQUIRED");
-                Set<String> proposedIds = new HashSet<>();
-                c.proposal().evidence().forEach(q -> proposedIds.add(q.segmentId()));
+                // A normal interpretation may be grounded in a line discovery did not select.
+                // Keep the candidate window authoritative, not discovery's interpretation of it.
+                Set<String> allowedIds = new HashSet<>();
+                c.raw().forEach(s -> allowedIds.add(s.id()));
                 if (d.evidence().stream().noneMatch(e -> e != null && "CONTEXT".equals(e.role())
-                        && !c.proposal().anchorId().equals(e.segmentId()) && proposedIds.contains(e.segmentId())))
+                        && !c.proposal().anchorId().equals(e.segmentId()) && allowedIds.contains(e.segmentId())))
                     return invalid("LINKED_PASS_CONTEXT_REQUIRED");
             }
             if (d.alternativeInterpretation() != null && d.alternativeInterpretation().length() > 300) return invalid("ALTERNATIVE_INTERPRETATION_LENGTH");
