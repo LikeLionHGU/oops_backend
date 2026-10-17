@@ -42,7 +42,10 @@ final class SourceUnderstandingRelations {
             """;
     private SourceUnderstandingRelations() {}
     static String prompt(String baseline) {
-        String v1=SourceUnderstandingContract.prompt(baseline);
+        return fromV1Prompt(SourceUnderstandingContract.prompt(baseline));
+    }
+
+    static String fromV1Prompt(String v1) {
         int boundary=v1.indexOf("# 대상 필드 형식 예시");
         String body=v1.substring(0,boundary);
         String example="\"sourceUnderstanding\":{\"acts\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"contextIds\":[]}]}";
