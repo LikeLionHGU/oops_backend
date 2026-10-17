@@ -246,7 +246,7 @@ public final class OfflineDecisionContractAudit {
         boolean neutral=UtteranceDirectionTrial.neutral(plan);
         boolean evidenceContext=UtteranceDirectionTrial.evidenceContext(plan);
         int expected=UtteranceDirectionTrial.maxAttempts(plan);
-        check((UtteranceDirectionTrial.direct(plan) || neutral || evidenceContext) && plan.schemaVersion().equals(saved.path("schemaVersion").asText())
+        check((UtteranceDirectionTrial.direct(plan) || neutral || evidenceContext || UtteranceDirectionTrial.situationFirst(plan)) && plan.schemaVersion().equals(saved.path("schemaVersion").asText())
                 && "COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==expected
                 && saved.path("results").size()==expected,"Complete fixed verification study required");
         var rows=new ArrayList<Map<String,Object>>();int position=0;
@@ -271,7 +271,7 @@ public final class OfflineDecisionContractAudit {
                 row.put("provenance",targetProvenance(actualTask,output));
                 row.put("counterfactuals",targetIdProbes(actualTask,output,(String)replay.get("failureCode")));rows.add(row);
             }
-        return Map.of("schemaVersion",evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
+        return Map.of("schemaVersion",UtteranceDirectionTrial.situationFirst(plan)?"offline-situation-first-provenance-1":evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
                 "semanticCorrectnessAutomaticallyEstablished",false,"contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
     }
 
@@ -282,7 +282,8 @@ public final class OfflineDecisionContractAudit {
         boolean factorial=VerificationFactorialPlan.VERSION.equals(planNode.path("schemaVersion").asText());
         boolean direct=DirectTargetWritingComparison.VERSION.equals(planNode.path("schemaVersion").asText())
                 || NeutralHypothesisComparison.VERSION.equals(planNode.path("schemaVersion").asText())
-                || EvidenceContextComparison.VERSION.equals(planNode.path("schemaVersion").asText());
+                || EvidenceContextComparison.VERSION.equals(planNode.path("schemaVersion").asText())
+                || SituationFirstComparison.VERSION.equals(planNode.path("schemaVersion").asText());
         if (factorial || direct) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen study plan hash mismatch");
         var report = new LinkedHashMap<>(direct?auditDirectWriting(planNode,savedNode):factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
         report.put("planSha256", ReferenceOnlyTrial.sha(plan));

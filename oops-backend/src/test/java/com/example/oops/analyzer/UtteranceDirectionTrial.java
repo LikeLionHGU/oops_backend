@@ -30,6 +30,7 @@ public final class UtteranceDirectionTrial {
     static boolean direct(Plan plan) { return DirectTargetWritingComparison.VERSION.equals(plan.schemaVersion()); }
     static boolean neutral(Plan plan) { return NeutralHypothesisComparison.VERSION.equals(plan.schemaVersion()); }
     static boolean evidenceContext(Plan plan) { return EvidenceContextComparison.VERSION.equals(plan.schemaVersion()); }
+    static boolean situationFirst(Plan plan) { return SituationFirstComparison.VERSION.equals(plan.schemaVersion()); }
     static int maxAttempts(Plan plan) { return evidenceContext(plan)?32:MAX_HTTP_ATTEMPTS; }
     static List<String> arms(Plan plan,Task task,int repeat) {
         check(repeat==1 || repeat==2,"Two repeats only");
@@ -40,7 +41,8 @@ public final class UtteranceDirectionTrial {
         check(basis(plan)==mode.equals("run-basis") && direct(plan)==mode.equals("run-direct-writing")
                         && neutral(plan)==mode.equals("run-neutral-hypothesis")
                         && evidenceContext(plan)==mode.equals("run-evidence-context")
-                        && (evidenceContext(plan)?EvidenceContextComparison.CONSENT:neutral(plan)?NeutralHypothesisComparison.CONSENT:direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
+                        && situationFirst(plan)==mode.equals("run-situation-first")
+                        && (situationFirst(plan)?SituationFirstComparison.CONSENT:evidenceContext(plan)?EvidenceContextComparison.CONSENT:neutral(plan)?NeutralHypothesisComparison.CONSENT:direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
                 "Selected contract and fresh cost/text approval required");
     }
     static Plan directPlan(byte[] factorialBytes,byte[] historyBytes) throws Exception {
@@ -135,13 +137,13 @@ public final class UtteranceDirectionTrial {
         validate(plan);return plan;
     }
     static void validate(Plan plan) throws Exception {
-        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan) || neutral(plan) || evidenceContext(plan)) && "gpt-6-luna".equals(plan.model())
+        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan) || neutral(plan) || evidenceContext(plan) || situationFirst(plan)) && "gpt-6-luna".equals(plan.model())
                 && plan.repeats()==2 && plan.estimatedCapUsd()==.50 && plan.tasks()!=null && plan.tasks().size()==14
                 && plan.tasks().stream().map(Task::id).distinct().count()==14,"Known 56-call plan required");
         check(ReferenceOnlyTrial.sha(fixture("/structured-search-boundaries.json")).equals(plan.normalFixtureSha256())
                 && ReferenceOnlyTrial.sha(fixture("/utterance-direction-boundaries.json")).equals(plan.relationFixtureSha256()),"Boundary fixtures changed");
         for(var task:plan.tasks()) {
-            check((neutral(plan)||evidenceContext(plan)?task.baselineSystem():direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
+            check((situationFirst(plan)?SituationFirstVerification.prompt(task.baselineSystem()):neutral(plan)||evidenceContext(plan)?task.baselineSystem():direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
                     .equals(task.comparisonSystem()),"Comparison changes only direction guidance or selected final basis contract");
             var input=JSON.readTree(task.input());
             check(input.path("raw").isArray() && !input.path("raw").isEmpty() && input.path("raw").size()<=48
@@ -153,7 +155,7 @@ public final class UtteranceDirectionTrial {
             check(plan.tasks().stream().filter(t -> EvidenceContextComparison.TARGETS.contains(t.id())).count()==2,"Two fixed intervention cases required");
             plan.tasks().forEach(t -> EvidenceContextComparison.input(t.id(),t.input()));
         }
-        if(direct(plan) || neutral(plan) || evidenceContext(plan)) {
+        if(direct(plan) || neutral(plan) || evidenceContext(plan) || situationFirst(plan)) {
             check(plan.tasks().stream().filter(t -> t.expectedDecision()!=null).count()==8
                     && plan.tasks().stream().filter(t -> "PASS".equals(t.expectedDecision())).count()==6
                     && plan.tasks().stream().filter(t -> "REVIEW_REQUIRED".equals(t.expectedDecision())).count()==2,
@@ -211,8 +213,8 @@ public final class UtteranceDirectionTrial {
                 "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false,"maxHttpAttempts",maxAttempts(plan))));
     }
     public static void main(String[] args) throws Exception {
-        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing","prepare-neutral-hypothesis","prepare-evidence-context").contains(args[0]) && args.length==4
-                        || Set.of("run","run-basis","run-direct-writing","run-neutral-hypothesis","run-evidence-context").contains(args[0]) && args.length==5),
+        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing","prepare-neutral-hypothesis","prepare-evidence-context","prepare-situation-first").contains(args[0]) && args.length==4
+                        || Set.of("run","run-basis","run-direct-writing","run-neutral-hypothesis","run-evidence-context","run-situation-first").contains(args[0]) && args.length==5),
                 "prepare saved-results runtime NEW-dir OR run plan approved-sha fresh-consent NEW-dir");
         Path output=Path.of(args[args.length-1]).toAbsolutePath().normalize();
         Path root=Path.of("../datasets/controversy/experiments").toRealPath();
@@ -224,7 +226,8 @@ public final class UtteranceDirectionTrial {
                     && ReferenceOnlyTrial.sha(secondBytes).equals(NeutralHypothesisComparison.RESULTS_SHA),"Frozen neutral comparison source/results required");
             if(args[0].equals("prepare-evidence-context")) check(ReferenceOnlyTrial.sha(sourceBytes).equals(EvidenceContextComparison.SOURCE_SHA)
                     && ReferenceOnlyTrial.sha(secondBytes).equals(EvidenceContextComparison.RESULTS_SHA),"Frozen evidence comparison source/results required");
-            var plan=args[0].equals("prepare-evidence-context")?EvidenceContextComparison.prepare(sourceBytes,secondBytes)
+            var plan=args[0].equals("prepare-situation-first")?SituationFirstComparison.prepare(sourceBytes,secondBytes)
+                    :args[0].equals("prepare-evidence-context")?EvidenceContextComparison.prepare(sourceBytes,secondBytes)
                     :args[0].equals("prepare-neutral-hypothesis")?NeutralHypothesisComparison.prepare(sourceBytes,secondBytes)
                     :args[0].equals("prepare-direct-writing")?directPlan(sourceBytes,secondBytes):prepare(sourceBytes,secondBytes);
             if(args[0].equals("prepare-basis")) plan=basisPlan(plan);
@@ -239,6 +242,7 @@ public final class UtteranceDirectionTrial {
         if(direct(plan)) check(DirectTargetWritingComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Approved direct-writing source hash required");
         if(neutral(plan)) check(NeutralHypothesisComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen neutral source hash required");
         if(evidenceContext(plan)) check(EvidenceContextComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen evidence source hash required");
+        if(situationFirst(plan)) check(SituationFirstComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen situation-first source hash required");
         String key=System.getenv("OPENAI_API_KEY");check(key!=null && !key.isBlank(),"OPENAI_API_KEY required; never print");
         Files.createDirectory(output);Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
         Files.writeString(output.resolve("authorization.json"),JSON.writeValueAsString(Map.of("newEstimatedCapUsd",.50,
