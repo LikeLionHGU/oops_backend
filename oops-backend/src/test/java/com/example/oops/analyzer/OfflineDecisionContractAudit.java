@@ -273,12 +273,31 @@ public final class OfflineDecisionContractAudit {
                     row.put("compatibilityOnly",repeat==0);
                     row.put("sourceUnderstanding",output.at("/verifications/0/sourceUnderstanding"));
                     row.put("speechActTruthAutomaticallyEstablished",false);
+                    row.put("assessmentOnlyDiagnostic",assessmentOnlyDiagnostic(actualTask,
+                            JSON.treeToValue(output,CandidateReviewEngine.VerificationResult.class),replay));
                 }
                 row.put("provenance",targetProvenance(actualTask,output));
                 row.put("counterfactuals",targetIdProbes(actualTask,output,(String)replay.get("failureCode")));rows.add(row);
             }
         return Map.of("schemaVersion",UtteranceDirectionTrial.removal(plan)?"offline-hypothesis-removal-provenance-1":UtteranceDirectionTrial.compact(plan)?"offline-source-relations-v3-provenance-1":UtteranceDirectionTrial.relations(plan)?"offline-source-relations-v2-provenance-1":UtteranceDirectionTrial.understanding(plan)?"offline-source-understanding-provenance-1":UtteranceDirectionTrial.situationFirst(plan)?"offline-situation-first-provenance-1":evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
                 "semanticCorrectnessAutomaticallyEstablished",false,"contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
+    }
+
+    /** Secondary inspection of the same generated assessment, not an OFF model run or runtime fallback. */
+    static Map<String,Object> assessmentOnlyDiagnostic(UtteranceDirectionTrial.Task task,
+            CandidateReviewEngine.VerificationResult response,Map<String,Object> fullContract) {
+        var assessment=UtteranceDirectionTrial.assess(task,response);
+        boolean accepted=Boolean.TRUE.equals(assessment.get("accepted"));
+        boolean fullAccepted=Boolean.TRUE.equals(fullContract.get("accepted"));
+        check(!fullAccepted || accepted,"Full contract cannot bypass the assessment contract");
+        var result=new LinkedHashMap<String,Object>();
+        result.put("scope","SAME_GENERATED_ASSESSMENT_WITHOUT_AUXILIARY_CONTRACT_CHECK");
+        result.put("contractAccepted",accepted);result.put("contractFailureCode",assessment.get("failureCode"));
+        result.put("auxiliaryOnlyRejection",accepted && !fullAccepted);
+        result.put("bothContractsReject",!accepted && !fullAccepted);
+        result.put("modelReexecuted",false);result.put("excludedFromModelPerformance",true);
+        result.put("semanticTruthAutomaticallyEstablished",false);
+        return result;
     }
 
     public static void main(String[] args) throws Exception {
