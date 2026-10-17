@@ -31,7 +31,16 @@ public final class UtteranceDirectionTrial {
     static boolean neutral(Plan plan) { return NeutralHypothesisComparison.VERSION.equals(plan.schemaVersion()); }
     static boolean evidenceContext(Plan plan) { return EvidenceContextComparison.VERSION.equals(plan.schemaVersion()); }
     static boolean situationFirst(Plan plan) { return SituationFirstComparison.VERSION.equals(plan.schemaVersion()); }
-    static int maxAttempts(Plan plan) { return evidenceContext(plan)?32:MAX_HTTP_ATTEMPTS; }
+    static boolean understanding(Plan plan) { return SourceUnderstandingComparison.VERSION.equals(plan.schemaVersion()); }
+    static int maxAttempts(Plan plan) { return understanding(plan)?57:evidenceContext(plan)?32:MAX_HTTP_ATTEMPTS; }
+    record Slot(Task task,String arm,int repeat) {}
+    static List<Slot> schedule(Plan plan) {
+        var slots=new ArrayList<Slot>();
+        if(understanding(plan)) slots.add(new Slot(SourceUnderstandingComparison.smoke(plan),"COMPARISON",0));
+        for(int repeat=1;repeat<=2;repeat++) for(var task:plan.tasks()) for(String arm:arms(plan,task,repeat))
+            slots.add(new Slot(task,arm,repeat));
+        return List.copyOf(slots);
+    }
     static List<String> arms(Plan plan,Task task,int repeat) {
         check(repeat==1 || repeat==2,"Two repeats only");
         if(evidenceContext(plan) && !EvidenceContextComparison.TARGETS.contains(task.id())) return List.of("BASELINE");
@@ -42,7 +51,8 @@ public final class UtteranceDirectionTrial {
                         && neutral(plan)==mode.equals("run-neutral-hypothesis")
                         && evidenceContext(plan)==mode.equals("run-evidence-context")
                         && situationFirst(plan)==mode.equals("run-situation-first")
-                        && (situationFirst(plan)?SituationFirstComparison.CONSENT:evidenceContext(plan)?EvidenceContextComparison.CONSENT:neutral(plan)?NeutralHypothesisComparison.CONSENT:direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
+                        && understanding(plan)==mode.equals("run-understanding")
+                        && (understanding(plan)?SourceUnderstandingComparison.CONSENT:situationFirst(plan)?SituationFirstComparison.CONSENT:evidenceContext(plan)?EvidenceContextComparison.CONSENT:neutral(plan)?NeutralHypothesisComparison.CONSENT:direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
                 "Selected contract and fresh cost/text approval required");
     }
     static Plan directPlan(byte[] factorialBytes,byte[] historyBytes) throws Exception {
@@ -137,13 +147,13 @@ public final class UtteranceDirectionTrial {
         validate(plan);return plan;
     }
     static void validate(Plan plan) throws Exception {
-        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan) || neutral(plan) || evidenceContext(plan) || situationFirst(plan)) && "gpt-6-luna".equals(plan.model())
+        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan) || neutral(plan) || evidenceContext(plan) || situationFirst(plan) || understanding(plan)) && "gpt-6-luna".equals(plan.model())
                 && plan.repeats()==2 && plan.estimatedCapUsd()==.50 && plan.tasks()!=null && plan.tasks().size()==14
                 && plan.tasks().stream().map(Task::id).distinct().count()==14,"Known 56-call plan required");
         check(ReferenceOnlyTrial.sha(fixture("/structured-search-boundaries.json")).equals(plan.normalFixtureSha256())
                 && ReferenceOnlyTrial.sha(fixture("/utterance-direction-boundaries.json")).equals(plan.relationFixtureSha256()),"Boundary fixtures changed");
         for(var task:plan.tasks()) {
-            check((situationFirst(plan)?SituationFirstVerification.prompt(task.baselineSystem()):neutral(plan)||evidenceContext(plan)?task.baselineSystem():direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
+            check((understanding(plan)?SourceUnderstandingContract.fromOrderedPrompt(task.baselineSystem()):situationFirst(plan)?SituationFirstVerification.prompt(task.baselineSystem()):neutral(plan)||evidenceContext(plan)?task.baselineSystem():direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
                     .equals(task.comparisonSystem()),"Comparison changes only direction guidance or selected final basis contract");
             var input=JSON.readTree(task.input());
             check(input.path("raw").isArray() && !input.path("raw").isEmpty() && input.path("raw").size()<=48
@@ -155,7 +165,7 @@ public final class UtteranceDirectionTrial {
             check(plan.tasks().stream().filter(t -> EvidenceContextComparison.TARGETS.contains(t.id())).count()==2,"Two fixed intervention cases required");
             plan.tasks().forEach(t -> EvidenceContextComparison.input(t.id(),t.input()));
         }
-        if(direct(plan) || neutral(plan) || evidenceContext(plan) || situationFirst(plan)) {
+        if(direct(plan) || neutral(plan) || evidenceContext(plan) || situationFirst(plan) || understanding(plan)) {
             check(plan.tasks().stream().filter(t -> t.expectedDecision()!=null).count()==8
                     && plan.tasks().stream().filter(t -> "PASS".equals(t.expectedDecision())).count()==6
                     && plan.tasks().stream().filter(t -> "REVIEW_REQUIRED".equals(t.expectedDecision())).count()==2,
@@ -167,7 +177,8 @@ public final class UtteranceDirectionTrial {
         var props=new OpenAiProperties("offline-test-key",null,null,"https://api.openai.com/v1",plan.model(),"none",Duration.ofSeconds(2),null);
         var client=new com.example.oops.client.OpenAiClient(RestClient.create(),props);
         double total=0;
-        for(int repeat=1;repeat<=plan.repeats();repeat++) for(var task:plan.tasks()) for(String arm:arms(plan,task,repeat)) {
+        for(var slot:schedule(plan)) {
+            var task=slot.task();String arm=slot.arm();
             boolean comparison=arm.equals("COMPARISON");
             var body=JSON.writeValueAsBytes(client.replayRequestBody(comparison?task.comparisonSystem():task.baselineSystem(),
                     requestInput(plan,task,comparison),VerificationResult.class));
@@ -180,7 +191,7 @@ public final class UtteranceDirectionTrial {
         reserve(budget,bytes,MAX_HTTP_ATTEMPTS);
     }
     static void reserve(StructuredSearchBoundaryTrial.Budget budget,int bytes,int maxAttempts) throws Exception {
-        check(maxAttempts==32 || maxAttempts==MAX_HTTP_ATTEMPTS,"Known HTTP cap required");
+        check(maxAttempts==32 || maxAttempts==MAX_HTTP_ATTEMPTS || maxAttempts==57,"Known HTTP cap required");
         if(budget.attempts>=maxAttempts) { budget.exhausted=true;throw new IllegalArgumentException(maxAttempts+" HTTP attempt cap reached"); }
         budget.reserve(bytes);
         Files.writeString(budget.output.resolve("reservation.json"),JSON.writeValueAsString(Map.of(
@@ -191,6 +202,9 @@ public final class UtteranceDirectionTrial {
         return assess(task,response,null);
     }
     static Map<String,Object> assess(Task task,VerificationResult response,Boolean finalBasisEnabled) {
+        return assess(task,response,finalBasisEnabled,null);
+    }
+    static Map<String,Object> assess(Task task,VerificationResult response,Boolean finalBasisEnabled,Boolean understandingEnabled) {
         var input=JSON.readTree(task.input());var c=input.path("candidates").get(0);
         var raw=CandidateHypothesisTrial.raw(input);var quotes=new ArrayList<Quote>();
         c.path("proposedEvidence").forEach(q -> quotes.add(new Quote(q.path("segmentId").asText(),q.path("quote").asText())));
@@ -201,7 +215,8 @@ public final class UtteranceDirectionTrial {
         var v=new Validation(null,"TRIAL_RESPONSE_SHAPE");
         if(response!=null && response.verifications()!=null && response.verifications().size()==1
                 && response.verifications().get(0)!=null && candidate.candidateId().equals(response.verifications().get(0).candidateId()))
-            v=finalBasisEnabled==null?CandidateReviewEngine.validate(candidate,response.verifications().get(0).assessment(),raw,0)
+            v=understandingEnabled!=null?SourceUnderstandingContract.validate(candidate,response.verifications().get(0),raw,0,false,understandingEnabled)
+                    :finalBasisEnabled==null?CandidateReviewEngine.validate(candidate,response.verifications().get(0).assessment(),raw,0)
                     :FinalReviewBasisContract.validate(candidate,response.verifications().get(0),raw,0,finalBasisEnabled);
         var row=new LinkedHashMap<String,Object>();row.put("accepted",v.observation()!=null);
         row.put("failureCode",v.failureCode());row.put("observation",v.observation());row.put("evidenceMeaningReview","NOT_AUTOMATICALLY_ASSESSED");
@@ -213,8 +228,8 @@ public final class UtteranceDirectionTrial {
                 "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false,"maxHttpAttempts",maxAttempts(plan))));
     }
     public static void main(String[] args) throws Exception {
-        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing","prepare-neutral-hypothesis","prepare-evidence-context","prepare-situation-first").contains(args[0]) && args.length==4
-                        || Set.of("run","run-basis","run-direct-writing","run-neutral-hypothesis","run-evidence-context","run-situation-first").contains(args[0]) && args.length==5),
+        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing","prepare-neutral-hypothesis","prepare-evidence-context","prepare-situation-first","prepare-understanding").contains(args[0]) && args.length==4
+                        || Set.of("run","run-basis","run-direct-writing","run-neutral-hypothesis","run-evidence-context","run-situation-first","run-understanding").contains(args[0]) && args.length==5),
                 "prepare saved-results runtime NEW-dir OR run plan approved-sha fresh-consent NEW-dir");
         Path output=Path.of(args[args.length-1]).toAbsolutePath().normalize();
         Path root=Path.of("../datasets/controversy/experiments").toRealPath();
@@ -226,7 +241,8 @@ public final class UtteranceDirectionTrial {
                     && ReferenceOnlyTrial.sha(secondBytes).equals(NeutralHypothesisComparison.RESULTS_SHA),"Frozen neutral comparison source/results required");
             if(args[0].equals("prepare-evidence-context")) check(ReferenceOnlyTrial.sha(sourceBytes).equals(EvidenceContextComparison.SOURCE_SHA)
                     && ReferenceOnlyTrial.sha(secondBytes).equals(EvidenceContextComparison.RESULTS_SHA),"Frozen evidence comparison source/results required");
-            var plan=args[0].equals("prepare-situation-first")?SituationFirstComparison.prepare(sourceBytes,secondBytes)
+            var plan=args[0].equals("prepare-understanding")?SourceUnderstandingComparison.prepare(sourceBytes,secondBytes)
+                    :args[0].equals("prepare-situation-first")?SituationFirstComparison.prepare(sourceBytes,secondBytes)
                     :args[0].equals("prepare-evidence-context")?EvidenceContextComparison.prepare(sourceBytes,secondBytes)
                     :args[0].equals("prepare-neutral-hypothesis")?NeutralHypothesisComparison.prepare(sourceBytes,secondBytes)
                     :args[0].equals("prepare-direct-writing")?directPlan(sourceBytes,secondBytes):prepare(sourceBytes,secondBytes);
@@ -243,6 +259,7 @@ public final class UtteranceDirectionTrial {
         if(neutral(plan)) check(NeutralHypothesisComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen neutral source hash required");
         if(evidenceContext(plan)) check(EvidenceContextComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen evidence source hash required");
         if(situationFirst(plan)) check(SituationFirstComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen situation-first source hash required");
+        if(understanding(plan)) check(SourceUnderstandingComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen understanding source hash required");
         String key=System.getenv("OPENAI_API_KEY");check(key!=null && !key.isBlank(),"OPENAI_API_KEY required; never print");
         Files.createDirectory(output);Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
         Files.writeString(output.resolve("authorization.json"),JSON.writeValueAsString(Map.of("newEstimatedCapUsd",.50,
@@ -264,8 +281,8 @@ public final class UtteranceDirectionTrial {
         var client=new MechanismRoutingTrial.Client(builder.build(),props);
         var rows=new ArrayList<Map<String,Object>>();double cost=0;save(output,plan,args[2],rows,budget,cost,"RUNNING");
         try {
-            for(int repeat=1;repeat<=2;repeat++) for(var task:plan.tasks())
-                for(String arm:arms(plan,task,repeat)) {
+            for(var slot:schedule(plan)) {
+                    var task=slot.task();String arm=slot.arm();int repeat=slot.repeat();
                     client.calls.clear();client.beginVideo(0L);client.beginAnalyzer("utterance-direction-verification");long start=System.nanoTime();
                     boolean comparison=arm.equals("COMPARISON");
                     var response=client.completeAsJson(comparison?task.comparisonSystem():task.baselineSystem(),
@@ -275,11 +292,13 @@ public final class UtteranceDirectionTrial {
                     row.put("labelStatus",task.labelStatus());row.put("expectedDecision",task.expectedDecision());
                     var actualTask=new Task(task.id(),task.labelStatus(),task.expectedDecision(),null,null,task.baselineSystem(),
                             task.comparisonSystem(),requestInput(plan,task,comparison));
-                    row.put("assessment",assess(actualTask,response,basis(plan)?comparison:null));row.put("calls",List.copyOf(client.calls));row.put("usage",usage);
+                    var assessment=assess(actualTask,response,basis(plan)?comparison:null,understanding(plan)?comparison:null);
+                    row.put("assessment",assessment);row.put("calls",List.copyOf(client.calls));row.put("usage",usage);
                     row.put("elapsedMs",(System.nanoTime()-start)/1_000_000);rows.add(row);save(output,plan,args[2],rows,budget,cost,"RUNNING");
                     boolean ok=!budget.exhausted && client.failureCount()==0 && usage.calls()==1 && client.calls.size()==1;
                     client.endVideo();System.out.println("DIRECTION_TRIAL "+rows.size()+"/"+maxAttempts(plan)+" "+task.id()+" "+arm+" repeat="+repeat);
                     check(ok,"Provider/budget/usage failure; stop without retries of the study");
+                    if(understanding(plan)) SourceUnderstandingComparison.gate(slot,assessment);
                 }
             check(rows.size()==maxAttempts(plan) && budget.attempts==maxAttempts(plan),"Incomplete HTTP accounting; no completion");
             save(output,plan,args[2],rows,budget,cost,"COMPLETE");

@@ -29,8 +29,13 @@ final class SourceUnderstandingContract {
             """;
     private SourceUnderstandingContract() {}
     static String prompt(String baseline) {
-        String ordered = SituationFirstVerification.prompt(baseline);
+        return fromOrderedPrompt(SituationFirstVerification.prompt(baseline));
+    }
+    static String fromOrderedPrompt(String ordered) {
+        if (!ordered.startsWith(CandidateReviewPrompts.POLICY) || !ordered.contains("# 상황 이해 → 비판 해석 → 정상 해석 대조"))
+            throw new IllegalArgumentException("Known situation-first prompt required");
         int boundary = ordered.indexOf("# 대상 필드 형식 예시");
+        if (boundary < 0) throw new IllegalArgumentException("Known verification output boundary required");
         String body = ordered.substring(0, boundary);
         if (body.indexOf(PREVIOUS_OUTPUT) < 0 || body.indexOf(PREVIOUS_OUTPUT) != body.lastIndexOf(PREVIOUS_OUTPUT)
                 || body.indexOf(JSON_START) < 0 || body.indexOf(JSON_START) != body.lastIndexOf(JSON_START))
