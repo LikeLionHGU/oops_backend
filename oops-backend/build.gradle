@@ -220,6 +220,16 @@ tasks.register('structuredSearchBoundaryTrial', JavaExec) {
 }
 
 // Fixed verification-only comparison; prepare is free, run requires a fresh USD0.50/text approval.
+// New default-path follow-up is deliberately prepare-only, without another live-mode flag.
+tasks.register('prepareDefaultVerificationPlan', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.DefaultVerificationPlan'
+    doFirst {
+        args providers.gradleProperty('defaultSource').get(), providers.gradleProperty('defaultOutput').get()
+    }
+}
+
 tasks.register('utteranceDirectionTrial', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
