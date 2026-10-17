@@ -187,13 +187,96 @@ public final class OfflineDecisionContractAudit {
                 "contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
     }
 
+    /** Literal provenance only. Substring presence does not establish a referent or speech act. */
+    static Map<String,Object> targetProvenance(UtteranceDirectionTrial.Task task,JsonNode output) {
+        var input=JSON.readTree(task.input());var candidate=input.path("candidates").get(0);
+        var allowed=new HashSet<String>();candidate.path("segmentIds").forEach(n -> allowed.add(n.asText()));
+        var proposed=new LinkedHashSet<String>();candidate.path("proposedEvidence").forEach(n -> proposed.add(n.path("segmentId").asText()));
+        var raw=new LinkedHashMap<String,String>();
+        input.path("raw").forEach(n -> { if(allowed.contains(n.path("id").asText())) raw.put(n.path("id").asText(),n.path("text").asText()); });
+        var d=output.at("/verifications/0/assessment");
+        String mention=d.path("targetMention").asText(null);
+        if(mention==null) mention=d.path("target").asText(null);
+        final String literal=mention;
+        var matches=raw.entrySet().stream().filter(e -> literal!=null && !literal.isBlank() && e.getValue().contains(literal)).map(Map.Entry::getKey).toList();
+        var selected=new ArrayList<Map<String,Object>>();var cited=new HashSet<String>();
+        d.path("evidence").forEach(e -> {
+            String id=e.path("segmentId").asText();cited.add(id);
+            selected.add(Map.of("segmentId",id,"role",e.path("role").asText(),"allowedRawExists",raw.containsKey(id),
+                    "containsLiteralMention",matches.contains(id)));
+        });
+        return Map.of("literalMention",Objects.toString(mention,""),"literalMatchingAllowedIds",matches,
+                "selectedEvidence",selected,"proposedEvidenceIds",proposed,
+                "allowedButNotProposedIds",raw.keySet().stream().filter(id -> !proposed.contains(id)).toList(),
+                "allowedButNotCitedIds",raw.keySet().stream().filter(id -> !cited.contains(id)).toList(),
+                "hypothesisPresent",!candidate.path("hypothesisNotEvidence").asText().isBlank(),
+                "semanticCorrectnessEstablished",false);
+    }
+
+    static List<Map<String,Object>> targetIdProbes(UtteranceDirectionTrial.Task task,JsonNode output,String failure) {
+        if(!"TARGET_EVIDENCE_REQUIRED".equals(failure)) return List.of();
+        var provenance=targetProvenance(task,output);
+        @SuppressWarnings("unchecked") var matches=(List<String>)provenance.get("literalMatchingAllowedIds");
+        var evidence=output.at("/verifications/0/assessment/evidence");
+        if(!evidence.isArray()) return List.of();
+        var targetIndices=new ArrayList<Integer>();
+        for(int i=0;i<evidence.size();i++) if("TARGET".equals(evidence.get(i).path("role").asText())) targetIndices.add(i);
+        var probes=new ArrayList<Map<String,Object>>();
+        for(String id:matches) {
+            var indices=targetIndices.isEmpty()?List.of(-1):targetIndices;
+            for(int index:indices) {
+                if(index>=0 && id.equals(evidence.get(index).path("segmentId").asText())) continue;
+                JsonNode copy=output.deepCopy();
+                var copied=(tools.jackson.databind.node.ArrayNode)copy.at("/verifications/0/assessment/evidence");
+                if(index<0) copied.addObject().put("segmentId",id).put("role","TARGET");
+                else ((tools.jackson.databind.node.ObjectNode)copied.get(index)).put("segmentId",id);
+                var replay=UtteranceDirectionTrial.assess(task,JSON.treeToValue(copy,CandidateReviewEngine.VerificationResult.class));
+                var p=new LinkedHashMap<String,Object>();p.put("changedField","evidence");p.put("counterfactualOnly",true);
+                p.put("changeKind",index<0?"APPEND_TARGET_ROLE":"REPOINT_TARGET_ID");p.put("selectedLiteralMatchId",id);
+                p.put("originalDecisionPreserved",output.at("/verifications/0/assessment/decision").equals(copy.at("/verifications/0/assessment/decision")));
+                p.put("contractAccepted",replay.get("accepted"));p.put("failureCode",replay.get("failureCode"));
+                p.put("semanticCorrectnessEstablished",false);probes.add(p);
+            }
+        }
+        return probes;
+    }
+
+    static Map<String,Object> auditDirectWriting(JsonNode planNode,JsonNode saved) throws Exception {
+        var plan=JSON.treeToValue(planNode,UtteranceDirectionTrial.Plan.class);UtteranceDirectionTrial.validate(plan);
+        check(UtteranceDirectionTrial.direct(plan) && DirectTargetWritingComparison.VERSION.equals(saved.path("schemaVersion").asText())
+                && "COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==56
+                && saved.path("results").size()==56,"Complete direct-writing study required");
+        var rows=new ArrayList<Map<String,Object>>();int position=0;
+        for(int repeat=1;repeat<=2;repeat++) for(var task:plan.tasks())
+            for(String arm:repeat==1?List.of("BASELINE","COMPARISON"):List.of("COMPARISON","BASELINE")) {
+                var result=saved.path("results").get(position++);
+                check(task.id().equals(result.path("caseId").asText()) && repeat==result.path("repeat").asInt()
+                        && arm.equals(result.path("arm").asText()) && result.path("calls").size()==1,"Frozen ordered direct-writing tuple required");
+                var call=result.path("calls").get(0);
+                check((arm.equals("BASELINE")?task.baselineSystem():task.comparisonSystem()).equals(call.path("system").asText())
+                        && JSON.readTree(task.input()).equals(call.path("input")) && call.path("failureCode").isNull()
+                        && JSON.valueToTree(task.expectedDecision()).equals(result.path("expectedDecision"))
+                        && task.labelStatus().equals(result.path("labelStatus").asText()),"Frozen direct-writing request/label mismatch");
+                var output=call.path("output");var replay=UtteranceDirectionTrial.assess(task,JSON.treeToValue(output,CandidateReviewEngine.VerificationResult.class));
+                check(result.path("assessment").equals(JSON.valueToTree(replay)),"Direct-writing validator replay drift; preserve history");
+                var row=new LinkedHashMap<String,Object>();row.put("caseId",task.id());row.put("arm",arm);row.put("repeat",repeat);
+                row.put("developmentExpected",task.expectedDecision());row.put("parsedModelDecision",output.at("/verifications/0/assessment/decision").asText(null));
+                row.put("contractAccepted",replay.get("accepted"));row.put("contractFailureCode",replay.get("failureCode"));
+                row.put("provenance",targetProvenance(task,output));
+                row.put("counterfactuals",targetIdProbes(task,output,(String)replay.get("failureCode")));rows.add(row);
+            }
+        return Map.of("schemaVersion","offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
+                "semanticCorrectnessAutomaticallyEstablished",false,"contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
+    }
+
     public static void main(String[] args) throws Exception {
         check(args.length == 3, "Frozen plan, saved results and new private report path required");
         byte[] plan = bounded(Path.of(args[0])), saved = bounded(Path.of(args[1]));
         var planNode=JSON.readTree(plan);var savedNode=JSON.readTree(saved);
         boolean factorial=VerificationFactorialPlan.VERSION.equals(planNode.path("schemaVersion").asText());
-        if (factorial) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen factorial plan hash mismatch");
-        var report = new LinkedHashMap<>(factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
+        boolean direct=DirectTargetWritingComparison.VERSION.equals(planNode.path("schemaVersion").asText());
+        if (factorial || direct) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen study plan hash mismatch");
+        var report = new LinkedHashMap<>(direct?auditDirectWriting(planNode,savedNode):factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
         report.put("planSha256", ReferenceOnlyTrial.sha(plan));
         report.put("resultsSha256", ReferenceOnlyTrial.sha(saved));
         Path root = Path.of("../datasets/controversy/experiments").toRealPath();
@@ -201,6 +284,6 @@ public final class OfflineDecisionContractAudit {
         check(!Files.exists(output) && output.getParent().toRealPath().startsWith(root), "New private report path required");
         Files.writeString(output, JSON.writeValueAsString(report), StandardOpenOption.CREATE_NEW);
         System.out.println("OFFLINE_AUDIT rows="+((List<?>)report.get("rows")).size()+" providerCalls=0 historicalContractDrift=0");
-        System.out.println(JSON.writeValueAsString(report.get(factorial?"contractFailureCodes":"summary")));
+        System.out.println(JSON.writeValueAsString(report.get(factorial||direct?"contractFailureCodes":"summary")));
     }
 }

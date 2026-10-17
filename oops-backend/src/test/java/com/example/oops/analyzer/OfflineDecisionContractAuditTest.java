@@ -9,6 +9,75 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Authored fixtures reproduce failure mechanisms, not private source text or approved semantic gold. */
 class OfflineDecisionContractAuditTest {
+    private UtteranceDirectionTrial.Task directTask(VerificationFactorialPlan.Request r) {
+        return new UtteranceDirectionTrial.Task(r.caseId(),r.labelStatus(),r.expectedDecision(),null,null,r.system(),r.system(),r.input());
+    }
+
+    @Test void targetIdCopyReproducesGroundingFailureWithoutRepairingOriginalOrCertifyingReferent() {
+        var task=directTask(probeRequest("TARGET_TREATMENT",1,"저는 제 이야기를 하는 중입니다.","제가 보여드릴까요?","형만 이야기합니다."));
+        var response=targetProbeOutput("stt-index-1","제가 보여드릴까요?",0);var d=assessment(response);
+        d.put("target","형");d.put("targetMention","형");
+        d.set("evidence",JSON.valueToTree(List.of(new TextReviewEngine.LlmEvidence("stt-index-1",null,"PRIMARY"),
+                new TextReviewEngine.LlmEvidence("stt-index-1",null,"TARGET"))));
+        var before=response.deepCopy();
+        var original=UtteranceDirectionTrial.assess(task,JSON.treeToValue(response,VerificationResult.class));
+        assertThat(original).containsEntry("failureCode","TARGET_EVIDENCE_REQUIRED");
+        var provenance=OfflineDecisionContractAudit.targetProvenance(task,response);
+        assertThat(provenance.get("literalMatchingAllowedIds")).isEqualTo(List.of("stt-index-2"));
+        assertThat(OfflineDecisionContractAudit.targetIdProbes(task,response,"TARGET_EVIDENCE_REQUIRED"))
+                .singleElement().satisfies(p -> assertThat(p).containsEntry("changeKind","REPOINT_TARGET_ID")
+                        .containsEntry("contractAccepted",true).containsEntry("originalDecisionPreserved",true)
+                        .containsEntry("semanticCorrectnessEstablished",false));
+        assertThat(response).isEqualTo(before);
+    }
+
+    @Test void addingMissingTargetRoleDoesNotHideNextContextRequirement() {
+        var task=directTask(probeRequest("TARGET_TREATMENT",1,"지금 당신이 입은 속옷 색을 알고 싶어요.","제게 한번 보여 주세요."));
+        var response=targetProbeOutput("stt-index-1","제게 한번 보여 주세요.",0);var d=assessment(response);
+        d.put("targetRelation","CONTEXTUAL");
+        d.set("evidence",JSON.valueToTree(List.of(new TextReviewEngine.LlmEvidence("stt-index-1",null,"PRIMARY"),
+                new TextReviewEngine.LlmEvidence("stt-index-0",null,"CONTEXT"))));
+        assertThat(UtteranceDirectionTrial.assess(task,JSON.treeToValue(response,VerificationResult.class)))
+                .containsEntry("failureCode","TARGET_EVIDENCE_REQUIRED");
+        assertThat(OfflineDecisionContractAudit.targetIdProbes(task,response,"TARGET_EVIDENCE_REQUIRED"))
+                .singleElement().satisfies(p -> assertThat(p).containsEntry("changeKind","APPEND_TARGET_ROLE")
+                        .containsEntry("contractAccepted",false).containsEntry("failureCode","TARGET_CONTEXT_EVIDENCE_REQUIRED"));
+    }
+
+    @Test void absentProposalCitationDoesNotMeanRawContextWasNotSentOrSemanticallyIgnored() {
+        var r=probeRequest("TARGET_TREATMENT",1,"그 말이 무슨 뜻인가요?","줄임말을 풀이합니다.");
+        var input=(ObjectNode)JSON.readTree(r.input());
+        ((ObjectNode)input.path("candidates").get(0)).set("proposedEvidence",JSON.valueToTree(List.of(new Quote("stt-index-1",null))));
+        var task=new UtteranceDirectionTrial.Task("provenance","DRAFT",null,null,null,"unused","unused",input.toString());
+        var response=output(new CandidateReviewEngineTest().assessment("stt-index-1","PASS","줄임말을 풀이합니다."));
+        var provenance=OfflineDecisionContractAudit.targetProvenance(task,response);
+        assertThat(provenance.get("allowedButNotProposedIds")).isEqualTo(List.of("stt-index-0"));
+        assertThat(provenance).containsEntry("semanticCorrectnessEstablished",false);
+        assertThat(JSON.readTree(task.input()).path("raw").size()).isEqualTo(2);
+    }
+
+    @Test void directWritingAuditReplaysAll56RowsAndRejectsHistoricalResultOrOrderChanges() throws Exception {
+        var i=new DirectTargetWritingComparisonTest().inputs();var plan=UtteranceDirectionTrial.directPlan(i.factorial(),i.history());
+        var saved=JSON.createObjectNode();saved.put("schemaVersion",DirectTargetWritingComparison.VERSION);
+        saved.put("state","COMPLETE");saved.put("httpAttempts",56);var rows=saved.putArray("results");
+        for(int repeat=1;repeat<=2;repeat++) for(var task:plan.tasks())
+            for(String arm:repeat==1?List.of("BASELINE","COMPARISON"):List.of("COMPARISON","BASELINE")) {
+                var response=new VerificationResult(List.of());var row=rows.addObject();
+                row.put("caseId",task.id());row.put("repeat",repeat);row.put("arm",arm);row.put("labelStatus",task.labelStatus());
+                row.set("expectedDecision",JSON.valueToTree(task.expectedDecision()));
+                row.set("assessment",JSON.valueToTree(UtteranceDirectionTrial.assess(task,response)));
+                var call=row.putArray("calls").addObject();call.put("system",arm.equals("BASELINE")?task.baselineSystem():task.comparisonSystem());
+                call.set("input",JSON.readTree(task.input()));call.putNull("failureCode");call.set("output",JSON.valueToTree(response));
+            }
+        var result=OfflineDecisionContractAudit.auditDirectWriting(JSON.valueToTree(plan),saved);
+        assertThat(result).containsEntry("providerCalls",0).containsEntry("historicalContractDrift",0);
+        assertThat((List<?>)result.get("rows")).hasSize(56);
+        var changed=saved.deepCopy();((ObjectNode)changed.path("results").get(0).path("assessment")).put("accepted",true);
+        assertThatThrownBy(() -> OfflineDecisionContractAudit.auditDirectWriting(JSON.valueToTree(plan),changed)).hasMessageContaining("replay drift");
+        var duplicate=saved.deepCopy();duplicate.withArray("results").set(1,duplicate.path("results").get(0));
+        assertThatThrownBy(() -> OfflineDecisionContractAudit.auditDirectWriting(JSON.valueToTree(plan),duplicate)).hasMessageContaining("ordered direct-writing tuple");
+    }
+
     private VerificationFactorialPlan.Request probeRequest(String axis, int anchor, String... lines) {
         var input=new CandidateReviewEngineTest().context(lines).reviewInput();
         var speech=input.segments().stream().filter(s -> s.type()==com.example.oops.domain.TimelineEventType.SPEECH).toList();
