@@ -246,7 +246,7 @@ public final class OfflineDecisionContractAudit {
         boolean neutral=UtteranceDirectionTrial.neutral(plan);
         boolean evidenceContext=UtteranceDirectionTrial.evidenceContext(plan);
         int expected=UtteranceDirectionTrial.maxAttempts(plan);
-        check((UtteranceDirectionTrial.direct(plan) || neutral || evidenceContext || UtteranceDirectionTrial.situationFirst(plan) || UtteranceDirectionTrial.understandingStudy(plan)) && plan.schemaVersion().equals(saved.path("schemaVersion").asText())
+        check((UtteranceDirectionTrial.direct(plan) || neutral || evidenceContext || UtteranceDirectionTrial.situationFirst(plan) || UtteranceDirectionTrial.understandingStudy(plan) || UtteranceDirectionTrial.removal(plan)) && plan.schemaVersion().equals(saved.path("schemaVersion").asText())
                 && "COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==expected
                 && saved.path("results").size()==expected,"Complete fixed verification study required");
         var rows=new ArrayList<Map<String,Object>>();int position=0;
@@ -269,7 +269,7 @@ public final class OfflineDecisionContractAudit {
                 var row=new LinkedHashMap<String,Object>();row.put("caseId",task.id());row.put("arm",arm);row.put("repeat",repeat);
                 row.put("developmentExpected",task.expectedDecision());row.put("parsedModelDecision",output.at("/verifications/0/assessment/decision").asText(null));
                 row.put("contractAccepted",replay.get("accepted"));row.put("contractFailureCode",replay.get("failureCode"));
-                if(UtteranceDirectionTrial.understandingStudy(plan)) {
+                if(UtteranceDirectionTrial.understandingStudy(plan) || UtteranceDirectionTrial.removal(plan)) {
                     row.put("compatibilityOnly",repeat==0);
                     row.put("sourceUnderstanding",output.at("/verifications/0/sourceUnderstanding"));
                     row.put("speechActTruthAutomaticallyEstablished",false);
@@ -277,7 +277,7 @@ public final class OfflineDecisionContractAudit {
                 row.put("provenance",targetProvenance(actualTask,output));
                 row.put("counterfactuals",targetIdProbes(actualTask,output,(String)replay.get("failureCode")));rows.add(row);
             }
-        return Map.of("schemaVersion",UtteranceDirectionTrial.compact(plan)?"offline-source-relations-v3-provenance-1":UtteranceDirectionTrial.relations(plan)?"offline-source-relations-v2-provenance-1":UtteranceDirectionTrial.understanding(plan)?"offline-source-understanding-provenance-1":UtteranceDirectionTrial.situationFirst(plan)?"offline-situation-first-provenance-1":evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
+        return Map.of("schemaVersion",UtteranceDirectionTrial.removal(plan)?"offline-hypothesis-removal-provenance-1":UtteranceDirectionTrial.compact(plan)?"offline-source-relations-v3-provenance-1":UtteranceDirectionTrial.relations(plan)?"offline-source-relations-v2-provenance-1":UtteranceDirectionTrial.understanding(plan)?"offline-source-understanding-provenance-1":UtteranceDirectionTrial.situationFirst(plan)?"offline-situation-first-provenance-1":evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
                 "semanticCorrectnessAutomaticallyEstablished",false,"contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
     }
 
@@ -292,7 +292,8 @@ public final class OfflineDecisionContractAudit {
                 || SituationFirstComparison.VERSION.equals(planNode.path("schemaVersion").asText())
                 || SourceUnderstandingComparison.VERSION.equals(planNode.path("schemaVersion").asText())
                 || SourceRelationsComparison.VERSION.equals(planNode.path("schemaVersion").asText())
-                || CompactRelationsComparison.VERSION.equals(planNode.path("schemaVersion").asText());
+                || CompactRelationsComparison.VERSION.equals(planNode.path("schemaVersion").asText())
+                || HypothesisRemovalComparison.VERSION.equals(planNode.path("schemaVersion").asText());
         if (factorial || direct) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen study plan hash mismatch");
         var report = new LinkedHashMap<>(direct?auditDirectWriting(planNode,savedNode):factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
         report.put("planSha256", ReferenceOnlyTrial.sha(plan));
