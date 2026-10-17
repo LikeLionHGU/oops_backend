@@ -230,6 +230,20 @@ tasks.register('prepareDefaultVerificationPlan', JavaExec) {
     }
 }
 
+// Only the newly approved, SHA-pinned default-path comparison; no production feature flag.
+tasks.register('runDefaultVerificationTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.DefaultVerificationTrial'
+    doFirst {
+        if (providers.gradleProperty('defaultLiveApproved').orNull != 'true')
+            throw new GradleException('Fresh defaultLiveApproved and exact-plan cost/text consent required')
+        args(['defaultPlan','defaultSource','defaultPlanSha','defaultConsent','defaultOutput'].collect {
+            providers.gradleProperty(it).get()
+        })
+    }
+}
+
 tasks.register('utteranceDirectionTrial', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
