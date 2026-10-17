@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "evaluation-suite-registry-1",
+  "activeSuite": "approved-dialogue-controls-20261017-1",
+  "purpose": "DEVELOPMENT_BOUNDARY_REGRESSION_NOT_INDEPENDENT_ACCURACY",
+  "sourcePacket": {
+    "path": "datasets/controversy/experiments/utterance-human-review-20261016/source-packet.json",
+    "sha256": "8c1f1b877879bb12b8b5141e0b3c314cbcce1a1b73ba9129722543e809dd1d24"
+  },
+  "humanReview": {
+    "path": "datasets/controversy/experiments/utterance-human-review-20261016/human-review.json",
+    "sha256": "8ba16a7e85e893a0fe87df76aec174ff7b6a1b2966db23340c06520f371729d6"
+  },
+  "activeDecisions": {
+    "R03": "PASS",
+    "R04": "REVIEW_REQUIRED",
+    "R05": "PASS",
+    "R06": "PASS",
+    "R07": "PASS",
+    "R08": "REVIEW_REQUIRED"
+  },
+  "scopedDiagnostics": ["R01", "R02"],
+  "focusCase": "R01",
+  "otherMaterials": [
+    {"path": "oops-backend/src/test/resources/structured-search-boundaries.json", "role": "QUARANTINED_UNAPPROVED_DRAFTS", "cases": 6},
+    {"path": "oops-backend/src/test/resources/utterance-direction-boundaries.json", "role": "FROZEN_RELATION_FIXTURE_NOT_CANONICAL_DECISION_LABELS", "cases": 6},
+    {"path": "oops-backend/src/test/resources/evals/contextual-comparison.json", "role": "MOCK_CONTRACT_FIXTURES_NOT_MODEL_GOLD", "cases": 14},
+    {"path": "oops-backend/src/test/resources/evals/text-boundaries-37.json", "role": "HISTORICAL_BCD_AND_NORMAL_REGRESSION_NOT_CURRENT_MAIN_SUITE", "cases": 9},
+    {"path": "oops-backend/src/test/resources/evals/review-case-replay-input.json", "role": "REFERENCE_RETRIEVAL_FIXTURE_NOT_DECISION_SUITE"},
+    {"path": "datasets/controversy/benchmarks/pisik-v1.json", "role": "CROPPED_CLIP_RESEARCH_GOALS_NOT_FULL_VIDEO_GOLD"}
+  ],
+  "historyRoots": [
+    "datasets/controversy/evaluation/archive-shorts-v1",
+    "datasets/controversy/experiments"
+  ],
+  "policy": {
+    "discoverActiveByDirectoryGlob": false,
+    "promoteDraftExpectedLabels": false,
+    "promoteOldResultsToNewCases": false,
+    "modelCallsEnabled": false,
+    "deleteOrRelocateFrozenSources": false,
+    "defaultPaidTrialReexecutionAllowed": false
+  }
+}
