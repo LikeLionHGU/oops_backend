@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-17-target-mention-boundary-42";
-    static final String RELATION_REVISION = "2026-10-17-source-relations-target-boundary-42";
+    static final String REVISION = "2026-10-17-candidate-diagnostics-43";
+    static final String RELATION_REVISION = "2026-10-17-source-relations-diagnostics-43";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -237,7 +237,7 @@ final class CandidateReviewEngine {
                 if (proposal != null && (sourceRelationsEnabled && !needsVisual
                         ? proposal.sourceRelations() == null || proposal.reason() != null
                         : proposal.sourceRelations() != null)) {
-                    stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true;
+                    stats.invalidProposals++; markProposalUnresolved(proposal,primaryIds,reviewedIds,unresolved); partial = true;
                     String proposedAnchor = proposal.anchorId();
                     String safeAnchor = raw.stream().anyMatch(s -> s.id().equals(proposedAnchor)) ? proposedAnchor : null;
                     String safeAxis = Set.of("TARGET_TREATMENT","EXPRESSION_CONTENT").contains(proposal.axis() == null ? "" : proposal.axis())
@@ -269,7 +269,7 @@ final class CandidateReviewEngine {
                     }
                 }
                 if (candidate == null) {
-                    stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true;
+                    stats.invalidProposals++; markProposalUnresolved(proposal,primaryIds,reviewedIds,unresolved); partial = true;
                     stats.invalidProposal(id, proposal, batch, allowedUnits, response.reviewedSegmentIds()); continue;
                 }
                 // Deduplicate exact anchored evidence only; different criticisms of a quote are preserved.
@@ -374,6 +374,7 @@ final class CandidateReviewEngine {
                     continue;
                 }
                 pending.computeIfPresent(observation.anchorId(), (key, value) -> value - 1);
+                stats.conflicts.record(c,observation,"TEXT");
                 observations.computeIfAbsent(observation.anchorId(), key -> new ArrayList<>()).add(observation);
                 evaluations.add(new ReviewEvaluation("speech-review:verification", ExecutionStatus.SUCCESS,
                         List.of(observation.anchorId()), List.of(observation), c.raw().stream().map(ReviewInput.Segment::id).toList()));
@@ -422,6 +423,7 @@ final class CandidateReviewEngine {
                 continue;
             }
             pending.computeIfPresent(o.anchorId(), (key, value) -> value - 1);
+            stats.conflicts.record(c,o,"VISUAL");
             observations.computeIfAbsent(o.anchorId(), key -> new ArrayList<>()).add(o);
             evaluations.add(new ReviewEvaluation("speech-review:visual-verification", ExecutionStatus.SUCCESS,
                     List.of(o.anchorId()), List.of(o), c.raw().stream().map(ReviewInput.Segment::id).toList()));
@@ -562,6 +564,11 @@ final class CandidateReviewEngine {
                 previous == null ? null : previous.decision(), repaired == null ? null : repaired.decision(),
                 previous != null && repaired != null ? !Objects.equals(previous.decision(), repaired.decision()) : null));
         return result;
+    }
+    static void markProposalUnresolved(Proposal proposal,List<String> primary,List<String> reviewed,Set<String> unresolved) {
+        if(proposal!=null && proposal.anchorId()!=null && primary.contains(proposal.anchorId()) && reviewed.contains(proposal.anchorId()))
+            unresolved.add(proposal.anchorId());
+        else unresolved.addAll(primary);
     }
     private static boolean validDiscovery(Discovery r, List<String> primary) {
         if (r == null || r.reviewedSegmentIds() == null || r.candidates() == null || r.uncertainSegments() == null
@@ -829,6 +836,7 @@ final class CandidateReviewEngine {
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
         final List<CandidateReviewDiagnostics.EvidenceCountTrace> evidenceCounts = new ArrayList<>();
         final Map<String, CandidateReviewDiagnostics.InputSnapshot> snapshots = new LinkedHashMap<>();
+        final CandidateDecisionConflicts conflicts=new CandidateDecisionConflicts();
         void snapshot(Candidate c, FrozenReference reference) {
             snapshots.put(c.candidateId(), new CandidateReviewDiagnostics.InputSnapshot(reference.discoveryRequestKey(),
                     ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(compact(c.raw()))),
@@ -937,7 +945,7 @@ final class CandidateReviewEngine {
             return new CandidateReviewDiagnostics(revision, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
                     expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces,
-                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting);
+                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting,conflicts.traces());
         }
     }
 }
