@@ -33,6 +33,44 @@ def index(cases, key):
     return result
 
 
+def focused_units(root, registry, sources):
+    spec = registry.get("approvedFocusedReview")
+    if not spec:
+        return [], [], None
+    raw = read(root, spec["path"])
+    require(sha(raw) == spec["sha256"], "FOCUSED_REVIEW_HASH_MISMATCH")
+    review = json.loads(raw)
+    source_id = spec["sourceReviewId"]
+    require(review.get("status") == "USER_APPROVED_FULL_WINDOW_UNITS_DEVELOPMENT_ONLY"
+            and review.get("sourceReviewId") == source_id and source_id in sources
+            and review.get("sourcePacketSha256") == registry["sourcePacket"]["sha256"], "FOCUSED_REVIEW_NOT_APPROVED")
+    require(review.get("independentGold") is False and review.get("runtimePromotionApproved") is False
+            and review.get("trainingUseApproved") is False and review.get("familyId"), "FOCUSED_APPROVAL_SCOPE_INVALID")
+    source = sources[source_id]
+    source_bytes = read(root, review["sourceFile"]["path"])
+    require(sha(source_bytes) == review["sourceFile"]["sha256"]
+            and json.loads(source_bytes)["source"] == source, "FOCUSED_SOURCE_MISMATCH")
+    rows = source["raw"]
+    require(review.get("reviewedSegmentIds") == [r["id"] for r in rows], "FOCUSED_WINDOW_SCOPE_MISMATCH")
+    units = index(review["units"], "reviewUnitId")
+    require(set(units) == set(spec["activeDecisions"]), "FOCUSED_ALLOWLIST_MISMATCH")
+    require(len({u["anchorId"] for u in units.values()}) == len(units), "FOCUSED_DUPLICATE_ANCHOR")
+    inputs, labels = [], []
+    for unit_id, decision in spec["activeDecisions"].items():
+        unit = units[unit_id]
+        require(unit["anchorId"] in review["reviewedSegmentIds"] and unit.get("userAnswer")
+                and decision in {"PASS", "REVIEW_REQUIRED", "UNCERTAIN"}
+                and unit.get("expectedDecision") == decision, "FOCUSED_LABEL_INVALID")
+        inputs.append({"caseId": unit_id, "anchorId": unit["anchorId"], "raw": rows,
+                       "timeBasis": "STORED_STT_TIMING_NOT_NEW_AUDIO_VERIFICATION"})
+        labels.append({"caseId": unit_id, "expectedDecision": decision, "userAnswer": unit["userAnswer"],
+                       "labelScope": "USER_APPROVED_ANCHOR_ISSUE_WITH_FULL_SOURCE_WINDOW_DEVELOPMENT_ONLY",
+                       "recordedAt": review.get("recordedAt"), "evidenceIdsUserApproved": False,
+                       "sourceGroupId": review["familyId"]})
+    return inputs, labels, {"reviewSha256": spec["sha256"], "sourceReviewId": source_id,
+                            "sourceGroupId": review["familyId"], "approvedUnitIds": list(spec["activeDecisions"])}
+
+
 def prepare(root, registry):
     require(registry["schemaVersion"] == "evaluation-suite-registry-1", "REGISTRY_VERSION")
     loaded = []
@@ -81,6 +119,17 @@ def prepare(root, registry):
     focus = {"caseId": focus_id, "status": "FULL_WINDOW_LABEL_REVIEW_PENDING_NOT_NEW_GOLD",
              "expectedDecision": None, "source": sources[focus_id], "priorApproval": labels[focus_id],
              "prohibitedInferences": ["fixed speaker identity", "actual exposure", "coercion", "automatic PASS for any term definition"]}
+    added_inputs, added_labels, focused = focused_units(root, registry, sources)
+    require(set(c["caseId"] for c in inputs).isdisjoint(c["caseId"] for c in added_inputs), "ACTIVE_UNIT_ID_COLLISION")
+    inputs.extend(added_inputs)
+    decisions.extend(added_labels)
+    if focused:
+        if focused["sourceReviewId"] == focus_id:
+            focus["status"] = "ANCHOR_UNITS_APPROVED_NOT_WHOLE_WINDOW_OR_VIDEO_GOLD"
+            focus["approvedUnitIds"] = focused["approvedUnitIds"]
+        for case in excluded:
+            if case["caseId"] == focused["sourceReviewId"]:
+                case["supersededByApprovedUnits"] = focused["approvedUnitIds"]
     materials = []
     for item in registry["otherMaterials"]:
         data = read(root, item["path"])
@@ -95,12 +144,16 @@ def prepare(root, registry):
         history.append({"path": relative, "jsonFiles": sum(1 for _ in path.rglob("*.json")),
                         "role": "IMMUTABLE_REPRODUCTION_HISTORY_NOT_ACTIVE_SUITE", "relocated": False})
     manifest = {"schemaVersion": "active-evaluation-bundle-1", "suiteId": registry["activeSuite"],
-                "purpose": registry["purpose"], "activeCases": list(active), "activeCount": len(inputs),
+                "purpose": registry["purpose"], "activeCases": [c["caseId"] for c in inputs], "activeCount": len(inputs),
                 "sourcePacketSha256": registry["sourcePacket"]["sha256"], "humanReviewSha256": registry["humanReview"]["sha256"],
                 "registryCanonicalSha256": sha(canonical(registry)), "inputsCanonicalSha256": sha(canonical(inputs)),
                 "labelsCanonicalSha256": sha(canonical(decisions)), "independentGold": False,
-                "realVideoFamiliesInActiveSuite": 0, "providerCalls": 0, "runtimePromotion": False,
+                "realVideoFamiliesInActiveSuite": 1 if focused else 0, "providerCalls": 0, "runtimePromotion": False,
                 "focusCase": focus_id, "excludedFromMainScore": excluded}
+    if focused:
+        manifest["approvedFocusedReview"] = focused
+        manifest["syntheticConditionCount"] = len(active)
+        manifest["storedSttIssueCount"] = len(added_inputs)
     return {"inputs.json": inputs, "labels.json": decisions, "manifest.json": manifest,
             "focus-R01.json": focus, "inventory.json": {"materials": materials, "history": history}}
 

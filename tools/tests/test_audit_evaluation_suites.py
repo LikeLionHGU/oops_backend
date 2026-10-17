@@ -92,6 +92,61 @@ class EvaluationSuiteAuditTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "NEW_PRIVATE_OUTPUT_REQUIRED"):
             audit.write_new(self.root, self.root / "outside", result)
 
+    def focused_review(self):
+        focus = audit.canonical({"source": self.packet["cases"][0]})
+        (self.root / "focus.json").write_bytes(focus)
+        review = {"status": "USER_APPROVED_FULL_WINDOW_UNITS_DEVELOPMENT_ONLY", "sourceReviewId": "R01",
+                  "sourcePacketSha256": self.registry["sourcePacket"]["sha256"], "familyId": "one-shared-dialogue",
+                  "sourceFile": {"path": "focus.json", "sha256": audit.sha(focus)},
+                  "reviewedSegmentIds": ["R010", "R011"], "independentGold": False,
+                  "runtimePromotionApproved": False, "trainingUseApproved": False,
+                  "units": [{"reviewUnitId": "focus-" + str(i), "anchorId": "R01" + str(i),
+                             "userAnswer": "PASS — approved test fixture", "expectedDecision": "PASS"} for i in range(2)]}
+        self.sync_focused(review)
+        return review
+
+    def sync_focused(self, review):
+        raw = audit.canonical(review)
+        (self.root / "approved-focus.json").write_bytes(raw)
+        self.registry["approvedFocusedReview"] = {"path": "approved-focus.json", "sha256": audit.sha(raw),
+                                                  "sourceReviewId": "R01", "activeDecisions": {"focus-0": "PASS", "focus-1": "PASS"}}
+
+    def test_full_window_approved_units_share_one_family_without_relabeling_old_case(self):
+        self.focused_review()
+        result = audit.prepare(self.root, self.registry)
+        self.assertEqual(4, result["manifest.json"]["activeCount"])
+        self.assertEqual(1, result["manifest.json"]["realVideoFamiliesInActiveSuite"])
+        self.assertEqual(2, result["manifest.json"]["storedSttIssueCount"])
+        self.assertEqual(result["inputs.json"][-1]["raw"], result["inputs.json"][-2]["raw"])
+        self.assertNotIn("expectedDecision", json.dumps(result["inputs.json"]))
+        self.assertIsNone(result["focus-R01.json"]["expectedDecision"])
+        self.assertFalse(result["manifest.json"]["excludedFromMainScore"][0]["approvalRevoked"])
+        self.assertEqual("PASS", result["labels.json"][-1]["expectedDecision"])
+
+    def test_focused_approval_cannot_cover_a_different_or_partial_window(self):
+        review = self.focused_review()
+        review["reviewedSegmentIds"] = ["R011"]
+        self.sync_focused(review)
+        with self.assertRaisesRegex(ValueError, "FOCUSED_WINDOW_SCOPE_MISMATCH"):
+            audit.prepare(self.root, self.registry)
+        review["reviewedSegmentIds"] = ["R010", "R011"]
+        self.sync_focused(review)
+        (self.root / "focus.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "FOCUSED_SOURCE_MISMATCH"):
+            audit.prepare(self.root, self.registry)
+
+    def test_focused_pending_record_and_changed_answer_are_not_promoted(self):
+        review = self.focused_review()
+        review["status"] = "PENDING"
+        self.sync_focused(review)
+        with self.assertRaisesRegex(ValueError, "FOCUSED_REVIEW_NOT_APPROVED"):
+            audit.prepare(self.root, self.registry)
+        review["status"] = "USER_APPROVED_FULL_WINDOW_UNITS_DEVELOPMENT_ONLY"
+        review["units"][0]["expectedDecision"] = "REVIEW_REQUIRED"
+        self.sync_focused(review)
+        with self.assertRaisesRegex(ValueError, "FOCUSED_LABEL_INVALID"):
+            audit.prepare(self.root, self.registry)
+
 
 if __name__ == "__main__":
     unittest.main()
