@@ -68,4 +68,23 @@ class NeutralHypothesisComparisonTest {
         var changed=JSON.treeToValue(tree,UtteranceDirectionTrial.Plan.class);
         assertThatThrownBy(() -> UtteranceDirectionTrial.validate(changed)).hasMessageContaining("Comparison changes only");
     }
+
+    @Test void offlineReplayChecksTheActualNeutralInputAndRejectsAnUnchangedComparisonInput() throws Exception {
+        var s=source();var plan=NeutralHypothesisComparison.prepare(s.plan(),s.results());
+        var saved=(tools.jackson.databind.node.ObjectNode)JSON.readTree(s.results());saved.put("schemaVersion",plan.schemaVersion());
+        int position=0;
+        for(int repeat=1;repeat<=2;repeat++) for(var t:plan.tasks())
+            for(String arm:repeat==1?java.util.List.of("BASELINE","COMPARISON"):java.util.List.of("COMPARISON","BASELINE")) {
+                var call=(tools.jackson.databind.node.ObjectNode)saved.path("results").get(position++).path("calls").get(0);
+                call.put("system",t.baselineSystem());call.set("input",JSON.readTree(UtteranceDirectionTrial.requestInput(plan,t,arm.equals("COMPARISON"))));
+            }
+        var replay=OfflineDecisionContractAudit.auditDirectWriting(JSON.valueToTree(plan),saved);
+        assertThat(replay).containsEntry("providerCalls",0).containsEntry("historicalContractDrift",0)
+                .containsEntry("schemaVersion","offline-neutral-hypothesis-provenance-1");
+        assertThat((java.util.List<?>)replay.get("rows")).hasSize(56);
+        var call=(tools.jackson.databind.node.ObjectNode)saved.path("results").get(1).path("calls").get(0);
+        call.set("input",JSON.readTree(plan.tasks().get(0).input()));
+        assertThatThrownBy(() -> OfflineDecisionContractAudit.auditDirectWriting(JSON.valueToTree(plan),saved))
+                .hasMessageContaining("request/label mismatch");
+    }
 }
