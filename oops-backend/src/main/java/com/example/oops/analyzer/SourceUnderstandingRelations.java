@@ -8,6 +8,7 @@ final class SourceUnderstandingRelations {
     static final Set<String> RELATIONS=Set.of("MEANING_ANSWER","ANSWER","QUOTATION","OTHER","NONE","UNRESOLVED");
     static final Set<String> ABOUT=Set.of("EXPRESSION_MEANING","PERSON_OR_BODY","OTHER","UNRESOLVED");
     static final Set<String> OWNERS=Set.of("SELF","ADDRESSEE","OTHER","UNRESOLVED","NOT_APPLICABLE");
+    private static final String EXAMPLE="\"sourceUnderstanding\":{\"acts\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"contextIds\":[]}],\"relations\":[{\"segmentId\":\"anchorId\",\"actType\":\"같은 행위 유형\",\"relation\":\"실제 관계 유형\",\"respondsToId\":null,\"about\":\"실제 대화 대상 종류\",\"aboutIds\":[\"anchorId\"],\"actionOwner\":\"실제 행동 주체 유형\",\"ownerIds\":[]}]}";
     private static final String INSTRUCTIONS="""
             각 항목은 assessment 전에 sourceUnderstanding={"acts":[...],"relations":[...]}을 반환한다.
               사고 과정·원문 재작성 없이 현재 발화 행위와 문장 간 관계를 원문 ID로만 기록한다.
@@ -46,8 +47,16 @@ final class SourceUnderstandingRelations {
     }
 
     static String fromV1Prompt(String v1) {
-        return fromV1Prompt(v1,INSTRUCTIONS,
-                "\"sourceUnderstanding\":{\"acts\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"contextIds\":[]}],\"relations\":[{\"segmentId\":\"anchorId\",\"actType\":\"같은 행위 유형\",\"relation\":\"실제 관계 유형\",\"respondsToId\":null,\"about\":\"실제 대화 대상 종류\",\"aboutIds\":[\"anchorId\"],\"actionOwner\":\"실제 행동 주체 유형\",\"ownerIds\":[]}]}");
+        return fromV1Prompt(v1,INSTRUCTIONS,EXAMPLE);
+    }
+    static String fromV2Prompt(String v2,String instructions,String outputExample) {
+        int boundary=v2.indexOf("# 대상 필드 형식 예시");
+        if(boundary<0) throw new IllegalArgumentException("Known verification output boundary required");
+        String body=v2.substring(0,boundary);
+        if(body.indexOf(INSTRUCTIONS)<0 || body.indexOf(INSTRUCTIONS)!=body.lastIndexOf(INSTRUCTIONS)
+                || body.indexOf(EXAMPLE)<0 || body.indexOf(EXAMPLE)!=body.lastIndexOf(EXAMPLE))
+            throw new IllegalArgumentException("Known v2 relation contract required");
+        return body.replace(INSTRUCTIONS,instructions).replace(EXAMPLE,outputExample)+v2.substring(boundary);
     }
     static String fromV1Prompt(String v1,String instructions,String outputExample) {
         int boundary=v1.indexOf("# 대상 필드 형식 예시");

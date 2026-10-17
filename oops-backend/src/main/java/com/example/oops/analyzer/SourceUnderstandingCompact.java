@@ -5,6 +5,7 @@ import java.util.List;
 /** Single canonical act/relation list. Provenance validation is not semantic consistency validation. */
 final class SourceUnderstandingCompact {
     static final String VERSION="source-understanding-relations-v3";
+    private static final String EXAMPLE="\"sourceUnderstanding\":{\"relations\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"relation\":\"관계 유형\",\"respondsToId\":null,\"about\":\"실제 대화 대상 종류\",\"aboutIds\":[\"anchorId\"],\"actionOwner\":\"실제 행동 주체 유형\",\"ownerIds\":[]}]}";
     private static final String OUTPUT="""
             assessment 전에 sourceUnderstanding={"relations":[...]}을 반환한다. acts/contextIds는 쓰지 않는다.
               anchor와 해석에 필요한 줄만 선택하고 전체 raw·사고 과정·원문 재작성은 반환하지 않는다.
@@ -37,8 +38,10 @@ final class SourceUnderstandingCompact {
         return fromV1Prompt(SourceUnderstandingContract.prompt(baseline));
     }
     static String fromV1Prompt(String v1) {
-        return SourceUnderstandingRelations.fromV1Prompt(v1,OUTPUT,
-                "\"sourceUnderstanding\":{\"relations\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"relation\":\"관계 유형\",\"respondsToId\":null,\"about\":\"실제 대화 대상 종류\",\"aboutIds\":[\"anchorId\"],\"actionOwner\":\"실제 행동 주체 유형\",\"ownerIds\":[]}]}");
+        return SourceUnderstandingRelations.fromV1Prompt(v1,OUTPUT,EXAMPLE);
+    }
+    static String fromV2Prompt(String v2) {
+        return SourceUnderstandingRelations.fromV2Prompt(v2,OUTPUT,EXAMPLE);
     }
     static String failure(SourceUnderstanding reading,CandidateReviewEngine.Candidate candidate) {
         if(reading.acts()!=null) return "UNEXPECTED_SOURCE_UNDERSTANDING_ACTS";

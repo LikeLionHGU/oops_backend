@@ -277,7 +277,7 @@ public final class OfflineDecisionContractAudit {
                 row.put("provenance",targetProvenance(actualTask,output));
                 row.put("counterfactuals",targetIdProbes(actualTask,output,(String)replay.get("failureCode")));rows.add(row);
             }
-        return Map.of("schemaVersion",UtteranceDirectionTrial.relations(plan)?"offline-source-relations-v2-provenance-1":UtteranceDirectionTrial.understanding(plan)?"offline-source-understanding-provenance-1":UtteranceDirectionTrial.situationFirst(plan)?"offline-situation-first-provenance-1":evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
+        return Map.of("schemaVersion",UtteranceDirectionTrial.compact(plan)?"offline-source-relations-v3-provenance-1":UtteranceDirectionTrial.relations(plan)?"offline-source-relations-v2-provenance-1":UtteranceDirectionTrial.understanding(plan)?"offline-source-understanding-provenance-1":UtteranceDirectionTrial.situationFirst(plan)?"offline-situation-first-provenance-1":evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
                 "semanticCorrectnessAutomaticallyEstablished",false,"contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
     }
 
@@ -291,7 +291,8 @@ public final class OfflineDecisionContractAudit {
                 || EvidenceContextComparison.VERSION.equals(planNode.path("schemaVersion").asText())
                 || SituationFirstComparison.VERSION.equals(planNode.path("schemaVersion").asText())
                 || SourceUnderstandingComparison.VERSION.equals(planNode.path("schemaVersion").asText())
-                || SourceRelationsComparison.VERSION.equals(planNode.path("schemaVersion").asText());
+                || SourceRelationsComparison.VERSION.equals(planNode.path("schemaVersion").asText())
+                || CompactRelationsComparison.VERSION.equals(planNode.path("schemaVersion").asText());
         if (factorial || direct) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen study plan hash mismatch");
         var report = new LinkedHashMap<>(direct?auditDirectWriting(planNode,savedNode):factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
         report.put("planSha256", ReferenceOnlyTrial.sha(plan));
