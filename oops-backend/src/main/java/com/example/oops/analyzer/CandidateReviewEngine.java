@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-17-pass-context-scope-41";
-    static final String RELATION_REVISION = "2026-10-17-source-relations-pass-context-41";
+    static final String REVISION = "2026-10-17-target-mention-boundary-42";
+    static final String RELATION_REVISION = "2026-10-17-source-relations-target-boundary-42";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -777,7 +777,7 @@ final class CandidateReviewEngine {
         String mention = d.targetMention() == null ? d.target() : d.targetMention();
         var evidence = d.evidence() == null ? List.<TextReviewEngine.LlmEvidence>of() : d.evidence();
         var targets = evidence.stream().filter(e -> e != null && "TARGET".equals(e.role())).toList();
-        var matches = targets.stream().filter(e -> e.quote() != null && mention != null && e.quote().contains(mention)).toList();
+        var matches = targets.stream().filter(e -> TargetMentionBoundary.matches(e.quote(),mention)).toList();
         Set<String> mentionIds = new HashSet<>(); matches.forEach(e -> mentionIds.add(e.segmentId()));
         int separate = (int) evidence.stream().filter(e -> e != null && "CONTEXT".equals(e.role())
                 && !mentionIds.contains(e.segmentId()) && e.quote() != null && !e.quote().isBlank()).count();
