@@ -3,7 +3,9 @@ package com.example.oops.analyzer;
 import java.util.*;
 
 /** Model-reported speech acts and source IDs, not verified facts, speaker identities or risk labels. */
-public record SourceUnderstanding(List<ActReading> acts,
+public record SourceUnderstanding(
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        List<ActReading> acts,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         List<RelationReading> relations) {
     static final Set<String> TYPES = Set.of("TERM_EXPLANATION", "QUOTED_SPEECH", "DIRECT_REQUEST",

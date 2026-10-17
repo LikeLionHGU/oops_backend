@@ -46,16 +46,23 @@ final class SourceUnderstandingRelations {
     }
 
     static String fromV1Prompt(String v1) {
+        return fromV1Prompt(v1,INSTRUCTIONS,
+                "\"sourceUnderstanding\":{\"acts\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"contextIds\":[]}],\"relations\":[{\"segmentId\":\"anchorId\",\"actType\":\"같은 행위 유형\",\"relation\":\"실제 관계 유형\",\"respondsToId\":null,\"about\":\"실제 대화 대상 종류\",\"aboutIds\":[\"anchorId\"],\"actionOwner\":\"실제 행동 주체 유형\",\"ownerIds\":[]}]}");
+    }
+    static String fromV1Prompt(String v1,String instructions,String outputExample) {
         int boundary=v1.indexOf("# 대상 필드 형식 예시");
+        if(boundary<0) throw new IllegalArgumentException("Known verification output boundary required");
         String body=v1.substring(0,boundary);
         String example="\"sourceUnderstanding\":{\"acts\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"contextIds\":[]}]}";
         if(body.indexOf(SourceUnderstandingContract.OUTPUT)<0 || body.indexOf(example)<0
                 || body.indexOf(example)!=body.lastIndexOf(example)) throw new IllegalArgumentException("Known act contract required");
-        return body.replace(SourceUnderstandingContract.OUTPUT,INSTRUCTIONS).replace(example,
-                "\"sourceUnderstanding\":{\"acts\":[{\"segmentId\":\"anchorId\",\"actType\":\"실제 행위 유형\",\"contextIds\":[]}],\"relations\":[{\"segmentId\":\"anchorId\",\"actType\":\"같은 행위 유형\",\"relation\":\"실제 관계 유형\",\"respondsToId\":null,\"about\":\"실제 대화 대상 종류\",\"aboutIds\":[\"anchorId\"],\"actionOwner\":\"실제 행동 주체 유형\",\"ownerIds\":[]}]}")
+        return body.replace(SourceUnderstandingContract.OUTPUT,instructions).replace(example,outputExample)
                 +v1.substring(boundary);
     }
     static String failure(SourceUnderstanding reading,CandidateReviewEngine.Candidate candidate) {
+        return failure(reading,candidate,true);
+    }
+    static String failure(SourceUnderstanding reading,CandidateReviewEngine.Candidate candidate,boolean requireContextCopy) {
         var links=reading.relations();
         Map<List<String>,Set<String>> contexts=new HashMap<>();
         reading.acts().forEach(a -> contexts.put(List.of(a.segmentId(),a.actType()),new HashSet<>(a.contextIds())));
@@ -72,7 +79,7 @@ final class SourceUnderstandingRelations {
                     || link.actionOwner()==null || !OWNERS.contains(link.actionOwner())) return "SOURCE_RELATION_READING_TYPE";
             boolean unlinked=Set.of("NONE","UNRESOLVED").contains(link.relation());
             if(unlinked ? link.respondsToId()!=null : link.respondsToId()==null || !allowed.contains(link.respondsToId())
-                    || link.segmentId().equals(link.respondsToId()) || !contexts.get(key).contains(link.respondsToId()))
+                    || link.segmentId().equals(link.respondsToId()) || requireContextCopy && !contexts.get(key).contains(link.respondsToId()))
                 return "SOURCE_RELATION_READING_LINK";
             if(!ids(link.aboutIds(),allowed) || !"UNRESOLVED".equals(link.about()) && link.aboutIds().isEmpty())
                 return "SOURCE_RELATION_READING_ABOUT";

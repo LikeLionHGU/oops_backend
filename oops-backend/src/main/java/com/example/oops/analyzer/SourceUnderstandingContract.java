@@ -4,14 +4,19 @@ package com.example.oops.analyzer;
 final class SourceUnderstandingContract {
     static final String VERSION = "source-understanding-v1";
     enum Version {
-        ACTS_V1, RELATIONS_V2;
+        ACTS_V1, RELATIONS_V2, RELATIONS_V3;
         static Version config(String value) {
             if("acts-v1".equals(value)) return ACTS_V1;
             if("relations-v2".equals(value)) return RELATIONS_V2;
-            throw new IllegalArgumentException("Source understanding contract must be acts-v1 or relations-v2");
+            if("relations-v3".equals(value)) return RELATIONS_V3;
+            throw new IllegalArgumentException("Source understanding contract must be acts-v1, relations-v2 or relations-v3");
         }
     }
-    static String version(Version version) { return version==Version.RELATIONS_V2?SourceUnderstandingRelations.VERSION:VERSION; }
+    static String version(Version version) { return switch(version) {
+        case ACTS_V1 -> VERSION;
+        case RELATIONS_V2 -> SourceUnderstandingRelations.VERSION;
+        case RELATIONS_V3 -> SourceUnderstandingCompact.VERSION;
+    }; }
     private static final String JSON_START = "JSON: {\"verifications\":[{\"candidateId\":\"요청 후보 ID\",\"assessment\":{";
     private static final String PREVIOUS_OUTPUT = """
             별도 사고 과정·새 JSON 필드는 반환하지 않는다. 기존 reason과 alternativeInterpretation에
@@ -41,7 +46,11 @@ final class SourceUnderstandingContract {
         return fromOrderedPrompt(SituationFirstVerification.prompt(baseline));
     }
     static String prompt(String baseline,Version version) {
-        return version==Version.RELATIONS_V2?SourceUnderstandingRelations.prompt(baseline):prompt(baseline);
+        return switch(version) {
+            case ACTS_V1 -> prompt(baseline);
+            case RELATIONS_V2 -> SourceUnderstandingRelations.prompt(baseline);
+            case RELATIONS_V3 -> SourceUnderstandingCompact.prompt(baseline);
+        };
     }
     static String fromOrderedPrompt(String ordered) {
         if (!ordered.startsWith(CandidateReviewPrompts.POLICY) || !ordered.contains("# 상황 이해 → 비판 해석 → 정상 해석 대조"))
@@ -64,6 +73,7 @@ final class SourceUnderstandingContract {
     static String failure(CandidateReviewEngine.Candidate candidate, SourceUnderstanding understanding, boolean enabled,Version version) {
         if (!enabled) return understanding == null ? null : "UNEXPECTED_SOURCE_UNDERSTANDING";
         if(understanding==null) return "SOURCE_UNDERSTANDING_REQUIRED";
+        if(version==Version.RELATIONS_V3) return SourceUnderstandingCompact.failure(understanding,candidate);
         String failure=understanding.failure(candidate);if(failure!=null) return failure;
         return version==Version.RELATIONS_V2?SourceUnderstandingRelations.failure(understanding,candidate)
                 :understanding.relations()==null?null:"UNEXPECTED_SOURCE_RELATION_READINGS";
