@@ -231,6 +231,16 @@ tasks.register('prepareDefaultVerificationPlan', JavaExec) {
 }
 
 // Only the newly approved, SHA-pinned default-path comparison; no production feature flag.
+tasks.register('prepareCurrentRequestCounterevidencePlan', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentRequestCounterevidencePlan'
+    doFirst {
+        args(providers.gradleProperty('counterBaseline').get(), providers.gradleProperty('counterBundle').get(),
+                providers.gradleProperty('counterOutput').get())
+    }
+}
+
 tasks.register('runDefaultVerificationTrial', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
