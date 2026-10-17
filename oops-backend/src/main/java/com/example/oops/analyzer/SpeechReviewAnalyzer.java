@@ -131,6 +131,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private boolean sourceRelationsEnabled;
     private boolean finalReviewBasisEnabled;
     private boolean situationFirstEnabled;
+    private boolean sourceUnderstandingEnabled;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setSourceUnderstandingEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.source-understanding-enabled:false}") boolean enabled) {
+        this.sourceUnderstandingEnabled=enabled;
+    }
     @org.springframework.beans.factory.annotation.Autowired
     void setSituationFirstEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.situation-first-verification-enabled:false}") boolean enabled) {
         this.situationFirstEnabled=enabled;
@@ -227,7 +232,8 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
             return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary,
-                    trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter, finalReviewBasisEnabled, situationFirstEnabled);
+                    trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter,
+                    new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,situationFirstEnabled,sourceUnderstandingEnabled));
         }
     }
 

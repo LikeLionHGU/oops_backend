@@ -67,8 +67,17 @@ final class CandidateReviewEngine {
     }
     public record Verification(String candidateId, TextReviewEngine.LlmDecision assessment,
                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-                               ReviewBasis reviewBasis) {
-        public Verification(String id,TextReviewEngine.LlmDecision assessment) { this(id,assessment,null); }
+                               ReviewBasis reviewBasis,
+                               @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                               SourceUnderstanding sourceUnderstanding) {
+        public Verification(String id,TextReviewEngine.LlmDecision assessment) { this(id,assessment,null,null); }
+        public Verification(String id,TextReviewEngine.LlmDecision assessment,ReviewBasis basis) { this(id,assessment,basis,null); }
+    }
+    record VerificationFeatures(boolean finalBasis, boolean situationFirst, boolean sourceUnderstanding) {}
+    static String verificationSystem(String baseline, VerificationFeatures features) {
+        String system = features.finalBasis() ? FinalReviewBasisContract.prompt(baseline) : baseline;
+        return features.sourceUnderstanding() ? SourceUnderstandingContract.prompt(system)
+                : features.situationFirst() ? SituationFirstVerification.prompt(system) : system;
     }
     public record ProposalRepairResult(Proposal proposal) {}
     public record VerificationResult(List<Verification> verifications) {}
@@ -130,6 +139,14 @@ final class CandidateReviewEngine {
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
                                       boolean sourceRelationsEnabled, ContextMechanismRouter router, boolean finalReviewBasisEnabled,
                                       boolean situationFirstEnabled) {
+        return run(client,context,maxCandidates,visual,caseLibrary,guidelines,requestTrace,evidenceLimit,
+                sourceRelationsEnabled,router,new VerificationFeatures(finalReviewBasisEnabled,situationFirstEnabled,false));
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
+                                      boolean sourceRelationsEnabled, ContextMechanismRouter router, VerificationFeatures features) {
+        boolean finalReviewBasisEnabled = features.finalBasis();
         if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
@@ -138,7 +155,8 @@ final class CandidateReviewEngine {
         var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
-        if(situationFirstEnabled) stats.revision += "+"+SituationFirstVerification.VERSION;
+        if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.VERSION;
+        else if(features.situationFirst()) stats.revision += "+"+SituationFirstVerification.VERSION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
@@ -305,8 +323,7 @@ final class CandidateReviewEngine {
             int failuresBefore = client.failureCount();
             String requestSystem = (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
                     : SourceRelationPrompts.verification(evidenceLimit)) + guidelinePrompt;
-            if(finalReviewBasisEnabled) requestSystem=FinalReviewBasisContract.prompt(requestSystem);
-            if(situationFirstEnabled) requestSystem=SituationFirstVerification.prompt(requestSystem);
+            requestSystem=verificationSystem(requestSystem,features);
             String requestInput = verificationRequest(group, null, null, finalReviewBasisEnabled);
             try {
                 response = client.completeAsJson(requestSystem, requestInput,
@@ -331,14 +348,15 @@ final class CandidateReviewEngine {
             for (var c : group) {
                 var matches = returned == null || returned.verifications() == null ? List.<Verification>of()
                         : returned.verifications().stream().filter(v -> v != null && c.candidateId().equals(v.candidateId())).toList();
-                Validation validation = matches.size() == 1 ? FinalReviewBasisContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled)
+                Validation validation = matches.size() == 1 ? SourceUnderstandingContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding())
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
                 stats.evidenceCount(c, "INITIAL", matches.size() == 1 ? matches.get(0).assessment() : null,
-                        evidenceLimit, validation.failureCode(), finalReviewBasisEnabled, matches.size()==1?matches.get(0).reviewBasis():null);
+                        evidenceLimit, validation.failureCode(), finalReviewBasisEnabled, matches.size()==1?matches.get(0).reviewBasis():null,
+                        features.sourceUnderstanding(),matches.size()==1?matches.get(0).sourceUnderstanding():null);
                 if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                         validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
-                                matches.size() == 1 ? matches.get(0).assessment() : null, finalReviewBasisEnabled, situationFirstEnabled);
+                                matches.size() == 1 ? matches.get(0).assessment() : null, features);
                     } else if (stats.repairs.size() < MAX_TRACES) {
                         stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
                                 validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
@@ -504,7 +522,8 @@ final class CandidateReviewEngine {
     }
     private static Validation repairContract(OpenAiClient client, Candidate c, ReviewInput input,
                                              String reference, Stats stats, String initial, int evidenceLimit,
-                                             TextReviewEngine.LlmDecision previous, boolean finalReviewBasisEnabled, boolean situationFirstEnabled) {
+                                             TextReviewEngine.LlmDecision previous, VerificationFeatures features) {
+        boolean finalReviewBasisEnabled=features.finalBasis();
         stats.repairCalls++; stats.verificationCalls++;
         Validation result;
         TextReviewEngine.LlmDecision repaired = null;
@@ -512,8 +531,7 @@ final class CandidateReviewEngine {
         try {
             var correction = repairPrompt(initial);
             String system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
-            if(finalReviewBasisEnabled) system=FinalReviewBasisContract.prompt(system);
-            if(situationFirstEnabled) system=SituationFirstVerification.prompt(system);
+            system=verificationSystem(system,features);
             var response = client.completeAsJson(system,
                     verificationRequest(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
@@ -524,13 +542,15 @@ final class CandidateReviewEngine {
                 result = invalid("REPAIR_RESPONSE_SHAPE");
             else {
                 repaired = response.verifications().get(0).assessment();
-                result = FinalReviewBasisContract.validate(c, response.verifications().get(0), input, evidenceLimit,finalReviewBasisEnabled);
+                result = SourceUnderstandingContract.validate(c, response.verifications().get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding());
             }
             stats.evidenceCount(c, "REPAIR", response != null && response.verifications() != null
                     && response.verifications().size() == 1 && response.verifications().get(0) != null
                     ? response.verifications().get(0).assessment() : null, evidenceLimit, result.failureCode(), finalReviewBasisEnabled,
                     response!=null && response.verifications()!=null && response.verifications().size()==1 && response.verifications().get(0)!=null
-                            ?response.verifications().get(0).reviewBasis():null);
+                            ?response.verifications().get(0).reviewBasis():null,
+                    features.sourceUnderstanding(),response!=null && response.verifications()!=null && response.verifications().size()==1 && response.verifications().get(0)!=null
+                            ?response.verifications().get(0).sourceUnderstanding():null);
         } catch (RuntimeException ex) { result = invalid("REQUEST_EXCEPTION"); }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
                 c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode(),
@@ -809,7 +829,7 @@ final class CandidateReviewEngine {
                     ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal())),reference.routingLink()));
         }
         void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure,
-                           boolean finalReviewBasisEnabled,ReviewBasis basis) {
+                           boolean finalReviewBasisEnabled,ReviewBasis basis,boolean understandingEnabled,SourceUnderstanding understanding) {
             if (evidenceCounts.size() >= MAX_TRACES) return;
             Set<String> segments = new HashSet<>();
             Set<List<String>> pairs = new HashSet<>();
@@ -826,10 +846,13 @@ final class CandidateReviewEngine {
             var basisTrace=finalReviewBasisEnabled ? new CandidateReviewDiagnostics.ReviewBasisTrace(
                     c.proposal().axis(),returnedAxis,basis!=null,
                     basis==null || basis.evidenceIds()==null?null:basis.evidenceIds().size(),failure==null) : null;
+            String understandingFailure=SourceUnderstandingContract.failure(c,understanding,understandingEnabled);
+            var understandingTrace=understandingEnabled ? new CandidateReviewDiagnostics.SourceUnderstandingTrace(
+                    understanding!=null,understandingFailure,understandingFailure==null?understanding:null) : null;
             evidenceCounts.add(new CandidateReviewDiagnostics.EvidenceCountTrace(c.candidateId(), attempt,
                     d == null || d.evidence() == null ? null : d.evidence().size(), segments.size(), pairs.size(),
                     duplicates, invalid, limit, failure,
-                    d == null ? null : inspectTarget(filled(c, d)),basisTrace));
+                    d == null ? null : inspectTarget(filled(c, d)),basisTrace,understandingTrace));
         }
         ReviewGuidelineLibrary.Trace guidelineReference;
         void invalidProposal(String id, Proposal p, TextReviewBatchPlanner.Batch batch,

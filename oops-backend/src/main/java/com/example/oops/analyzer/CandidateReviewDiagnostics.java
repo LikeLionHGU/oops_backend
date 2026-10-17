@@ -39,7 +39,12 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
                                      int invalidEntries, int configuredLimit, String validationFailure,
                                      TargetContractTrace targetContract,
                                      @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-                                     ReviewBasisTrace reviewBasis) {
+                                     ReviewBasisTrace reviewBasis,
+                                     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                     SourceUnderstandingTrace sourceUnderstanding) {
+        public EvidenceCountTrace(String id,String attempt,Integer count,int segments,int roles,int duplicates,int invalid,int limit,String failure,TargetContractTrace target,ReviewBasisTrace basis) {
+            this(id,attempt,count,segments,roles,duplicates,invalid,limit,failure,target,basis,null);
+        }
         public EvidenceCountTrace(String id,String attempt,Integer count,int segments,int roles,int duplicates,int invalid,int limit,String failure,TargetContractTrace target) {
             this(id,attempt,count,segments,roles,duplicates,invalid,limit,failure,target,null);
         }
@@ -48,6 +53,8 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
             this(id, attempt, count, segments, roles, duplicates, invalid, limit, failure, null);
         }
     }
+    /** Contract metadata only, not semantic correctness or raw model rationale. */
+    public record SourceUnderstandingTrace(boolean provided,String contractFailure,SourceUnderstanding reading) {}
     /** Contract metadata only, not semantic correctness or raw model rationale. */
     public record ReviewBasisTrace(String discoveryAxis,String returnedAxis,boolean basisProvided,Integer evidenceIdCount,boolean contractAccepted) {}
     /** Field/role checks, not a semantic validation of the target or a stored raw response. */
