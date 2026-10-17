@@ -244,12 +244,14 @@ public final class OfflineDecisionContractAudit {
     static Map<String,Object> auditDirectWriting(JsonNode planNode,JsonNode saved) throws Exception {
         var plan=JSON.treeToValue(planNode,UtteranceDirectionTrial.Plan.class);UtteranceDirectionTrial.validate(plan);
         boolean neutral=UtteranceDirectionTrial.neutral(plan);
-        check((UtteranceDirectionTrial.direct(plan) || neutral) && plan.schemaVersion().equals(saved.path("schemaVersion").asText())
-                && "COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==56
-                && saved.path("results").size()==56,"Complete direct-writing study required");
+        boolean evidenceContext=UtteranceDirectionTrial.evidenceContext(plan);
+        int expected=UtteranceDirectionTrial.maxAttempts(plan);
+        check((UtteranceDirectionTrial.direct(plan) || neutral || evidenceContext) && plan.schemaVersion().equals(saved.path("schemaVersion").asText())
+                && "COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==expected
+                && saved.path("results").size()==expected,"Complete fixed verification study required");
         var rows=new ArrayList<Map<String,Object>>();int position=0;
         for(int repeat=1;repeat<=2;repeat++) for(var task:plan.tasks())
-            for(String arm:repeat==1?List.of("BASELINE","COMPARISON"):List.of("COMPARISON","BASELINE")) {
+            for(String arm:UtteranceDirectionTrial.arms(plan,task,repeat)) {
                 var result=saved.path("results").get(position++);
                 check(task.id().equals(result.path("caseId").asText()) && repeat==result.path("repeat").asInt()
                         && arm.equals(result.path("arm").asText()) && result.path("calls").size()==1,"Frozen ordered direct-writing tuple required");
@@ -269,7 +271,7 @@ public final class OfflineDecisionContractAudit {
                 row.put("provenance",targetProvenance(actualTask,output));
                 row.put("counterfactuals",targetIdProbes(actualTask,output,(String)replay.get("failureCode")));rows.add(row);
             }
-        return Map.of("schemaVersion",neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
+        return Map.of("schemaVersion",evidenceContext?"offline-evidence-context-provenance-1":neutral?"offline-neutral-hypothesis-provenance-1":"offline-direct-writing-provenance-1","providerCalls",0,"historicalContractDrift",0,
                 "semanticCorrectnessAutomaticallyEstablished",false,"contractFailureCodes",counts(rows,"contractFailureCode"),"rows",rows);
     }
 
@@ -279,7 +281,8 @@ public final class OfflineDecisionContractAudit {
         var planNode=JSON.readTree(plan);var savedNode=JSON.readTree(saved);
         boolean factorial=VerificationFactorialPlan.VERSION.equals(planNode.path("schemaVersion").asText());
         boolean direct=DirectTargetWritingComparison.VERSION.equals(planNode.path("schemaVersion").asText())
-                || NeutralHypothesisComparison.VERSION.equals(planNode.path("schemaVersion").asText());
+                || NeutralHypothesisComparison.VERSION.equals(planNode.path("schemaVersion").asText())
+                || EvidenceContextComparison.VERSION.equals(planNode.path("schemaVersion").asText());
         if (factorial || direct) check(ReferenceOnlyTrial.sha(plan).equals(savedNode.path("planSha256").asText()),"Frozen study plan hash mismatch");
         var report = new LinkedHashMap<>(direct?auditDirectWriting(planNode,savedNode):factorial?auditFactorial(planNode,savedNode):audit(planNode,savedNode));
         report.put("planSha256", ReferenceOnlyTrial.sha(plan));
