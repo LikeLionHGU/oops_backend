@@ -3,12 +3,19 @@ package com.example.oops.analyzer;
 import java.util.*;
 
 /** Model-reported speech acts and source IDs, not verified facts, speaker identities or risk labels. */
-public record SourceUnderstanding(List<ActReading> acts) {
+public record SourceUnderstanding(List<ActReading> acts,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        List<RelationReading> relations) {
     static final Set<String> TYPES = Set.of("TERM_EXPLANATION", "QUOTED_SPEECH", "DIRECT_REQUEST",
             "SELF_DESCRIPTION", "SELF_OFFER", "EVALUATION", "OTHER", "UNRESOLVED");
-    public SourceUnderstanding { acts = copy(acts); }
+    public SourceUnderstanding { acts = copy(acts); relations = copy(relations); }
+    public SourceUnderstanding(List<ActReading> acts) { this(acts,null); }
     public record ActReading(String segmentId, String actType, List<String> contextIds) {
         public ActReading { contextIds = copy(contextIds); }
+    }
+    public record RelationReading(String segmentId,String actType,String relation,String respondsToId,String about,
+                                  List<String> aboutIds,String actionOwner,List<String> ownerIds) {
+        public RelationReading { aboutIds=copy(aboutIds); ownerIds=copy(ownerIds); }
     }
     private static <T> List<T> copy(List<T> values) {
         return values == null ? null : Collections.unmodifiableList(new ArrayList<>(values));

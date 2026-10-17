@@ -73,10 +73,15 @@ final class CandidateReviewEngine {
         public Verification(String id,TextReviewEngine.LlmDecision assessment) { this(id,assessment,null,null); }
         public Verification(String id,TextReviewEngine.LlmDecision assessment,ReviewBasis basis) { this(id,assessment,basis,null); }
     }
-    record VerificationFeatures(boolean finalBasis, boolean situationFirst, boolean sourceUnderstanding) {}
+    record VerificationFeatures(boolean finalBasis, boolean situationFirst, boolean sourceUnderstanding,SourceUnderstandingContract.Version understandingVersion) {
+        VerificationFeatures { Objects.requireNonNull(understandingVersion); }
+        VerificationFeatures(boolean basis,boolean situation,boolean understanding) {
+            this(basis,situation,understanding,SourceUnderstandingContract.Version.ACTS_V1);
+        }
+    }
     static String verificationSystem(String baseline, VerificationFeatures features) {
         String system = features.finalBasis() ? FinalReviewBasisContract.prompt(baseline) : baseline;
-        return features.sourceUnderstanding() ? SourceUnderstandingContract.prompt(system)
+        return features.sourceUnderstanding() ? SourceUnderstandingContract.prompt(system,features.understandingVersion())
                 : features.situationFirst() ? SituationFirstVerification.prompt(system) : system;
     }
     public record ProposalRepairResult(Proposal proposal) {}
@@ -155,7 +160,7 @@ final class CandidateReviewEngine {
         var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
-        if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.VERSION;
+        if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.version(features.understandingVersion());
         else if(features.situationFirst()) stats.revision += "+"+SituationFirstVerification.VERSION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
@@ -348,11 +353,11 @@ final class CandidateReviewEngine {
             for (var c : group) {
                 var matches = returned == null || returned.verifications() == null ? List.<Verification>of()
                         : returned.verifications().stream().filter(v -> v != null && c.candidateId().equals(v.candidateId())).toList();
-                Validation validation = matches.size() == 1 ? SourceUnderstandingContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding())
+                Validation validation = matches.size() == 1 ? SourceUnderstandingContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding(),features.understandingVersion())
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
                 stats.evidenceCount(c, "INITIAL", matches.size() == 1 ? matches.get(0).assessment() : null,
                         evidenceLimit, validation.failureCode(), finalReviewBasisEnabled, matches.size()==1?matches.get(0).reviewBasis():null,
-                        features.sourceUnderstanding(),matches.size()==1?matches.get(0).sourceUnderstanding():null);
+                        features.sourceUnderstanding(),matches.size()==1?matches.get(0).sourceUnderstanding():null,features.understandingVersion());
                 if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                         validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
@@ -542,7 +547,7 @@ final class CandidateReviewEngine {
                 result = invalid("REPAIR_RESPONSE_SHAPE");
             else {
                 repaired = response.verifications().get(0).assessment();
-                result = SourceUnderstandingContract.validate(c, response.verifications().get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding());
+                result = SourceUnderstandingContract.validate(c, response.verifications().get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding(),features.understandingVersion());
             }
             stats.evidenceCount(c, "REPAIR", response != null && response.verifications() != null
                     && response.verifications().size() == 1 && response.verifications().get(0) != null
@@ -550,7 +555,7 @@ final class CandidateReviewEngine {
                     response!=null && response.verifications()!=null && response.verifications().size()==1 && response.verifications().get(0)!=null
                             ?response.verifications().get(0).reviewBasis():null,
                     features.sourceUnderstanding(),response!=null && response.verifications()!=null && response.verifications().size()==1 && response.verifications().get(0)!=null
-                            ?response.verifications().get(0).sourceUnderstanding():null);
+                            ?response.verifications().get(0).sourceUnderstanding():null,features.understandingVersion());
         } catch (RuntimeException ex) { result = invalid("REQUEST_EXCEPTION"); }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
                 c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode(),
@@ -829,7 +834,7 @@ final class CandidateReviewEngine {
                     ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal())),reference.routingLink()));
         }
         void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure,
-                           boolean finalReviewBasisEnabled,ReviewBasis basis,boolean understandingEnabled,SourceUnderstanding understanding) {
+                           boolean finalReviewBasisEnabled,ReviewBasis basis,boolean understandingEnabled,SourceUnderstanding understanding,SourceUnderstandingContract.Version version) {
             if (evidenceCounts.size() >= MAX_TRACES) return;
             Set<String> segments = new HashSet<>();
             Set<List<String>> pairs = new HashSet<>();
@@ -846,7 +851,7 @@ final class CandidateReviewEngine {
             var basisTrace=finalReviewBasisEnabled ? new CandidateReviewDiagnostics.ReviewBasisTrace(
                     c.proposal().axis(),returnedAxis,basis!=null,
                     basis==null || basis.evidenceIds()==null?null:basis.evidenceIds().size(),failure==null) : null;
-            String understandingFailure=SourceUnderstandingContract.failure(c,understanding,understandingEnabled);
+            String understandingFailure=SourceUnderstandingContract.failure(c,understanding,understandingEnabled,version);
             var understandingTrace=understandingEnabled ? new CandidateReviewDiagnostics.SourceUnderstandingTrace(
                     understanding!=null,understandingFailure,understandingFailure==null?understanding:null) : null;
             evidenceCounts.add(new CandidateReviewDiagnostics.EvidenceCountTrace(c.candidateId(), attempt,

@@ -3,12 +3,21 @@ package com.example.oops.analyzer;
 /** Observability inside one verification response. Validates provenance/shape, never speech-act truth. */
 final class SourceUnderstandingContract {
     static final String VERSION = "source-understanding-v1";
+    enum Version {
+        ACTS_V1, RELATIONS_V2;
+        static Version config(String value) {
+            if("acts-v1".equals(value)) return ACTS_V1;
+            if("relations-v2".equals(value)) return RELATIONS_V2;
+            throw new IllegalArgumentException("Source understanding contract must be acts-v1 or relations-v2");
+        }
+    }
+    static String version(Version version) { return version==Version.RELATIONS_V2?SourceUnderstandingRelations.VERSION:VERSION; }
     private static final String JSON_START = "JSON: {\"verifications\":[{\"candidateId\":\"요청 후보 ID\",\"assessment\":{";
     private static final String PREVIOUS_OUTPUT = """
             별도 사고 과정·새 JSON 필드는 반환하지 않는다. 기존 reason과 alternativeInterpretation에
               판정에 필요한 원문 연결과 대조 결과만 간결하게 적고 나머지 출력 계약은 그대로 따른다.
             """;
-    private static final String OUTPUT = """
+    static final String OUTPUT = """
             각 검증 항목은 assessment 전에 sourceUnderstanding을 반환한다. 별도 사고 과정이 아니라
               현재 원문을 어떤 발화 행위로 읽었는지에 대한 짧은 분류와 근거 ID만 기록한다.
             sourceUnderstanding={"acts":[{"segmentId":"허용 원문 ID","actType":"아래 유형","contextIds":[]}]}.
@@ -31,6 +40,9 @@ final class SourceUnderstandingContract {
     static String prompt(String baseline) {
         return fromOrderedPrompt(SituationFirstVerification.prompt(baseline));
     }
+    static String prompt(String baseline,Version version) {
+        return version==Version.RELATIONS_V2?SourceUnderstandingRelations.prompt(baseline):prompt(baseline);
+    }
     static String fromOrderedPrompt(String ordered) {
         if (!ordered.startsWith(CandidateReviewPrompts.POLICY) || !ordered.contains("# 상황 이해 → 비판 해석 → 정상 해석 대조"))
             throw new IllegalArgumentException("Known situation-first prompt required");
@@ -47,14 +59,24 @@ final class SourceUnderstandingContract {
         return body + ordered.substring(boundary);
     }
     static String failure(CandidateReviewEngine.Candidate candidate, SourceUnderstanding understanding, boolean enabled) {
+        return failure(candidate,understanding,enabled,Version.ACTS_V1);
+    }
+    static String failure(CandidateReviewEngine.Candidate candidate, SourceUnderstanding understanding, boolean enabled,Version version) {
         if (!enabled) return understanding == null ? null : "UNEXPECTED_SOURCE_UNDERSTANDING";
-        return understanding == null ? "SOURCE_UNDERSTANDING_REQUIRED" : understanding.failure(candidate);
+        if(understanding==null) return "SOURCE_UNDERSTANDING_REQUIRED";
+        String failure=understanding.failure(candidate);if(failure!=null) return failure;
+        return version==Version.RELATIONS_V2?SourceUnderstandingRelations.failure(understanding,candidate)
+                :understanding.relations()==null?null:"UNEXPECTED_SOURCE_RELATION_READINGS";
     }
     static CandidateReviewEngine.Validation validate(CandidateReviewEngine.Candidate candidate,
             CandidateReviewEngine.Verification response, ReviewInput input, int limit, boolean finalBasis, boolean enabled) {
+        return validate(candidate,response,input,limit,finalBasis,enabled,Version.ACTS_V1);
+    }
+    static CandidateReviewEngine.Validation validate(CandidateReviewEngine.Candidate candidate,
+            CandidateReviewEngine.Verification response, ReviewInput input, int limit, boolean finalBasis, boolean enabled,Version version) {
         if (response == null || !candidate.candidateId().equals(response.candidateId()))
             return FinalReviewBasisContract.validate(candidate, response, input, limit, finalBasis);
-        String failure = failure(candidate, response.sourceUnderstanding(), enabled);
+        String failure = failure(candidate, response.sourceUnderstanding(), enabled,version);
         return failure == null ? FinalReviewBasisContract.validate(candidate, response, input, limit, finalBasis)
                 : new CandidateReviewEngine.Validation(null, failure);
     }
