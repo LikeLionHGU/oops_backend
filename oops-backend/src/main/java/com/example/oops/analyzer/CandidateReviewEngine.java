@@ -122,6 +122,14 @@ final class CandidateReviewEngine {
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
                                       boolean sourceRelationsEnabled, ContextMechanismRouter router, boolean finalReviewBasisEnabled) {
+        return run(client,context,maxCandidates,visual,caseLibrary,guidelines,requestTrace,evidenceLimit,
+                sourceRelationsEnabled,router,finalReviewBasisEnabled,false);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
+                                      boolean sourceRelationsEnabled, ContextMechanismRouter router, boolean finalReviewBasisEnabled,
+                                      boolean situationFirstEnabled) {
         if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
@@ -130,6 +138,7 @@ final class CandidateReviewEngine {
         var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
+        if(situationFirstEnabled) stats.revision += "+"+SituationFirstVerification.VERSION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
@@ -297,6 +306,7 @@ final class CandidateReviewEngine {
             String requestSystem = (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
                     : SourceRelationPrompts.verification(evidenceLimit)) + guidelinePrompt;
             if(finalReviewBasisEnabled) requestSystem=FinalReviewBasisContract.prompt(requestSystem);
+            if(situationFirstEnabled) requestSystem=SituationFirstVerification.prompt(requestSystem);
             String requestInput = verificationRequest(group, null, null, finalReviewBasisEnabled);
             try {
                 response = client.completeAsJson(requestSystem, requestInput,
@@ -328,7 +338,7 @@ final class CandidateReviewEngine {
                 if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                         validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
-                                matches.size() == 1 ? matches.get(0).assessment() : null, finalReviewBasisEnabled);
+                                matches.size() == 1 ? matches.get(0).assessment() : null, finalReviewBasisEnabled, situationFirstEnabled);
                     } else if (stats.repairs.size() < MAX_TRACES) {
                         stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
                                 validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
@@ -494,7 +504,7 @@ final class CandidateReviewEngine {
     }
     private static Validation repairContract(OpenAiClient client, Candidate c, ReviewInput input,
                                              String reference, Stats stats, String initial, int evidenceLimit,
-                                             TextReviewEngine.LlmDecision previous, boolean finalReviewBasisEnabled) {
+                                             TextReviewEngine.LlmDecision previous, boolean finalReviewBasisEnabled, boolean situationFirstEnabled) {
         stats.repairCalls++; stats.verificationCalls++;
         Validation result;
         TextReviewEngine.LlmDecision repaired = null;
@@ -503,6 +513,7 @@ final class CandidateReviewEngine {
             var correction = repairPrompt(initial);
             String system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
             if(finalReviewBasisEnabled) system=FinalReviewBasisContract.prompt(system);
+            if(situationFirstEnabled) system=SituationFirstVerification.prompt(system);
             var response = client.completeAsJson(system,
                     verificationRequest(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled), VerificationResult.class).orElse(null);
             if (response == null) result = invalid(client.failureCount() > failuresBefore
