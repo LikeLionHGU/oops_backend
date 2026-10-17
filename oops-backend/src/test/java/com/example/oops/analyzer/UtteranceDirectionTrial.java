@@ -28,9 +28,11 @@ public final class UtteranceDirectionTrial {
                 String runtimeSha256,String normalFixtureSha256,String relationFixtureSha256,List<Task> tasks) {}
     static boolean basis(Plan plan) { return BASIS_REVISION.equals(plan.schemaVersion()); }
     static boolean direct(Plan plan) { return DirectTargetWritingComparison.VERSION.equals(plan.schemaVersion()); }
+    static boolean neutral(Plan plan) { return NeutralHypothesisComparison.VERSION.equals(plan.schemaVersion()); }
     static void consent(Plan plan,String mode,String consent) {
         check(basis(plan)==mode.equals("run-basis") && direct(plan)==mode.equals("run-direct-writing")
-                        && (direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
+                        && neutral(plan)==mode.equals("run-neutral-hypothesis")
+                        && (neutral(plan)?NeutralHypothesisComparison.CONSENT:direct(plan)?DirectTargetWritingComparison.CONSENT:basis(plan)?BASIS_CONSENT:CONSENT).equals(consent),
                 "Selected contract and fresh cost/text approval required");
     }
     static Plan directPlan(byte[] factorialBytes,byte[] historyBytes) throws Exception {
@@ -59,6 +61,7 @@ public final class UtteranceDirectionTrial {
         validate(plan);return plan;
     }
     static String requestInput(Plan plan,Task task,boolean comparison) {
+        if(neutral(plan) && comparison) return NeutralHypothesisComparison.input(task.input());
         if(!basis(plan) || !comparison) return task.input();
         var input=(tools.jackson.databind.node.ObjectNode)JSON.readTree(task.input());
         input.put("verificationContract",FinalReviewBasisContract.VERSION);
@@ -123,20 +126,21 @@ public final class UtteranceDirectionTrial {
         validate(plan);return plan;
     }
     static void validate(Plan plan) throws Exception {
-        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan)) && "gpt-6-luna".equals(plan.model())
+        check((UtteranceDirectionPolicy.REVISION.equals(plan.schemaVersion()) || basis(plan) || direct(plan) || neutral(plan)) && "gpt-6-luna".equals(plan.model())
                 && plan.repeats()==2 && plan.estimatedCapUsd()==.50 && plan.tasks()!=null && plan.tasks().size()==14
                 && plan.tasks().stream().map(Task::id).distinct().count()==14,"Known 56-call plan required");
         check(ReferenceOnlyTrial.sha(fixture("/structured-search-boundaries.json")).equals(plan.normalFixtureSha256())
                 && ReferenceOnlyTrial.sha(fixture("/utterance-direction-boundaries.json")).equals(plan.relationFixtureSha256()),"Boundary fixtures changed");
         for(var task:plan.tasks()) {
-            check((direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
+            check((neutral(plan)?task.baselineSystem():direct(plan)?DirectTargetWritingComparison.comparison(task.baselineSystem()):basis(plan)?FinalReviewBasisContract.prompt(task.baselineSystem()):UtteranceDirectionPolicy.comparison(task.baselineSystem()))
                     .equals(task.comparisonSystem()),"Comparison changes only direction guidance or selected final basis contract");
             var input=JSON.readTree(task.input());
             check(input.path("raw").isArray() && !input.path("raw").isEmpty() && input.path("raw").size()<=48
                     && input.path("candidates").size()==1 && !input.has("repair") && !input.has("expectedDecision")
                     && !input.has("relationDraft") && !input.has("unsupportedInference") && !input.has("verificationContract"),"Fixed unlabeled verification input required");
         }
-        if(direct(plan)) {
+        if(neutral(plan)) plan.tasks().forEach(t -> NeutralHypothesisComparison.input(t.input()));
+        if(direct(plan) || neutral(plan)) {
             check(plan.tasks().stream().filter(t -> t.expectedDecision()!=null).count()==8
                     && plan.tasks().stream().filter(t -> "PASS".equals(t.expectedDecision())).count()==6
                     && plan.tasks().stream().filter(t -> "REVIEW_REQUIRED".equals(t.expectedDecision())).count()==2,
@@ -189,8 +193,8 @@ public final class UtteranceDirectionTrial {
                 "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false,"maxHttpAttempts",MAX_HTTP_ATTEMPTS)));
     }
     public static void main(String[] args) throws Exception {
-        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing").contains(args[0]) && args.length==4
-                        || Set.of("run","run-basis","run-direct-writing").contains(args[0]) && args.length==5),
+        check(args.length>=1 && (Set.of("prepare","prepare-basis","prepare-direct-writing","prepare-neutral-hypothesis").contains(args[0]) && args.length==4
+                        || Set.of("run","run-basis","run-direct-writing","run-neutral-hypothesis").contains(args[0]) && args.length==5),
                 "prepare saved-results runtime NEW-dir OR run plan approved-sha fresh-consent NEW-dir");
         Path output=Path.of(args[args.length-1]).toAbsolutePath().normalize();
         Path root=Path.of("../datasets/controversy/experiments").toRealPath();
@@ -198,7 +202,10 @@ public final class UtteranceDirectionTrial {
         if(args[0].startsWith("prepare")) {
             byte[] sourceBytes=OfflineDecisionContractAudit.bounded(Path.of(args[1])),secondBytes=OfflineDecisionContractAudit.bounded(Path.of(args[2]));
             if(args[0].equals("prepare-direct-writing")) check(ReferenceOnlyTrial.sha(sourceBytes).equals(DirectTargetWritingComparison.SOURCE_SHA),"Approved historical factorial source required");
-            var plan=args[0].equals("prepare-direct-writing")?directPlan(sourceBytes,secondBytes):prepare(sourceBytes,secondBytes);
+            if(args[0].equals("prepare-neutral-hypothesis")) check(ReferenceOnlyTrial.sha(sourceBytes).equals(NeutralHypothesisComparison.SOURCE_SHA)
+                    && ReferenceOnlyTrial.sha(secondBytes).equals(NeutralHypothesisComparison.RESULTS_SHA),"Frozen neutral comparison source/results required");
+            var plan=args[0].equals("prepare-neutral-hypothesis")?NeutralHypothesisComparison.prepare(sourceBytes,secondBytes)
+                    :args[0].equals("prepare-direct-writing")?directPlan(sourceBytes,secondBytes):prepare(sourceBytes,secondBytes);
             if(args[0].equals("prepare-basis")) plan=basisPlan(plan);
             Files.createDirectory(output);byte[] bytes=JSON.writeValueAsBytes(plan);
             Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
@@ -209,6 +216,7 @@ public final class UtteranceDirectionTrial {
         var plan=JSON.readValue(bytes,Plan.class);validate(plan);
         consent(plan,args[0],args[3]);
         if(direct(plan)) check(DirectTargetWritingComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Approved direct-writing source hash required");
+        if(neutral(plan)) check(NeutralHypothesisComparison.SOURCE_SHA.equals(plan.sourceSha256()),"Frozen neutral source hash required");
         String key=System.getenv("OPENAI_API_KEY");check(key!=null && !key.isBlank(),"OPENAI_API_KEY required; never print");
         Files.createDirectory(output);Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
         Files.writeString(output.resolve("authorization.json"),JSON.writeValueAsString(Map.of("newEstimatedCapUsd",.50,
