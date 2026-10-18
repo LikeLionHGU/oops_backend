@@ -219,6 +219,43 @@ tasks.register('structuredSearchBoundaryTrial', JavaExec) {
     }
 }
 
+// Freshly approved, isolated source-relation extraction; never part of runtime analysis.
+tasks.register('sourceRelationExtractionTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SourceRelationExtractionTrial'
+    doFirst {
+        def mode = providers.gradleProperty('relationTrialMode').orNull
+        if (mode == 'prepare') {
+            def input = providers.gradleProperty('relationTrialInput').orElse(
+                    '../datasets/controversy/evaluation/active-approved-dialogue-r01-v2-20261017/inputs.json').get()
+            def labels = providers.gradleProperty('relationTrialLabels').orElse(
+                    '../datasets/controversy/evaluation/active-approved-dialogue-r01-v2-20261017/labels.json').get()
+            def planDir = providers.gradleProperty('relationTrialPlanDir').orNull
+            if (!planDir) throw new GradleException('Set relationTrialPlanDir to a new private experiment directory')
+            args 'prepare', input, labels, planDir
+        } else if (mode == 'run') {
+            def plan = providers.gradleProperty('relationTrialPlan').orNull
+            def sha = providers.gradleProperty('relationTrialPlanSha').orNull
+            def consent = providers.gradleProperty('relationTrialConsent').orNull
+            def output = providers.gradleProperty('relationTrialOutput').orNull
+            if (providers.gradleProperty('relationTrialTextEgressApproved').orNull != 'true'
+                    || !plan || !sha || !consent || !output)
+                throw new GradleException('Paid run requires fresh text-egress approval, frozen plan SHA, exact consent and new private output')
+            args 'run', plan, sha, consent, output
+        } else if (mode == 'audit') {
+            def plan = providers.gradleProperty('relationTrialPlan').orNull
+            def results = providers.gradleProperty('relationTrialResults').orNull
+            def auditOutput = providers.gradleProperty('relationTrialAuditOutput').orNull
+            if (!plan || !results || !auditOutput)
+                throw new GradleException('Read-only audit requires a frozen plan, saved results, and a new private audit output')
+            args 'audit', plan, results, auditOutput
+        } else {
+            throw new GradleException('Set relationTrialMode=prepare, run, or audit')
+        }
+    }
+}
+
 // Fixed verification-only comparison; prepare is free, run requires a fresh USD0.50/text approval.
 // New default-path follow-up is deliberately prepare-only, without another live-mode flag.
 tasks.register('prepareDefaultVerificationPlan', JavaExec) {
