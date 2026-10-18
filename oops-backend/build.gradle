@@ -241,6 +241,19 @@ tasks.register('prepareCurrentRequestCounterevidencePlan', JavaExec) {
     }
 }
 
+tasks.register('runCurrentRequestCounterevidenceTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentRequestCounterevidenceTrial'
+    doFirst {
+        if (providers.gradleProperty('counterLiveApproved').orNull != 'true')
+            throw new GradleException('Fresh counterLiveApproved and exact-plan cost/text consent required')
+        args(['counterPlan','counterBaseline','counterBundle','counterPlanSha','counterConsent','counterOutput'].collect {
+            providers.gradleProperty(it).get()
+        })
+    }
+}
+
 tasks.register('runDefaultVerificationTrial', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath

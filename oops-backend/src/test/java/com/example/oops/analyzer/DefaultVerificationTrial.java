@@ -18,9 +18,12 @@ public final class DefaultVerificationTrial {
     static final String ENDPOINT="https://api.openai.com/v1/chat/completions";
     private DefaultVerificationTrial() {}
     static void claim(Path planFile,Path output) throws Exception {
+        claimRun(planFile,output,PLAN_SHA,CONSENT,56);
+    }
+    static void claimRun(Path planFile,Path output,String sha,String consent,int attempts) throws Exception {
         Files.writeString(planFile.toRealPath().getParent().resolve("execution-claim.json"),
-                JSON.writeValueAsString(Map.of("planSha256",PLAN_SHA,"consent",CONSENT,"output",output.toString(),
-                        "maxHttpAttempts",56,"resumable",false)),StandardOpenOption.CREATE_NEW);
+                JSON.writeValueAsString(Map.of("planSha256",sha,"consent",consent,"output",output.toString(),
+                        "maxHttpAttempts",attempts,"resumable",false)),StandardOpenOption.CREATE_NEW);
     }
     static DefaultVerificationPlan.Plan authorized(byte[] bytes,byte[] source,String sha,String consent) throws Exception {
         check(PLAN_SHA.equals(sha) && sha.equals(ReferenceOnlyTrial.sha(bytes)) && CONSENT.equals(consent),
@@ -41,15 +44,18 @@ public final class DefaultVerificationTrial {
         }
     }
     static String group(DefaultVerificationPlan.Request r) {
-        return r.expectedDecision()==null?"DRAFT_UNAPPROVED":r.caseId().startsWith("groq-v4-")?"ACTUAL_APPROVED":"SYNTHETIC_APPROVED";
+        return r.expectedDecision()==null?"DRAFT_UNAPPROVED":r.caseId().startsWith("groq-v4-") || r.caseId().startsWith("R01-")?"ACTUAL_APPROVED":"SYNTHETIC_APPROVED";
     }
     static Map<String,Object> audit(DefaultVerificationPlan.Plan plan,JsonNode saved) throws Exception {
-        check("COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==56
-                && PLAN_SHA.equals(saved.path("planSha256").asText()) && saved.path("results").size()==56,"Complete exact-plan results required");
+        return auditRequests(plan.requests(),PLAN_SHA,2,saved);
+    }
+    static Map<String,Object> auditRequests(List<DefaultVerificationPlan.Request> requests,String sha,int repeatsPerCase,JsonNode saved) throws Exception {
+        check("COMPLETE".equals(saved.path("state").asText()) && saved.path("httpAttempts").asInt()==requests.size()
+                && sha.equals(saved.path("planSha256").asText()) && saved.path("results").size()==requests.size(),"Complete exact-plan results required");
         var totals=new LinkedHashMap<String,Map<String,Integer>>();
         var repeats=new LinkedHashMap<String,List<String>>();
-        for(int i=0;i<56;i++) {
-            var request=plan.requests().get(i);var row=saved.path("results").get(i);
+        for(int i=0;i<requests.size();i++) {
+            var request=requests.get(i);var row=saved.path("results").get(i);
             var calls=row.path("calls");
             check(request.caseId().equals(row.path("caseId").asText()) && request.arm().equals(row.path("arm").asText())
                     && request.repeat()==row.path("repeat").asInt() && request.labelStatus().equals(row.path("labelStatus").asText())
@@ -75,46 +81,63 @@ public final class DefaultVerificationTrial {
             }
             repeats.computeIfAbsent(request.arm()+":"+request.caseId(),k -> new ArrayList<>()).add(decision+":"+accepted);
         }
-        long disagreement=repeats.values().stream().filter(v -> v.size()!=2 || !v.get(0).equals(v.get(1))).count();
+        long disagreement=repeats.values().stream().filter(v -> v.size()!=repeatsPerCase || v.stream().distinct().count()!=1).count();
         return Map.of("providerCalls",0,"historicalContractDrift",0,"totals",totals,
                 "decisionOrContractRepeatDisagreements",disagreement,"independentGold",false,
                 "evidenceMeaningAutomaticallyVerified",false,"runtimePromotion",false);
     }
-    static void save(Path output,List<Map<String,Object>> rows,StructuredSearchBoundaryTrial.Budget budget,double cost,String state) throws Exception {
-        Files.writeString(output.resolve("results.json"),JSON.writeValueAsString(Map.of("schemaVersion","default-verification-results-1",
-                "planSha256",PLAN_SHA,"state",state,"results",rows,"httpAttempts",budget.attempts,
-                "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false,"maxHttpAttempts",56)));
+    record FrozenRun(String sha,String consent,String model,int maxAttempts,int repeats,String resultSchema,
+                     String approvalSource,List<DefaultVerificationPlan.Request> requests) {}
+    static void save(Path output,FrozenRun run,List<Map<String,Object>> rows,StructuredSearchBoundaryTrial.Budget budget,double cost,String state) throws Exception {
+        Files.writeString(output.resolve("results.json"),JSON.writeValueAsString(Map.of("schemaVersion",run.resultSchema(),
+                "planSha256",run.sha(),"state",state,"results",rows,"httpAttempts",budget.attempts,
+                "reservedEstimatedUsd",budget.reserved,"usageEstimatedUsd",cost,"actualBillingConfirmed",false,"maxHttpAttempts",run.maxAttempts())));
+    }
+    static void reserveBounded(StructuredSearchBoundaryTrial.Budget budget,int bytes,int maxAttempts) throws Exception {
+        check(maxAttempts==48 || maxAttempts==56,"Known fixed request count required");
+        if(budget.attempts>=maxAttempts) { budget.exhausted=true;throw new IllegalArgumentException("HTTP attempt cap reached"); }
+        budget.reserve(bytes);
+        Files.writeString(budget.output.resolve("reservation.json"),JSON.writeValueAsString(Map.of("newEstimatedCapUsd",budget.cap,
+                "httpAttempts",budget.attempts,"maxHttpAttempts",maxAttempts,"reservedEstimatedUsd",budget.reserved,
+                "inputPer1m",.10,"outputPer1m",.50,"actualBillingConfirmed",false)));
     }
     public static void main(String[] args) throws Exception {
         check(args.length==5,"Frozen plan, source plan, approved sha, fresh consent and NEW private output required");
         byte[] bytes=OfflineDecisionContractAudit.bounded(Path.of(args[0]));
         var plan=authorized(bytes,OfflineDecisionContractAudit.bounded(Path.of(args[1])),args[2],args[3]);
-        Path output=Path.of(args[4]).toAbsolutePath().normalize(),root=Path.of("../datasets/controversy/experiments").toRealPath();
+        runFrozen(new FrozenRun(PLAN_SHA,CONSENT,plan.model(),56,2,"default-verification-results-1",
+                "USER_APPROVED_FROZEN_DEFAULT_COMPARISON_20261017",plan.requests()),bytes,Path.of(args[0]),Path.of(args[4]));
+    }
+    static void runFrozen(FrozenRun run,byte[] bytes,Path planFile,Path destination) throws Exception {
+        check(ReferenceOnlyTrial.sha(bytes).equals(run.sha()) && run.requests().size()==run.maxAttempts()
+                && (run.maxAttempts()==48 || run.maxAttempts()==56)
+                && DefaultVerificationPlan.reservation(run.requests(),run.model())<=.50,"Frozen run accounting mismatch");
+        Path output=destination.toAbsolutePath().normalize(),root=Path.of("../datasets/controversy/experiments").toRealPath();
         check(!Files.exists(output) && output.getParent().toRealPath().startsWith(root),"New private directory required; no resume");
         String key=System.getenv("OPENAI_API_KEY");check(key!=null && !key.isBlank(),"OPENAI_API_KEY required; never print");
-        claim(Path.of(args[0]),output);
+        claimRun(planFile,output,run.sha(),run.consent(),run.maxAttempts());
         Files.createDirectory(output);Files.write(output.resolve("plan.json"),bytes,StandardOpenOption.CREATE_NEW);
         Files.writeString(output.resolve("authorization.json"),JSON.writeValueAsString(Map.of("newEstimatedCapUsd",.50,
-                "consent",CONSENT,"planSha256",PLAN_SHA,"textEgressApproved",true,"audioVideoEgressApproved",false,
-                "previousBudgetReused",false,"approvalSource","USER_APPROVED_FROZEN_DEFAULT_COMPARISON_20261017")));
+                "consent",run.consent(),"planSha256",run.sha(),"textEgressApproved",true,"audioVideoEgressApproved",false,
+                "previousBudgetReused",false,"approvalSource",run.approvalSource())));
         var budget=new StructuredSearchBoundaryTrial.Budget(output,.50);var guard=new RequestGuard();
         var props=new OpenAiProperties(key,System.getenv("OPENAI_ORG_ID"),System.getenv("OPENAI_PROJECT_ID"),
-                "https://api.openai.com/v1",plan.model(),"none",Duration.ofSeconds(90),new OpenAiProperties.Pricing(.10,.01,.50,null,null));
+                "https://api.openai.com/v1",run.model(),"none",Duration.ofSeconds(90),new OpenAiProperties.Pricing(.10,.01,.50,null,null));
         var factory=new JdkClientHttpRequestFactory(HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10)).build());factory.setReadTimeout(Duration.ofSeconds(90));
         var builder=RestClient.builder().baseUrl(props.baseUrl()).requestFactory(factory).defaultHeader("Authorization","Bearer "+key)
                 .requestInterceptor((request,body,execution) -> {
                     byte[] guarded=guard.accept(body,request.getURI().toString());
-                    try { UtteranceDirectionTrial.reserve(budget,guarded.length,56); }
+                    try { reserveBounded(budget,guarded.length,run.maxAttempts()); }
                     catch(Exception ex) { throw new IllegalArgumentException("Reservation failed",ex); }
                     request.getHeaders().setContentLength(guarded.length);return execution.execute(request,guarded);
                 });
         if(props.hasOrganization()) builder.defaultHeader("OpenAI-Organization",props.organization());
         if(props.hasProject()) builder.defaultHeader("OpenAI-Project",props.project());
         var client=new MechanismRoutingTrial.Client(builder.build(),props);
-        var rows=new ArrayList<Map<String,Object>>();double cost=0;save(output,rows,budget,cost,"RUNNING");
+        var rows=new ArrayList<Map<String,Object>>();double cost=0;save(output,run,rows,budget,cost,"RUNNING");
         try {
-            for(var request:plan.requests()) {
+            for(var request:run.requests()) {
                 client.calls.clear();client.beginVideo(0L);client.beginAnalyzer("default-verification-comparison");
                 guard.begin(JSON.writeValueAsBytes(client.replayRequestBody(request.system(),request.input(),CandidateReviewEngine.VerificationResult.class)));
                 long start=System.nanoTime();int before=budget.attempts;
@@ -124,15 +147,15 @@ public final class DefaultVerificationTrial {
                 row.put("repeat",request.repeat());row.put("labelStatus",request.labelStatus());row.put("expectedDecision",request.expectedDecision());
                 row.put("assessment",DefaultVerificationPlan.assess(request,response));row.put("calls",List.copyOf(client.calls));
                 row.put("usage",usage);row.put("elapsedMs",(System.nanoTime()-start)/1_000_000);rows.add(row);
-                save(output,rows,budget,cost,"RUNNING");
+                save(output,run,rows,budget,cost,"RUNNING");
                 boolean ok=!budget.exhausted && budget.attempts-before==1 && client.failureCount()==0 && usage.calls()==1 && client.calls.size()==1;
-                client.endVideo();System.out.println("DEFAULT_TRIAL "+rows.size()+"/56 "+request.caseId()+" "+request.arm()+" repeat="+request.repeat());
+                client.endVideo();System.out.println("FROZEN_VERIFICATION_TRIAL "+rows.size()+"/"+run.maxAttempts()+" "+request.caseId()+" "+request.arm()+" repeat="+request.repeat());
                 check(ok,"Provider/budget/usage failure; stop without replay or extra calls");
             }
-            check(budget.attempts==56,"HTTP accounting mismatch");save(output,rows,budget,cost,"COMPLETE");
-            var report=audit(plan,JSON.readTree(Files.readAllBytes(output.resolve("results.json"))));
+            check(budget.attempts==run.maxAttempts(),"HTTP accounting mismatch");save(output,run,rows,budget,cost,"COMPLETE");
+            var report=auditRequests(run.requests(),run.sha(),run.repeats(),JSON.readTree(Files.readAllBytes(output.resolve("results.json"))));
             Files.writeString(output.resolve("offline-audit.json"),JSON.writeValueAsString(report),StandardOpenOption.CREATE_NEW);
-            System.out.println("DEFAULT_COMPLETE usageEstimatedUsd="+cost+" reservedEstimatedUsd="+budget.reserved);
-        } catch(Exception ex) { save(output,rows,budget,cost,"STOPPED");throw ex; }
+            System.out.println("FROZEN_VERIFICATION_COMPLETE usageEstimatedUsd="+cost+" reservedEstimatedUsd="+budget.reserved);
+        } catch(Exception ex) { save(output,run,rows,budget,cost,"STOPPED");throw ex; }
     }
 }
