@@ -8,6 +8,18 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Fixture integrity and evaluation boundaries only; no model or runtime integration. */
 class ContextContentContrastTest {
+    @Test void approvedTrialRejectsChangedFrozenPlanBeforeAnyCall() throws Exception {
+        var plan = ContextContrastPlan.build();
+        ((tools.jackson.databind.node.ObjectNode) plan).put("maxHttpAttempts", 13);
+        assertThatThrownBy(() -> ContextContrastTrial.validate(JSON.writeValueAsBytes(plan))).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void incompleteResultsCannotBeCountedAsCompletedEvaluation() throws Exception {
+        var incomplete = JSON.createObjectNode().put("planSha256", ContextContrastTrial.SHA)
+                .put("state", "STOPPED").put("httpAttempts", 1);
+        incomplete.putArray("results");
+        assertThatThrownBy(() -> ContextContrastTrial.audit(ContextContrastPlan.build(), incomplete))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Complete matching results");
+    }
     @Test void baselinePlanFreezesTwelveLabelFreeRequestsWithoutExecutionApproval() throws Exception {
         var plan = ContextContrastPlan.build();
         assertThat(plan.path("approvalStatus").asText()).isEqualTo("AWAITING_NEW_BUDGET_AND_TEXT_CONSENT");

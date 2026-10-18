@@ -641,7 +641,27 @@ tasks.register('reviewCaseReplay', JavaExec) {
     }
 }
 
-// Prepare approved synthetic contrasts only; no network or execution mode.
+// Explicit new approval and frozen-plan guard; audit mode makes no provider calls.
+tasks.register('contextContrastTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextContrastTrial'
+    doFirst {
+        def input = providers.gradleProperty('contrastTrialInput').orNull
+        def output = providers.gradleProperty('contrastTrialOutput').orNull
+        def consent = providers.gradleProperty('contrastTrialConsent').orNull
+        if (providers.gradleProperty('contrastTrialMode').orNull == 'audit') {
+            def results = providers.gradleProperty('contrastTrialResults').orNull
+            if (!input || !output || !results) throw new GradleException('Set input/results/output for offline audit')
+            args 'audit', input, results, output
+            return
+        }
+        if (!input || !output || !consent) throw new GradleException('Set contrastTrialInput, contrastTrialOutput, contrastTrialConsent')
+        args input, consent, output
+    }
+}
+
+// Preparation only; no provider calls.
 tasks.register('contextContrastPlan', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
