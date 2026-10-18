@@ -1,6 +1,6 @@
 {
   "schemaVersion": "evaluation-suite-registry-1",
-  "activeSuite": "approved-dialogue-and-r01-units-20261017-2",
+  "activeSuite": "approved-context-regression-20261018-1",
   "purpose": "DEVELOPMENT_BOUNDARY_REGRESSION_NOT_INDEPENDENT_ACCURACY",
   "sourcePacket": {
     "path": "datasets/controversy/experiments/utterance-human-review-20261016/source-packet.json",
@@ -20,6 +20,27 @@
   },
   "scopedDiagnostics": ["R01", "R02"],
   "focusCase": "R01",
+  "supplementalContrasts": {
+    "path": "oops-backend/src/test/resources/evals/context-content-contrasts-v1.json",
+    "sha256": "962dee4a54c1c2cad17ba44ce0257d6026c0d1b82214ba8d3d0703e98a26f6b0",
+    "activeDecisions": {"A01": "PASS", "A02": "REVIEW_REQUIRED", "A03": "PASS", "A04": "REVIEW_REQUIRED"}
+  },
+  "workflow": {
+    "status": "REORGANIZATION_NO_PAID_TRIALS",
+    "pausedDiagnostic": "R01_FULL_VS_MINIMAL_WINDOW",
+    "baseline": "CURRENT_RUNTIME_SOURCE_CONFIG_NOT_DEPLOYMENT_OR_MEASURED_SCORE",
+    "candidate": null,
+    "maximumConcurrentCandidates": 1,
+    "automaticAdoption": false,
+    "compareOnlyIdenticalSuiteInputsAndLabels": true,
+    "poolHistoricalScoresAcrossContracts": false
+  },
+  "baselineSources": [
+    "oops-backend/src/main/java/com/example/oops/analyzer/CandidateReviewEngine.java",
+    "oops-backend/src/main/java/com/example/oops/analyzer/ReviewJudgmentPolicy.java",
+    "oops-backend/src/main/resources/application.yml",
+    "datasets/controversy/guidelines/runtime.json"
+  ],
   "approvedFocusedReview": {
     "path": "datasets/controversy/evaluation/active-approved-dialogue-20261017/R01-reviewed-v3.json",
     "sha256": "9743d4a265615c90e6ab3b83449fce64f51e1da3d8cb0b54ef007ac66321e4f7",

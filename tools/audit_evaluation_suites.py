@@ -71,6 +71,39 @@ def focused_units(root, registry, sources):
                             "sourceGroupId": review["familyId"], "approvedUnitIds": list(spec["activeDecisions"])}
 
 
+def supplemental_units(root, registry):
+    spec = registry.get("supplementalContrasts")
+    if not spec:
+        return [], []
+    raw = read(root, spec["path"])
+    require(sha(raw) == spec["sha256"], "CONTRAST_HASH_MISMATCH")
+    fixture = json.loads(raw)
+    require(fixture.get("sourceType") == "SYNTHETIC" and fixture.get("runtimeEnabled") is False
+            and fixture.get("independentGold") is False
+            and fixture.get("approval", {}).get("status") == "USER_APPROVED"
+            and fixture["approval"].get("scope") == "CONTEXT_DECISION_ONLY", "CONTRAST_APPROVAL_SCOPE")
+    cases = index(fixture["cases"], "id")
+    require(set(cases) == set(spec["activeDecisions"]), "CONTRAST_ALLOWLIST_MISMATCH")
+    inputs, labels = [], []
+    for case_id, decision in spec["activeDecisions"].items():
+        c = cases[case_id]
+        require(c.get("context", {}).get("status") == "USER_APPROVED"
+                and decision in {"PASS", "REVIEW_REQUIRED", "UNCERTAIN"}
+                and c["context"].get("expectedDecision") == decision, "CONTRAST_LABEL_NOT_APPROVED")
+        rows = c["dialogue"]
+        index(rows, "id")
+        require(len(rows) == 2 and all(isinstance(r.get("text"), str) and r["text"].strip() for r in rows), "CONTRAST_RAW_INVALID")
+        source = [{"id": r["id"], "text": r["text"], "startMs": i * 1000, "endMs": (i + 1) * 1000}
+                  for i, r in enumerate(rows)]
+        inputs.append({"caseId": case_id, "anchorId": rows[-1]["id"], "raw": source,
+                       "timeBasis": "SYNTHETIC_ORDER_ONLY_NOT_MEDIA"})
+        labels.append({"caseId": case_id, "expectedDecision": decision,
+                       "labelScope": "USER_APPROVED_CONTEXT_ONLY_DEVELOPMENT",
+                       "sourceGroupId": "synthetic-food-contrasts-20261018", "evidenceIdsUserApproved": False,
+                       "advisoryLabelApproved": False, "reviewedAt": fixture["approval"].get("date")})
+    return inputs, labels
+
+
 def prepare(root, registry):
     require(registry["schemaVersion"] == "evaluation-suite-registry-1", "REGISTRY_VERSION")
     loaded = []
@@ -123,6 +156,10 @@ def prepare(root, registry):
     require(set(c["caseId"] for c in inputs).isdisjoint(c["caseId"] for c in added_inputs), "ACTIVE_UNIT_ID_COLLISION")
     inputs.extend(added_inputs)
     decisions.extend(added_labels)
+    supplements, supplemental_labels = supplemental_units(root, registry)
+    require(set(c["caseId"] for c in inputs).isdisjoint(c["caseId"] for c in supplements), "SUPPLEMENTAL_ID_COLLISION")
+    inputs.extend(supplements)
+    decisions.extend(supplemental_labels)
     if focused:
         if focused["sourceReviewId"] == focus_id:
             focus["status"] = "ANCHOR_UNITS_APPROVED_NOT_WHOLE_WINDOW_OR_VIDEO_GOLD"
@@ -152,10 +189,19 @@ def prepare(root, registry):
                 "focusCase": focus_id, "excludedFromMainScore": excluded}
     if focused:
         manifest["approvedFocusedReview"] = focused
-        manifest["syntheticConditionCount"] = len(active)
+        manifest["syntheticConditionCount"] = len(active) + len(supplements)
         manifest["storedSttIssueCount"] = len(added_inputs)
-    return {"inputs.json": inputs, "labels.json": decisions, "manifest.json": manifest,
-            "focus-R01.json": focus, "inventory.json": {"materials": materials, "history": history}}
+    if supplements:
+        manifest["supplementalContrastSha256"] = registry["supplementalContrasts"]["sha256"]
+    payloads = {"inputs.json": inputs, "labels.json": decisions, "manifest.json": manifest,
+                "focus-R01.json": focus, "inventory.json": {"materials": materials, "history": history}}
+    if registry.get("baselineSources"):
+        payloads["baseline-snapshot.json"] = {
+            "status": "CURRENT_LOCAL_SOURCE_CONFIGURATION_NOT_MEASURED_BASELINE",
+            "files": [{"path": p, "sha256": sha(read(root, p))} for p in registry["baselineSources"]],
+            "environmentOverridesCaptured": False, "deploymentVerified": False,
+            "measuredSuiteResults": None, "workflow": registry.get("workflow"), "providerCalls": 0}
+    return payloads
 
 
 def write_new(root, output, payloads):

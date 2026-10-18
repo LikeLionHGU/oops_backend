@@ -39,6 +39,55 @@ class EvaluationSuiteAuditTest(unittest.TestCase):
             (self.root / name).write_bytes(raw)
             self.registry[key] = {"path": name, "sha256": audit.sha(raw)}
 
+    def add_contrasts(self):
+        original = Path(__file__).resolve().parents[2] / "oops-backend/src/test/resources/evals/context-content-contrasts-v1.json"
+        raw = original.read_bytes()
+        (self.root / "contrasts.json").write_bytes(raw)
+        self.registry["supplementalContrasts"] = {
+            "path": "contrasts.json", "sha256": audit.sha(raw),
+            "activeDecisions": {"A01": "PASS", "A02": "REVIEW_REQUIRED", "A03": "PASS", "A04": "REVIEW_REQUIRED"}}
+
+    def test_supplements_preserve_core_and_exclude_advisory_and_notes(self):
+        before = audit.prepare(self.root, self.registry)
+        self.add_contrasts()
+        after = audit.prepare(self.root, self.registry)
+        self.assertEqual(before["inputs.json"], after["inputs.json"][:2])
+        self.assertEqual(before["labels.json"], after["labels.json"][:2])
+        self.assertEqual(6, after["manifest.json"]["activeCount"])
+        wire = json.dumps(after["inputs.json"])
+        for forbidden in ["expectedDecision", "reviewerNotes", "proposedTags", "approval", "advisory"]:
+            self.assertNotIn(forbidden, wire)
+        self.assertTrue(all(not x["advisoryLabelApproved"] for x in after["labels.json"][2:]))
+
+    def test_supplement_hash_or_label_drift_is_rejected(self):
+        self.add_contrasts()
+        self.registry["supplementalContrasts"]["activeDecisions"]["A01"] = "REVIEW_REQUIRED"
+        with self.assertRaisesRegex(ValueError, "CONTRAST_LABEL_NOT_APPROVED"):
+            audit.prepare(self.root, self.registry)
+        (self.root / "contrasts.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "CONTRAST_HASH_MISMATCH"):
+            audit.prepare(self.root, self.registry)
+
+    def test_explicitly_unapproved_context_is_rejected_even_with_new_hash(self):
+        self.add_contrasts()
+        path = self.root / "contrasts.json"
+        fixture = json.loads(path.read_bytes())
+        fixture["cases"][0]["context"]["status"] = "DRAFT"
+        raw = audit.canonical(fixture)
+        path.write_bytes(raw)
+        self.registry["supplementalContrasts"]["sha256"] = audit.sha(raw)
+        with self.assertRaisesRegex(ValueError, "CONTRAST_LABEL_NOT_APPROVED"):
+            audit.prepare(self.root, self.registry)
+
+    def test_baseline_snapshot_is_configuration_not_a_performance_score(self):
+        self.registry["baselineSources"] = ["source.json"]
+        self.registry["workflow"] = {"candidate": None, "maximumConcurrentCandidates": 1}
+        snapshot = audit.prepare(self.root, self.registry)["baseline-snapshot.json"]
+        self.assertIsNone(snapshot["measuredSuiteResults"])
+        self.assertFalse(snapshot["environmentOverridesCaptured"])
+        self.assertFalse(snapshot["deploymentVerified"])
+        self.assertEqual(self.registry["sourcePacket"]["sha256"], snapshot["files"][0]["sha256"])
+
     def test_only_full_approved_dialogues_are_active_with_separate_labels(self):
         before = audit.canonical(self.packet)
         result = audit.prepare(self.root, self.registry)
