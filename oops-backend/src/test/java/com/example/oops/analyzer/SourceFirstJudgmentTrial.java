@@ -97,13 +97,45 @@ public final class SourceFirstJudgmentTrial {
             for (String key : List.of(req.arm() + ":ALL", req.arm() + ":" + req.caseId())) {
                 var group = totals.computeIfAbsent(key, ignored -> new LinkedHashMap<>()); group.merge("responses", 1, Integer::sum);
                 group.merge(assessment.state(), 1, Integer::sum);
+                var axes = evaluationAxes(req.caseId(), row.path("output"));
+                group.merge("reasonValidityPendingHumanReview", 1, Integer::sum);
+                if (req.arm().equals("RAW_ONLY") || req.arm().equals("FROZEN_SOURCE")) {
+                    group.merge("readingDeclarationEvaluated", 1, Integer::sum);
+                    if (axes.path("readingDeclarationMatchesApprovedFunction").asBoolean())
+                        group.merge("readingDeclarationMatchesApprovedFunction", 1, Integer::sum);
+                    if (axes.path("expressionReviewWithMatchingReading").asBoolean())
+                        group.merge("expressionReviewWithMatchingReading", 1, Integer::sum);
+                }
                 if (req.expectedDecision().equals(row.at("/output/decision").asText())) {
                     group.merge("rawDecisionMatch", 1, Integer::sum);
                     if (assessment.state().equals("ASSESSMENT_RECORDED")) group.merge("matchAndRecorded", 1, Integer::sum);
                 }
             }
         }
-        return Map.of("calls", CALLS, "totals", totals, "independentGold", false, "publicationAuthorized", false, "meaningReviewRequired", true);
+        return Map.of("calls", CALLS, "totals", totals, "independentGold", false, "publicationAuthorized", false, "meaningReviewRequired", true,
+                "evaluationVersion", "separate-reading-policy-format-1",
+                "decisionMatchMeaning", "Agreement with preserved development label, not reading correctness or reason validity");
+    }
+    /** Declared function is only one reading axis; free-text consistency still needs review. */
+    static JsonNode evaluationAxes(String caseId, JsonNode output) {
+        String function = switch (caseId) {
+            case "R01-166", "R05" -> "DEFINITION_OR_EXPANSION";
+            case "R04", "R08" -> "DIRECT_REQUEST_TO_LISTENER";
+            case "R06" -> "REPORT_OR_QUOTE";
+            default -> "";
+        };
+        String content = switch (caseId) {
+            case "R01-166", "R05" -> "MENTIONED_PHRASE";
+            case "R04", "R08" -> "CURRENT_ACT";
+            case "R06" -> "REPORTED_CONTENT";
+            default -> "";
+        };
+        boolean matches = !function.isEmpty() && function.equals(output.at("/readingUse/function").asText())
+                && content.equals(output.at("/readingUse/contentUse").asText());
+        return JSON.createObjectNode().put("readingDeclarationMatchesApprovedFunction", matches)
+                .put("expressionReviewWithMatchingReading", matches && "REVIEW_REQUIRED".equals(output.path("decision").asText())
+                        && "EXPRESSION_CONTENT".equals(output.path("basisKind").asText()))
+                .put("reasonValidity", "PENDING_HUMAN_REVIEW").put("publicationAuthorized", false);
     }
     static void run(Plan p, byte[] planBytes, Path planFile, Path out) throws Exception {
         validate(p); String key = System.getenv("OPENAI_API_KEY"); check(key != null && !key.isBlank(), "API key unavailable; never print");

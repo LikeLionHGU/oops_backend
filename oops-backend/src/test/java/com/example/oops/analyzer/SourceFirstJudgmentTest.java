@@ -9,6 +9,22 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Offline schema/branch tests; not a comprehension benchmark. */
 class SourceFirstJudgmentTest {
+    @Test void readingSuccessDoesNotDependOnPassOrContractAcceptance() {
+        var review = JSON.valueToTree(outcome("wrong-hash", "DEFINITION_OR_EXPANSION", "MENTIONED_PHRASE",
+                "REVIEW_REQUIRED", "EXPRESSION_CONTENT", "표현 자체의 검토 이유"));
+        var axes = SourceFirstJudgmentTrial.evaluationAxes("R01-166", review);
+        assertThat(axes.path("readingDeclarationMatchesApprovedFunction").asBoolean()).isTrue();
+        assertThat(axes.path("expressionReviewWithMatchingReading").asBoolean()).isTrue();
+        assertThat(axes.path("reasonValidity").asText()).isEqualTo("PENDING_HUMAN_REVIEW");
+        assertThat(axes.path("publicationAuthorized").asBoolean()).isFalse();
+    }
+    @Test void passDoesNotProveReadingOrReasonValidity() {
+        var pass = JSON.valueToTree(outcome(null, "DIRECT_REQUEST_TO_LISTENER", "CURRENT_ACT", "PASS", "NONE", ""));
+        var axes = SourceFirstJudgmentTrial.evaluationAxes("R01-166", pass);
+        assertThat(axes.path("readingDeclarationMatchesApprovedFunction").asBoolean()).isFalse();
+        assertThat(axes.path("reasonValidity").asText()).isEqualTo("PENDING_HUMAN_REVIEW");
+        assertThat(SourceFirstJudgmentTrial.evaluationAxes("unknown", pass).path("readingDeclarationMatchesApprovedFunction").asBoolean()).isFalse();
+    }
     JsonNode raw() { var n = (ObjectNode) new SourceFirstReviewBoundaryTest().source(); n.putNull("sourceReading"); return n; }
     SourceFirstReviewBoundary.Snapshot snapshot(JsonNode in) { return new SourceFirstReviewBoundaryTest().snapshot(in); }
     SourceFirstJudgmentContract.Outcome outcome(String hash, String function, String content, String decision, String basis, String claim) {
