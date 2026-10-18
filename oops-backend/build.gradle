@@ -267,6 +267,28 @@ tasks.register('prepareDefaultVerificationPlan', JavaExec) {
     }
 }
 
+// Only the fixed source-reading input differs. No application feature flag or automatic model call.
+tasks.register('relationGuidedVerificationTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RelationGuidedVerificationTrial'
+    doFirst {
+        def mode = providers.gradleProperty('guidedMode').get()
+        def input = providers.gradleProperty('guidedInput').get()
+        def second = providers.gradleProperty('guidedSecond').get()
+        def output = providers.gradleProperty('guidedOutput').get()
+        if (mode == 'run') {
+            if (providers.gradleProperty('guidedLiveApproved').orNull != 'true')
+                throw new GradleException('New exact-plan cost/text approval required')
+            args mode, input, second, providers.gradleProperty('guidedConsent').get(), output
+        } else if (mode in ['prepare', 'audit']) {
+            args mode, input, second, output
+        } else {
+            throw new GradleException('Set guidedMode=prepare, run, or audit')
+        }
+    }
+}
+
 // Only the newly approved, SHA-pinned default-path comparison; no production feature flag.
 tasks.register('prepareCurrentRequestCounterevidencePlan', JavaExec) {
     dependsOn testClasses

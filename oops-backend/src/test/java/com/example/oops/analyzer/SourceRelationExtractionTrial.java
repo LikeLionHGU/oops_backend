@@ -329,9 +329,13 @@ public final class SourceRelationExtractionTrial {
     }
 
     static String postAndPreserve(RestClient client, Request request, Path rawOutput) throws Exception {
+        return postAndPreserve(client, requestBody(request), rawOutput);
+    }
+
+    static String postAndPreserve(RestClient client, Object body, Path rawOutput) throws Exception {
         String response;
         try {
-            response = client.post().uri("/chat/completions").body(requestBody(request)).retrieve().body(String.class);
+            response = client.post().uri("/chat/completions").body(body).retrieve().body(String.class);
         } catch (org.springframework.web.client.RestClientResponseException ex) {
             writePrivate(rawOutput, ex.getResponseBodyAsByteArray());
             throw new IllegalStateException("Provider HTTP " + ex.getStatusCode().value() + "; response saved; no retry");
