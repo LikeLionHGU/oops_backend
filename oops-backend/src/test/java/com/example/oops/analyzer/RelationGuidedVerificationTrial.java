@@ -108,6 +108,7 @@ public final class RelationGuidedVerificationTrial {
     static double reservation(List<JsonNode> bodies) { return bodies.stream().mapToDouble(RelationGuidedVerificationTrial::reserveOne).sum(); }
 
     static void validate(Plan p) {
+        if (IssueScopeComparisonPlan.VERSION.equals(p.schemaVersion())) { IssueScopeComparisonPlan.validate(p); return; }
         check("relation-guided-verification-1".equals(p.schemaVersion()) && "gpt-6-luna".equals(p.model())
                 && CandidateReviewEngine.REVISION.equals(p.engineRevision()) && BASELINE_SHA.equals(p.baselineSha256())
                 && EXTRACTION_SHA.equals(p.extractionSha256()) && p.maxHttpAttempts() == CALLS
@@ -169,13 +170,14 @@ public final class RelationGuidedVerificationTrial {
 
     static void run(Plan p, byte[] planBytes, Path planFile, Path out) throws Exception {
         validate(p); String sha = ReferenceOnlyTrial.sha(planBytes);
+        String consent = IssueScopeComparisonPlan.VERSION.equals(p.schemaVersion()) ? IssueScopeComparisonPlan.CONSENT : CONSENT;
         String key = System.getenv("OPENAI_API_KEY"); check(key != null && !key.isBlank(), "OPENAI_API_KEY required; never print");
         SourceRelationExtractionTrial.writePrivate(planFile.toRealPath().getParent().resolve("execution-claim.json"),
-                JSON.writeValueAsBytes(Map.of("planSha256", sha, "consent", CONSENT, "output", out.toString(), "resumable", false)));
+                JSON.writeValueAsBytes(Map.of("planSha256", sha, "consent", consent, "output", out.toString(), "resumable", false)));
         Files.createDirectory(out, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
         SourceRelationExtractionTrial.writePrivate(out.resolve("plan.json"), planBytes);
         SourceRelationExtractionTrial.writePrivate(out.resolve("authorization.json"), JSON.writeValueAsBytes(Map.of(
-                "consent", CONSENT, "newEstimatedCapUsd", CAP, "textEgressApproved", true, "mediaEgressApproved", false, "previousBudgetReused", false)));
+                "consent", consent, "newEstimatedCapUsd", CAP, "textEgressApproved", true, "mediaEgressApproved", false, "previousBudgetReused", false)));
         var guard = new SourceRelationExtractionTrial.Guard();
         int[] attempts = {0}; double[] reserved = {0};
         var factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
@@ -247,7 +249,8 @@ public final class RelationGuidedVerificationTrial {
             check(ReferenceOnlyTrial.sha(bytes).equals(results.path("planSha256").asText()), "Results/plan mismatch");
             SourceRelationExtractionTrial.writePrivate(out, JSON.writeValueAsBytes(audit(p, results))); return;
         }
-        check("run".equals(args[0]) && args.length == 5 && ReferenceOnlyTrial.sha(bytes).equals(args[2]) && CONSENT.equals(args[3]),
+        String consent = IssueScopeComparisonPlan.VERSION.equals(p.schemaVersion()) ? IssueScopeComparisonPlan.CONSENT : CONSENT;
+        check("run".equals(args[0]) && args.length == 5 && ReferenceOnlyTrial.sha(bytes).equals(args[2]) && consent.equals(args[3]),
                 "New exact-plan USD0.50/text approval required");
         run(p, bytes, Path.of(args[1]), out);
     }

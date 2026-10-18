@@ -267,7 +267,15 @@ tasks.register('prepareDefaultVerificationPlan', JavaExec) {
     }
 }
 
-// Only the fixed source-reading input differs. No application feature flag or automatic model call.
+// Offline preparation of the fixed before/after issue-scope comparison; no provider calls.
+tasks.register('prepareIssueScopeComparison', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.IssueScopeComparisonPlan'
+    doFirst { args providers.gradleProperty('scopeSource').get(), providers.gradleProperty('scopeOutput').get() }
+}
+
+// Guarded paired trials: fixed source reading OR fixed system guidance, never both together.
 tasks.register('relationGuidedVerificationTrial', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
