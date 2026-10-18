@@ -19,7 +19,7 @@ import static com.example.oops.analyzer.TextBoundaryTrial.check;
 public final class SourceRelationExtractionTrial {
     static final String SOURCE_SHA = "b463b3658b44f9fdceab65f3b13bbfc8054991a1e4710bfc2ddf3fb1f13f5afa";
     static final String LABEL_SHA = "8ca23b42f717e27c2b524912f09f87a734e0cd4d1d261aab262a743e9c02d8e9";
-    static final String CONSENT = "USER_APPROVED_15_CALL_GPT6LUNA_SOURCE_RELATIONS_TEXT_USD050_20261018";
+    static final String CONSENT = "USER_APPROVED_V2_15_CALL_GPT6LUNA_SOURCE_RELATIONS_TEXT_USD050_20261018";
     static final String ENDPOINT = "https://api.openai.com/v1/chat/completions";
     static final String SYSTEM = "주어진 한국어 대화에서 초점 발화의 대화상 기능과 다른 발화와의 관계를 원문 근거로 추출한다. "
             + "질문 문구가 단어 뜻·약어를 설명하는 내용인지, 현재 듣는 사람에게 실제로 한 질문/요청인지 구별한다. "
@@ -34,7 +34,25 @@ public final class SourceRelationExtractionTrial {
             + "contentUse는 CURRENT_ACT, MENTIONED_PHRASE, REPORTED_CONTENT, UNCLEAR 중 하나다. "
             + "relation은 ANSWERS_MEANING_QUESTION, CONTINUES_REQUEST, CLARIFIES_NOT_DIRECT_QUESTION, CLARIFIES_PURPOSE, "
             + "RESPONDS_TO_REQUEST, TOPIC_CHANGE_AFTER_REFUSAL, OTHER, UNCLEAR 중 하나다. "
+            + "links 원소는 {\"segmentId\":\"연결된 입력 ID\",\"relation\":\"허용 관계값\"}이다. "
+            + "관계는 초점 발화 기준이다: ANSWERS_MEANING_QUESTION은 초점이 답하는 뜻 질문을, CONTINUES_REQUEST는 초점이 이어가는 앞선 요청을 연결한다. "
+            + "CLARIFIES_NOT_DIRECT_QUESTION과 CLARIFIES_PURPOSE는 초점의 용법/취지를 설명하는 발화를 연결한다. "
+            + "RESPONDS_TO_REQUEST는 초점 요청에 답하거나 거절하는 뒤 발화를, TOPIC_CHANGE_AFTER_REFUSAL은 그 거절 뒤 주제를 바꾸는 발화를 연결한다. "
             + "관찰은 초점 ID당 하나, 모든 ID는 입력에서 복사한다. 필드는 모두 포함하고 JSON 외 설명은 붙이지 않는다.";
+    static final String OUTPUT_FORMAT = """
+            {"type":"json_schema","json_schema":{"name":"source_relation_extraction_v2","strict":true,"schema":{
+              "type":"object","additionalProperties":false,"required":["observations"],"properties":{
+                "observations":{"type":"array","minItems":1,"maxItems":1,"items":{
+                  "type":"object","additionalProperties":false,
+                  "required":["anchorId","function","contentUse","links","evidenceIds"],"properties":{
+                    "anchorId":{"type":"string"},
+                    "function":{"type":"string","enum":["DEFINITION_OR_EXPANSION","DIRECT_REQUEST_TO_LISTENER","SELF_OFFER","REPORT_OR_QUOTE","SELF_DESCRIPTION","OTHER","UNCLEAR"]},
+                    "contentUse":{"type":"string","enum":["CURRENT_ACT","MENTIONED_PHRASE","REPORTED_CONTENT","UNCLEAR"]},
+                    "links":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["segmentId","relation"],"properties":{
+                      "segmentId":{"type":"string"},"relation":{"type":"string","enum":["ANSWERS_MEANING_QUESTION","CONTINUES_REQUEST","CLARIFIES_NOT_DIRECT_QUESTION","CLARIFIES_PURPOSE","RESPONDS_TO_REQUEST","TOPIC_CHANGE_AFTER_REFUSAL","OTHER","UNCLEAR"]}}}},
+                    "evidenceIds":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"string"}}
+            }}}}}}}
+            """;
     static final int MAX_COMPLETION_TOKENS = 1024;
     static final double CAP_USD = .50;
     static final double DEFAULT_INPUT_RATE = .10;
@@ -49,7 +67,7 @@ public final class SourceRelationExtractionTrial {
     record Expected(String function, String contentUse, List<Link> links) {}
     record Condition(String conditionId, String labelStatus, String anchorId, List<Segment> segments, Expected expected) {}
     record Request(String conditionId, int repeat, String system, String input, Expected expected) {}
-    record Plan(String schemaVersion, String model, String reasoningEffort, String inputSha256, String labelSha256,
+    record Plan(String schemaVersion, String model, String reasoningEffort, String responseFormatSha256, String inputSha256, String labelSha256,
                 String scope, boolean expectedLabelsSentToProvider, boolean mediaSentToProvider,
                 int calls, int maxCompletionTokens, double estimatedCapUsd, double inputPer1m,
                 double outputPer1m, String system, List<Condition> conditions, List<Request> requests) {}
@@ -101,7 +119,7 @@ public final class SourceRelationExtractionTrial {
         }
         double inputRate = rate("OPENAI_INPUT_PER_1M", DEFAULT_INPUT_RATE);
         double outputRate = rate("OPENAI_OUTPUT_PER_1M", DEFAULT_OUTPUT_RATE);
-        var plan = new Plan("source-relation-extraction-2", "gpt-6-luna", "none", SOURCE_SHA, LABEL_SHA,
+        var plan = new Plan("source-relation-extraction-2", "gpt-6-luna", "none", ReviewGuidelineLibrary.retrievalHash(OUTPUT_FORMAT), SOURCE_SHA, LABEL_SHA,
                 "5_FIXED_CONDITIONS_X_3_REPEATS_TEXT_ONLY_EXTRACTION_NOT_RISK_JUDGMENT", false, false,
                 15, MAX_COMPLETION_TOKENS, reservation(requests, inputRate, outputRate), inputRate, outputRate,
                 SYSTEM, List.copyOf(conditions), List.copyOf(requests));
@@ -158,6 +176,7 @@ public final class SourceRelationExtractionTrial {
                 "gpt-6-luna", "none", Duration.ofSeconds(2), null);
         var builder = new OpenAiClient(RestClient.create(), props);
         var body = new LinkedHashMap<>(builder.replayRequestBody(request.system(), request.input()));
+        body.put("response_format", JSON.readTree(OUTPUT_FORMAT));
         body.put("max_completion_tokens", MAX_COMPLETION_TOKENS);
         return body;
     }
@@ -165,6 +184,7 @@ public final class SourceRelationExtractionTrial {
     static void validate(Plan p) {
         check("source-relation-extraction-2".equals(p.schemaVersion()) && "gpt-6-luna".equals(p.model())
                 && "none".equals(p.reasoningEffort()) && p.calls() == 15 && p.maxCompletionTokens() == 1024
+                && ReviewGuidelineLibrary.retrievalHash(OUTPUT_FORMAT).equals(p.responseFormatSha256())
                 && !p.expectedLabelsSentToProvider() && !p.mediaSentToProvider()
                 && SOURCE_SHA.equals(p.inputSha256()) && LABEL_SHA.equals(p.labelSha256())
                 && p.estimatedCapUsd() <= CAP_USD && p.conditions().size() == 5 && p.requests().size() == 15,
@@ -181,8 +201,6 @@ public final class SourceRelationExtractionTrial {
         Set<String> relations = Set.of("ANSWERS_MEANING_QUESTION", "CONTINUES_REQUEST",
                 "CLARIFIES_NOT_DIRECT_QUESTION", "CLARIFIES_PURPOSE", "RESPONDS_TO_REQUEST",
                 "TOPIC_CHANGE_AFTER_REFUSAL", "OTHER", "UNCLEAR");
-        Set<String> ids = new HashSet<>();
-        for (Condition c : p.conditions()) c.segments().forEach(s -> ids.add(s.id()));
         for (Condition c : p.conditions()) {
             check(functions.contains(c.expected().function()) && contentUses.contains(c.expected().contentUse()), "Unknown offline label");
             check(c.segments().stream().anyMatch(s -> s.id().equals(c.anchorId())), "Anchor missing from condition");
@@ -205,12 +223,16 @@ public final class SourceRelationExtractionTrial {
                     "Output cap missing");
         }
         check(p.estimatedCapUsd() <= CAP_USD && p.estimatedCapUsd() >= 0, "Budget out of range");
+        check(Math.abs(reservation(p.requests(), p.inputPer1m(), p.outputPer1m()) - p.estimatedCapUsd()) < 1e-12,
+                "Frozen reservation/body estimate changed");
     }
 
     static Map<String, Object> assess(Request request, RelationResult result) {
         if (result == null || result.observations() == null || result.observations().size() != 1)
             return Map.of("accepted", false, "failure", "ONE_OBSERVATION_REQUIRED");
         Observation o = result.observations().get(0);
+        if (o == null || o.anchorId() == null || o.function() == null || o.contentUse() == null)
+            return Map.of("accepted", false, "failure", "OUTPUT_ENUM_OR_SHAPE");
         // The expected label is joined offline only after the response has been parsed.
         if (!o.anchorId().equals(focusId(request.input()))) return Map.of("accepted", false, "failure", "ANCHOR_MISMATCH");
         Set<String> allowedFunctions = Set.of("DEFINITION_OR_EXPANSION", "DIRECT_REQUEST_TO_LISTENER", "SELF_OFFER",
@@ -223,10 +245,10 @@ public final class SourceRelationExtractionTrial {
         if (!allowedFunctions.contains(o.function()) || !allowedContent.contains(o.contentUse())
                 || o.links() == null || o.links().size() > 8 || o.evidenceIds() == null || o.evidenceIds().isEmpty())
             return Map.of("accepted", false, "failure", "OUTPUT_ENUM_OR_SHAPE");
-        if (!o.evidenceIds().contains(o.anchorId()) || o.evidenceIds().stream().anyMatch(id -> !ids.contains(id))
+        if (!o.evidenceIds().contains(o.anchorId()) || o.evidenceIds().stream().anyMatch(id -> id == null || !ids.contains(id))
                 || o.evidenceIds().size() > 12 || new HashSet<>(o.evidenceIds()).size() != o.evidenceIds().size())
             return Map.of("accepted", false, "failure", "EVIDENCE_ID_SCOPE");
-        if (o.links().stream().anyMatch(link -> link == null || !ids.contains(link.segmentId())
+        if (o.links().stream().anyMatch(link -> link == null || link.segmentId() == null || link.relation() == null || !ids.contains(link.segmentId())
                 || !allowedRelations.contains(link.relation()))
                 || new HashSet<>(o.links()).size() != o.links().size())
             return Map.of("accepted", false, "failure", "LINK_ID_SCOPE");
@@ -245,9 +267,11 @@ public final class SourceRelationExtractionTrial {
         check(Set.of("COMPLETE", "STOPPED").contains(state) && saved.path("httpAttempts").asInt() == 15
                 && saved.path("results").size() == 15, "Complete exact 15-call result required");
         int exact = 0, valid = 0;
+        boolean rawPreserved = true;
         var perCondition = new LinkedHashMap<String, List<String>>();
         for (int i = 0; i < plan.requests().size(); i++) {
             Request req = plan.requests().get(i); JsonNode row = saved.path("results").get(i);
+            rawPreserved &= row.path("providerResponse").isObject();
             check(req.conditionId().equals(row.path("conditionId").asText()) && req.repeat() == row.path("repeat").asInt()
                     && row.path("httpAttempts").asInt() == 1 && req.system().equals(row.path("system").asText())
                     && JSON.readTree(req.input()).equals(row.path("input")), "Request/result mismatch");
@@ -267,7 +291,7 @@ public final class SourceRelationExtractionTrial {
                 "distinctOutputs", values.stream().distinct().count())));
         return Map.of("state", state, "calls", 15, "providerRetries", 0, "structurallyAccepted", valid,
                 "exactExpectedRelationMatches", exact, "repeatStability", repeat,
-                "rawProviderResponsePreserved", saved.path("results").get(0).has("providerResponse"),
+                "rawProviderResponsePreserved", rawPreserved,
                 "independentGold", false, "runtimePromotion", false);
     }
 
@@ -304,7 +328,30 @@ public final class SourceRelationExtractionTrial {
         }
     }
 
-    static void run(Plan plan, byte[] frozenPlan, Path output) throws Exception {
+    static String postAndPreserve(RestClient client, Request request, Path rawOutput) throws Exception {
+        String response;
+        try {
+            response = client.post().uri("/chat/completions").body(requestBody(request)).retrieve().body(String.class);
+        } catch (org.springframework.web.client.RestClientResponseException ex) {
+            writePrivate(rawOutput, ex.getResponseBodyAsByteArray());
+            throw new IllegalStateException("Provider HTTP " + ex.getStatusCode().value() + "; response saved; no retry");
+        }
+        writePrivate(rawOutput, Objects.requireNonNullElse(response, "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        check(response != null && !response.isBlank(), "Empty provider response; raw response saved");
+        return response;
+    }
+
+    static void requireValidResponse(Map<String, Object> assessment, String parseFailure) {
+        check(parseFailure == null && Boolean.TRUE.equals(assessment.get("accepted")),
+                "Response contract failed; saved response retained; stop before next provider call");
+    }
+
+    static void claimPlan(Path planPath, Path output, String sha) throws Exception {
+        writePrivate(planPath.toRealPath().getParent().resolve("execution-claim.json"), JSON.writeValueAsBytes(Map.of(
+                "planSha256", sha, "consent", CONSENT, "output", output.toString(), "maxHttpAttempts", 15, "resumable", false)));
+    }
+
+    static void run(Plan plan, byte[] frozenPlan, Path planPath, Path output) throws Exception {
         validate(plan);
         check(ReferenceOnlyTrial.sha(frozenPlan).equals(ReferenceOnlyTrial.sha(JSON.writeValueAsBytes(plan))), "Frozen plan changed");
         Path root = Path.of("../datasets/controversy/experiments").toRealPath();
@@ -312,6 +359,7 @@ public final class SourceRelationExtractionTrial {
         check(!Files.exists(destination) && destination.getParent().toRealPath().startsWith(root), "New private output directory required");
         String key = System.getenv("OPENAI_API_KEY");
         check(key != null && !key.isBlank(), "OPENAI_API_KEY is unavailable to this execution environment");
+        claimPlan(planPath, destination, ReferenceOnlyTrial.sha(frozenPlan));
         double inputRate = plan.inputPer1m(), outputRate = plan.outputPer1m();
         try { Files.createDirectory(destination, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))); }
         catch (UnsupportedOperationException e) { Files.createDirectory(destination); }
@@ -350,8 +398,8 @@ public final class SourceRelationExtractionTrial {
                 guard.begin(JSON.writeValueAsBytes(expectedBody));
                 int before = budget.attempts;
                 long started = System.nanoTime();
-                JsonNode providerResponse = client.post().uri("/chat/completions").body(expectedBody)
-                        .retrieve().body(JsonNode.class);
+                Path rawFile = destination.resolve(String.format(Locale.ROOT, "provider-response-%02d.json", rows.size() + 1));
+                JsonNode providerResponse = JSON.readTree(postAndPreserve(client, request, rawFile));
                 check(providerResponse != null, "Empty provider response; stop without retrying the trial");
                 JsonNode usage = providerResponse.path("usage");
                 long promptTokens = usage.path("prompt_tokens").asLong(-1);
@@ -384,6 +432,7 @@ public final class SourceRelationExtractionTrial {
                 row.put("elapsedMs", (System.nanoTime() - started) / 1_000_000);
                 row.put("httpAttempts", budget.attempts - before); rows.add(row);
                 save(destination, plan, rows, budget.attempts, budget.reserved, usageCost, "RUNNING");
+                requireValidResponse(assessment, parseFailure);
                 check(guard.sent && budget.attempts - before == 1 && !budget.exhausted,
                         "Call count/budget mismatch; stop without retrying the trial");
                 System.out.println("SOURCE_RELATION_TRIAL " + rows.size() + "/15 " + request.conditionId() + " repeat=" + request.repeat());
@@ -450,8 +499,8 @@ public final class SourceRelationExtractionTrial {
             check(ReferenceOnlyTrial.sha(planBytes).equals(JSON.readTree(resultBytes).path("planSha256").asText()),
                     "Saved response does not belong to frozen plan");
             Plan plan = JSON.readValue(planBytes, Plan.class);
-            check("source-relation-extraction-1".equals(plan.schemaVersion()) && plan.requests().size() == 15,
-                    "Historical v1 plan required for this read-only audit");
+            check(Set.of("source-relation-extraction-1", "source-relation-extraction-2").contains(plan.schemaVersion()) && plan.requests().size() == 15,
+                    "Known historical plan required for this read-only audit");
             JsonNode saved = JSON.readTree(resultBytes);
             Map<String, Object> report = audit(plan, saved);
             Path auditOutput = Path.of(args[3]).toAbsolutePath().normalize();
@@ -470,6 +519,6 @@ public final class SourceRelationExtractionTrial {
         Plan plan = JSON.readValue(bytes, Plan.class); validate(plan);
         Path output = Path.of(args[4]).toAbsolutePath().normalize();
         check(!Files.exists(output), "New private output directory required; runs cannot be resumed");
-        run(plan, bytes, output);
+        run(plan, bytes, Path.of(args[1]), output);
     }
 }

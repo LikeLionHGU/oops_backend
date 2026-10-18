@@ -3,12 +3,17 @@ package com.example.oops.analyzer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
 
 import java.nio.file.Path;
 import java.util.*;
 
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.*;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class SourceRelationExtractionTrialTest {
     @TempDir Path temporary;
@@ -48,6 +53,7 @@ class SourceRelationExtractionTrialTest {
         }
         double reservation = SourceRelationExtractionTrial.reservation(requests, .10, .50);
         var p = new SourceRelationExtractionTrial.Plan("source-relation-extraction-2", "gpt-6-luna", "none",
+                ReviewGuidelineLibrary.retrievalHash(SourceRelationExtractionTrial.OUTPUT_FORMAT),
                 SourceRelationExtractionTrial.SOURCE_SHA, SourceRelationExtractionTrial.LABEL_SHA,
                 "5_FIXED_CONDITIONS_X_3_REPEATS_TEXT_ONLY_EXTRACTION_NOT_RISK_JUDGMENT", false, false,
                 15, 1024, reservation, .10, .50, SourceRelationExtractionTrial.SYSTEM,
@@ -66,6 +72,8 @@ class SourceRelationExtractionTrialTest {
             JsonNode body = JSON.valueToTree(SourceRelationExtractionTrial.requestBody(request));
             assertThat(body.path("model").asText()).isEqualTo("gpt-6-luna");
             assertThat(body.path("max_completion_tokens").asInt()).isEqualTo(1024);
+            assertThat(body.at("/response_format/type").asText()).isEqualTo("json_schema");
+            assertThat(body.at("/response_format/json_schema/strict").asBoolean()).isTrue();
             assertThat(body.toString()).doesNotContain("expectedDecision", "labelStatus", "contextReference", "OPENAI_API_KEY");
             assertThat(request.system()).contains("\"observations\"", "\"anchorId\"", "\"function\"", "\"contentUse\"");
             assertThat(request.input()).doesNotContain("expectedDecision", "labelStatus");
@@ -145,5 +153,51 @@ class SourceRelationExtractionTrialTest {
         assertThat(budget.reserved).isLessThan(.50);
         assertThatThrownBy(() -> budget.reserve(1000, 1024)).hasMessageContaining("cap reached");
         assertThat(budget.attempts).isEqualTo(15);
+    }
+
+    @Test void actualHttpPathSendsSchemaAndKeepsOriginalResponseBeforeParsing() throws Exception {
+        var request = plan().requests().get(0);
+        var output = new SourceRelationExtractionTrial.RelationResult(List.of(new SourceRelationExtractionTrial.Observation(
+                SourceRelationExtractionTrial.focusId(request.input()), request.expected().function(), request.expected().contentUse(),
+                request.expected().links(), List.of(SourceRelationExtractionTrial.focusId(request.input())))));
+        String content = JSON.writeValueAsString(output);
+        String raw = JSON.writeValueAsString(Map.of("choices", List.of(Map.of("finish_reason", "stop",
+                "message", Map.of("content", content))), "usage", Map.of("prompt_tokens", 100, "completion_tokens", 50)));
+        var builder = RestClient.builder().baseUrl("https://api.openai.com/v1");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(SourceRelationExtractionTrial.ENDPOINT))
+                .andExpect(jsonPath("$.response_format.type").value("json_schema"))
+                .andExpect(jsonPath("$.response_format.json_schema.strict").value(true))
+                .andExpect(jsonPath("$.response_format.json_schema.schema.properties.observations.items.properties.links.items.required[0]").value("segmentId"))
+                .andExpect(jsonPath("$.max_completion_tokens").value(1024))
+                .andRespond(withSuccess(raw, MediaType.APPLICATION_JSON));
+        Path saved = temporary.resolve("raw-response.json");
+        String received = SourceRelationExtractionTrial.postAndPreserve(builder.build(), request, saved);
+        assertThat(java.nio.file.Files.readString(saved)).isEqualTo(raw);
+        var parsed = JSON.readValue(JSON.readTree(received).at("/choices/0/message/content").asText(),
+                SourceRelationExtractionTrial.RelationResult.class);
+        assertThat(SourceRelationExtractionTrial.assess(request, parsed)).containsEntry("accepted", true);
+        server.verify();
+    }
+
+    @Test void malformedResponsesAreRetainedAndFailBeforeTheNextCall() throws Exception {
+        var request = plan().requests().get(0);
+        var builder = RestClient.builder().baseUrl("https://api.openai.com/v1");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(SourceRelationExtractionTrial.ENDPOINT)).andRespond(withSuccess("invalid JSON", MediaType.APPLICATION_JSON));
+        Path saved = temporary.resolve("invalid-response.json");
+        String received = SourceRelationExtractionTrial.postAndPreserve(builder.build(), request, saved);
+        assertThatThrownBy(() -> JSON.readTree(received)).isInstanceOf(RuntimeException.class);
+        assertThat(java.nio.file.Files.readString(saved)).isEqualTo("invalid JSON");
+        assertThatThrownBy(() -> SourceRelationExtractionTrial.requireValidResponse(Map.of("accepted", false), null))
+                .hasMessageContaining("stop before next provider call");
+        server.verify();
+    }
+
+    @Test void aClaimedPlanCannotBeExecutedAgainWithAnotherDestination() throws Exception {
+        Path plan = temporary.resolve("plan.json"); java.nio.file.Files.writeString(plan, "fixture");
+        SourceRelationExtractionTrial.claimPlan(plan, temporary.resolve("first"), "frozen");
+        assertThatThrownBy(() -> SourceRelationExtractionTrial.claimPlan(plan, temporary.resolve("second"), "frozen"))
+                .isInstanceOf(java.nio.file.FileAlreadyExistsException.class);
     }
 }
