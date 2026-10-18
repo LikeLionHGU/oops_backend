@@ -1,0 +1,56 @@
+{
+  "version": "context-content-contrasts-20261018-v1",
+  "purpose": "DEVELOPMENT_CONTEXT_BOUNDARY",
+  "sourceType": "SYNTHETIC",
+  "runtimeEnabled": false,
+  "independentGold": false,
+  "approval": {
+    "status": "USER_APPROVED",
+    "date": "2026-10-18",
+    "scope": "CONTEXT_DECISION_ONLY",
+    "message": "동의",
+    "reference": "docs/표현-탐지-및-선택-필터-설계.md"
+  },
+  "cases": [
+    {
+      "id": "A01",
+      "dialogue": [
+        {"id": "s0", "text": "이 음식은 할머니가 해주시던 맛이에요."},
+        {"id": "s1", "text": "어릴 때 먹던 게 떠오르네요."}
+      ],
+      "context": {"status": "USER_APPROVED", "expectedDecision": "PASS"},
+      "advisory": {"status": "DRAFT_UNAPPROVED", "expectedDecision": null, "proposedTags": []},
+      "reviewerNotes": "추억 표현. 할머니라는 단어만으로 신체 훼손·노인 비하를 만들지 않는다."
+    },
+    {
+      "id": "A02",
+      "dialogue": [
+        {"id": "s0", "text": "이 음식 맛을 ‘할머니 살을 뜯는 것 같다’고 표현하고 싶어요."},
+        {"id": "s1", "text": "그 비유가 딱 맞네요."}
+      ],
+      "context": {"status": "USER_APPROVED", "expectedDecision": "REVIEW_REQUIRED"},
+      "advisory": {"status": "DRAFT_UNAPPROVED", "expectedDecision": null, "proposedTags": ["GRAPHIC_BODY_DESCRIPTION"]},
+      "reviewerNotes": "비유 제안·동조. 실제 폭력이나 노인 전체 공격으로 확대하지 않는다."
+    },
+    {
+      "id": "A03",
+      "dialogue": [
+        {"id": "s0", "text": "‘할머니 살을 뜯는 것 같다’는 음식 비유는 쓰지 맙시다."},
+        {"id": "s1", "text": "추억의 맛이라는 표현으로 바꾸죠."}
+      ],
+      "context": {"status": "USER_APPROVED", "expectedDecision": "PASS"},
+      "advisory": {"status": "DRAFT_UNAPPROVED", "expectedDecision": null, "proposedTags": ["GRAPHIC_BODY_DESCRIPTION"]},
+      "reviewerNotes": "비판적 인용과 수정 제안. 모든 인용을 PASS시키는 일반 규칙은 아니다."
+    },
+    {
+      "id": "A04",
+      "dialogue": [
+        {"id": "s0", "text": "그 사람이 ‘할머니가 해주시던 맛’이라고 했어요."},
+        {"id": "s1", "text": "그 말을 한 사람은 머리가 빈 사람이죠."}
+      ],
+      "context": {"status": "USER_APPROVED", "expectedDecision": "REVIEW_REQUIRED"},
+      "advisory": {"status": "DRAFT_UNAPPROVED", "expectedDecision": null, "proposedTags": []},
+      "reviewerNotes": "두 번째의 발언자 모욕이 문제다. 연령·집단 차별이나 신체 훼손으로 바꾸지 않는다."
+    }
+  ]
+}
