@@ -641,6 +641,18 @@ tasks.register('reviewCaseReplay', JavaExec) {
     }
 }
 
+// Prepare approved synthetic contrasts only; no network or execution mode.
+tasks.register('contextContrastPlan', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextContrastPlan'
+    doFirst {
+        def output = providers.gradleProperty('contrastPlanOutput').orNull
+        if (!output) throw new GradleException('Set contrastPlanOutput to a new private plan file')
+        args output
+    }
+}
+
 // Saved-response audit with the production evidence validator, without paid calls.
 tasks.register('reviewGuidelineReplay', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

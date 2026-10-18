@@ -8,6 +8,21 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Fixture integrity and evaluation boundaries only; no model or runtime integration. */
 class ContextContentContrastTest {
+    @Test void baselinePlanFreezesTwelveLabelFreeRequestsWithoutExecutionApproval() throws Exception {
+        var plan = ContextContrastPlan.build();
+        assertThat(plan.path("approvalStatus").asText()).isEqualTo("AWAITING_NEW_BUDGET_AND_TEXT_CONSENT");
+        assertThat(plan.path("requests").size()).isEqualTo(12);
+        assertThat(plan.path("reservationEstimatedUsd").asDouble()).isBetween(0d, .50d);
+        var ids = new HashSet<String>();
+        for (var r : plan.path("requests")) {
+            assertThat(ids.add(r.path("id").asText())).isTrue();
+            assertThat(r.path("body")).isEqualTo(SourceFirstJudgmentTrial.body(r.path("input")));
+            assertThat(r.path("body").toString()).doesNotContain("expectedDecision", "proposedTags", "reviewerNotes", "localContextLabel", "USER_APPROVED");
+            assertThat(r.at("/input/sourceReading").isNull()).isTrue();
+            SourceFirstReviewBoundary.readingInput(r.path("input"));
+        }
+        assertThat(ContextContrastPlan.build()).isEqualTo(plan);
+    }
     static JsonNode fixture() throws Exception {
         try (var in = ContextContentContrastTest.class.getResourceAsStream("/evals/context-content-contrasts-v1.json")) {
             if (in == null) throw new IllegalStateException("Missing approved contrast fixture");
