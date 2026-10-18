@@ -1,5 +1,20 @@
 # oops-analysis
 
+## macOS 기존 Conda 환경으로 실행할 때
+
+2026-10-18 로컬 점검에서 base Python3.13에는 paddleocr/paddle이 없었고, 기존 `oops-analysis` Conda 환경의 Python3.11.17에는 PaddleOCR2.9.1/PaddlePaddle2.6.2가 설치돼 import도 통과했다. 설치된 환경과 서버 실행 환경을 일치시켜야 한다. 패키지가 있어도 모델 초기화·실제 OCR 성공은 별도로 확인한다.
+
+기존 Python 서버를 실행한 터미널에서 Ctrl+C로 종료한 후:
+
+```zsh
+cd /Users/im_inwook/dev/oops_backend/oops-analysis
+conda activate oops-analysis
+export MEDIA_STORAGE_ROOT=/Users/im_inwook/dev/oops_backend/oops-backend/uploads
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+다른 터미널에서 `curl http://127.0.0.1:8000/health`의 sttAvailable/ocrAvailable을 각각 확인한다. 기존 저장 결과는 재시작으로 소급 변경되지 않는다. 위 경로는 이 프로젝트 소유자의 Mac 예시이며 다른 머신에서는 실제 설치 경로를 사용한다. base 환경에 무작정 OCR을 재설치하지 않는다. pinned PaddlePaddle2.6.2의 지원 Python/배포 파일은 [공식 패키지 정보](https://pypi.org/project/paddlepaddle/2.6.2/)를 따른다.
+
 2026-10-16 · Spring이 호출하는 Python FastAPI 분석 서버다. 기본 전사는 Groq `whisper-large-v3`이며 OCR·선택 프레임 추출은 로컬에서 수행한다.
 
 ## 설치·실행
