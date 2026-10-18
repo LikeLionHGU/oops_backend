@@ -231,33 +231,39 @@ public final class SourceRelationExtractionTrial {
         if (result == null || result.observations() == null || result.observations().size() != 1)
             return Map.of("accepted", false, "failure", "ONE_OBSERVATION_REQUIRED");
         Observation o = result.observations().get(0);
-        if (o == null || o.anchorId() == null || o.function() == null || o.contentUse() == null)
-            return Map.of("accepted", false, "failure", "OUTPUT_ENUM_OR_SHAPE");
-        // The expected label is joined offline only after the response has been parsed.
-        if (!o.anchorId().equals(focusId(request.input()))) return Map.of("accepted", false, "failure", "ANCHOR_MISMATCH");
-        Set<String> allowedFunctions = Set.of("DEFINITION_OR_EXPANSION", "DIRECT_REQUEST_TO_LISTENER", "SELF_OFFER",
-                "REPORT_OR_QUOTE", "SELF_DESCRIPTION", "OTHER", "UNCLEAR");
-        Set<String> allowedContent = Set.of("CURRENT_ACT", "MENTIONED_PHRASE", "REPORTED_CONTENT", "UNCLEAR");
-        Set<String> allowedRelations = Set.of("ANSWERS_MEANING_QUESTION", "CONTINUES_REQUEST", "CLARIFIES_NOT_DIRECT_QUESTION",
-                "CLARIFIES_PURPOSE", "RESPONDS_TO_REQUEST", "TOPIC_CHANGE_AFTER_REFUSAL", "OTHER", "UNCLEAR");
-        JsonNode input = JSON.readTree(request.input());
-        Set<String> ids = new HashSet<>(); input.path("segments").forEach(s -> ids.add(s.path("id").asText()));
-        if (!allowedFunctions.contains(o.function()) || !allowedContent.contains(o.contentUse())
-                || o.links() == null || o.links().size() > 8 || o.evidenceIds() == null || o.evidenceIds().isEmpty())
-            return Map.of("accepted", false, "failure", "OUTPUT_ENUM_OR_SHAPE");
-        if (!o.evidenceIds().contains(o.anchorId()) || o.evidenceIds().stream().anyMatch(id -> id == null || !ids.contains(id))
-                || o.evidenceIds().size() > 12 || new HashSet<>(o.evidenceIds()).size() != o.evidenceIds().size())
-            return Map.of("accepted", false, "failure", "EVIDENCE_ID_SCOPE");
-        if (o.links().stream().anyMatch(link -> link == null || link.segmentId() == null || link.relation() == null || !ids.contains(link.segmentId())
-                || !allowedRelations.contains(link.relation()))
-                || new HashSet<>(o.links()).size() != o.links().size())
-            return Map.of("accepted", false, "failure", "LINK_ID_SCOPE");
+        String failure = sourceFailure(request.input(), o);
+        if (failure != null) return Map.of("accepted", false, "failure", failure);
         Expected c = expected().get(request.conditionId());
         boolean functionMatch = c.function().equals(o.function());
         boolean contentMatch = c.contentUse().equals(o.contentUse());
         boolean linksMatch = new HashSet<>(c.links()).equals(new HashSet<>(o.links()));
         return Map.of("accepted", true, "functionMatch", functionMatch, "contentUseMatch", contentMatch,
                 "exactLinksMatch", linksMatch, "allExpectedRelationsMatch", functionMatch && contentMatch && linksMatch);
+    }
+
+    /** Source/shape checks only, independent of expected labels or risk decisions. */
+    static String sourceFailure(String sourceInput, Observation o) {
+        if (o == null || o.anchorId() == null || o.function() == null || o.contentUse() == null)
+            return "OUTPUT_ENUM_OR_SHAPE";
+        if (!o.anchorId().equals(focusId(sourceInput))) return "ANCHOR_MISMATCH";
+        Set<String> allowedFunctions = Set.of("DEFINITION_OR_EXPANSION", "DIRECT_REQUEST_TO_LISTENER", "SELF_OFFER",
+                "REPORT_OR_QUOTE", "SELF_DESCRIPTION", "OTHER", "UNCLEAR");
+        Set<String> allowedContent = Set.of("CURRENT_ACT", "MENTIONED_PHRASE", "REPORTED_CONTENT", "UNCLEAR");
+        Set<String> allowedRelations = Set.of("ANSWERS_MEANING_QUESTION", "CONTINUES_REQUEST", "CLARIFIES_NOT_DIRECT_QUESTION",
+                "CLARIFIES_PURPOSE", "RESPONDS_TO_REQUEST", "TOPIC_CHANGE_AFTER_REFUSAL", "OTHER", "UNCLEAR");
+        JsonNode input = JSON.readTree(sourceInput);
+        Set<String> ids = new HashSet<>(); input.path("segments").forEach(s -> ids.add(s.path("id").asText()));
+        if (!allowedFunctions.contains(o.function()) || !allowedContent.contains(o.contentUse())
+                || o.links() == null || o.links().size() > 8 || o.evidenceIds() == null || o.evidenceIds().isEmpty())
+            return "OUTPUT_ENUM_OR_SHAPE";
+        if (!o.evidenceIds().contains(o.anchorId()) || o.evidenceIds().stream().anyMatch(id -> id == null || !ids.contains(id))
+                || o.evidenceIds().size() > 12 || new HashSet<>(o.evidenceIds()).size() != o.evidenceIds().size())
+            return "EVIDENCE_ID_SCOPE";
+        if (o.links().stream().anyMatch(link -> link == null || link.segmentId() == null || link.relation() == null || !ids.contains(link.segmentId())
+                || !allowedRelations.contains(link.relation()))
+                || new HashSet<>(o.links()).size() != o.links().size())
+            return "LINK_ID_SCOPE";
+        return null;
     }
 
     static String focusId(String input) { return JSON.readTree(input).path("focusId").asText(); }
