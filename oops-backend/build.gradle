@@ -268,6 +268,31 @@ tasks.register('prepareDefaultVerificationPlan', JavaExec) {
 }
 
 // Offline preparation of the fixed before/after issue-scope comparison; no provider calls.
+tasks.register('finalReasonPremiseTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.FinalReasonPremiseTrial'
+    doFirst {
+        def mode = providers.gradleProperty('premiseTrialMode').get()
+        def input = providers.gradleProperty('premiseTrialPlan').get()
+        def second = providers.gradleProperty('premiseTrialSecond').get()
+        def output = providers.gradleProperty('premiseTrialOutput').get()
+        if (mode == 'run') {
+            if (providers.gradleProperty('premiseTrialLiveApproved').orNull != 'true')
+                throw new GradleException('New exact-plan USD0.50/text approval required')
+            args mode, input, second, providers.gradleProperty('premiseTrialConsent').get(), output
+        } else if (mode == 'audit') { args mode, input, second, output }
+        else { throw new GradleException('premiseTrialMode must be run or audit') }
+    }
+}
+
+tasks.register('prepareFinalReasonPremiseTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.PrepareFinalReasonPremiseTrial'
+    doFirst { args providers.gradleProperty('premiseBundle').get(), providers.gradleProperty('premiseTrialOutput').get() }
+}
+
 tasks.register('prepareFinalReasonPremiseAudit', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
