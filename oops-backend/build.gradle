@@ -641,6 +641,18 @@ tasks.register('reviewCaseReplay', JavaExec) {
     }
 }
 
+// Saved final-card evidence replay only; no provider calls or database writes.
+tasks.register('graphicFusionReportReplay', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.fusion.GraphicFusionReportReplay'
+    doFirst {
+        def reports = providers.gradleProperty('graphicFusionReports').orNull
+        if (!reports) throw new GradleException('Set graphicFusionReports to comma-separated saved report files')
+        args reports.split(',').toList()
+    }
+}
+
 // Explicit new approval and frozen-plan guard; audit mode makes no provider calls.
 tasks.register('contextContrastTrial', JavaExec) {
     dependsOn testClasses

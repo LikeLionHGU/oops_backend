@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @Service
 public class FindingFusionService {
 
-    public static final String REVISION = "2026-10-10-validated-flow-fusion-2";
+    public static final String REVISION = "2026-10-19-reciprocal-graphic-evidence-fusion-3";
 
     /** 이 시간(ms) 안에 있으면 같은 장면으로 본다 */
     private static final long MERGE_WINDOW_MS = 3000;
@@ -228,6 +228,7 @@ public class FindingFusionService {
                         .anyMatch(e -> q.quotes().stream().anyMatch(f -> "PRIMARY".equals(f.role()) && sameQuote(e, f)));
                 return samePrimary && sameAnchoredTarget(a, b, p, q);
             }
+            if (reciprocalGraphicEvidence(a, b)) return true;
             if (!targetMatches(a, b)) return false;
             if (p.targetType() == null) return false;
             long start = Math.min(a.getStartMs(), b.getStartMs()), end = Math.max(a.getEndMs(), b.getEndMs());
@@ -283,7 +284,39 @@ public class FindingFusionService {
                     && a.startMs() == b.startMs() && a.endMs() == b.endMs() && a.quote().equals(b.quote());
         }
 
+        /** Narrow exception for two alternative anchors of one closed, reciprocal quote pair.
+         * Not a general semantic deduper: no fuzzy text, proximity-only or extra evidence joins.
+         */
+        private boolean reciprocalGraphicEvidence(RiskFinding a, RiskFinding b) {
+            if (a.getCategory() != RiskCategory.GRAPHIC_METAPHOR || b.getCategory() != RiskCategory.GRAPHIC_METAPHOR
+                    || a.getEventType() != com.example.oops.domain.TimelineEventType.SPEECH
+                    || b.getEventType() != a.getEventType() || !blank(a.getTarget()) || !blank(b.getTarget())) return false;
+            var left = a.validatedSupports(); var right = b.validatedSupports();
+            if (left.isEmpty() || right.isEmpty()) return false;
+            var seed = left.get(0);
+            if (!closedGraphicPair(seed)) return false;
+            // Include every support; the first matching support cannot hide a different issue.
+            return java.util.stream.Stream.concat(left.stream(), right.stream()).allMatch(s ->
+                    closedGraphicPair(s) && s.quotes().stream().allMatch(q -> seed.quotes().stream().anyMatch(e -> sameQuote(q, e))));
+        }
+
+        private boolean closedGraphicPair(FindingSupport support) {
+            if (support.targetType() != null || support.quotes().size() != 2) return false;
+            var primary = support.quotes().stream().filter(q -> "PRIMARY".equals(q.role()) && q.segmentId().equals(support.anchorId())).toList();
+            var context = support.quotes().stream().filter(q -> "CONTEXT".equals(q.role()) && !q.segmentId().equals(support.anchorId())).toList();
+            if (primary.size() != 1 || context.size() != 1) return false;
+            var p = primary.get(0); var q = context.get(0);
+            return p.type() == com.example.oops.domain.TimelineEventType.SPEECH && q.type() == p.type()
+                    && p.quote() != null && !p.quote().isBlank() && q.quote() != null && !q.quote().isBlank()
+                    && p.startMs() >= 0 && q.startMs() >= 0 && p.endMs() >= p.startMs() && q.endMs() >= q.startMs()
+                    && Math.max(p.endMs(), q.endMs()) - Math.min(p.startMs(), q.startMs()) <= 10000;
+        }
+
+        private boolean blank(String value) { return value == null || value.isBlank(); }
+
         int occurrenceCount() {
+            // A reciprocal pair changes the representative anchor, not the number of utterance flows.
+            if (members.size() > 1 && members.stream().allMatch(m -> reciprocalGraphicEvidence(members.get(0), m))) return 1;
             // Evaluator support duplicates at one raw anchor are one occurrence.
             var speech = members.stream().flatMap(m -> m.validatedSupports().stream())
                     .flatMap(s -> s.quotes().stream().filter(q -> q.segmentId().equals(s.anchorId()) && "PRIMARY".equals(q.role())))

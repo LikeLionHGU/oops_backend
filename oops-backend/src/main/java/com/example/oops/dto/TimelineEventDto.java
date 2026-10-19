@@ -40,7 +40,8 @@ public record TimelineEventDto(
         Severity severity,
 
         /**
-         * 새 분석: 검토 후보의 고유 원문 anchor 수. 분석 지원 수는 supportCount로 분리한다.
+         * 새 분석: 검토 후보의 고유 원문 anchor 수. 같은 두 줄의 상호 인용으로
+         * 신체 비유 대표 anchor만 바뀐 경우는 하나의 흐름으로 센다. 분석 지원 수는 supportCount로 분리한다.
          * 실제 동일 발언 반복 횟수나 논란 수는 아니다. 과거 행은 legacy mergedCount를 유지한다.
          */
         int occurrences,
