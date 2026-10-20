@@ -2,7 +2,7 @@ package com.example.oops.analyzer;
 
 import java.util.*;
 
-/** In-memory execution seam for mock/saved verifiers. No production client, Spring wiring or publication. */
+/** Test-only in-memory harness. Production execution lives in CandidateReviewEngine. */
 final class CandidateUnionExecution {
     static final String REVISION="2026-10-20-candidate-union-execution-1";
     enum State { PASS, REVIEW_REQUIRED, UNCERTAIN, PREPARATION_FAILED, VERIFICATION_FAILED,
