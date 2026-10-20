@@ -736,6 +736,18 @@ tasks.register('ruleUnionTrialPlan', JavaExec) {
     }
 }
 
+tasks.register('ruleUnionTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RuleUnionTrial'
+    doFirst {
+        def names = ['ruleUnionPlan', 'ruleUnionSha', 'ruleUnionConsent', 'ruleUnionOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', '))
+        args values
+    }
+}
+
 tasks.register('contextReferenceAudit', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.example.oops.analyzer.ContextReferenceAudit'
