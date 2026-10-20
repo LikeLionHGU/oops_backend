@@ -76,4 +76,23 @@ class ReciprocalGraphicFusionTest {
         var first = finding("a", 1000, "b", 3000, .6); var second = finding("c", 5000, "d", 7000, .8);
         assertThat(new FindingFusionService().fuse(List.of(first, second))).hasSize(2);
     }
+    @Test void redundantPrimaryAsContextDoesNotBlockPairAndRemainsOnCard() {
+        var a=finding("a",1000,"b",3000,.6);var b=finding("b",3000,"a",1000,.8);
+        var quotes=new ArrayList<>(b.validatedSupports().get(0).quotes());quotes.add(quote("b",3000,"CONTEXT"));
+        var support=new FindingSupport("b",null,quotes);
+        b.recordValidatedSupports(List.of(support));
+        var result=new FindingFusionService().fuse(List.of(a,b));
+        assertThat(result).hasSize(1);assertThat(result.get(0).getOccurrenceCount()).isOne();
+        assertThat(result.get(0).validatedSupports()).contains(support).hasSize(2);
+        assertThat(result.get(0).getScore()).isEqualTo(.8);
+    }
+    @Test void differentTimeTextOrTargetRoleOnAnchorIsNotRedundantContext() {
+        for(var extra:List.of(quote("b",3001,"CONTEXT"),
+                new FindingSupport.Quote("b",TimelineEventType.SPEECH,3000,4000,"다른 인용","CONTEXT"),quote("b",3000,"TARGET"))) {
+            var a=finding("a",1000,"b",3000,.6);var b=finding("b",3000,"a",1000,.8);
+            var quotes=new ArrayList<>(b.validatedSupports().get(0).quotes());quotes.add(extra);
+            b.recordValidatedSupports(List.of(new FindingSupport("b",null,quotes)));
+            assertThat(new FindingFusionService().fuse(List.of(a,b))).hasSize(2);
+        }
+    }
 }

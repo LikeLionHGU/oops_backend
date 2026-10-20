@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @Service
 public class FindingFusionService {
 
-    public static final String REVISION = "2026-10-20-graphic-primary-display-fusion-4";
+    public static final String REVISION = "2026-10-20-graphic-role-normalization-fusion-5";
 
     /** 이 시간(ms) 안에 있으면 같은 장면으로 본다 */
     private static final long MERGE_WINDOW_MS = 3000;
@@ -299,13 +299,21 @@ public class FindingFusionService {
             if (!closedGraphicPair(seed)) return false;
             // Include every support; the first matching support cannot hide a different issue.
             return java.util.stream.Stream.concat(left.stream(), right.stream()).allMatch(s ->
-                    closedGraphicPair(s) && s.quotes().stream().allMatch(q -> seed.quotes().stream().anyMatch(e -> sameQuote(q, e))));
+                    closedGraphicPair(s) && graphicPairQuotes(s).stream().allMatch(q -> graphicPairQuotes(seed).stream().anyMatch(e -> sameQuote(q, e))));
+        }
+
+        /** Comparison view only. Keep original support roles and multiplicities on the published card. */
+        private List<FindingSupport.Quote> graphicPairQuotes(FindingSupport support) {
+            return support.quotes().stream().filter(q -> !("CONTEXT".equals(q.role())
+                    && support.quotes().stream().anyMatch(p -> "PRIMARY".equals(p.role())
+                    && p.segmentId().equals(support.anchorId()) && sameQuote(p,q)))).toList();
         }
 
         private boolean closedGraphicPair(FindingSupport support) {
-            if (support.targetType() != null || support.quotes().size() != 2) return false;
-            var primary = support.quotes().stream().filter(q -> "PRIMARY".equals(q.role()) && q.segmentId().equals(support.anchorId())).toList();
-            var context = support.quotes().stream().filter(q -> "CONTEXT".equals(q.role()) && !q.segmentId().equals(support.anchorId())).toList();
+            var quotes=graphicPairQuotes(support);
+            if (support.targetType() != null || quotes.size() != 2) return false;
+            var primary = quotes.stream().filter(q -> "PRIMARY".equals(q.role()) && q.segmentId().equals(support.anchorId())).toList();
+            var context = quotes.stream().filter(q -> "CONTEXT".equals(q.role()) && !q.segmentId().equals(support.anchorId())).toList();
             if (primary.size() != 1 || context.size() != 1) return false;
             var p = primary.get(0); var q = context.get(0);
             return p.type() == com.example.oops.domain.TimelineEventType.SPEECH && q.type() == p.type()
