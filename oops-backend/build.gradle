@@ -710,6 +710,19 @@ tasks.register('mechanismShadowAudit', JavaExec) {
     }
 }
 
+// Offline preparation with frozen references. Does not send the generated requests.
+tasks.register('mechanismBridgeAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.MechanismBridgeAudit'
+    doFirst {
+        def input = providers.gradleProperty('mechanismBridgeInput').orNull
+        def runtime = providers.gradleProperty('mechanismBridgeRuntime').orNull
+        if (!input || !runtime) throw new GradleException('Set mechanismBridgeInput and mechanismBridgeRuntime')
+        args input, runtime
+    }
+}
+
 tasks.register('contextReferenceAudit', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.example.oops.analyzer.ContextReferenceAudit'
