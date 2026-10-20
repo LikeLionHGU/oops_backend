@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @Service
 public class FindingFusionService {
 
-    public static final String REVISION = "2026-10-19-reciprocal-graphic-evidence-fusion-3";
+    public static final String REVISION = "2026-10-20-graphic-primary-display-fusion-4";
 
     /** 이 시간(ms) 안에 있으면 같은 장면으로 본다 */
     private static final long MERGE_WINDOW_MS = 3000;
@@ -128,6 +128,8 @@ public class FindingFusionService {
             var support = new ArrayList<>(representative.validatedSupports());
             for (var member : cluster.members) if (member != representative) support.addAll(member.validatedSupports());
             if (!support.isEmpty()) representative.recordValidatedSupports(support);
+            if (cluster.isReciprocalGraphicCluster())
+                GraphicDisplayAnchor.choose(support).ifPresent(representative::selectRepresentativeEvidence);
             representative.recordOccurrenceCount(occurrences);
 
             // 여러 번 등장했다면 카드 하나로 합치고 구간을 처음~끝으로 넓힌다
@@ -316,13 +318,17 @@ public class FindingFusionService {
 
         int occurrenceCount() {
             // A reciprocal pair changes the representative anchor, not the number of utterance flows.
-            if (members.size() > 1 && members.stream().allMatch(m -> reciprocalGraphicEvidence(members.get(0), m))) return 1;
+            if (isReciprocalGraphicCluster()) return 1;
             // Evaluator support duplicates at one raw anchor are one occurrence.
             var speech = members.stream().flatMap(m -> m.validatedSupports().stream())
                     .flatMap(s -> s.quotes().stream().filter(q -> q.segmentId().equals(s.anchorId()) && "PRIMARY".equals(q.role())))
                     .filter(q -> q.type() == com.example.oops.domain.TimelineEventType.SPEECH).toList();
             if (!speech.isEmpty()) return (int) speech.stream().map(FindingSupport.Quote::segmentId).distinct().count();
             return (int) members.stream().map(m -> m.getStartMs() + ":" + m.getEndMs() + ":" + m.primaryText()).distinct().count();
+        }
+
+        boolean isReciprocalGraphicCluster() {
+            return members.size() > 1 && members.stream().allMatch(m -> reciprocalGraphicEvidence(members.get(0), m));
         }
 
         void add(RiskFinding finding) {

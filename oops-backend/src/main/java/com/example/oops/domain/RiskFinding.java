@@ -130,6 +130,27 @@ public class RiskFinding extends BaseTimeEntity {
 
     public void recordOccurrenceCount(int count) { this.occurrenceCount = Math.max(1, count); }
 
+    /** Display only: use an already validated primary, retaining its original text/time/role.
+     * Does not change decision, score, range, reason or the evidence inventory.
+     */
+    public void selectRepresentativeEvidence(String anchorId) {
+        var supports = validatedSupports();
+        var selected = supports.stream().filter(s -> s.anchorId().equals(anchorId)
+                && s.quotes().stream().anyMatch(q -> "PRIMARY".equals(q.role()) && q.segmentId().equals(anchorId)))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("Display anchor must be validated primary"));
+        var primary = selected.quotes().stream().filter(q -> "PRIMARY".equals(q.role()) && q.segmentId().equals(anchorId)).findFirst().orElseThrow();
+        if (eventType != TimelineEventType.SPEECH || primary.type() != TimelineEventType.SPEECH)
+            throw new IllegalArgumentException("Speech display primary required");
+        var ordered = new ArrayList<FindingSupport>(); ordered.add(selected);
+        boolean removed = false;
+        for (var s : supports) {
+            if (!removed && s.equals(selected)) { removed = true; continue; }
+            ordered.add(s);
+        }
+        this.text = primary.quote();
+        recordValidatedSupports(ordered);
+    }
+
     public long representativeStartMs() {
         return validatedSupports().stream().findFirst().stream().flatMap(s -> s.quotes().stream()
                 .filter(q -> q.segmentId().equals(s.anchorId()) && "PRIMARY".equals(q.role())))

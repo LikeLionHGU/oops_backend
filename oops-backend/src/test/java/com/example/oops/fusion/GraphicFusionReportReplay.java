@@ -19,14 +19,21 @@ public final class GraphicFusionReportReplay {
                 var quotes = new ArrayList<FindingSupport.Quote>();
                 event.path("relatedEvidence").forEach(q -> quotes.add(json.treeToValue(q, FindingSupport.Quote.class)));
                 var anchors = quotes.stream().filter(q -> "PRIMARY".equals(q.role())).map(FindingSupport.Quote::segmentId).distinct().toList();
-                if (anchors.size() != 1) throw new IllegalArgumentException("Single stored primary required");
-                var f = RiskFinding.builder().eventType(TimelineEventType.valueOf(event.path("type").asText()))
-                        .category(RiskCategory.valueOf(event.path("riskTypes").get(0).asText()))
-                        .source(EvidenceSource.SUBTITLE).score(.5) // Neutral placeholder, not original score.
-                        .startMs(event.path("startMs").asLong()).endMs(event.path("endMs").asLong())
-                        .text(event.path("text").asText()).reason(event.path("reason").asText()).build();
-                f.recordValidatedSupports(List.of(new FindingSupport(anchors.get(0), null, quotes)));
-                input.add(f);
+                var category = RiskCategory.valueOf(event.path("riskTypes").get(0).asText());
+                if (anchors.size() != 1 && !(category == RiskCategory.GRAPHIC_METAPHOR && anchors.size() == 2 && quotes.size() == 4))
+                    throw new IllegalArgumentException("Only single anchors or stored reciprocal graphic pair supported");
+                for (String anchor : anchors) {
+                    var selected = anchors.size() == 1 ? quotes : quotes.stream().filter(q ->
+                            ("PRIMARY".equals(q.role()) && anchor.equals(q.segmentId()))
+                                    || ("CONTEXT".equals(q.role()) && !anchor.equals(q.segmentId()))).toList();
+                    var primary = selected.stream().filter(q -> "PRIMARY".equals(q.role())).findFirst().orElseThrow();
+                    var f = RiskFinding.builder().eventType(TimelineEventType.valueOf(event.path("type").asText()))
+                            .category(category).source(EvidenceSource.SUBTITLE).score(.5) // Neutral placeholder, not original score.
+                            .startMs(primary.startMs()).endMs(primary.endMs())
+                            .text(primary.quote()).reason(event.path("reason").asText()).build();
+                    f.recordValidatedSupports(List.of(new FindingSupport(anchor, null, selected)));
+                    input.add(f);
+                }
             }
             var fused = new FindingFusionService().fuse(input);
             var graphic = fused.stream().filter(f -> f.getCategory() == RiskCategory.GRAPHIC_METAPHOR).toList();
@@ -37,6 +44,7 @@ public final class GraphicFusionReportReplay {
                     "videoId", json.readTree(Files.readAllBytes(Path.of(path))).at("/data/videoId").asText(),
                     "beforeCards", events.size(), "afterCards", fused.size(), "graphicCards", graphic.size(),
                     "graphicOccurrences", graphic.get(0).getOccurrenceCount(), "providerCalls", 0,
+                    "graphicDisplayText", graphic.get(0).getText(), "graphicDisplayStartMs", graphic.get(0).representativeStartMs(),
                     "scope", "FINAL_CARD_EVIDENCE_STRUCTURE_NOT_ORIGINAL_PREFUSION_SCORES_OR_SUPPORT_COUNTS")));
         }
     }
