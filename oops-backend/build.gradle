@@ -699,6 +699,17 @@ tasks.register('reviewGuidelineReplay', JavaExec) {
 }
 
 // Local reference routing/input-size audit; no Spring/media/provider calls.
+tasks.register('mechanismShadowAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.MechanismShadowAudit'
+    doFirst {
+        def input = providers.gradleProperty('mechanismShadowInput').orNull
+        if (!input) throw new GradleException('Set mechanismShadowInput to a saved transcript response')
+        args input
+    }
+}
+
 tasks.register('contextReferenceAudit', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.example.oops.analyzer.ContextReferenceAudit'
