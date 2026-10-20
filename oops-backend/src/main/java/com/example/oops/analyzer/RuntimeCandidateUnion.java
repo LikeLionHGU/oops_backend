@@ -4,14 +4,17 @@ import java.util.*;
 
 /** Runtime assembly only; model execution remains in CandidateReviewEngine. */
 final class RuntimeCandidateUnion {
-    static final String REVISION="2026-10-20-runtime-rule-union-1";
+    static final String REVISION="2026-10-20-runtime-rule-union-2";
     record Entry(String origin,String sourceId,String anchorId,String mechanismId,String candidateId,String state) {}
     record Trace(String revision,String state,String inputSha256,int totalEntries,boolean truncated,List<Entry> entries,
-                 List<String> conflictingAnchorIds) {
+                 List<String> conflictingAnchorIds,List<CrossOriginFindingGate.Suppressed> duplicateFindings) {
+        Trace(String revision,String state,String hash,int total,boolean truncated,List<Entry> entries,List<String> conflicts) {
+            this(revision,state,hash,total,truncated,entries,conflicts,List.of());
+        }
         Trace(String revision,String state,String hash,int total,boolean truncated,List<Entry> entries) {
             this(revision,state,hash,total,truncated,entries,List.of());
         }
-        Trace { entries=List.copyOf(entries);conflictingAnchorIds=List.copyOf(conflictingAnchorIds); }
+        Trace { entries=List.copyOf(entries);conflictingAnchorIds=List.copyOf(conflictingAnchorIds);duplicateFindings=List.copyOf(duplicateFindings); }
     }
     record Selection(List<CandidateReviewEngine.Candidate> ai,List<MechanismVerificationBridge.Prepared> rules,Trace trace) {
         Selection { ai=List.copyOf(ai);rules=List.copyOf(rules); }
@@ -44,8 +47,8 @@ final class RuntimeCandidateUnion {
     }
     static Trace bounded(Trace trace) {
         return new Trace(trace.revision(),trace.state(),trace.inputSha256(),trace.totalEntries(),
-                trace.totalEntries()>200 || trace.conflictingAnchorIds().size()>200,trace.entries().stream()
+                trace.totalEntries()>200 || trace.conflictingAnchorIds().size()>200 || trace.duplicateFindings().size()>200,trace.entries().stream()
                     .sorted(Comparator.comparing((Entry e) -> !"READY".equals(e.state()))).limit(200).toList(),
-                trace.conflictingAnchorIds().stream().limit(200).toList());
+                trace.conflictingAnchorIds().stream().limit(200).toList(),trace.duplicateFindings().stream().limit(200).toList());
     }
 }

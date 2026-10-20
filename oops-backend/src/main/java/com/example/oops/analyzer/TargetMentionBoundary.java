@@ -11,6 +11,17 @@ final class TargetMentionBoundary {
             "에서는","에서도","에서만","에게는","에게도","에게만","한테는","한테도","한테만","으로는","으로도",
             "으로만","로는","로도","로만","와는","과는","까지는","부터는","만은","만도");
     private TargetMentionBoundary() {}
+    // Whole-string suffix comparison only; no stemming, synonym or referent inference.
+    private static final Set<String> REFERENT_PARTICLES=Set.of("은","는","이","가","을","를","의","에","에서",
+            "에게","에게서","한테","한테서","께","께서","께서는","에서는","에서도","에게는","에게도",
+            "한테는","한테도","도","만");
+    static boolean sameSurfaceReferent(String target,String mention) {
+        if(target==null || mention==null || target.isBlank() || mention.isBlank()) return false;
+        return target.equals(mention) || particleSuffix(target,mention) || particleSuffix(mention,target);
+    }
+    private static boolean particleSuffix(String base,String inflected) {
+        return inflected.startsWith(base) && REFERENT_PARTICLES.contains(inflected.substring(base.length()));
+    }
     static boolean matches(String text,String mention) {
         if(text==null || mention==null || mention.isBlank()) return false;
         for(int from=0;from<=text.length()-mention.length();) {

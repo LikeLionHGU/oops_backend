@@ -373,6 +373,7 @@ final class CandidateReviewEngine {
             stats.verificationLimitedCandidates=(int) java.util.stream.Stream.concat(candidates.stream(),visualCandidates.stream()).filter(Candidate::contextLimited).count();
         }
         List<RiskFinding> findings = new ArrayList<>();
+        var findingGate=new CrossOriginFindingGate();
         // Share calls only with the same frozen references. Per-candidate segment permissions still apply.
         Map<VerificationScope, List<Candidate>> referenceGroups = new LinkedHashMap<>();
         for (var c : candidates) {
@@ -449,7 +450,8 @@ final class CandidateReviewEngine {
                         List.of(observation.anchorId()), List.of(observation), c.raw().stream().map(ReviewInput.Segment::id).toList()));
                 stats.trace(c, observation.decision().name());
                 if (observation.decision() == Decision.REVIEW_REQUIRED) {
-                    findings.add(TextReviewEngine.finding(context, input.find(observation.anchorId()).orElseThrow(), observation));
+                    if(!ruleUnionEnabled || findingGate.publish(c.candidateId(),ruleRequest!=null,c.proposal().axis(),observation))
+                        findings.add(TextReviewEngine.finding(context, input.find(observation.anchorId()).orElseThrow(), observation));
                 } else if (observation.decision() == Decision.PASS) stats.rejected++;
                 else { stats.uncertain++; unresolved.add(observation.anchorId()); partial = true; }
             }
@@ -519,7 +521,7 @@ final class CandidateReviewEngine {
             });
             unresolved.addAll(unionConflicts);
             if(unionTrace!=null) unionTrace=new RuntimeCandidateUnion.Trace(unionTrace.revision(),unionTrace.state(),
-                    unionTrace.inputSha256(),unionTrace.totalEntries(),unionTrace.truncated(),unionTrace.entries(),List.copyOf(unionConflicts));
+                    unionTrace.inputSha256(),unionTrace.totalEntries(),unionTrace.truncated(),unionTrace.entries(),List.copyOf(unionConflicts),findingGate.suppressed());
         }
         input.segments().stream().map(ReviewInput.Segment::id).filter(id -> !explored.contains(id)).forEach(unresolved::add);
         pending.forEach((id, count) -> { if (count > 0) unresolved.add(id); });
@@ -882,8 +884,8 @@ final class CandidateReviewEngine {
             else if (!reasonValid) detail = "TARGET_REASON_INVALID";
             else if (targets.isEmpty()) detail = "TARGET_ROLE_MISSING";
             else if (matches.isEmpty()) detail = "TARGET_MENTION_NOT_IN_TARGET_RAW";
-            else if (!mention.equals(d.target()) && !"CONTEXTUAL".equals(d.targetRelation())) detail = "TARGET_RELATION_MISMATCH";
-            else if (!mention.equals(d.target()) && separate == 0) detail = "TARGET_SEPARATE_CONTEXT_MISSING";
+            else if (!TargetMentionBoundary.sameSurfaceReferent(d.target(),mention) && !"CONTEXTUAL".equals(d.targetRelation())) detail = "TARGET_RELATION_MISMATCH";
+            else if (!TargetMentionBoundary.sameSurfaceReferent(d.target(),mention) && separate == 0) detail = "TARGET_SEPARATE_CONTEXT_MISSING";
         }
         return new CandidateReviewDiagnostics.TargetContractTrace(detail, d.targetMention() != null,
                 nameValid, mentionValid, reasonValid, targets.size(), matches.size(), separate);

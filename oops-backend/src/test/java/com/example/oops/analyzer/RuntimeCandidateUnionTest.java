@@ -86,6 +86,15 @@ class RuntimeCandidateUnionTest {
         assertEquals(1,result.findings().size());assertEquals(0,result.diagnostics().candidatePipeline().verificationFailed());
         assertEquals(2,result.findings().get(0).validatedSupports().get(0).quotes().stream().map(q -> q.segmentId()).distinct().count());
     }
+    @Test void exactAiRuleDuplicatePublishesOnceButKeepsBothEvaluations() {
+        var h=new Harness(true,t -> answer(t,true));
+        var result=h.run(context("피부를 찢는 것 같다"),true,24,null);
+        assertEquals(1,result.findings().size());
+        assertEquals(2,result.evaluations().stream().flatMap(e -> e.observations().stream())
+                .filter(o -> o.decision()==com.example.oops.analyzer.ReviewEvaluation.Decision.REVIEW_REQUIRED).count());
+        assertEquals(1,result.diagnostics().candidateUnion().duplicateFindings().size());
+        assertEquals(2,result.diagnostics().candidatePipeline().candidates().stream().filter(c -> c.state().equals("REVIEW_REQUIRED")).count());
+    }
     @Test void onPreservesOriginalAiRequestAndHypothesis() {
         var c=context("일반적인 발언");var off=new Harness(true,t -> answer(t,false));var on=new Harness(true,t -> answer(t,false));
         off.run(c,false,24,null);on.run(c,true,24,null);

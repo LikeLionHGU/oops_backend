@@ -6,6 +6,28 @@ import static org.assertj.core.api.Assertions.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 
 class TargetMentionBoundaryTest {
+    @Test void surfaceIdentityAllowsOnlyWholeReferentWithKnownParticle() {
+        for(var pair:List.of(List.of("메뉴","메뉴가"),List.of("여기","여기는"),List.of("가게","가게에서는"))) {
+            assertThat(TargetMentionBoundary.sameSurfaceReferent(pair.get(0),pair.get(1))).isTrue();
+            assertThat(TargetMentionBoundary.sameSurfaceReferent(pair.get(1),pair.get(0))).isTrue();
+        }
+        for(var pair:List.of(List.of("여기","식당"),List.of("너","너무"),List.of("나라","우리나라"),
+                List.of("메뉴","메뉴판"),List.of("한남","한남충"),List.of("가게","가게 이름"),List.of("메뉴","메뉴처럼")))
+            assertThat(TargetMentionBoundary.sameSurfaceReferent(pair.get(0),pair.get(1))).isFalse();
+        assertThat(TargetMentionBoundary.sameSurfaceReferent(null,"메뉴")).isFalse();
+    }
+    @Test void actualValidationAcceptsParticleButStillRejectsReferentInferenceWithoutContext() {
+        var f=new CandidateReviewEngineTest();var c=f.context("여기는 메뉴가 의미가 없어");
+        var tree=(tools.jackson.databind.node.ObjectNode)JSON.valueToTree(f.assessment("stt-index-0","REVIEW_REQUIRED","여기는 메뉴가 의미가 없어"));
+        tree.put("target","여기");tree.put("targetMention","여기는");tree.put("targetType","BUSINESS");
+        tree.put("targetRelation","EXPLICIT");tree.put("targetReason","원문에서 여기는이라는 표현을 직접 사용합니다");
+        var candidate=new CandidateReviewEngine.Candidate("c",f.proposal("stt-index-0","여기는 메뉴가 의미가 없어"),c.reviewInput().segments(),false,false);
+        assertThat(CandidateReviewEngine.validate(candidate,JSON.treeToValue(tree,TextReviewEngine.LlmDecision.class),c.reviewInput(),0).failureCode()).isNull();
+        tree.put("target","식당");
+        assertThat(CandidateReviewEngine.validate(candidate,JSON.treeToValue(tree,TextReviewEngine.LlmDecision.class),c.reviewInput(),0).failureCode()).isEqualTo("TARGET_MENTION_RELATION");
+        tree.put("targetRelation","CONTEXTUAL");
+        assertThat(CandidateReviewEngine.validate(candidate,JSON.treeToValue(tree,TextReviewEngine.LlmDecision.class),c.reviewInput(),0).failureCode()).isEqualTo("TARGET_CONTEXT_EVIDENCE_REQUIRED");
+    }
     @Test void rejectsWordFragmentsWithoutRejectingParticlesOrPunctuation() {
         for(String text:List.of("너무 좋아","너무는 별로야","그너는","너무 너머","abc너","너_이름"))
             assertThat(TargetMentionBoundary.matches(text,"너")).as(text).isFalse();
