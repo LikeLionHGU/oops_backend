@@ -50,6 +50,22 @@ class MechanismCandidateShadowTest {
     }
     @Test void longSingleSegmentIsNotSilentlyScannedOutsideWindowBudget() {
         var row = new ReviewInput.Segment("a",TimelineEventType.SPEECH,0,21000,"피부를 찢는 비유",null);
-        assertTrue(MechanismCandidateShadow.inspect(new ReviewInput(List.of(row))).candidates().isEmpty());
+        var result = MechanismCandidateShadow.inspect(new ReviewInput(List.of(row)));
+        assertTrue(result.candidates().isEmpty()); assertEquals(1,result.overlongSegments());
+    }
+    @Test void normalMenuExplanationStillNeedsLaterJudgment() {
+        var input = new ReviewInput(List.of(line("a",0,"선택 메뉴가 하나라 메뉴판은 의미가 없어요"),
+                line("b",1000,"오늘은 주는대로 먹어야 돼요. 미리 안내받고 동의했어요")));
+        assertEquals(1,MechanismCandidateShadow.inspect(input).candidates().size());
+    }
+    @Test void criticalGroupQuotationIsNotSilentlySuppressed() {
+        var input = new ReviewInput(List.of(line("a",0,"주민 모두 무능하다는 표현을 인용해 비판합니다")));
+        assertEquals(1,MechanismCandidateShadow.inspect(input).candidates().size());
+    }
+    @Test void educationalBodyMentionIsNotAWarningDecision() {
+        var input = new ReviewInput(List.of(line("a",0,"피부를 찢는 사고를 예방하는 안전 교육입니다")));
+        var result = MechanismCandidateShadow.inspect(input);
+        assertEquals("RULE_SHADOW",result.candidates().get(0).origin());
+        assertEquals("graphic-body-image",result.candidates().get(0).mechanismId());
     }
 }
