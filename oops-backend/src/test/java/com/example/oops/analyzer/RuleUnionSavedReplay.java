@@ -1,6 +1,8 @@
 package com.example.oops.analyzer;
 
 import com.example.oops.client.OpenAiClient;
+import com.example.oops.domain.RiskFinding;
+import com.example.oops.domain.FindingSupport;
 import tools.jackson.databind.JsonNode;
 import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -32,6 +34,27 @@ public final class RuleUnionSavedReplay {
         check(reference.isObject(),"Structured reference object required");
         // Object key order is immaterial; strings, array order and every reference value remain exact.
         return JSON.valueToTree(Map.of("prefix",text.substring(0,at),"reference",reference,"suffix",text.substring(end)));
+    }
+    static Map<String,Object> fusionAudit(List<RiskFinding> findings) {
+        var before=findings.stream().flatMap(f -> f.validatedSupports().stream()).toList();
+        Map<RiskFinding,Double> scores=new IdentityHashMap<>();findings.forEach(f -> scores.put(f,f.getScore()));
+        var fused=new com.example.oops.fusion.FindingFusionService().fuse(findings);
+        var after=fused.stream().flatMap(f -> f.validatedSupports().stream()).toList();
+        boolean preserved=inventory(before).equals(inventory(after));
+        boolean scoresStable=fused.stream().allMatch(f -> scores.containsKey(f) && Objects.equals(scores.get(f),f.getScore()));
+        check(preserved && scoresStable && fused.size()<=findings.size(),"Fusion support/score/card invariant failed");
+        List<Map<String,Object>> cards=new ArrayList<>();
+        for(var f:fused) {
+            var card=new LinkedHashMap<String,Object>();card.put("text",f.primaryText());card.put("category",f.getCategory());
+            card.put("target",f.getTarget());card.put("score",f.getScore());card.put("startMs",f.getStartMs());card.put("endMs",f.getEndMs());
+            card.put("occurrences",f.getOccurrenceCount());card.put("mergedFindingCount",f.getMergedCount());
+            card.put("supports",f.validatedSupports());cards.add(card);
+        }
+        return Map.of("cardCount",fused.size(),"cards",cards,"supportInventoryPreserved",preserved,"representativeScoreUnchanged",scoresStable,
+                "scope","TEXT_ENGINE_FINDINGS_THROUGH_REAL_FUSION_NOT_HTTP_REPORT_OR_DATABASE");
+    }
+    static Map<FindingSupport,Long> inventory(List<FindingSupport> supports) {
+        return supports.stream().collect(java.util.stream.Collectors.groupingBy(s -> s,java.util.stream.Collectors.counting()));
     }
     static final class Tape {
         final Map<Request,Deque<JsonNode>> responses=new HashMap<>();
@@ -77,6 +100,7 @@ public final class RuleUnionSavedReplay {
         out.put("findingCount",result.findings().size());out.put("findingTexts",result.findings().stream().map(f -> f.primaryText()).toList());
         out.put("findingSupports",result.findings().stream().map(f -> f.validatedSupports()).toList());
         out.put("diagnostics",result.diagnostics());out.put("evaluations",result.evaluations());out.put("unassessedSegmentIds",result.unassessedSegmentIds());
+        out.put("fusion",fusionAudit(result.findings()));
         return out;
     }
     public static void main(String[] args) throws Exception {
@@ -102,6 +126,8 @@ public final class RuleUnionSavedReplay {
         var hashes=new TreeMap<>(V7RoutingVideoTrial.implementation());
         String replaySource="src/test/java/com/example/oops/analyzer/RuleUnionSavedReplay.java";
         hashes.put(replaySource,ReferenceOnlyTrial.sha(Files.readAllBytes(Path.of(replaySource))));
+        String fusionSource="src/main/java/com/example/oops/fusion/FindingFusionService.java";
+        hashes.put(fusionSource,ReferenceOnlyTrial.sha(Files.readAllBytes(Path.of(fusionSource))));
         RuleUnionTrial.write(output.resolve("replay.json"),Map.of("schemaVersion","rule-union-offline-replay-1",
                 "state",complete?"COMPLETE":"INCOMPLETE_REQUEST_COVERAGE","sourcePlanSha256",sha,
                 "sourceResultsSha256",ReferenceOnlyTrial.sha(resultBytes),"currentImplementationHashes",hashes,

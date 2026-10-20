@@ -5,6 +5,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 
 class RuleUnionSavedReplayTest {
+    @Test void emptyFusionAuditHasNoCardsOrLostSupport() {
+        var result=RuleUnionSavedReplay.fusionAudit(java.util.List.of());
+        assertEquals(0,result.get("cardCount"));
+        assertEquals(true,result.get("supportInventoryPreserved"));
+        assertEquals(true,result.get("representativeScoreUnchanged"));
+    }
     RuleUnionSavedReplay.Tape tape() {
         return new RuleUnionSavedReplay.Tape(JSON.readTree("""
                 [{"kind":"Discovery","system":"fixed","input":{"a":1,"b":2},"output":{"candidates":[]},"failureCode":null}]
