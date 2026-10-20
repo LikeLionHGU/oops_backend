@@ -92,7 +92,9 @@ final class CandidateReviewEngine {
     }
     /** Frozen routing data, not evidence or an instruction to retain the discovery verdict. */
     private record FrozenReference(String discoveryRequestKey, String prompt, ContextMechanismRouter.LinkTrace routingLink) {}
-    private record VerificationScope(String reference, String rawSha256) {}
+    private record VerificationScope(String reference, String rawSha256,String isolatedRule) {
+        VerificationScope(String reference,String rawSha256) { this(reference,rawSha256,""); }
+    }
 
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates) {
         return run(client, context, maxCandidates, null);
@@ -151,6 +153,14 @@ final class CandidateReviewEngine {
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
                                       boolean sourceRelationsEnabled, ContextMechanismRouter router, VerificationFeatures features) {
+        return run(client,context,maxCandidates,visual,caseLibrary,guidelines,requestTrace,evidenceLimit,sourceRelationsEnabled,router,features,false);
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates,
+                                      VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                                      com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
+                                      boolean sourceRelationsEnabled, ContextMechanismRouter router, VerificationFeatures features,boolean ruleUnionEnabled) {
+        if(ruleUnionEnabled && (sourceRelationsEnabled || features.finalBasis() || features.situationFirst() || features.sourceUnderstanding()))
+            throw new IllegalArgumentException("Rule union currently requires the baseline verification contract");
         boolean finalReviewBasisEnabled = features.finalBasis();
         if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
@@ -162,6 +172,8 @@ final class CandidateReviewEngine {
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
         if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.version(features.understandingVersion());
         else if(features.situationFirst()) stats.revision += "+"+SituationFirstVerification.VERSION;
+        String modelPromptRevision=stats.revision;
+        if(ruleUnionEnabled) stats.revision += "+"+RuntimeCandidateUnion.REVISION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
         String sourceFingerprint = caseLibrary == null ? null : ReviewCaseLibrary.fingerprint(input.segments());
         Set<String> explored = new LinkedHashSet<>(), unresolved = new LinkedHashSet<>();
@@ -169,6 +181,8 @@ final class CandidateReviewEngine {
         List<Candidate> candidates = new ArrayList<>();
         List<Candidate> visualCandidates = new ArrayList<>();
         Map<String, FrozenReference> frozenReferences = new LinkedHashMap<>();
+        Map<String,MechanismVerificationBridge.Prepared> ruleRequests=new LinkedHashMap<>();
+        RuntimeCandidateUnion.Trace unionTrace=null;
         List<ReviewEvaluation> evaluations = new ArrayList<>();
         Map<String, List<Observation>> observations = new LinkedHashMap<>();
         Map<String, Integer> pending = new HashMap<>();
@@ -176,6 +190,7 @@ final class CandidateReviewEngine {
         int counter = 0;
         for (var batch : TextReviewBatchPlanner.plan(input, TimelineEventType.SPEECH, 3)) {
             var primaryIds = batch.primary().stream().map(ReviewInput.Segment::id).toList();
+            if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {unresolved.addAll(primaryIds);partial=true;continue;}
             if (batch.oversizedPrimary()) { unresolved.addAll(primaryIds); partial = true; continue; }
             List<ReviewUnit> units = ReviewUnit.all(batch);
             List<ReviewUnit> targetUnits = CandidateContextWindow.discoveryUnits(batch);
@@ -191,7 +206,7 @@ final class CandidateReviewEngine {
             Discovery response;
             try {
                 Map<String, Object> request = new LinkedHashMap<>(Map.of(
-                        "promptRevision", stats.revision, "primaryIds", primaryIds,
+                        "promptRevision", modelPromptRevision, "primaryIds", primaryIds,
                         "raw", compact(raw), "windows", compactWindows(units), "targetWindows", compactWindows(targetUnits),
                         "contextLimited", batch.contextLimited()));
                 boolean hasReferences = references != null && !references.examples().isEmpty();
@@ -277,7 +292,8 @@ final class CandidateReviewEngine {
                         + "|" + proposal.evidence().stream().map(q -> q.segmentId() + "=" + q.quote()).sorted().toList()
                         + (proposal.sourceRelations() == null ? "" : "|" + JSON.writeValueAsString(proposal.sourceRelations()));
                 if (!fingerprints.add(fingerprint)) { stats.duplicates++; continue; }
-                if (candidates.size() + visualCandidates.size() >= maxCandidates
+                if ((ruleUnionEnabled ? needsVisual ? visualCandidates.size()>=maxCandidates : candidates.size()>=1000
+                        : candidates.size() + visualCandidates.size() >= maxCandidates)
                         || needsVisual && visualCandidates.size() >= (visual == null ? 3 : visual.maxCandidates())) {
                     stats.budgetSkipped++; unresolved.add(proposal.anchorId()); partial = true;
                     stats.trace(id, proposal.anchorId(), proposal.axis(), "BUDGET_SKIPPED"); continue;
@@ -311,25 +327,77 @@ final class CandidateReviewEngine {
                 pending.merge(proposal.anchorId(), 1, Integer::sum);
             }
         }
+        if(ruleUnionEnabled) {
+            var originalAi=List.copyOf(candidates);
+            try {
+                var union=RuntimeCandidateUnion.select(input,originalAi,Math.max(0,maxCandidates-visualCandidates.size()),guidelines,evidenceLimit);
+                unionTrace=union.trace();
+                candidates.clear(); candidates.addAll(union.ai());
+                var kept=candidates.stream().map(Candidate::candidateId).collect(java.util.stream.Collectors.toSet());
+                originalAi.stream().filter(c -> !kept.contains(c.candidateId())).forEach(c ->
+                        pending.computeIfPresent(c.proposal().anchorId(),(key,value) -> value-1));
+                for(var entry:union.trace().entries()) {
+                    if("RULE".equals(entry.origin())) stats.proposed++;
+                    if(!"READY".equals(entry.state())) {
+                        partial=true;unresolved.add(entry.anchorId());
+                        if("BUDGET_SKIPPED".equals(entry.state())) stats.budgetSkipped++; else stats.verificationFailed++;
+                        // Bulk skips live in the union trace; do not exhaust final-decision trace slots.
+                        if(!"BUDGET_SKIPPED".equals(entry.state())) stats.trace(entry.candidateId(),entry.anchorId(),null,entry.state());
+                    }
+                }
+                for(var prepared:union.rules()) {
+                    var c=prepared.candidate(); candidates.add(c);ruleRequests.put(c.candidateId(),prepared);
+                    frozenReferences.put(c.candidateId(),new FrozenReference(c.candidateId(),prepared.system(),null));
+                    stats.snapshots.put(c.candidateId(),new CandidateReviewDiagnostics.InputSnapshot(c.candidateId(),
+                            ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(compact(c.raw()))),prepared.referenceSha256(),
+                            ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal()))));
+                    if(prepared.referenceTrace()!=null && stats.contextSelections.size()<MAX_TRACES) stats.contextSelections.add(prepared.referenceTrace());
+                    if(c.contextExpanded()) stats.expandedCandidates++;
+                    if(c.contextLimited()) {stats.verificationLimitedCandidates++;unresolved.add(c.proposal().anchorId());partial=true;}
+                    pending.merge(c.proposal().anchorId(),1,Integer::sum);
+                }
+            } catch(RuntimeException ex) {
+                // Rule planning failure must not erase existing AI work or unleash the deferred discovery pool.
+                partial=true; input.segments().forEach(s -> unresolved.add(s.id()));
+                unionTrace=new RuntimeCandidateUnion.Trace(RuntimeCandidateUnion.REVISION,"UNION_UNAVAILABLE",
+                        CandidateUnionShadow.snapshotHash(input),0,false,List.of());
+                candidates.clear();
+                int remaining=Math.max(0,maxCandidates-visualCandidates.size());
+                for(var c:originalAi) {
+                    if(candidates.size()<remaining) candidates.add(c);
+                    else {stats.budgetSkipped++;pending.computeIfPresent(c.proposal().anchorId(),(key,value)->value-1);
+                        stats.trace(c,"BUDGET_SKIPPED","UNION_UNAVAILABLE");}
+                }
+            }
+            stats.expandedCandidates=(int) java.util.stream.Stream.concat(candidates.stream(),visualCandidates.stream()).filter(Candidate::contextExpanded).count();
+            stats.verificationLimitedCandidates=(int) java.util.stream.Stream.concat(candidates.stream(),visualCandidates.stream()).filter(Candidate::contextLimited).count();
+        }
         List<RiskFinding> findings = new ArrayList<>();
         // Share calls only with the same frozen references. Per-candidate segment permissions still apply.
         Map<VerificationScope, List<Candidate>> referenceGroups = new LinkedHashMap<>();
         for (var c : candidates) {
             String reference = frozenReferences.get(c.candidateId()).prompt();
-            var scope = new VerificationScope(reference, stats.snapshots.get(c.candidateId()).rawSha256());
+            var scope = ruleRequests.containsKey(c.candidateId()) ? new VerificationScope(reference,
+                    stats.snapshots.get(c.candidateId()).rawSha256(),c.candidateId())
+                    : new VerificationScope(reference, stats.snapshots.get(c.candidateId()).rawSha256());
             referenceGroups.computeIfAbsent(scope, ignored -> new ArrayList<>()).add(c);
         }
         for (var entry : referenceGroups.entrySet()) for (int start = 0; start < entry.getValue().size(); start += 4) {
             List<Candidate> group = entry.getValue().subList(start, Math.min(start + 4, entry.getValue().size()));
             String guidelinePrompt = entry.getKey().reference();
+            var ruleRequest=ruleRequests.get(group.get(0).candidateId());
+            if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {
+                for(var c:group) {stats.verificationFailed++;unresolved.add(c.proposal().anchorId());stats.trace(c,"CANCELLED","INTERRUPTED");}
+                partial=true; continue;
+            }
             stats.verificationCalls++;
             VerificationResult response;
             String responseFailure = null;
             int failuresBefore = client.failureCount();
-            String requestSystem = (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
+            String requestSystem = ruleRequest!=null ? ruleRequest.system() : (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
                     : SourceRelationPrompts.verification(evidenceLimit)) + guidelinePrompt;
             requestSystem=verificationSystem(requestSystem,features);
-            String requestInput = verificationRequest(group, null, null, finalReviewBasisEnabled);
+            String requestInput = ruleRequest!=null ? ruleRequest.user() : verificationRequest(group, null, null, finalReviewBasisEnabled);
             try {
                 response = client.completeAsJson(requestSystem, requestInput,
                         VerificationResult.class).orElse(null);
@@ -353,12 +421,13 @@ final class CandidateReviewEngine {
             for (var c : group) {
                 var matches = returned == null || returned.verifications() == null ? List.<Verification>of()
                         : returned.verifications().stream().filter(v -> v != null && c.candidateId().equals(v.candidateId())).toList();
-                Validation validation = matches.size() == 1 ? SourceUnderstandingContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding(),features.understandingVersion())
+                Validation validation = matches.size() == 1 ? ruleRequest!=null ? MechanismVerificationBridge.validate(ruleRequest,response,input)
+                        : SourceUnderstandingContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding(),features.understandingVersion())
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
                 stats.evidenceCount(c, "INITIAL", matches.size() == 1 ? matches.get(0).assessment() : null,
                         evidenceLimit, validation.failureCode(), finalReviewBasisEnabled, matches.size()==1?matches.get(0).reviewBasis():null,
                         features.sourceUnderstanding(),matches.size()==1?matches.get(0).sourceUnderstanding():null,features.understandingVersion());
-                if (REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
+                if (ruleRequest==null && REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
                     if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                         validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
                                 matches.size() == 1 ? matches.get(0).assessment() : null, features);
@@ -386,6 +455,9 @@ final class CandidateReviewEngine {
             }
         }
         for (var c : visualCandidates) {
+            if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {
+                stats.verificationFailed++;unresolved.add(c.proposal().anchorId());stats.trace(c,"CANCELLED","INTERRUPTED");partial=true;continue;
+            }
             VisualContextReviewer.Result result;
             String reference = stats.candidateReference(guidelines, c, "visual-" + c.candidateId());
             try {
@@ -439,6 +511,16 @@ final class CandidateReviewEngine {
             } else if (o.decision() == Decision.PASS) stats.rejected++;
             else { stats.uncertain++; unresolved.add(o.anchorId()); partial = true; }
         }
+        Set<String> unionConflicts=new TreeSet<>();
+        if(ruleUnionEnabled) {
+            observations.forEach((id,items) -> {
+                if(items.stream().anyMatch(o -> o.decision()==Decision.PASS)
+                        && items.stream().anyMatch(o -> o.decision()==Decision.REVIEW_REQUIRED)) unionConflicts.add(id);
+            });
+            unresolved.addAll(unionConflicts);
+            if(unionTrace!=null) unionTrace=new RuntimeCandidateUnion.Trace(unionTrace.revision(),unionTrace.state(),
+                    unionTrace.inputSha256(),unionTrace.totalEntries(),unionTrace.truncated(),unionTrace.entries(),List.copyOf(unionConflicts));
+        }
         input.segments().stream().map(ReviewInput.Segment::id).filter(id -> !explored.contains(id)).forEach(unresolved::add);
         pending.forEach((id, count) -> { if (count > 0) unresolved.add(id); });
         partial |= !unresolved.isEmpty();
@@ -448,9 +530,13 @@ final class CandidateReviewEngine {
                         .formatted(explored.size(), input.segments().size(), unresolved.size(), stats.invalidProposals,
                                 stats.verificationFailed, stats.uncertain, stats.budgetSkipped, stats.limitedBatches, stats.truncatedBatches,
                                 stats.verificationLimitedCandidates) : null;
+        if(unionTrace!=null && "UNION_UNAVAILABLE".equals(unionTrace.state()))
+            notice=(notice==null?"":notice+" · ")+"규칙 합집합 준비 실패: 제한된 기존 AI 후보만 검증했습니다.";
+        if(!unionConflicts.isEmpty()) notice=(notice==null?"":notice+" · ")+"동일 발언의 PASS/검토 결과 차이 "+unionConflicts.size()+"구간: 합의 판정이 아닙니다.";
         List<ReviewDiagnostics.SegmentTrace> traces = input.segments().stream().limit(400).map(s -> {
             List<Observation> items = observations.getOrDefault(s.id(), List.of());
-            var state = items.stream().anyMatch(o -> o.decision() == Decision.REVIEW_REQUIRED) ? ReviewDiagnostics.State.REVIEW_REQUIRED
+            var state = unionConflicts.contains(s.id()) ? ReviewDiagnostics.State.CONFLICT
+                    : items.stream().anyMatch(o -> o.decision() == Decision.REVIEW_REQUIRED) ? ReviewDiagnostics.State.REVIEW_REQUIRED
                     : items.stream().anyMatch(o -> o.decision() == Decision.UNCERTAIN) ? ReviewDiagnostics.State.UNCERTAIN
                     : unresolved.contains(s.id()) ? ReviewDiagnostics.State.NOT_RETURNED
                     : items.isEmpty() ? ReviewDiagnostics.State.NO_CANDIDATE : ReviewDiagnostics.State.PASS;
@@ -463,7 +549,7 @@ final class CandidateReviewEngine {
                     decisions, List.of(), 0, items.size() > 4);
         }).toList();
         var diagnostic = new ReviewDiagnostics("speech-review", status, input.segments().size(),
-                input.segments().size() > 400, Map.of(), traces).withCandidatePipeline(stats.finish(explored.size()));
+                input.segments().size() > 400, Map.of(), traces).withCandidatePipeline(stats.finish(explored.size())).withCandidateUnion(unionTrace);
         return new TextReviewEngine.Result(findings, evaluations, status, notice, unresolved.stream().sorted().toList(), List.of(), diagnostic);
     }
 

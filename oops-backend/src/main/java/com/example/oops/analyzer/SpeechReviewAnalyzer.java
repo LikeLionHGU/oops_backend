@@ -132,6 +132,11 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private boolean finalReviewBasisEnabled;
     private boolean situationFirstEnabled;
     private boolean sourceUnderstandingEnabled;
+    private boolean ruleUnionEnabled;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setRuleUnionEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.rule-candidate-union-enabled:false}") boolean enabled) {
+        this.ruleUnionEnabled=enabled;
+    }
     private SourceUnderstandingContract.Version sourceUnderstandingVersion=SourceUnderstandingContract.Version.ACTS_V1;
     @org.springframework.beans.factory.annotation.Autowired
     void setSourceUnderstandingVersion(@org.springframework.beans.factory.annotation.Value("${oops.analysis.source-understanding-contract:acts-v1}") String value) {
@@ -222,6 +227,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         lastResult.remove();
+        if(ruleUnionEnabled && !candidateReviewEnabled) throw new IllegalStateException("Rule union requires candidate review");
         TextReviewEngine.Result result = candidateReviewEnabled ? runCandidates(context)
                 : TextReviewEngine.run(openAiClient, context,
                 TimelineEventType.SPEECH, key(), SYSTEM_PROMPT + "\n" + ContextualComparisonPolicy.PROMPT
@@ -238,7 +244,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
             return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary,
                     trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter,
-                    new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,situationFirstEnabled,sourceUnderstandingEnabled,sourceUnderstandingVersion));
+                    new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,situationFirstEnabled,sourceUnderstandingEnabled,sourceUnderstandingVersion),ruleUnionEnabled);
         }
     }
 

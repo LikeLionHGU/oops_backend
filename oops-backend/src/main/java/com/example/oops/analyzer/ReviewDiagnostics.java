@@ -8,7 +8,14 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments,
                                 boolean truncated, Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
                                 DialogueReview.Diagnostics dialogue, CandidateReviewDiagnostics candidatePipeline,
-                                List<ReviewGuidelineLibrary.SelectionTrace> contextSelections) {
+                                List<ReviewGuidelineLibrary.SelectionTrace> contextSelections,
+                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                RuntimeCandidateUnion.Trace candidateUnion) {
+    public ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments, boolean truncated,
+                             Map<Failure,Integer> failureCounts,List<SegmentTrace> segments,DialogueReview.Diagnostics dialogue,
+                             CandidateReviewDiagnostics pipeline,List<ReviewGuidelineLibrary.SelectionTrace> selections) {
+        this(evaluatorId,status,totalSegments,truncated,failureCounts,segments,dialogue,pipeline,selections,null);
+    }
     public ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int totalSegments, boolean truncated,
                              Map<Failure, Integer> failureCounts, List<SegmentTrace> segments,
                              DialogueReview.Diagnostics dialogue, CandidateReviewDiagnostics candidatePipeline) {
@@ -24,13 +31,17 @@ public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int t
         this(evaluatorId, status, totalSegments, truncated, failureCounts, segments, null);
     }
     ReviewDiagnostics withDialogue(DialogueReview.Diagnostics dialogue) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, contextSelections);
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, contextSelections,candidateUnion);
     }
     ReviewDiagnostics withCandidatePipeline(CandidateReviewDiagnostics pipeline) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, pipeline, contextSelections);
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, pipeline, contextSelections,candidateUnion);
     }
     ReviewDiagnostics withContextSelections(List<ReviewGuidelineLibrary.SelectionTrace> selections) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, selections);
+        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, selections,candidateUnion);
+    }
+    ReviewDiagnostics withCandidateUnion(RuntimeCandidateUnion.Trace trace) {
+        return new ReviewDiagnostics(evaluatorId,status,totalSegments,truncated,failureCounts,segments,dialogue,candidatePipeline,contextSelections,
+                trace==null?null:RuntimeCandidateUnion.bounded(trace));
     }
     public ReviewDiagnostics {
         failureCounts = Map.copyOf(failureCounts); segments = List.copyOf(segments);

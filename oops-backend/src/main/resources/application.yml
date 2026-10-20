@@ -143,6 +143,7 @@ oops:
     mechanism-routing-location: ${CONTEXT_MECHANISM_ROUTING_LOCATION:file:../datasets/controversy/definitions/context-routing.json}
     mechanism-routing-max-calls: ${CONTEXT_MECHANISM_ROUTING_MAX_CALLS:12} # 영상당 상한. 초과 배치도 어휘 검색·본 분석은 계속.
     candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
+    rule-candidate-union-enabled: ${RULE_CANDIDATE_UNION_ENABLED:false} # 실험: 규칙+AI 후보 합집합. 기본 OFF, 활성화 시 검증 호출/결과가 달라질 수 있음.
     candidate-source-relations-enabled: ${CANDIDATE_SOURCE_RELATIONS_ENABLED:false} # 실험 38: 결론형 가설 대신 원문 역할 ID 전달. 모델 비교 전 기본 OFF.
     final-review-basis-enabled: ${FINAL_REVIEW_BASIS_ENABLED:false} # 텍스트 검증 최종 근거 분리. 실호출 효과 검증 전 기본 OFF.
     situation-first-verification-enabled: ${SITUATION_FIRST_VERIFICATION_ENABLED:false} # 같은 검증 호출에서 상황 이해 → 비판 → 정상 대조. 효과 비교 전 기본 OFF.
