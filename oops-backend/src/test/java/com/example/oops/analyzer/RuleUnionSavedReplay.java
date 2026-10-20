@@ -75,6 +75,7 @@ public final class RuleUnionSavedReplay {
         out.put("unusedSavedCalls",tape.available-tape.consumed);out.put("oldFindingCount",row.path("findings").size());
         out.put("unmatchedRequests",tape.unmatched);
         out.put("findingCount",result.findings().size());out.put("findingTexts",result.findings().stream().map(f -> f.primaryText()).toList());
+        out.put("findingSupports",result.findings().stream().map(f -> f.validatedSupports()).toList());
         out.put("diagnostics",result.diagnostics());out.put("evaluations",result.evaluations());out.put("unassessedSegmentIds",result.unassessedSegmentIds());
         return out;
     }

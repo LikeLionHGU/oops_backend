@@ -4,7 +4,7 @@ import java.util.*;
 
 /** Runtime assembly only; model execution remains in CandidateReviewEngine. */
 final class RuntimeCandidateUnion {
-    static final String REVISION="2026-10-20-runtime-rule-union-2";
+    static final String REVISION="2026-10-20-runtime-rule-union-3";
     record Entry(String origin,String sourceId,String anchorId,String mechanismId,String candidateId,String state) {}
     record Trace(String revision,String state,String inputSha256,int totalEntries,boolean truncated,List<Entry> entries,
                  List<String> conflictingAnchorIds,List<CrossOriginFindingGate.Suppressed> duplicateFindings) {

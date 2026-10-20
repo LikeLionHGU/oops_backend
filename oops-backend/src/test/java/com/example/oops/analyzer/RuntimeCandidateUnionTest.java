@@ -93,7 +93,26 @@ class RuntimeCandidateUnionTest {
         assertEquals(2,result.evaluations().stream().flatMap(e -> e.observations().stream())
                 .filter(o -> o.decision()==com.example.oops.analyzer.ReviewEvaluation.Decision.REVIEW_REQUIRED).count());
         assertEquals(1,result.diagnostics().candidateUnion().duplicateFindings().size());
+        assertEquals(2,result.findings().get(0).validatedSupports().size());
         assertEquals(2,result.diagnostics().candidatePipeline().candidates().stream().filter(c -> c.state().equals("REVIEW_REQUIRED")).count());
+    }
+    @Test void graphicFinalIssueGroupsAcrossDiscoveryAxesWithoutLosingSupportRoles() {
+        var h=new Harness(true,t -> {
+            var copy=t.deepCopy();
+            copy.path("candidates").forEach(item -> ((tools.jackson.databind.node.ObjectNode)item).put("axis","EXPRESSION_CONTENT"));
+            return answer(copy,true);
+        });
+        when(h.client.completeAsJson(anyString(),anyString(),eq(Discovery.class))).thenReturn(Optional.of(new Discovery(
+                List.of("stt-index-0"),List.of(new Proposal("stt-index-0","TARGET_TREATMENT","실제 표현을 다시 검토하는 가설입니다",
+                List.of(new Quote("stt-index-0","피부를 찢는 것 같다")))),List.of(),false)));
+        var result=h.run(context("피부를 찢는 것 같다"),true,24,null);
+        assertEquals(1,result.findings().size());assertEquals(2,result.findings().get(0).validatedSupports().size());
+        assertEquals(2,result.diagnostics().candidatePipeline().candidates().stream().map(c -> c.axis()).distinct().count());
+        assertEquals(1,result.diagnostics().candidateUnion().duplicateFindings().size());
+        double score=result.findings().get(0).getScore();
+        var fused=new com.example.oops.fusion.FindingFusionService().fuse(result.findings());
+        assertEquals(1,fused.size());assertEquals(1,fused.get(0).getOccurrenceCount());
+        assertEquals(2,fused.get(0).validatedSupports().size());assertEquals(score,fused.get(0).getScore());
     }
     @Test void onPreservesOriginalAiRequestAndHypothesis() {
         var c=context("일반적인 발언");var off=new Harness(true,t -> answer(t,false));var on=new Harness(true,t -> answer(t,false));

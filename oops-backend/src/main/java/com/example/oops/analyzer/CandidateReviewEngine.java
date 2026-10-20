@@ -374,6 +374,7 @@ final class CandidateReviewEngine {
         }
         List<RiskFinding> findings = new ArrayList<>();
         var findingGate=new CrossOriginFindingGate();
+        Map<String,RiskFinding> publishedFindings=new HashMap<>();
         // Share calls only with the same frozen references. Per-candidate segment permissions still apply.
         Map<VerificationScope, List<Candidate>> referenceGroups = new LinkedHashMap<>();
         for (var c : candidates) {
@@ -450,8 +451,14 @@ final class CandidateReviewEngine {
                         List.of(observation.anchorId()), List.of(observation), c.raw().stream().map(ReviewInput.Segment::id).toList()));
                 stats.trace(c, observation.decision().name());
                 if (observation.decision() == Decision.REVIEW_REQUIRED) {
-                    if(!ruleUnionEnabled || findingGate.publish(c.candidateId(),ruleRequest!=null,c.proposal().axis(),observation))
-                        findings.add(TextReviewEngine.finding(context, input.find(observation.anchorId()).orElseThrow(), observation));
+                    var finding=TextReviewEngine.finding(context, input.find(observation.anchorId()).orElseThrow(), observation);
+                    if(!ruleUnionEnabled || findingGate.publish(c.candidateId(),ruleRequest!=null,c.proposal().axis(),observation)) {
+                        findings.add(finding);publishedFindings.put(c.candidateId(),finding);
+                    } else {
+                        var retained=publishedFindings.get(findingGate.retainedCandidateId(c.candidateId()));
+                        var support=new ArrayList<>(retained.validatedSupports());support.addAll(finding.validatedSupports());
+                        retained.recordValidatedSupports(support);
+                    }
                 } else if (observation.decision() == Decision.PASS) stats.rejected++;
                 else { stats.uncertain++; unresolved.add(observation.anchorId()); partial = true; }
             }
