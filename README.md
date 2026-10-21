@@ -69,10 +69,12 @@ MEDIA_STORAGE_ROOT=../oops-backend/uploads
 ```
 
 ```bash
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+ANALYSIS_PROFILE=local python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 모델·키 설정은 Python 프로세스 재시작 후 반영된다. OpenAI STT로 되돌릴 때는 `STT_MODEL=whisper-1`과 Python용 `OPENAI_API_KEY`를 설정한다. 자동 제공자 fallback은 없다. OCR을 제외한 설치·Windows 안내는 [Python README](oops-analysis/README.md)를 따른다.
+
+로컬 실행에서는 Spring `local` 프로필이 업로드 파일·요청·저장 검증의 용량 상한을 해제하고, Python `ANALYSIS_PROFILE=local`이 영상 길이 상한을 해제한다. 변경 후 두 서버를 재시작해야 한다. 비로컬 설정의 기본 상한은 500MiB·90분이며, 운영에 로컬 무제한 설정을 사용하지 않는다. 디스크·메모리·외부 API 한도, 처리 타임아웃과 OCR 프레임 예산은 유지되므로 긴 영상의 완전한 분석을 보장하지 않는다. 영상 길이에 따라 API 비용도 증가한다.
 
 ### Spring 백엔드 — 터미널 2
 
