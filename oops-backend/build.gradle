@@ -770,3 +770,16 @@ tasks.register('contextReferenceAudit', JavaExec) {
         args input, archive
     }
 }
+
+// Opt-in eight-request text pilot; never called by bootRun or test.
+tasks.register('responsiveRepetitionTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ResponsiveRepetitionTrial'
+    doFirst {
+        def names = ['repetitionMode', 'repetitionInput', 'repetitionSecond', 'repetitionOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', '))
+        args values
+    }
+}
