@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
@@ -33,7 +34,14 @@ class Settings(BaseSettings):
     #   90분: 음성 인식만 약 233원
     # 요청 한도가 낮은 계정에서는 중간에 끊길 수 있다.
     # 시연은 3~5분짜리로 하는 것을 권한다.
-    max_duration_sec: int = 5400
+    max_duration_sec: int = Field(default=5400, gt=0)
+    # Explicit opt-in for a local worker. Default/deployed worker retains its configured limit.
+    analysis_profile: Literal["default", "local"] = "default"
+
+    @property
+    def effective_max_duration_sec(self) -> int:
+        """0 means unlimited only in the explicitly selected local profile."""
+        return 0 if self.analysis_profile == "local" else self.max_duration_sec
 
     # OCR 로 인식할 최대 프레임 수.
     #

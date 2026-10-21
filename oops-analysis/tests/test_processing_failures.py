@@ -34,7 +34,7 @@ def test_endpoints_clean_owned_workdir_but_not_source_or_saved_frames(tmp_path, 
     (work / "temporary.mp3").write_bytes(b"temporary fixture")
     video = media.PreparedVideo(source, work, 10, "fixture")
     monkeypatch.setattr(main, "prepare", lambda *args: video)
-    monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(max_duration_sec=5400, default_interval_sec=4))
+    monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(max_duration_sec=5400, effective_max_duration_sec=5400, default_interval_sec=4))
 
     def process(*args):
         if fail:
