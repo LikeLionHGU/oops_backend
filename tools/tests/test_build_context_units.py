@@ -39,6 +39,50 @@ class ContextUnitTests(unittest.TestCase):
     def compile(self, unit=None):
         return compile_preview(self.base, [unit or self.unit], self.catalog, self.root)
 
+    def standalone(self, decision="PASS"):
+        source = {"schemaVersion": "context-transcript-source-1", "familyId": "development-family",
+                  "audioVerified": False, "developmentReview": {
+                      "decision": decision, "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": "제공 문맥 승인"},
+                  "segments": [{"id": "s1", "text": "평가 표현"}, {"id": "s2", "text": "후속 상황"}]}
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit = copy.deepcopy(self.unit)
+        unit.update(schemaVersion="context-reference-unit-2", familyId="development-family",
+                    referencePurpose="DEVELOPMENT_BOUNDARY_NOT_PUBLIC_CONTROVERSY",
+                    developmentDecision=decision, mechanismIds=["broad"])
+        unit.pop("parentCaseId")
+        unit["source"] = {"kind": "STORED_TRANSCRIPT_SNAPSHOT", "path": "source.json",
+                          "sha256": hashlib.sha256(raw).hexdigest()}
+        self.base["guidelines"][0]["channels"] = ["SPEECH"]
+        return unit
+
+    def test_standalone_normal_boundary_does_not_invent_or_replace_an_incident(self):
+        unit = self.standalone()
+        out, manifest = self.compile(unit)
+        example = out["examples"][0]
+        self.assertEqual(manifest["replacedExamples"], [])
+        self.assertEqual(len(out["examples"]), 3)
+        self.assertEqual(example["mechanismIds"], ["broad"])
+        self.assertEqual(example["context"]["criticismHypotheses"], [])
+        self.assertIn("사용자 승인 개발 정상 경계", example["context"]["flow"][-1])
+        self.assertTrue(all(s.startswith("합성 개발 대조") for s in example["context"]["normalContrasts"]))
+        self.assertFalse(unit["humanVerified"])
+        self.assertFalse(unit["trainingUseAuthorized"])
+
+    def test_standalone_review_boundary_keeps_current_input_requirement(self):
+        out, _ = self.compile(self.standalone("REVIEW_REQUIRED"))
+        self.assertIn("사용자 승인 개발 검토 경계", out["examples"][0]["context"]["criticismHypotheses"][0])
+        self.assertIn("공개 논란 사건이 아닌", out["examples"][0]["context"]["missingContext"][0])
+
+    def test_standalone_rejects_unknown_pattern_or_approval_mismatch(self):
+        for field, value in [("mechanismIds", ["unknown"]), ("developmentDecision", "REVIEW_REQUIRED"),
+                             ("referencePurpose", "PUBLIC_CONTROVERSY"), ("parentCaseId", "old"),
+                             ("familyId", "incident")]:
+            unit = self.standalone()
+            unit[field] = value
+            with self.assertRaises(ValueError):
+                self.compile(unit)
+
     def test_order_preserves_raw_then_later_context_not_role_order(self):
         out, manifest = self.compile()
         self.assertEqual(out["examples"][0]["context"]["flow"], ["평가 원문: 평가 표현", "상황 원문: 후속 상황"])

@@ -1,7 +1,9 @@
 """Build an explicit context-unit PREVIEW; never edits incidents or the active runtime.
 
 Original statements remain research records. Authored routing text, source-linked
-utterances, interpretation and synthetic controls are separate inputs. No network,
+utterances, interpretation and synthetic controls are separate inputs. Schema v2
+also allows explicitly approved development boundaries without inventing a public
+controversy incident or replacing its research record. No network,
 model, inferred transcript correction, approval promotion or default activation.
 """
 import argparse
@@ -32,6 +34,11 @@ def linked_lines(root, unit):
         require(doc.get("schemaVersion") == "context-transcript-source-1"
                 and doc.get("familyId") == unit["familyId"] and doc.get("audioVerified") is False,
                 "UNIT_TRANSCRIPT_SOURCE_REQUIRED")
+        if unit.get("schemaVersion") == "context-reference-unit-2":
+            require(doc.get("developmentReview", {}).get("decision") == unit["developmentDecision"]
+                    and doc["developmentReview"].get("basis") == "USER_APPROVED_DEVELOPMENT_BOUNDARY"
+                    and text(doc["developmentReview"].get("scope"), 350),
+                    "UNIT_DEVELOPMENT_APPROVAL_REQUIRED")
         lines = doc["segments"]
     elif source["kind"] == "SAVED_VERIFICATION_PLAN":
         tasks = [t for t in doc["tasks"] if t["spec"]["id"] == source["taskId"]]
@@ -97,11 +104,26 @@ def compile_preview(base, units, catalog, root, profiles=None):
     relations = relation_profiles(profiles, units)
     replaced, seen, examples, links = set(), set(), [], []
     for u in units:
-        require(u.get("schemaVersion") == "context-reference-unit-1" and u.get("status") == "DRAFT"
+        standalone = u.get("schemaVersion") == "context-reference-unit-2"
+        require(u.get("schemaVersion") in {"context-reference-unit-1", "context-reference-unit-2"} and u.get("status") == "DRAFT"
                 and u.get("humanVerified") is False and u.get("trainingUseAuthorized") is False, "UNIT_DRAFT_REQUIRED")
         uid, parent = u.get("id"), u.get("parentCaseId")
-        require(isinstance(uid, str) and ID.fullmatch(uid) and uid not in seen and uid not in source
-                and parent in source and u.get("familyId") == source[parent]["familyId"], "UNIT_IDENTITY_INVALID")
+        require(isinstance(uid, str) and ID.fullmatch(uid) and uid not in seen and uid not in source,
+                "UNIT_IDENTITY_INVALID")
+        if standalone:
+            require(parent is None and isinstance(u.get("familyId"), str) and ID.fullmatch(u["familyId"])
+                    and "#" not in u["familyId"] and u["familyId"] not in {e["familyId"] for e in source.values()}
+                    and u.get("referencePurpose") == "DEVELOPMENT_BOUNDARY_NOT_PUBLIC_CONTROVERSY"
+                    and u.get("developmentDecision") in {"PASS", "REVIEW_REQUIRED"}
+                    and u["source"].get("kind") == "STORED_TRANSCRIPT_SNAPSHOT",
+                    "UNIT_DEVELOPMENT_BOUNDARY_REQUIRED")
+            mechanisms = u.get("mechanismIds")
+            require(isinstance(mechanisms, list) and mechanisms and len(set(mechanisms)) == len(mechanisms)
+                    and all(m in rules for m in mechanisms), "UNIT_MECHANISMS_REQUIRED")
+            channels = sorted({c for m in mechanisms for c in rules[m]["channels"]})
+        else:
+            require(parent in source and u.get("familyId") == source[parent]["familyId"], "UNIT_IDENTITY_INVALID")
+            mechanisms, channels = source[parent]["mechanismIds"], source[parent]["channels"]
         seen.add(uid)
         routing = u.get("routingKeys")
         require(isinstance(routing, list) and 1 <= len(routing) <= 4 and len(routing) == len(set(routing))
@@ -126,15 +148,26 @@ def compile_preview(base, units, catalog, root, profiles=None):
                    "missingContext": [u["boundary"], "발췌 STT이며 원음·화자·억양·독립 검수는 확인하지 않았다. 과거 사례를 현재 원문 근거로 복사하지 않는다."],
                    "sourceInterpretations": [],
                    "normalContrasts": ["합성 개발 대조(실제 관측 아님): " + c["text"] for c in contrasts]}
-        example = {"id": uid, "familyId": u["familyId"], "mechanismIds": source[parent]["mechanismIds"],
-                   "channels": source[parent]["channels"], "context": context, "routingKeys": routing,
+        if standalone:
+            context["missingContext"].insert(0, "공개 논란 사건이 아닌 사용자 승인 개발 경계. 독립 평가·학습 정답이 아니다.")
+            if u["developmentDecision"] == "PASS":
+                context["criticismHypotheses"] = []
+                context["flow"].append("사용자 승인 개발 정상 경계(원문 아님·독립 검수 아님): " + u["interpretation"])
+                require(len(context["flow"]) <= 8, "UNIT_FLOW_LIMIT")
+            else:
+                context["criticismHypotheses"] = ["사용자 승인 개발 검토 경계(독립 검수 아님): " + u["interpretation"]]
+        example = {"id": uid, "familyId": u["familyId"], "mechanismIds": mechanisms,
+                   "channels": channels, "context": context, "routingKeys": routing,
                    "retrievalView": {"version": "context-unit-retrieval-1", "basis": "AUTHORED_ROUTING_NOT_SOURCE_EVIDENCE",
                                      "text": u["retrievalText"], "sha256": digest(u["retrievalText"].encode())}}
+        require(all(text(s, 350) for s in context["flow"] + context["criticismHypotheses"])
+                and all(text(s, 350) for s in context["normalContrasts"]), "UNIT_COMPILED_TEXT_LIMIT")
         examples.append(example)
         if uid in relations:
             example["relationProfile"] = copy.deepcopy(relations[uid])
         links.append({"unitId": uid, "parentCaseId": parent, "source": copy.deepcopy(u["source"]), "utterances": lines})
-        replaced.add(parent)
+        if not standalone:
+            replaced.add(parent)
     # Uncurated examples remain visible, never silently relabeled as curated units.
     for original in base["examples"]:
         if original["id"] in replaced:
@@ -149,6 +182,8 @@ def compile_preview(base, units, catalog, root, profiles=None):
         examples.append(e)
     out["schemaVersion"] = "review-guidelines-7" if relations else "review-guidelines-6"
     out["version"] = "2026-10-15-context-relations-v1" if relations else "2026-10-15-context-units-v1"
+    if any(u.get("schemaVersion") == "context-reference-unit-2" for u in units):
+        out["version"] = "2026-10-22-development-boundaries-v1"
     out["examples"] = examples
     out["sourceCases"] = [{"caseId": e["id"], "familyId": e["familyId"], "status": "UNREVIEWED_DRAFT"} for e in examples]
     for r in out["guidelines"]:
