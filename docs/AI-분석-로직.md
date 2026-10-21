@@ -13,7 +13,7 @@ OpenAI Docs의 [모델 최적화 안내](https://developers.openai.com/api/docs/
 | 전사 | Python → Groq `whisper-large-v3`. 기존 Whisper와 동일한 10분 분할·구간 타임스탬프 계약 |
 | OCR | 화면 글자·영역을 보존하고 편집/배경/불확실 역할을 구분 |
 | 표현 목록 | 욕설·논쟁 표현의 STT 적중을 별도 저장 |
-| 발언 판단 | `gpt-6-luna` · `2026-10-21-candidate-responsive-repetition-45` · 원문 근거 검증 |
+| 발언 판단 | `gpt-6-luna` · `2026-10-21-candidate-victim-quotation-46` · 원문 근거 검증 |
 | 탐색 출력 계약 | Luna 실제 호환·반복 비교 후 strict JSON Schema 기본 ON. `STRUCTURED_DISCOVERY_OUTPUT_ENABLED=false`로 기존 모드 선택 |
 | 맥락 참고 | 기본 v7 · 39참고/6기준 · 문자 검색 + 로컬 개념 조합 보완, 최대 3개 선택 |
 | 추가 검색 기능 | LLM 검색 키 분류·원문 관계 전달 기본 OFF, 의미 순위 운영 미연결 |
