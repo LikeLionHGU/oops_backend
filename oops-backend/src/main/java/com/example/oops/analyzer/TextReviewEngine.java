@@ -9,7 +9,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 @lombok.extern.slf4j.Slf4j
 public final class TextReviewEngine {
     private TextReviewEngine() {}
-    public static final String PROMPT_REVISION = "2026-10-09-continuation-context-21";
+    public static final String PROMPT_REVISION = "2026-10-21-ocr-primary-grounding-22";
     private static final int MAX_REPAIR_BATCHES = 6;
     private static final int REPAIR_BATCH_SIZE = 8;
     private static final int MAX_DIALOGUE_CALLS = 24;
@@ -30,6 +30,12 @@ public final class TextReviewEngine {
             - OCR 복원 가능성은 reading에만 기록하며 인용·대상 식별 근거를 대체하지 않는다.
             - evidence는 최대 12개이며 요청에 제공된 원문과 허용된 창 안에서만 선택한다.
               OCR 요청은 CAPTION 원문만 사용하고 SPEECH를 근거로 연결하지 않는다.
+            - OCR의 REVIEW_REQUIRED는 읽히는 PRIMARY 자체와 허용 문맥의 연결로 성립해야 한다.
+              PRIMARY를 읽을 수 없거나 판단 근거가 이웃 문구에만 있으면 그 PRIMARY를 경고하지 않는다.
+              해석에 필수인 대표 문구가 불명확하면 UNCERTAIN으로 두고 missingInformation에 적는다.
+              이웃의 읽히는 문구로 대표를 바꾸거나 깨진 글자를 추측 복원하지 않는다.
+              이웃 문구에 독립적인 검토 이유가 있으면 그 문구가 평가 대상인 요청에서 별도로 판단한다.
+              대표 해석과 무관한 부가 확인 사항만 남은 REVIEW_REQUIRED까지 보류하지 않는다.
 
             ## 2. 인용 역할
             - PRIMARY: 평가 대상 구간에서 결정을 뒷받침하는 대표 표현이다.

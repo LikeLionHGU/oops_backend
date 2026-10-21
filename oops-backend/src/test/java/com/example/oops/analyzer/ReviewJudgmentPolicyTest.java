@@ -5,6 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Offline instruction contracts; does not assert that a real LLM follows the policy. */
 class ReviewJudgmentPolicyTest {
+    @Test void victimQuotationBoundaryReachesBothCandidateStagesAndLegacyPolicy() {
+        for (String prompt : new String[]{CandidateReviewEngine.DISCOVERY_PROMPT,
+                CandidateReviewEngine.VERIFICATION_PROMPT, ReviewJudgmentPolicy.PROMPT}) {
+            assertThat(prompt).contains("피해 경험 회고·비판적 전달",
+                    "인용 속 모욕이 남아 있다는 이유만으로 경고하지 않는다",
+                    "동조·재공격", "독립적인 위협·정보 노출", "PASS",
+                    "직접적인 대상 낮춤을 경험담·독려라는 명목으로 면책하지 않는다");
+        }
+    }
+
     @Test void responsiveRepetitionGuardReachesDiscoveryAndVerificationWithoutAutomaticImmunity() {
         for (String prompt : new String[]{CandidateReviewEngine.DISCOVERY_PROMPT,
                 CandidateReviewEngine.VERIFICATION_PROMPT}) {

@@ -11,6 +11,16 @@ import static org.mockito.Mockito.*;
 
 /** Offline prompt and request isolation checks; not real-model accuracy measurements. */
 class ScreenTextPromptTest {
+    @Test void unreadablePrimaryCannotBorrowItsReviewReasonFromNeighbour() {
+        assertThat(TextReviewEngine.CONTRACT).contains(
+                "OCR의 REVIEW_REQUIRED는 읽히는 PRIMARY 자체와 허용 문맥의 연결로 성립해야 한다",
+                "판단 근거가 이웃 문구에만 있으면 그 PRIMARY를 경고하지 않는다",
+                "UNCERTAIN으로 두고 missingInformation에 적는다",
+                "이웃의 읽히는 문구로 대표를 바꾸거나 깨진 글자를 추측 복원하지 않는다",
+                "그 문구가 평가 대상인 요청에서 별도로 판단한다",
+                "부가 확인 사항만 남은 REVIEW_REQUIRED까지 보류하지 않는다");
+    }
+
     private String definitions() throws Exception {
         var field = ScreenTextReviewAnalyzer.class.getDeclaredField("SYSTEM_PROMPT");
         field.setAccessible(true);
