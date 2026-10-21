@@ -6,6 +6,7 @@ import com.example.oops.config.OopsProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -45,17 +46,25 @@ public class StorageService {
         return resolved;
     }
 
-    /** API 명세 2-1: 500MB 상한. Spring 설정과 별개로 코드에서도 검증한다. */
-    private static final long MAX_FILE_SIZE_BYTES = 500L * 1024 * 1024;
+    /** Independent application guard. Only explicit -1 disables it; default remains 500 MiB. */
+    private long maxFileSizeBytes = 500L * 1024 * 1024;
+
+    @Value("${oops.storage.max-file-size-bytes:524288000}")
+    public void setMaxFileSizeBytes(long bytes) {
+        if (bytes == 0 || bytes < -1) {
+            throw new IllegalArgumentException("Upload limit must be positive or -1");
+        }
+        maxFileSizeBytes = bytes;
+    }
 
     public void validateVideoFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "영상 파일이 필요합니다.");
         }
-        if (file.getSize() > MAX_FILE_SIZE_BYTES) {
+        if (maxFileSizeBytes > 0 && file.getSize() > maxFileSizeBytes) {
             throw new BusinessException(ErrorCode.MAX_UPLOAD_SIZE_EXCEEDED,
-                    "업로드 가능한 파일 크기(500MB)를 초과했습니다. (%dMB)"
-                            .formatted(file.getSize() / (1024 * 1024)));
+                    "업로드 가능한 파일 크기(%dMB)를 초과했습니다. (%dMB)"
+                            .formatted(maxFileSizeBytes / (1024 * 1024), file.getSize() / (1024 * 1024)));
         }
         String extension = extensionOf(file.getOriginalFilename());
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
