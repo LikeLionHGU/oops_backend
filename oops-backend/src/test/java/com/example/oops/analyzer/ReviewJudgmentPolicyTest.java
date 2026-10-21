@@ -5,6 +5,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Offline instruction contracts; does not assert that a real LLM follows the policy. */
 class ReviewJudgmentPolicyTest {
+    @Test void responsiveRepetitionGuardReachesDiscoveryAndVerificationWithoutAutomaticImmunity() {
+        for (String prompt : new String[]{CandidateReviewEngine.DISCOVERY_PROMPT,
+                CandidateReviewEngine.VERIFICATION_PROMPT}) {
+            assertThat(prompt).contains("상대의 반문·반박·인용", "화자 근거 없이",
+                    "반복 공격은 면책하지 않으며",
+                    "독립 근거 없으면 PASS", "필수 화자 정보 부족은",
+                    "UNCERTAIN");
+        }
+        assertThat(CandidateReviewEngine.DISCOVERY_PROMPT)
+                .contains("반문을 최초 공격의 대표 발언으로 바꾸지 않는다");
+        assertThat(ReviewJudgmentPolicy.PROMPT).contains("동일인의 반복 공격으로 바꾸지 않는다",
+                "반문에도 독립적인 모욕 근거가 있으면 검토");
+    }
+
     private String system(Class<?> type) throws Exception {
         var field = type.getDeclaredField("SYSTEM_PROMPT");
         field.setAccessible(true);
