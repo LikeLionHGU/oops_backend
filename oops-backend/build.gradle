@@ -771,6 +771,18 @@ tasks.register('contextReferenceAudit', JavaExec) {
     }
 }
 
+// Opt-in six-request reference comparison; never called by bootRun or test.
+tasks.register('developmentBoundaryReferenceTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.DevelopmentBoundaryReferenceTrial'
+    doFirst {
+        def values = providers.gradleProperty('boundaryArgs').orNull
+        if (!values) throw new GradleException('Set boundaryArgs: pipe-delimited explicit prepare/run paths')
+        args values.split('\\|', -1).toList()
+    }
+}
+
 // Opt-in eight-request text pilot; never called by bootRun or test.
 tasks.register('responsiveRepetitionTrial', JavaExec) {
     dependsOn testClasses
