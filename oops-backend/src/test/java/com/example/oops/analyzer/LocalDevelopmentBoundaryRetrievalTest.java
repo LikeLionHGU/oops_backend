@@ -18,6 +18,38 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Optional private-data wiring test; no provider calls or model accuracy claims. */
 class LocalDevelopmentBoundaryRetrievalTest {
+    @Test void approvedMtPreferenceBoundaryRetrievesWithoutChangingStoredTranscriptOrForcingPass() throws Exception {
+        var sourcePath = ROOT.resolve("context-sources/mimiminu-mt-preference-20261023.json");
+        assumeTrue(Files.exists(sourcePath));
+        var json = ReviewGuidelineLibrary.JSON;
+        var source = json.readTree(Files.readAllBytes(sourcePath));
+        var origin = Files.readAllBytes(ROOT.resolve(source.at("/origin/path").asText()));
+        var approval = Files.readAllBytes(ROOT.resolve(source.at("/developmentReview/approvalRecord/path").asText()));
+        var digest = java.security.MessageDigest.getInstance("SHA-256");
+        assertThat(java.util.HexFormat.of().formatHex(digest.digest(origin)))
+                .isEqualTo(source.at("/origin/sha256").asText());
+        assertThat(java.util.HexFormat.of().formatHex(digest.digest(approval)))
+                .isEqualTo(source.at("/developmentReview/approvalRecord/sha256").asText());
+        assertThat(json.readTree(approval).path("decision").asText()).isEqualTo("PASS");
+        var stored = json.readTree(origin).get("data");
+        var raw = new ArrayList<ReviewInput.Segment>();
+        for (var row : source.get("segments")) {
+            int i = Integer.parseInt(row.get("id").asText().substring("stt-index-".length()));
+            for (var field : List.of("text", "startMs", "endMs"))
+                assertThat(row.get(field)).isEqualTo(stored.get(i).get(field));
+            raw.add(new ReviewInput.Segment(row.get("id").asText(), SPEECH,
+                    row.get("startMs").asLong(), row.get("endMs").asLong(), row.get("text").asText(), null));
+        }
+        var library = new ReviewGuidelineLibrary(new DefaultResourceLoader(), true,
+                ROOT.resolve("guidelines/runtime.json").toAbsolutePath().toUri().toString(), 6000);
+        library.load();
+        var focus = raw.stream().filter(s -> s.id().equals("stt-index-321")).toList();
+        var selected = library.select(SPEECH, raw, "mt-preference-approved", focus);
+        assertThat(selected.trace().exampleIds()).contains("mimiminu-dev#mt-preference");
+        assertThat(selected.trace().payloadCodePoints()).isLessThanOrEqualTo(6000);
+        assertThat(selected.prompt()).contains("사용자 승인 개발 정상 경계", "사용자 미승인·실제 관측 아님",
+                "현재 원문에 실제 모욕·배제 연결이 있으면 별도로 검토한다");
+    }
     @Test void ocrFrameDraftIsRetrievedOnlyAsCaptionReferenceWithoutProviderCalls() throws Exception {
         var sourcePath = ROOT.resolve("context-sources/ocr-generation-description-20261022.json");
         assumeTrue(Files.exists(sourcePath));
