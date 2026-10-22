@@ -14,6 +14,52 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class AnalysisServerClientTest {
+    @Test void workerDeadlineDetailIsPreservedRatherThanReportedAsConnectionFailure() {
+        var builder = RestClient.builder().baseUrl("http://worker.invalid");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://worker.invalid/ocr")).andRespond(
+                withStatus(org.springframework.http.HttpStatus.GATEWAY_TIMEOUT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"detail\":\"OCR_TIMEOUT: OCR 작업 제한 시간을 초과했습니다.\"}"));
+        var storage = mock(StorageService.class);
+        when(storage.frameDir(1L)).thenReturn(Path.of("/fixture/frames/1"));
+        var video = mock(Video.class);
+        when(video.getId()).thenReturn(1L);
+        when(video.getSourceType()).thenReturn(SourceType.YOUTUBE);
+        when(video.getSourceUrl()).thenReturn("https://youtu.be/fixture");
+        var client = new AnalysisServerClient(builder.build(), RestClient.create(),
+                new AnalysisServerProperties(null, null, 4.0), storage);
+        assertThat(client.ocr(video)).isEmpty();
+        assertThat(client.lastFailureDetail().orElseThrow()).startsWith("OCR_TIMEOUT:");
+        server.verify();
+    }
+    @Test void transportTimeoutAndConnectionFailureAreDistinguishedWithoutNetwork() {
+        for (var failure : java.util.List.of(
+                new java.net.http.HttpTimeoutException("fixture timeout"),
+                new java.net.SocketTimeoutException("fixture timeout"),
+                new java.net.ConnectException("fixture refused"),
+                new java.net.http.HttpConnectTimeoutException("fixture connect timeout"))) {
+            var builder = RestClient.builder().baseUrl("http://worker.invalid");
+            var server = MockRestServiceServer.bindTo(builder).build();
+            server.expect(requestTo("http://worker.invalid/ocr")).andRespond(request -> { throw failure; });
+            var storage = mock(StorageService.class);
+            when(storage.frameDir(1L)).thenReturn(Path.of("/fixture/frames/1"));
+            when(storage.resolve("fixture")).thenReturn(Path.of("/fixture/videos/1/original.mp4"));
+            var video = mock(Video.class);
+            when(video.getId()).thenReturn(1L);
+            when(video.getSourceType()).thenReturn(SourceType.UPLOAD);
+            when(video.getStorageKey()).thenReturn("fixture");
+            var client = new AnalysisServerClient(builder.build(), RestClient.create(),
+                    new AnalysisServerProperties(null, null, 4.0), storage);
+            assertThat(client.ocr(video)).isEmpty();
+            boolean connection = failure instanceof java.net.ConnectException
+                    || failure instanceof java.net.http.HttpConnectTimeoutException;
+            assertThat(client.lastFailureDetail().orElseThrow()).contains(
+                    connection ? "WORKER_CONNECTION_FAILED" : "WORKER_READ_TIMEOUT");
+            assertThat(client.lastOcrAssessment().orElseThrow().status()).isEqualTo(AnalyzerStatus.FAILED);
+            server.verify();
+        }
+    }
     @Test void malformedOrMissingOcrPayloadIsFailedAndLegacyPayloadIsPartial() {
         for (String body : java.util.List.of("{}", "{\"items\":null}",
                 "{\"items\":[],\"processing\":{\"status\":\"SUCCESS\",\"totalFrames\":2,\"successfulFrames\":1,\"failedFrames\":1}}",

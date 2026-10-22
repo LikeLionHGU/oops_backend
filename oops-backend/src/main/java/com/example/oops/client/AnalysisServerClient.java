@@ -114,6 +114,17 @@ public class AnalysisServerClient {
     /** 분석 서버가 준 detail 만 뽑아낸다. 사용자에게 그대로 보여줄 문장이다. */
     private String extractDetail(RestClientException e) {
         if (!(e instanceof RestClientResponseException re)) {
+            for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                if (cause instanceof java.net.http.HttpConnectTimeoutException
+                        || cause instanceof java.net.ConnectException) {
+                    return "분석 서버에 연결할 수 없습니다. (WORKER_CONNECTION_FAILED)";
+                }
+                if (cause instanceof java.net.http.HttpTimeoutException
+                        || cause instanceof java.net.SocketTimeoutException
+                        || cause instanceof java.util.concurrent.TimeoutException) {
+                    return "분석 서버 응답 대기 시간이 초과됐습니다. (WORKER_READ_TIMEOUT)";
+                }
+            }
             return "분석 서버에 연결하지 못했습니다.";
         }
         String body = re.getResponseBodyAsString();
