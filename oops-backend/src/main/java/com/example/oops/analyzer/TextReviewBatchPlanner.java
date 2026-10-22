@@ -40,6 +40,14 @@ final class TextReviewBatchPlanner {
         primary.forEach(s -> primaryIds.add(s.id()));
         Map<String, ReviewInput.Segment> nearby = new LinkedHashMap<>();
         boolean limited = false;
+        // Co-timed OCR regions may describe one UI/document. Keep them eligible before
+        // per-anchor neighbour caps; do not concatenate or infer a shared author/frame.
+        if (!primary.isEmpty() && primary.get(0).type() == TimelineEventType.CAPTION) {
+            input.segments().stream().filter(s -> s.type() == TimelineEventType.CAPTION
+                    && !primaryIds.contains(s.id()) && primary.stream().anyMatch(p ->
+                    p.startMs() == s.startMs() && p.endMs() == s.endMs()))
+                    .forEach(s -> nearby.putIfAbsent(s.id(), s));
+        }
         for (var anchor : primary) {
             var window = input.contextFor(anchor.id(), primaryIds);
             limited |= window.omittedSegments() > 0;
@@ -67,6 +75,10 @@ final class TextReviewBatchPlanner {
                 .comparingInt((ReviewInput.Segment s) -> !primary.isEmpty()
                         && primary.get(0).type() == TimelineEventType.SPEECH
                         && s.type() != TimelineEventType.SPEECH ? 1 : 0)
+                .thenComparingInt(s -> !primary.isEmpty()
+                        && primary.get(0).type() == TimelineEventType.CAPTION
+                        && primary.stream().anyMatch(p -> p.startMs() == s.startMs()
+                        && p.endMs() == s.endMs()) ? 0 : 1)
                 .thenComparingLong((ReviewInput.Segment s) -> primary.stream()
                         .mapToLong(p -> Math.max(0, Math.max(s.startMs() - p.endMs(), p.startMs() - s.endMs())))
                         .min().orElseThrow()).thenComparingLong(ReviewInput.Segment::startMs)

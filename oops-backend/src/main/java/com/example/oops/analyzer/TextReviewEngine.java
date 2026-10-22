@@ -9,7 +9,7 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 @lombok.extern.slf4j.Slf4j
 public final class TextReviewEngine {
     private TextReviewEngine() {}
-    public static final String PROMPT_REVISION = "2026-10-21-ocr-primary-grounding-22";
+    public static final String PROMPT_REVISION = "2026-10-22-ocr-document-context-23";
     private static final int MAX_REPAIR_BATCHES = 6;
     private static final int REPAIR_BATCH_SIZE = 8;
     private static final int MAX_DIALOGUE_CALLS = 24;

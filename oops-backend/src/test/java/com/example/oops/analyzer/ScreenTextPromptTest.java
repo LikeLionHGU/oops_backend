@@ -11,6 +11,46 @@ import static org.mockito.Mockito.*;
 
 /** Offline prompt and request isolation checks; not real-model accuracy measurements. */
 class ScreenTextPromptTest {
+    @Test void documentRoleDoesNotInventBelittlementOrExemptActualAbuse() throws Exception {
+        assertThat(definitions()).contains("생성 지시·문서·UI·설명·평가",
+                "그림 생성의 외모·연령·화풍 조건이나 중립적인 인물 묘사만으로 조롱하지 않는다",
+                "원문에 없는 우열·이상적 기준·배제 관계를 만들지 않는다",
+                "구체적인 모욕·차별·개인정보 노출을 면제하지 않는다",
+                "같은 문장·작성자라는 보증이 아니다");
+    }
+
+    @Test void coTimedDocumentRegionsSurviveNeighbourCapWithoutChangingTargets() {
+        var main = caption("main", 10_000, "인물의 외모 조건");
+        var all = new ArrayList<ReviewInput.Segment>();
+        all.add(main);
+        for (int i = 0; i < 12; i++) {
+            all.add(new ReviewInput.Segment("region-" + i, TimelineEventType.CAPTION,
+                    10_000, 11_000, "문서 영역 " + i, 0.97, ScreenTextRole.BACKGROUND));
+        }
+        for (int i = 0; i < 10; i++) all.add(caption("earlier-" + i, 9_000, "이전 문구"));
+        var batch = TextReviewBatchPlanner.withContext(new ReviewInput(all), List.of(main));
+        assertThat(batch.primary()).containsExactly(main);
+        assertThat(batch.context()).hasSize(16);
+        assertThat(batch.context().stream().filter(s -> s.id().startsWith("region-"))).hasSize(12);
+        assertThat(batch.context()).allSatisfy(s -> assertThat(s.text()).isIn(
+                all.stream().map(ReviewInput.Segment::text).toList()));
+        assertThat(batch.contextLimited()).isTrue();
+    }
+
+    @Test void coTimedContextStillHonoursCharacterBudgetAndNeverPromotesBackground() {
+        var main = caption("main", 10_000, "검토할 문구");
+        var background = new ReviewInput.Segment("background", TimelineEventType.CAPTION,
+                10_000, 11_000, "가".repeat(8_001), 0.99, ScreenTextRole.BACKGROUND);
+        var small = new ReviewInput.Segment("small", TimelineEventType.CAPTION,
+                10_000, 11_000, "그림 생성 안내", 0.99, ScreenTextRole.UNCERTAIN);
+        var batch = TextReviewBatchPlanner.plan(new ReviewInput(List.of(main, background, small)),
+                TimelineEventType.CAPTION, 2).get(0);
+        assertThat(batch.primary()).containsExactly(main);
+        assertThat(batch.context()).containsExactly(small);
+        assertThat(batch.contextLimited()).isTrue();
+        assertThat(background.text()).hasSize(8_001);
+    }
+
     @Test void unreadablePrimaryCannotBorrowItsReviewReasonFromNeighbour() {
         assertThat(TextReviewEngine.CONTRACT).contains(
                 "OCR의 REVIEW_REQUIRED는 읽히는 PRIMARY 자체와 허용 문맥의 연결로 성립해야 한다",
