@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     # Spring 의 storage.location 과 같은 디렉터리. 서버 배포 환경에서는 절대 경로로 지정한다.
     media_storage_root: str = "../oops-backend/uploads"
     ocr_lang: str = "korean"
+    # Per-job subprocess owns Paddle/native allocations; no shared in-process model.
+    ocr_timeout_sec: int | None = Field(default=None, gt=0, le=3600)
+    ocr_rec_batch_num: int = Field(default=1, ge=1, le=32)
+
+    @property
+    def effective_ocr_timeout_sec(self) -> int:
+        # Includes download, frame extraction, model startup and recognition.
+        return self.ocr_timeout_sec or (1200 if self.analysis_profile == "local" else 540)
 
     # 프레임을 몇 초 간격으로 뽑을지 (OCR 기본값)
     default_interval_sec: float = Field(default=4.0, gt=0, allow_inf_nan=False)

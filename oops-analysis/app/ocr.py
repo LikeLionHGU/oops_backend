@@ -5,6 +5,7 @@ import logging
 import math
 import shutil
 import time
+from importlib.util import find_spec
 from functools import lru_cache
 from pathlib import Path
 
@@ -40,13 +41,14 @@ def _engine():
     except ImportError as e:
         raise OcrUnavailable("PaddleOCR 가 설치되지 않았습니다.") from e
 
-    return PaddleOCR(use_angle_cls=True, lang=get_settings().ocr_lang, show_log=False)
+    return PaddleOCR(use_angle_cls=True, lang=get_settings().ocr_lang, show_log=False,
+                     rec_batch_num=get_settings().ocr_rec_batch_num)
 
 
 def is_available() -> bool:
+    """Dependency availability only; health must not allocate a persistent Paddle model."""
     try:
-        _engine()
-        return True
+        return find_spec("paddleocr") is not None and find_spec("paddle") is not None
     except Exception:
         return False
 
@@ -85,6 +87,10 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
             continue
 
         region_frames.append((time_ms, frame_path, _parse_regions(raw)))
+        if len(region_frames) % 25 == 0:
+            log.info("[ocr-progress] processed=%d/%d failed=%d elapsedSec=%.1f",
+                     len(region_frames) + failed_frames, len(frames), failed_frames,
+                     time.time() - started)
 
     if not region_frames:
         raise OcrProcessingFailed("모든 OCR 프레임의 인식에 실패했습니다. 글자 없음으로 판단할 수 없습니다.")

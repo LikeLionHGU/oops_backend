@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, StrictInt
 
-from . import ocr, stt, scene_frames
+from . import ocr, stt, scene_frames, ocr_jobs
 from .config import get_settings
-from .media import MediaError, prepare, resolve_storage_path, valid_duration
+from .media import MediaError, prepare, valid_duration
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -52,6 +52,9 @@ def health() -> dict:
         "status": "UP",
         "sttAvailable": bool(stt_key),
         "ocrAvailable": ocr.is_available(),
+        "ocrAvailabilityCheck": "DEPENDENCIES_ONLY_NOT_MODEL_READY",
+        "ocrBusy": ocr_jobs.is_busy(),
+        "ocrJobIsolation": "SUBPROCESS_PER_JOB",
     }
 
 
@@ -105,26 +108,8 @@ def transcribe(request: MediaRequest) -> dict:
 
 
 @app.post("/ocr")
-def run_ocr(request: MediaRequest) -> dict:
-    video = None
-    try:
-        video = prepare(request.videoUrl, request.filePath)
-        _guard_duration(video.duration_sec)
-        interval = request.intervalSec or get_settings().default_interval_sec
-        frame_dir = (str(resolve_storage_path(request.frameDir, "frames"))
-                     if request.frameDir else None)
-        return ocr.run(video, interval, frame_dir)
-    except (ocr.OcrUnavailable, ocr.OcrProcessingFailed) as e:
-        # Spring 쪽에서 503 을 보고 OCR 단계를 조용히 건너뛴다
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    except MediaError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        log.exception("OCR 실패")
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    finally:
-        if video:
-            video.cleanup()
+async def run_ocr(payload: MediaRequest, request: Request) -> dict:
+    return await ocr_jobs.run(payload.model_dump(), request)
 
 
 def _guard_duration(duration_sec: float) -> None:

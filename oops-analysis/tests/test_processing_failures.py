@@ -5,7 +5,18 @@ import sys
 
 import pytest
 from fastapi.testclient import TestClient
-from app import main, media, ocr, stt
+from fastapi import HTTPException
+from app import main, media, ocr, stt, ocr_worker
+
+
+async def inline_ocr_for_worker_unit_test(payload, request):
+    # These tests cover worker cleanup. Real OS supervision is tested separately.
+    try:
+        return ocr_worker.perform(payload)
+    except media.MediaError as exc:
+        raise HTTPException(400, str(exc))
+    except ocr.OcrProcessingFailed as exc:
+        raise HTTPException(503, str(exc))
 
 
 @pytest.mark.parametrize(("model", "groq_key", "openai_key", "expected"), [
@@ -35,6 +46,9 @@ def test_endpoints_clean_owned_workdir_but_not_source_or_saved_frames(tmp_path, 
     video = media.PreparedVideo(source, work, 10, "fixture")
     monkeypatch.setattr(main, "prepare", lambda *args: video)
     monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(max_duration_sec=5400, effective_max_duration_sec=5400, default_interval_sec=4))
+    monkeypatch.setattr(ocr_worker, "prepare", lambda *args: video)
+    monkeypatch.setattr(ocr_worker, "get_settings", main.get_settings)
+    monkeypatch.setattr(main.ocr_jobs, "run", inline_ocr_for_worker_unit_test)
 
     def process(*args):
         if fail:
@@ -147,6 +161,8 @@ def test_total_ocr_failure_is_http_503_and_cleans_workdir(tmp_path, monkeypatch)
     work = tmp_path / "owned-work"
     work.mkdir()
     monkeypatch.setattr(main, "prepare", lambda *args: media.PreparedVideo(tmp_path / "source", work, 10))
+    monkeypatch.setattr(ocr_worker, "prepare", main.prepare)
+    monkeypatch.setattr(main.ocr_jobs, "run", inline_ocr_for_worker_unit_test)
     monkeypatch.setattr(main.ocr, "run", lambda *args: (_ for _ in ()).throw(ocr.OcrProcessingFailed("synthetic OCR failure")))
     response = TestClient(main.app).post("/ocr", json={"filePath": "fixture"})
     assert response.status_code == 503
