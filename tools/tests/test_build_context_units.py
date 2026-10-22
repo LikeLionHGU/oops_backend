@@ -69,6 +69,56 @@ class ContextUnitTests(unittest.TestCase):
         self.assertFalse(unit["humanVerified"])
         self.assertFalse(unit["trainingUseAuthorized"])
 
+    def ocr_unit(self):
+        unit = self.standalone()
+        (self.root / "frame.jpg").write_bytes(b"synthetic frame fixture")
+        rows = [{"text": "그림 생성 조건", "startMs": 10, "endMs": 20, "frameUrl": "/synthetic/frame"},
+                {"text": "대학생 외모로 표현", "startMs": 10, "endMs": 20, "frameUrl": "/synthetic/frame"}]
+        snapshot = json.dumps({"data": rows}).encode()
+        (self.root / "ocr.json").write_bytes(snapshot)
+        source = {"schemaVersion": "context-ocr-frame-source-1", "familyId": unit["familyId"],
+                  "userLabelApproved": False, "developmentReview": {"decision": "PASS",
+                  "basis": "DEVELOPER_FRAME_REVIEW_NOT_USER_LABEL", "scope": "프레임 검토 초안"},
+                  "frame": {"path": "frame.jpg", "sha256": hashlib.sha256(b"synthetic frame fixture").hexdigest(),
+                            "url": "/synthetic/frame"},
+                  "ocrSnapshot": {"path": "ocr.json", "sha256": hashlib.sha256(snapshot).hexdigest()},
+                  "segments": [{"id": "s" + str(i + 1), "sourceIndex": i,
+                                **{k: row[k] for k in ("text", "startMs", "endMs")}} for i, row in enumerate(rows)]}
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"].update(kind="STORED_OCR_FRAME_SNAPSHOT", sha256=hashlib.sha256(raw).hexdigest())
+        self.base["guidelines"][0]["channels"] = ["SPEECH", "CAPTION"]
+        return unit, source
+
+    def test_ocr_boundary_keeps_draft_provenance_and_caption_only_channel(self):
+        unit, _ = self.ocr_unit()
+        out, _ = self.compile(unit)
+        example = out["examples"][0]
+        self.assertEqual(example["channels"], ["CAPTION"])
+        self.assertIn("사용자 정답 미승인", example["context"]["flow"][-1])
+        self.assertNotIn("사용자 승인", json.dumps(example, ensure_ascii=False))
+        self.assertEqual(example["context"]["criticismHypotheses"], [])
+
+    def test_ocr_boundary_rejects_raw_correction_label_promotion_and_wrong_frame(self):
+        for change in ("raw", "approval", "frame", "index"):
+            unit, source = self.ocr_unit()
+            if change == "raw": source["segments"][0]["text"] = "추측 교정 원문"
+            if change == "approval": source["userLabelApproved"] = True
+            if change == "frame": source["frame"]["url"] = "/other/frame"
+            if change == "index": source["segments"][0]["sourceIndex"] = -1
+            raw = json.dumps(source).encode()
+            (self.root / "source.json").write_bytes(raw)
+            unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+            with self.subTest(change=change), self.assertRaises(ValueError): self.compile(unit)
+
+    def test_ocr_boundary_rejects_changed_artifact_and_wrong_channel(self):
+        unit, _ = self.ocr_unit()
+        (self.root / "frame.jpg").write_bytes(b"changed")
+        with self.assertRaises(ValueError): self.compile(unit)
+        unit, _ = self.ocr_unit()
+        self.base["guidelines"][0]["channels"] = ["SPEECH"]
+        with self.assertRaises(ValueError): self.compile(unit)
+
     def test_standalone_review_boundary_keeps_current_input_requirement(self):
         out, _ = self.compile(self.standalone("REVIEW_REQUIRED"))
         self.assertIn("사용자 승인 개발 검토 경계", out["examples"][0]["context"]["criticismHypotheses"][0])

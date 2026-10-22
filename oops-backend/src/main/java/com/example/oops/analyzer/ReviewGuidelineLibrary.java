@@ -248,7 +248,9 @@ public class ReviewGuidelineLibrary {
                     mapped.add(r.id()); channels.addAll(r.channels());
                 });
                 if (e.mechanismIds().size() != mapped.size() || !mapped.equals(new HashSet<>(e.mechanismIds()))
-                        || e.channels().size() != channels.size() || !channels.equals(new HashSet<>(e.channels()))) return false;
+                        || e.channels().isEmpty() || e.channels().size() != new HashSet<>(e.channels()).size()
+                        || !channels.containsAll(e.channels())
+                        || (!units && e.channels().size() != channels.size())) return false;
                 var c = e.context();
                 if (units && !texts(c.normalContrasts(), 0, 4)) return false;
                 if (!Set.of("SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT").contains(c.coverage() == null ? "" : c.coverage())

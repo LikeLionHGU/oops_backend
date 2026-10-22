@@ -2,8 +2,10 @@
 
 Original statements remain research records. Authored routing text, source-linked
 utterances, interpretation and synthetic controls are separate inputs. Schema v2
-also allows explicitly approved development boundaries without inventing a public
-controversy incident or replacing its research record. No network,
+also allows explicitly approved development boundaries and separately labelled
+developer frame-review drafts without inventing a public controversy incident
+or replacing its research record. OCR drafts retain artifact hashes and raw lines.
+No network,
 model, inferred transcript correction, approval promotion or default activation.
 """
 import argparse
@@ -39,6 +41,26 @@ def linked_lines(root, unit):
                     and doc["developmentReview"].get("basis") == "USER_APPROVED_DEVELOPMENT_BOUNDARY"
                     and text(doc["developmentReview"].get("scope"), 350),
                     "UNIT_DEVELOPMENT_APPROVAL_REQUIRED")
+        lines = doc["segments"]
+    elif source["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
+        require(doc.get("schemaVersion") == "context-ocr-frame-source-1"
+                and doc.get("familyId") == unit["familyId"]
+                and doc.get("userLabelApproved") is False
+                and doc.get("developmentReview", {}).get("decision") == unit["developmentDecision"]
+                and doc["developmentReview"].get("basis") == "DEVELOPER_FRAME_REVIEW_NOT_USER_LABEL"
+                and text(doc["developmentReview"].get("scope"), 350), "UNIT_OCR_REVIEW_REQUIRED")
+        for artifact in ("frame", "ocrSnapshot"):
+            item = doc[artifact]
+            require(digest(read_bytes(inside(root, item["path"]))) == item["sha256"],
+                    "UNIT_OCR_ARTIFACT_HASH_MISMATCH")
+        original = parse(read_bytes(inside(root, doc["ocrSnapshot"]["path"])))
+        rows = original["data"]
+        for line in doc["segments"]:
+            require(type(line.get("sourceIndex")) is int
+                    and 0 <= line["sourceIndex"] < len(rows), "UNIT_OCR_INDEX_REQUIRED")
+            row = rows[line["sourceIndex"]]
+            require(all(line.get(k) == row.get(k) for k in ("text", "startMs", "endMs"))
+                    and row.get("frameUrl") == doc["frame"].get("url"), "UNIT_OCR_RAW_MISMATCH")
         lines = doc["segments"]
     elif source["kind"] == "SAVED_VERIFICATION_PLAN":
         tasks = [t for t in doc["tasks"] if t["spec"]["id"] == source["taskId"]]
@@ -115,12 +137,15 @@ def compile_preview(base, units, catalog, root, profiles=None):
                     and "#" not in u["familyId"] and u["familyId"] not in {e["familyId"] for e in source.values()}
                     and u.get("referencePurpose") == "DEVELOPMENT_BOUNDARY_NOT_PUBLIC_CONTROVERSY"
                     and u.get("developmentDecision") in {"PASS", "REVIEW_REQUIRED"}
-                    and u["source"].get("kind") == "STORED_TRANSCRIPT_SNAPSHOT",
+                    and u["source"].get("kind") in {"STORED_TRANSCRIPT_SNAPSHOT", "STORED_OCR_FRAME_SNAPSHOT"},
                     "UNIT_DEVELOPMENT_BOUNDARY_REQUIRED")
             mechanisms = u.get("mechanismIds")
             require(isinstance(mechanisms, list) and mechanisms and len(set(mechanisms)) == len(mechanisms)
                     and all(m in rules for m in mechanisms), "UNIT_MECHANISMS_REQUIRED")
             channels = sorted({c for m in mechanisms for c in rules[m]["channels"]})
+            if u["source"]["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
+                require("CAPTION" in channels, "UNIT_OCR_CHANNEL_REQUIRED")
+                channels = ["CAPTION"]
         else:
             require(parent in source and u.get("familyId") == source[parent]["familyId"], "UNIT_IDENTITY_INVALID")
             mechanisms, channels = source[parent]["mechanismIds"], source[parent]["channels"]
@@ -149,13 +174,17 @@ def compile_preview(base, units, catalog, root, profiles=None):
                    "sourceInterpretations": [],
                    "normalContrasts": ["합성 개발 대조(실제 관측 아님): " + c["text"] for c in contrasts]}
         if standalone:
-            context["missingContext"].insert(0, "공개 논란 사건이 아닌 사용자 승인 개발 경계. 독립 평가·학습 정답이 아니다.")
+            review_label = "사용자 승인 개발"
+            if u["source"]["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
+                review_label = "개발자 프레임 검토 초안(사용자 정답 미승인)"
+                context["missingContext"][-1] = "선택 OCR 발췌와 개발자 프레임 검토만 사용했다. OCR 원문을 교정하지 않으며 새 입력의 화면·역할은 별도로 확인한다."
+            context["missingContext"].insert(0, "공개 논란 사건이 아닌 " + review_label + " 경계. 독립 평가·학습 정답이 아니다.")
             if u["developmentDecision"] == "PASS":
                 context["criticismHypotheses"] = []
-                context["flow"].append("사용자 승인 개발 정상 경계(원문 아님·독립 검수 아님): " + u["interpretation"])
+                context["flow"].append(review_label + " 정상 경계(원문 아님·독립 검수 아님): " + u["interpretation"])
                 require(len(context["flow"]) <= 8, "UNIT_FLOW_LIMIT")
             else:
-                context["criticismHypotheses"] = ["사용자 승인 개발 검토 경계(독립 검수 아님): " + u["interpretation"]]
+                context["criticismHypotheses"] = [review_label + " 검토 경계(독립 검수 아님): " + u["interpretation"]]
         example = {"id": uid, "familyId": u["familyId"], "mechanismIds": mechanisms,
                    "channels": channels, "context": context, "routingKeys": routing,
                    "retrievalView": {"version": "context-unit-retrieval-1", "basis": "AUTHORED_ROUTING_NOT_SOURCE_EVIDENCE",
@@ -184,6 +213,8 @@ def compile_preview(base, units, catalog, root, profiles=None):
     out["version"] = "2026-10-15-context-relations-v1" if relations else "2026-10-15-context-units-v1"
     if any(u.get("schemaVersion") == "context-reference-unit-2" for u in units):
         out["version"] = "2026-10-22-development-boundaries-v1"
+    if any(u.get("source", {}).get("kind") == "STORED_OCR_FRAME_SNAPSHOT" for u in units):
+        out["version"] = "2026-10-22-development-ocr-boundaries-v2"
     out["examples"] = examples
     out["sourceCases"] = [{"caseId": e["id"], "familyId": e["familyId"], "status": "UNREVIEWED_DRAFT"} for e in examples]
     for r in out["guidelines"]:

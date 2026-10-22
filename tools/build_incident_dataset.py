@@ -114,7 +114,11 @@ def input_hashes(root):
         for path in units + profiles:
             inputs.add(path.relative_to(root).as_posix())
         for path in units:
-            inputs.add(parse(read_bytes(path))["source"]["path"])
+            source = parse(read_bytes(path))["source"]
+            inputs.add(source["path"])
+            if source["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
+                document = parse(read_bytes(inside(root, source["path"])))
+                inputs.update(document[k]["path"] for k in ("frame", "ocrSnapshot"))
     for p in (root / "incidents").glob("*.json"):
         inputs.add(p.relative_to(root).as_posix())
         incident = parse(read_bytes(p))

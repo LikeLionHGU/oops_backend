@@ -15,6 +15,21 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
 class ReviewGuidelineLibraryTest {
+    @Test void v7ExampleMayNarrowButNeverExpandOrEmptyItsMechanismChannels() throws Exception {
+        var archive = new ContextRelationRetrievalTest().archive();
+        var tree = JSON.readTree(JSON.writeValueAsString(archive));
+        var example = (tools.jackson.databind.node.ObjectNode) tree.get("examples").get(0);
+        for (var channels : List.of(List.of("CAPTION"), List.of("SPEECH"))) {
+            example.set("channels", JSON.valueToTree(channels));
+            assertThat(library(JSON.writeValueAsBytes(tree), 6000).trace(CAPTION).state())
+                    .isEqualTo("READY_WORKING_REFERENCE");
+        }
+        for (var channels : List.of(List.of(), List.of("CAPTION", "CAPTION"), List.of("SCENE"))) {
+            example.set("channels", JSON.valueToTree(channels));
+            assertThat(library(JSON.writeValueAsBytes(tree), 6000).trace(CAPTION).state())
+                    .isEqualTo("INVALID_ARCHIVE");
+        }
+    }
     @Test void incidentStatementIdsLoadWithoutWeakeningFamilyOrRuleIds() {
         String json = JSON.writeValueAsString(archive());
         assertThat(library(json.replace("case-1", "incident#s1-group").getBytes(StandardCharsets.UTF_8), 6000)

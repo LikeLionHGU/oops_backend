@@ -18,6 +18,29 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Optional private-data wiring test; no provider calls or model accuracy claims. */
 class LocalDevelopmentBoundaryRetrievalTest {
+    @Test void ocrFrameDraftIsRetrievedOnlyAsCaptionReferenceWithoutProviderCalls() throws Exception {
+        var sourcePath = ROOT.resolve("context-sources/ocr-generation-description-20261022.json");
+        assumeTrue(Files.exists(sourcePath));
+        var json = ReviewGuidelineLibrary.JSON;
+        var source = json.readTree(Files.readAllBytes(sourcePath));
+        var raw = new ArrayList<ReviewInput.Segment>();
+        for (var row : source.get("segments")) raw.add(new ReviewInput.Segment(row.get("id").asText(),
+                com.example.oops.domain.TimelineEventType.CAPTION,
+                row.get("startMs").asLong(), row.get("endMs").asLong(), row.get("text").asText(), 0.97,
+                com.example.oops.domain.ScreenTextRole.EDITORIAL));
+        var library = new ReviewGuidelineLibrary(new DefaultResourceLoader(), true,
+                ROOT.resolve("guidelines/runtime.json").toAbsolutePath().toUri().toString(), 6000);
+        library.load();
+        var focus = raw.stream().filter(s -> s.id().equals("ocr-index-540")).toList();
+        var selected = library.select(com.example.oops.domain.TimelineEventType.CAPTION,
+                raw, "ocr-108-draft-wiring", focus);
+        assertThat(selected.trace().exampleIds()).contains("mimiminu-dev#generation-description");
+        assertThat(selected.trace().payloadCodePoints()).isLessThanOrEqualTo(6000);
+        assertThat(selected.prompt()).contains("사용자 정답 미승인", "합성 검토 대조")
+                .doesNotContain("사용자 승인 개발 정상 경계");
+        assertThat(library.select(SPEECH, raw, "wrong-channel", focus).trace().exampleIds())
+                .doesNotContain("mimiminu-dev#generation-description");
+    }
     private static final Path ROOT = Path.of("../datasets/controversy");
     private static final Path RESULTS = ROOT.resolve("experiments/quotation-ocr-followup-20261022-cZy7vL");
 
