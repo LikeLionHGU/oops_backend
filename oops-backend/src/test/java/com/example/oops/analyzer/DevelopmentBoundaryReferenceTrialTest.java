@@ -31,4 +31,35 @@ class DevelopmentBoundaryReferenceTrialTest {
         DevelopmentBoundaryReferenceTrial.validate(plan(false));
         assertThatThrownBy(()->DevelopmentBoundaryReferenceTrial.validate(plan(true))).hasMessageContaining("Only references");
     }
+    @Test void normalComparisonStopsBeforeSeventeenthAttempt() throws Exception {
+        var budget=new TextBoundaryTrial.Budget(.25,.10,.50,temp);
+        for(int i=0;i<16;i++) DevelopmentBoundaryReferenceTrial.reserve(budget,1000,16);
+        assertThatThrownBy(()->DevelopmentBoundaryReferenceTrial.reserve(budget,1000,16)).hasMessageContaining("Sixteen");
+        assertThat(budget.attempts).isEqualTo(16);
+        assertThatThrownBy(()->DevelopmentBoundaryReferenceTrial.reserve(budget,1000,17)).hasMessageContaining("approved request cap");
+    }
+    DevelopmentBoundaryReferenceTrial.Plan normalPlan(boolean mutate) {
+        var requests=new ArrayList<DefaultVerificationPlan.Request>();
+        var raw=ReviewGuidelineLibrary.JSON.readTree("[{\"id\":\"s1\",\"text\":\"합성 대사\",\"startMs\":0,\"endMs\":1000}]");
+        for(String id:List.of("product-duration-guidance","study-restart-encouragement","actual-audience-review","actual-victim-quotation")) {
+            var input=DevelopmentBoundaryReferenceTrial.normalInput(new DevelopmentBoundaryReferenceTrial.Boundary(id,
+                    id.equals("actual-audience-review")?"REVIEW_REQUIRED":"PASS","s1",raw,false));
+            for(int repeat=1;repeat<=2;repeat++) for(String arm:List.of("BEFORE","AFTER"))
+                requests.add(new DefaultVerificationPlan.Request(id,"USER_APPROVED_DEVELOPMENT_BOUNDARY",
+                        id.equals("actual-audience-review")?"REVIEW_REQUIRED":"PASS",arm,repeat,
+                        CandidateReviewEngine.verificationPrompt(0)+arm,
+                        mutate && arm.equals("AFTER")?input.replace("합성 대사","다른 대사"):input));
+        }
+        return new DevelopmentBoundaryReferenceTrial.Plan(DevelopmentBoundaryReferenceTrial.NORMAL_VERSION,"gpt-6-luna",.25,16,
+                "source","runtime",Map.of(),requests,.10);
+    }
+    @Test void normalComparisonRequiresPairedFrozenInputsAndAllFourApprovedConditions() {
+        DevelopmentBoundaryReferenceTrial.validate(normalPlan(false));
+        assertThatThrownBy(()->DevelopmentBoundaryReferenceTrial.validate(normalPlan(true))).hasMessageContaining("Only references");
+    }
+    @Test void pendingLabelsCannotBecomeExecutablePlan() {
+        assertThatThrownBy(()->DevelopmentBoundaryReferenceTrial.normalPlan(
+                "{\"status\":\"PENDING_NORMAL_LABEL_APPROVAL\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                new byte[0],new byte[0],temp)).hasMessageContaining("approval required");
+    }
 }
