@@ -12,11 +12,9 @@ import static org.mockito.Mockito.*;
 /** Offline prompt and request isolation checks; not real-model accuracy measurements. */
 class ScreenTextPromptTest {
     @Test void documentRoleDoesNotInventBelittlementOrExemptActualAbuse() throws Exception {
-        assertThat(definitions()).contains("생성 지시·문서·UI·설명·평가",
-                "그림 생성의 외모·연령·화풍 조건이나 중립적인 인물 묘사만으로 조롱하지 않는다",
-                "원문에 없는 우열·이상적 기준·배제 관계를 만들지 않는다",
-                "구체적인 모욕·차별·개인정보 노출을 면제하지 않는다",
-                "같은 문장·작성자라는 보증이 아니다");
+        assertThat(definitions()).contains("문구의 역할과 관계를 확인하고, 묘사만으로 폄하를 만들지 않는다",
+                "역할만으로 실제 공격을 면제하지 않는다")
+                .doesNotContain("그림 생성의 외모·연령·화풍 조건");
     }
 
     @Test void coTimedDocumentRegionsSurviveNeighbourCapWithoutChangingTargets() {
