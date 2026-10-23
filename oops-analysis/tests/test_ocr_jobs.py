@@ -144,8 +144,35 @@ def test_crashed_worker_is_failure_and_cleans_files(monkeypatch, tmp_path):
 
 def test_job_deadlines_are_profile_specific_and_overrideable():
     assert Settings(_env_file=None, analysis_profile="default", ocr_timeout_sec=None).effective_ocr_timeout_sec == 540
-    assert Settings(_env_file=None, analysis_profile="local", ocr_timeout_sec=None).effective_ocr_timeout_sec == 1200
+    assert Settings(_env_file=None, analysis_profile="local", ocr_timeout_sec=None).effective_ocr_timeout_sec == 0
     assert Settings(_env_file=None, ocr_timeout_sec=300).effective_ocr_timeout_sec == 300
+
+
+def test_local_unlimited_job_can_finish_and_still_reaps_worker(monkeypatch, tmp_path):
+    configure(monkeypatch, tmp_path, timeout=0)
+    processes = spawn(monkeypatch, "import pathlib,sys,time; time.sleep(.1); pathlib.Path(sys.argv[1],'result.json').write_text("
+                      "'{\"statusCode\":200,\"data\":{\"items\":[]}}')")
+    assert asyncio.run(ocr_jobs.run({}, Request())) == {"items": []}
+    assert processes[0].poll() == 0 and not ocr_jobs.is_busy()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_unlimited_mode_rejects_deployment_and_still_handles_disconnect(monkeypatch, tmp_path):
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, analysis_profile="default", ocr_timeout_sec=0)
+    configure(monkeypatch, tmp_path, timeout=0)
+    processes = spawn(monkeypatch, "import time; time.sleep(30)")
+    async def scenario():
+        request = Request()
+        task = asyncio.create_task(ocr_jobs.run({}, request))
+        await asyncio.sleep(.1)
+        request.disconnected = True
+        with pytest.raises(HTTPException) as error:
+            await task
+        assert error.value.status_code == 499
+    asyncio.run(scenario())
+    assert processes[0].poll() is not None and not ocr_jobs.is_busy()
 
 
 def test_health_does_not_initialize_native_model(monkeypatch):

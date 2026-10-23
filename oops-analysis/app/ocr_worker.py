@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import ocr
 from .config import get_settings
+from .ocr_metrics import phase
 from .media import MediaError, prepare, resolve_storage_path, valid_duration
 
 log = logging.getLogger(__name__)
@@ -16,7 +17,8 @@ log = logging.getLogger(__name__)
 def perform(payload: dict) -> dict:
     video = None
     try:
-        video = prepare(payload.get("videoUrl"), payload.get("filePath"))
+        with phase("prepare_media"):
+            video = prepare(payload.get("videoUrl"), payload.get("filePath"))
         duration = valid_duration(video.duration_sec)
         settings = get_settings()
         limit = settings.effective_max_duration_sec
@@ -34,7 +36,8 @@ def perform(payload: dict) -> dict:
 def main(job_dir: Path) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
-        data = perform(json.loads((job_dir / "request.json").read_text()))
+        with phase("worker_total"):
+            data = perform(json.loads((job_dir / "request.json").read_text()))
         result = {"statusCode": 200, "data": data}
     except MediaError as exc:
         result = {"statusCode": 400, "detail": str(exc)}

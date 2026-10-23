@@ -5,14 +5,17 @@ import logging
 import math
 import shutil
 import time
+import statistics
 from importlib.util import find_spec
 from functools import lru_cache
 from pathlib import Path
 
 from .config import get_settings
 from .media import PreparedVideo, extract_frames
+from .ocr_metrics import phase
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 # 신뢰도가 낮은 인식 결과는 노이즈라 버린다.
 # 한글 자막은 외곽선·그림자 효과 때문에 신뢰도가 잘 안 올라가므로 기준을 낮게 잡고,
@@ -62,16 +65,18 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     영역별 원문·정규화 좌표와 이어지는 관측을 보존한다.
     반복 글자를 삭제하거나 같은 프레임의 영역을 합치지 않는다.
     """
-    started = time.time()
-    engine = _engine()
+    started = time.perf_counter()
+    with phase("model_init"):
+        engine = _engine()
 
     interval_sec = _adjust_interval(video.duration_sec, interval_sec)
     log.info("[ocr-sampling] durationSec=%.3f effectiveIntervalSec=%.3f maxFrames=%d",
              video.duration_sec, interval_sec, get_settings().max_ocr_frames)
-    frames = extract_frames(video, interval_sec)
+    with phase("extract_frames"):
+        frames = extract_frames(video, interval_sec)
     if not frames:
         raise OcrProcessingFailed("OCR 분석용 프레임을 추출하지 못했습니다.")
-    extracted_at = time.time()
+    extracted_at = time.perf_counter()
 
     keep_dir = Path(frame_dir) if frame_dir else None
     if keep_dir:
@@ -80,31 +85,40 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     # ---- 1단계: 프레임별로 줄 단위 인식 결과를 모은다 ----
     region_frames = []
     failed_frames = 0
+    frame_seconds = []
     for time_ms, frame_path in frames:
+        frame_started = time.perf_counter()
         try:
             raw = engine.ocr(str(frame_path), cls=True)
         except Exception as e:
             log.warning("[ocr] 프레임 실패 %s: %s", frame_path.name, e)
             failed_frames += 1
             continue
+        finally:
+            frame_seconds.append(time.perf_counter() - frame_started)
 
         region_frames.append((time_ms, frame_path, _parse_regions(raw)))
         if len(region_frames) % 25 == 0:
             log.info("[ocr-progress] processed=%d/%d failed=%d elapsedSec=%.1f",
                      len(region_frames) + failed_frames, len(frames), failed_frames,
-                     time.time() - started)
+                     time.perf_counter() - started)
+
+    log.info("[ocr-timing] phase=recognize_frames attempts=%d failed=%d totalSec=%.3f p50Sec=%.3f p95Sec=%.3f",
+             len(frame_seconds), failed_frames, sum(frame_seconds), statistics.median(frame_seconds),
+             sorted(frame_seconds)[math.ceil(len(frame_seconds) * .95) - 1])
 
     if not region_frames:
         raise OcrProcessingFailed("모든 OCR 프레임의 인식에 실패했습니다. 글자 없음으로 판단할 수 없습니다.")
 
     # Do not delete repeated text or merge unrelated regions. Classification happens with STT in Spring.
-    items = _region_items(region_frames, interval_sec, video.duration_sec, keep_dir)
+    with phase("assemble_items"):
+        items = _region_items(region_frames, interval_sec, video.duration_sec, keep_dir)
 
-    now = time.time()
-    log.info("[ocr] frames=%d items=%d | 프레임추출 %.1f초, 인식 %.1f초 (프레임당 %.2f초)",
+    now = time.perf_counter()
+    log.info("[ocr] frames=%d items=%d | setupAndExtractionSec=%.1f postExtractionSec=%.1f inferenceAvgSec=%.2f",
              len(frames), len(items),
              extracted_at - started, now - extracted_at,
-             (now - extracted_at) / max(1, len(frames)))
+             sum(frame_seconds) / max(1, len(frame_seconds)))
     return {"items": items, "formatVersion": "regions-v1", "processing": {
         "status": "PARTIAL" if failed_frames else "SUCCESS", "totalFrames": len(frames),
         "successfulFrames": len(region_frames), "failedFrames": failed_frames}}

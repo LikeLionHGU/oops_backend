@@ -20,7 +20,7 @@ def test_fast_settings_reduce_work_not_just_deadline(monkeypatch):
     assert interval == pytest.approx(8.15)
     assert math.ceil(978 / interval) == 120
     assert fast.effective_ocr_timeout_sec == 600
-    assert baseline.effective_ocr_timeout_sec == 1200
+    assert baseline.effective_ocr_timeout_sec == 0
 
 
 def test_short_video_sampling_is_unchanged_by_fast_frame_budget(monkeypatch):

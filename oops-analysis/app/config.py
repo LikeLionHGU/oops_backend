@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -21,13 +21,21 @@ class Settings(BaseSettings):
     media_storage_root: str = "../oops-backend/uploads"
     ocr_lang: str = "korean"
     # Per-job subprocess owns Paddle/native allocations; no shared in-process model.
-    ocr_timeout_sec: int | None = Field(default=None, gt=0, le=3600)
+    ocr_timeout_sec: int | None = Field(default=None, ge=0, le=3600)
     ocr_rec_batch_num: int = Field(default=1, ge=1, le=32)
 
     @property
     def effective_ocr_timeout_sec(self) -> int:
         # Includes download, frame extraction, model startup and recognition.
-        return self.ocr_timeout_sec or (1200 if self.analysis_profile == "local" else 540)
+        if self.ocr_timeout_sec is not None:
+            return self.ocr_timeout_sec
+        return 0 if self.analysis_profile == "local" else 540
+
+    @model_validator(mode="after")
+    def unlimited_ocr_is_local_only(self):
+        if self.ocr_timeout_sec == 0 and self.analysis_profile != "local":
+            raise ValueError("OCR_TIMEOUT_SEC=0 requires ANALYSIS_PROFILE=local")
+        return self
 
     # 프레임을 몇 초 간격으로 뽑을지 (OCR 기본값)
     default_interval_sec: float = Field(default=4.0, gt=0, allow_inf_nan=False)

@@ -1,4 +1,4 @@
-"""Bounded OCR subprocess: disconnect/deadline/cancellation kills native inference too."""
+"""Supervised OCR subprocess: disconnect/cancellation and optional deadline reap inference."""
 from __future__ import annotations
 
 import asyncio
@@ -71,7 +71,7 @@ async def run(payload: dict, request: Request) -> dict:
                     if await request.is_disconnected():
                         log.warning("[ocr-job] disconnected pid=%s", proc.pid)
                         raise HTTPException(status_code=499, detail="OCR_CANCELLED: 요청 연결이 종료됐습니다.")
-                    if time.monotonic() - started >= settings.effective_ocr_timeout_sec:
+                    if settings.effective_ocr_timeout_sec and time.monotonic() - started >= settings.effective_ocr_timeout_sec:
                         log.warning("[ocr-job] deadline pid=%s", proc.pid)
                         raise HTTPException(status_code=504, detail="OCR_TIMEOUT: OCR 작업 제한 시간을 초과했습니다.")
                     if proc.poll() is not None:
