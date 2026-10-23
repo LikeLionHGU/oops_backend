@@ -37,6 +37,24 @@ class CompletionTransactionTest {
     @MockitoBean com.example.oops.client.AnalysisServerClient media;
     @MockitoBean com.example.oops.fusion.FindingFusionService fusion;
 
+    @org.junit.jupiter.api.AfterEach
+    void restoreScreenReviewOptIn() throws Exception {
+        AnalysisPipeline target = org.springframework.test.util.AopTestUtils.getTargetObject(pipeline);
+        org.springframework.test.util.ReflectionTestUtils.setField(target, "fullScreenOcrEnabled", false);
+    }
+
+    @Test void speechOnlyReportPersistsExplicitScreenOptOutInsteadOfOcrFailure() throws Exception {
+        Long id = seedPipeline();
+        preparePipeline().run(id);
+        Long videoId = new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
+        var report = analysis.getReport(videoId);
+        assertThat(report.coverage().screenTextAnalyzed()).isFalse();
+        assertThat(report.warnings()).extracting(com.example.oops.dto.AnalysisWarningDto::code)
+                .contains("OCR_NOT_ENABLED", "SCREEN_TEXT_REVIEW_NOT_ENABLED").doesNotContain("OCR_UNAVAILABLE");
+        verify(screens, never()).extract(any(), anyLong());
+        assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
+    }
+
     private Long seed() {
         return new TransactionTemplate(manager).execute(tx -> {
             var video=videos.save(Video.builder().sourceType(SourceType.UPLOAD).filename("transaction-test.mp4").build());
@@ -245,6 +263,7 @@ class CompletionTransactionTest {
     @Test void savesUnsavedFrameReferencesAndPreservesSnapshotEvidenceIds() throws Exception {
         Long id=seedPipeline();
         var target=preparePipeline();
+        org.springframework.test.util.ReflectionTestUtils.setField(target, "fullScreenOcrEnabled", true);
         var retained=new java.util.concurrent.atomic.AtomicReference<ScreenText>();
         when(screens.extract(any(), anyLong())).thenAnswer(call -> {
             Video video=call.getArgument(0);

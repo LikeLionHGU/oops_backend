@@ -83,11 +83,14 @@ public class AnalysisCoverage extends BaseTimeEntity {
     /** 사용자에게 알려야 하는 상태인지. 일부 확인과 실패도 알려야 한다. */
     public boolean needsWarning() {
         return status == AnalyzerStatus.FAILED || status == AnalyzerStatus.SKIPPED
-                || status == AnalyzerStatus.PARTIAL;
+                || status == AnalyzerStatus.PARTIAL
+                || (status == AnalyzerStatus.NOT_ENABLED
+                    && (step == CoverageStep.OCR || step == CoverageStep.SCREEN_TEXT_REVIEW));
     }
 
     /** 프론트가 분기할 고정 코드. 예: OCR_UNAVAILABLE, FACT_ENTITY_UNAVAILABLE */
     public String warningCode() {
+        if (status == AnalyzerStatus.NOT_ENABLED) return step.name() + "_NOT_ENABLED";
         if (status == AnalyzerStatus.PARTIAL) {
             return step.name() + "_PARTIAL";
         }

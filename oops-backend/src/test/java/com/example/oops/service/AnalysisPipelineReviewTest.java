@@ -62,6 +62,7 @@ class AnalysisPipelineReviewTest {
                 new OopsProperties.Analysis(List.of()), null), transcripts, screens, fusion,
                 mock(GenreDetector.class), worker, new ReportBuilder(), progress, videos,
                 client, writer);
+        org.springframework.test.util.ReflectionTestUtils.setField(pipeline, "fullScreenOcrEnabled", true);
         pipeline.run(11L);
         var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
         verify(writer).save(eq(11L), captor.capture());

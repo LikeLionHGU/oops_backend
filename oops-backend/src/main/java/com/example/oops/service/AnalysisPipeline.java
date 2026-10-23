@@ -25,7 +25,7 @@ import java.util.Map;
 /**
  * 분석 전체 흐름을 조립하는 곳.
  *
- *   STT → OCR → 분석기 실행 → 후보 병합/우선순위 → 리포트 집계
+ *   STT → (선택한 전체 OCR) → 분석기 실행/필요 후보 장면 확인 → 리포트
  *
  * 진행 상태 갱신은 JobProgressService 를 통해 별도 트랜잭션으로 나간다.
  * 외부 계산에는 트랜잭션을 열지 않는다. 결과와 완료 상태는 ResultWriter가 함께 커밋한다.
@@ -49,6 +49,12 @@ public class AnalysisPipeline {
     private final VideoRepository videoRepository;
     private final OpenAiClient openAiClient;
     private final AnalysisResultWriter resultWriter;
+
+    @org.springframework.beans.factory.annotation.Value("${oops.analysis.full-screen-ocr-enabled:false}")
+    private boolean fullScreenOcrEnabled;
+
+    private static final String SCREEN_REVIEW_NOT_ENABLED =
+            "기본 발언 분석에서는 전체 화면 글자 검수를 실행하지 않았습니다. 화면에만 있는 표현·개인정보는 확인하지 않았습니다.";
 
     /** Synchronous worker body; AnalysisDispatchService owns bounded async admission. */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -109,32 +115,39 @@ public class AnalysisPipeline {
                 record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS, null);
             }
 
-            // 2. 화면 → OCR 자막 (OCR 이 없으면 빈 리스트로 진행)
+            // Full-screen OCR is explicit opt-in, not a prerequisite for speech analysis.
             checkStillActive(jobId);
-            progressService.update(jobId, AnalysisStage.OCR, 35);
-            mark = System.currentTimeMillis();
-            List<ScreenText> screenTexts = screenTextService.extract(video, jobId);
-            com.example.oops.screentext.ScreenTextClassifier.classify(screenTexts, transcript);
-            checkStillActive(jobId);
-            elapsed.put("OCR", System.currentTimeMillis() - mark);
+            List<ScreenText> screenTexts = List.of();
+            if (fullScreenOcrEnabled) {
+                progressService.update(jobId, AnalysisStage.OCR, 35);
+                mark = System.currentTimeMillis();
+                screenTexts = screenTextService.extract(video, jobId);
+                com.example.oops.screentext.ScreenTextClassifier.classify(screenTexts, transcript);
+                checkStillActive(jobId);
+                elapsed.put("OCR", System.currentTimeMillis() - mark);
 
-            // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
-            // 분석 서버가 사유를 남겼을 때만 실패로 본다.
-            var ocrAssessment = analysisServerClient.lastOcrAssessment().orElse(null);
-            if (ocrAssessment != null && ocrAssessment.status() != AnalyzerStatus.SUCCESS) {
-                record(coverage, video, CoverageStep.OCR, ocrAssessment.status(), ocrAssessment.message());
-            } else if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
-                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
-                        analysisServerClient.lastFailureDetail().orElse(null));
-            } else if (screenTexts.isEmpty()) {
-                // 돌긴 돌았는데 한 글자도 못 찾았다.
-                // 자막 없는 영상이면 정상이지만, 자막이 있는데 못 읽은 것일 수도 있다.
-                // 그 둘을 우리가 구분할 방법이 없으므로 사용자에게 그대로 알린다.
-                // 그냥 '완료' 로만 두면 "화면은 확인했다" 로 읽힌다.
-                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS,
-                        "화면에서 글자를 찾지 못했습니다. 영상에 자막이 있다면 인식에 실패한 것일 수 있습니다.");
+                // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
+                // 분석 서버가 사유를 남겼을 때만 실패로 본다.
+                var ocrAssessment = analysisServerClient.lastOcrAssessment().orElse(null);
+                if (ocrAssessment != null && ocrAssessment.status() != AnalyzerStatus.SUCCESS) {
+                    record(coverage, video, CoverageStep.OCR, ocrAssessment.status(), ocrAssessment.message());
+                } else if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
+                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
+                            analysisServerClient.lastFailureDetail().orElse(null));
+                } else if (screenTexts.isEmpty()) {
+                    // 돌긴 돌았는데 한 글자도 못 찾았다.
+                    // 자막 없는 영상이면 정상이지만, 자막이 있는데 못 읽은 것일 수도 있다.
+                    // 그 둘을 우리가 구분할 방법이 없으므로 사용자에게 그대로 알린다.
+                    // 그냥 '완료' 로만 두면 "화면은 확인했다" 로 읽힌다.
+                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS,
+                            "화면에서 글자를 찾지 못했습니다. 영상에 자막이 있다면 인식에 실패한 것일 수 있습니다.");
+                } else {
+                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS, null);
+                }
             } else {
-                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS, null);
+                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.NOT_ENABLED, SCREEN_REVIEW_NOT_ENABLED);
+                record(coverage, video, CoverageStep.SCREEN_TEXT_REVIEW, AnalyzerStatus.NOT_ENABLED, SCREEN_REVIEW_NOT_ENABLED);
+                log.info("[pipeline] 전체 OCR 미선택, 발언 분석으로 진행 videoId={}", videoId);
             }
             record(coverage, video, CoverageStep.VISUAL, AnalyzerStatus.NOT_ENABLED,
                     "영상 전체 장면 분석은 제공하지 않습니다. 발언 후보에 대한 선택적 프레임 확인은 별도로 수행할 수 있습니다.");
@@ -160,8 +173,9 @@ public class AnalysisPipeline {
             // 사용자에게는 "검수했는데 문제없다" 로 읽히지만 실제로는
             // 아무것도 보지 못한 것이다. 이건 거짓말이다.
             if (transcript.isEmpty() && screenTexts.isEmpty()) {
-                String detail = analysisServerClient.lastFailureDetail()
-                        .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.");
+                String detail = fullScreenOcrEnabled ? analysisServerClient.lastFailureDetail()
+                        .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.")
+                        : "음성을 글자로 옮기지 못해 발언을 분석하지 못했습니다. 전체 화면 글자 검수는 선택되지 않았습니다.";
                 log.error("[pipeline] videoId={} 분석 불가: {}", videoId, detail);
 
                 progressService.fail(jobId, "ANALYSIS_FAILED", detail);
@@ -180,6 +194,9 @@ public class AnalysisPipeline {
             int index = 0;
             for (ContentAnalyzer analyzer : active) {
                 checkStillActive(jobId);
+                if (!fullScreenOcrEnabled && CoverageStep.of(analyzer.key()) == CoverageStep.SCREEN_TEXT_REVIEW) {
+                    continue; // Keep NOT_ENABLED; never disguise opt-out as missing text or API failure.
+                }
                 index++;
                 progressService.update(jobId, stageOf(analyzer),
                         45 + (35 * index / Math.max(1, active.size())),
