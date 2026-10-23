@@ -9,5 +9,7 @@ public interface TranscriptSegmentRepository extends JpaRepository<TranscriptSeg
 
     List<TranscriptSegment> findByVideoIdOrderByStartMsAsc(Long videoId);
 
+    List<TranscriptSegment> findByVideoIdOrderByStartMsAscIdAsc(Long videoId);
+
     void deleteByVideoId(Long videoId);
 }

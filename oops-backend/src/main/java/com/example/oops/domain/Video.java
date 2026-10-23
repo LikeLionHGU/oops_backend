@@ -38,6 +38,19 @@ public class Video extends BaseTimeEntity {
     @Column(length = 500)
     private String storageKey;
 
+    /** Local transcript-replay provenance; snapshot belongs to this video, not the source row. */
+    private Long transcriptSourceVideoId;
+
+    @Column(length = 64)
+    private String transcriptSnapshotSha256;
+
+    public void assignTranscriptSnapshot(Long sourceVideoId, String sha256) {
+        if (sourceVideoId == null || sourceVideoId <= 0 || sha256 == null || !sha256.matches("[0-9a-f]{64}"))
+            throw new IllegalArgumentException("Valid transcript provenance required");
+        this.transcriptSourceVideoId = sourceVideoId;
+        this.transcriptSnapshotSha256 = sha256;
+    }
+
     @Column(length = 300)
     private String title;
 
