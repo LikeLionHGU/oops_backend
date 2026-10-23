@@ -111,6 +111,42 @@ class ContextFitRankingPreviewTest {
         }
     }
     static int exampleSize(List<ReviewGuidelineLibrary.ContextExample> items) { return size(items.stream().map(e->new ReviewGuidelineLibrary.SelectedExample(e.mechanismIds(),e.context())).toList()); }
+    @Test void auditOtherTopicsWithRealRetrievalAssetsWithoutAssigningVerdicts() throws Exception {
+        var path=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified/preview-runtime.json");
+        assumeTrue(Files.exists(path));
+        var archive=ReviewGuidelineLibrary.JSON.readTree(Files.readAllBytes(path));
+        var examples=new ArrayList<ReviewGuidelineLibrary.ContextExample>();
+        for(var e:archive.get("examples")) examples.add(ReviewGuidelineLibrary.JSON.treeToValue(e,ReviewGuidelineLibrary.ContextExample.class));
+        var rules=new ArrayList<ReviewGuidelineLibrary.Rule>();
+        for(var r:archive.get("guidelines")) rules.add(ReviewGuidelineLibrary.JSON.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
+        var selector=new ContextExampleSelector(examples,rules,StructuredContextSearch.load());
+        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,path.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+        library.load();
+        var queries=List.of(
+                "학원 선생님이 낮은 반 학생에게 했던 모욕을 인용합니다. 그 말을 듣고 충격받았어요.",
+                "지역에 음식점이 없어서 집에서 만들어 먹었어요. 이 메뉴의 뜻을 설명합니다.",
+                "이 음식은 할머니의 살을 뜯는 것 같다는 신체 비유입니다. 표현의 의미를 설명합니다.",
+                "플래너 사용법과 공부 계획의 의미를 설명합니다.",
+                "그 모욕은 제 피해 경험입니다. 과거 말을 인용해서 설명합니다.",
+                "지도에서 범례의 뜻을 알려 주세요. 이 기호는 주차장이에요.");
+        var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
+        for(int i=0;i<queries.size();i++) {
+            var input=raw(queries.get(i));
+            var baseline=library.select(SPEECH,input,"cross-topic-"+i);
+            var before=baseline.trace().exampleIds().stream().map(id->examples.stream().filter(e->e.id().equals(id)).findFirst().orElseThrow()).toList();
+            var pool=selector.rank(SPEECH,input,Set.of());
+            var result=ContextFitRankingPreview.select(pool,before,input,input,3,
+                    items->exampleSize(items)<=3000 && payloadSize(patterns,items)<=6000);
+            assertThat(result.selected()).hasSizeLessThanOrEqualTo(3);
+            assertThat(payloadSize(patterns,result.selected())).isLessThanOrEqualTo(6000);
+            // Retrieval-only guard, not a PASS/REVIEW label for these authored inputs.
+            assertThat(result.addedId()).isNull();
+            assertThat(result.selected()).containsExactlyElementsOf(before);
+            if(!before.isEmpty()) assertThat(result.selected().get(0)).isEqualTo(before.get(0));
+            if(result.addedId()!=null) assertThat(pool.stream().map(m->m.example().id())).contains(result.addedId());
+            System.out.println("CROSS_TOPIC " + i + " " + result.state()+" added="+result.addedId()+" before="+baseline.trace().exampleIds());
+        }
+    }
     static int payloadSize(Object patterns,List<ReviewGuidelineLibrary.ContextExample> items) {
         return size(Map.of("reviewGuidelines",patterns,"referenceContexts",items.stream().map(e->new ReviewGuidelineLibrary.SelectedExample(e.mechanismIds(),e.context())).toList()));
     }
