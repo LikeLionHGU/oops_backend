@@ -27,7 +27,8 @@ async def inline_ocr_for_worker_unit_test(payload, request):
 ])
 def test_health_checks_key_for_the_selected_stt_provider(monkeypatch, model, groq_key, openai_key, expected):
     monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(
-        stt_model=None, whisper_model=model, groq_api_key=groq_key, openai_api_key=openai_key))
+        stt_model=None, whisper_model=model, groq_api_key=groq_key, openai_api_key=openai_key,
+        analysis_profile="default", effective_ocr_timeout_sec=540, max_ocr_frames=300))
     monkeypatch.setattr(main.ocr, "is_available", lambda: False)
     assert main.health()["sttAvailable"] is expected
 

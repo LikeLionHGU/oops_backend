@@ -55,6 +55,9 @@ def health() -> dict:
         "ocrAvailabilityCheck": "DEPENDENCIES_ONLY_NOT_MODEL_READY",
         "ocrBusy": ocr_jobs.is_busy(),
         "ocrJobIsolation": "SUBPROCESS_PER_JOB",
+        "analysisProfile": settings.analysis_profile,
+        "ocrTimeoutSec": settings.effective_ocr_timeout_sec,
+        "maxOcrFrames": settings.max_ocr_frames,
     }
 
 

@@ -66,6 +66,8 @@ def run(video: PreparedVideo, interval_sec: float, frame_dir: str | None = None)
     engine = _engine()
 
     interval_sec = _adjust_interval(video.duration_sec, interval_sec)
+    log.info("[ocr-sampling] durationSec=%.3f effectiveIntervalSec=%.3f maxFrames=%d",
+             video.duration_sec, interval_sec, get_settings().max_ocr_frames)
     frames = extract_frames(video, interval_sec)
     if not frames:
         raise OcrProcessingFailed("OCR 분석용 프레임을 추출하지 못했습니다.")
@@ -218,8 +220,8 @@ def _adjust_interval(duration_sec: float, requested: float) -> float:
     4초 간격이면 60분 영상에 900장이고, 인식에만 7분 넘게 걸린다.
     분석 시간의 대부분이 여기서 나온다.
 
-    자막은 보통 몇 초씩 유지되므로 간격이 벌어져도 대부분 잡힌다.
-    놓치는 것보다 아예 끝나지 않는 게 더 나쁘다.
+    간격을 넓히면 잠깐 등장하는 글자는 놓칠 수 있다.
+    프레임 상한을 낮춘 시험은 기존 촘촘한 샘플링과 동일한 검수로 취급하지 않는다.
     """
     limit = get_settings().max_ocr_frames
     if duration_sec <= 0 or limit <= 0:
