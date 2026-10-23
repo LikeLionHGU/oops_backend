@@ -111,6 +111,70 @@ class ContextFitRankingPreviewTest {
         }
     }
     static int exampleSize(List<ReviewGuidelineLibrary.ContextExample> items) { return size(items.stream().map(e->new ReviewGuidelineLibrary.SelectedExample(e.mechanismIds(),e.context())).toList()); }
+    @Test void diagnoseFrozenQueriesAndCompareTopicFocusedSearchMetadata(
+            @org.junit.jupiter.api.io.TempDir Path temporary) throws Exception {
+        var root=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified");
+        assumeTrue(Files.exists(root.resolve("preview-runtime.json")));
+        var json=ReviewGuidelineLibrary.JSON;
+        var original=json.readTree(Files.readAllBytes(root.resolve("preview-runtime.json")));
+        var revised=json.readTree(json.writeValueAsBytes(original));
+        String target="speech-act-dev#reported-vs-enacted";
+        String search="성적 사생활 속옷 정보 질문. 줄임말 뜻을 물음 의미 설명 답변 정의. "
+                +"사적 질문을 비판적으로 인용해 소개하는 전달과 현재 상대에게 답변 공개를 요청하는 실행을 구별. 거절 이후 중단.";
+        int changes=0;
+        for(var e:revised.get("examples")) if(e.get("id").asText().equals(target)) {
+            var view=(tools.jackson.databind.node.ObjectNode)e.get("retrievalView");
+            view.put("text",search);
+            view.put("sha256",ReviewGuidelineLibrary.retrievalHash(search));
+            changes++;
+        }
+        assertThat(changes).isEqualTo(1);
+        for(int i=0;i<original.get("examples").size();i++) {
+            var before=json.readTree(original.get("examples").get(i).toString());
+            var after=json.readTree(revised.get("examples").get(i).toString());
+            ((tools.jackson.databind.node.ObjectNode)before).remove("retrievalView");
+            ((tools.jackson.databind.node.ObjectNode)after).remove("retrievalView");
+            assertThat(after).isEqualTo(before);
+        }
+        var preview=temporary.resolve("preview.json");
+        Files.writeString(preview,json.writeValueAsString(revised));
+        var queries=json.readTree(Files.readAllBytes(root.resolve("queries.json")));
+        for(var variant:List.of(root.resolve("preview-runtime.json"),preview)) {
+            var archive=variant.equals(preview)?revised:original;
+            var assets=new ArrayList<ReviewGuidelineLibrary.ContextExample>();
+            for(var e:archive.get("examples")) assets.add(json.treeToValue(e,ReviewGuidelineLibrary.ContextExample.class));
+            var rules=new ArrayList<ReviewGuidelineLibrary.Rule>();
+            for(var r:archive.get("guidelines")) rules.add(json.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
+            var selector=new ContextExampleSelector(assets,rules,StructuredContextSearch.load());
+            var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
+            var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,variant.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+            library.load();
+            for(var q:queries) {
+                var input=new ArrayList<ReviewInput.Segment>();
+                for(var s:q.get("raw")) input.add(new ReviewInput.Segment(s.get("id").asText(),SPEECH,s.get("startMs").asLong(),s.get("endMs").asLong(),s.get("text").asText(),null));
+                String expected=q.get("caseId").asText().equals("mimiminu-dev#victim-quotation")?"mimiminu-dev#victim-quotation":target;
+                var pool=selector.rank(SPEECH,input,Set.of());
+                var selected=library.select(SPEECH,input,"gap-audit").trace().exampleIds();
+                var stage=ContextRetrievalGapAudit.diagnose(expected,"SPEECH",Set.of(),assets,pool,selected);
+                assertThat(stage).isEqualTo(q.get("caseId").asText().contains("critical-quotation") || expected.equals("mimiminu-dev#victim-quotation")
+                        ?ContextRetrievalGapAudit.Stage.SELECTED:ContextRetrievalGapAudit.Stage.RETRIEVED_NOT_SELECTED);
+                var chosen=selected.stream().map(id->assets.stream().filter(e->e.id().equals(id)).findFirst().orElseThrow()).toList();
+                var trial=ContextFitRankingPreview.select(pool,chosen,input,3,
+                        items->exampleSize(items)<=3000 && payloadSize(patterns,items)<=6000);
+                assertThat(trial.selected().stream().map(ReviewGuidelineLibrary.ContextExample::id)).contains(expected);
+                var replacement=new ArrayList<>(chosen);
+                if(!selected.contains(expected)) {
+                    if(replacement.size()==3) replacement.remove(2);
+                    replacement.add(assets.stream().filter(e->e.id().equals(expected)).findFirst().orElseThrow());
+                }
+                boolean fits=exampleSize(replacement)<=3000 && payloadSize(patterns,replacement)<=6000;
+                assertThat(fits).isTrue();
+                System.out.println("GAP_AUDIT "+(variant.equals(preview)?"focused":"original")+" "+q.get("caseId").asText()+" "+stage
+                        +" poolRank="+(pool.stream().map(m->m.example().id()).toList().indexOf(expected)+1)+" replacementFits="+fits);
+                assertThat(assets).hasSize(44);
+            }
+        }
+    }
     @Test void auditOtherTopicsWithRealRetrievalAssetsWithoutAssigningVerdicts() throws Exception {
         var path=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified/preview-runtime.json");
         assumeTrue(Files.exists(path));
