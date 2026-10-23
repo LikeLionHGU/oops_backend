@@ -172,6 +172,32 @@ class ContextUnitTests(unittest.TestCase):
         (self.root / "source.json").write_text("{}")
         with self.assertRaises(ValueError): self.compile()
 
+    def test_linked_approved_control_is_verbatim_and_not_a_model_label(self):
+        doc = {"status": "USER_APPROVED_DEVELOPMENT_BOUNDARIES", "trainingUseAuthorized": False,
+               "normalDrafts": [{"id": "normal", "humanApproved": True, "expectedDecision": "PASS",
+                                 "sourceKind": "SYNTHETIC_DEVELOPMENT_CONTROL",
+                                 "raw": [{"text": "정상 독려"}, {"text": "이어진 설명"}]}]}
+        def save():
+            raw = json.dumps(doc).encode()
+            (self.root / "control.json").write_bytes(raw)
+            self.unit["normalContrasts"][0]["approvalSource"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        control = self.unit["normalContrasts"][0]
+        control.update(text="정상 독려 이어진 설명", approvalSource={"path": "control.json", "sha256": "", "caseId": "normal"})
+        save()
+        runtime, _ = self.compile()
+        self.assertNotIn("approvalSource", json.dumps(runtime))
+        self.assertIn("정상 독려 이어진 설명", runtime["examples"][0]["context"]["normalContrasts"][0])
+        control["text"] = "교정한 대사"
+        with self.assertRaisesRegex(ValueError, "CONTROL_TEXT_MISMATCH"): self.compile()
+        control["text"] = "정상 독려 이어진 설명"
+        doc["normalDrafts"][0]["humanApproved"] = False
+        save()
+        with self.assertRaisesRegex(ValueError, "CONTROL_APPROVAL_REQUIRED"): self.compile()
+        doc["normalDrafts"][0]["humanApproved"] = True
+        save()
+        (self.root / "control.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "CONTROL_SOURCE_HASH_MISMATCH"): self.compile()
+
     def test_null_source_times_are_not_replaced_with_synthetic_timing(self):
         incident = {"incidentId": "incident", "statements": [{"id": "old", "legacyCard": {"evidence": {
             "segments": [{"id": "s1", "text": "평가 표현", "startMs": None, "endMs": None},

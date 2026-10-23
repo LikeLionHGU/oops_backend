@@ -32,7 +32,7 @@ class ContextBoundaryWiringTest {
         }
         assertThat(changes).isEqualTo(4);
     }
-    @Test void activeAssetVerificationRequestsKeepTheSameJsonContentAsThePaidBaseline() throws Exception {
+    @Test void approvedContrastIsTheOnlyReferenceChangeFromThePaidBaseline() throws Exception {
         var root=Path.of("../datasets/controversy");
         var frozen=root.resolve("experiments/current-context-20261023-plan/plan.json");
         assumeTrue(Files.exists(frozen));
@@ -48,8 +48,24 @@ class ContextBoundaryWiringTest {
             int first=a.system().indexOf(marker),second=b.system().indexOf(marker);
             assertThat(first).isPositive();assertThat(second).isPositive();
             assertThat(b.system().substring(0,second)).isEqualTo(a.system().substring(0,first));
-            assertThat(ReviewGuidelineLibrary.JSON.readTree(b.system().substring(second+marker.length())))
-                    .isEqualTo(ReviewGuidelineLibrary.JSON.readTree(a.system().substring(first+marker.length())));
+            var expected = ReviewGuidelineLibrary.JSON.readTree(a.system().substring(first+marker.length()));
+            var actual = ReviewGuidelineLibrary.JSON.readTree(b.system().substring(second+marker.length()));
+            if (b.caseId().equals("audience-devaluation")) {
+                var approved = ReviewGuidelineLibrary.JSON.readTree(Files.readAllBytes(root.resolve(
+                        "experiments/audience-boundary-draft-20261022/cases.json")));
+                var control = java.util.stream.StreamSupport.stream(approved.get("normalDrafts").spliterator(), false)
+                        .filter(c -> c.path("id").asText().equals("study-restart-encouragement")).findFirst().orElseThrow();
+                assertThat(control.path("humanApproved").asBoolean()).isTrue();
+                assertThat(control.path("expectedDecision").asText()).isEqualTo("PASS");
+                String text = java.util.stream.StreamSupport.stream(control.get("raw").spliterator(), false)
+                        .map(s -> s.path("text").asText()).collect(java.util.stream.Collectors.joining(" "));
+                assertThat(expected.get("referenceContexts")).hasSize(1);
+                ((tools.jackson.databind.node.ArrayNode) expected.at("/referenceContexts/0/context/normalContrasts"))
+                        .add("합성 개발 대조(실제 관측 아님): " + text);
+                assertThat(b.system().codePointCount(0,b.system().length()) - a.system().codePointCount(0,a.system().length()))
+                        .isBetween(1, 350);
+            }
+            assertThat(actual).isEqualTo(expected);
         }
     }
     @Test void productionSupplementCannotRestoreExcludedFamily() throws Exception {

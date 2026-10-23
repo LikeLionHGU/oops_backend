@@ -27,6 +27,25 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+def validate_control_link(root, control):
+    """Optional approved development provenance stays out of the model payload."""
+    if "approvalSource" not in control:
+        return
+    link = control["approvalSource"]
+    require(isinstance(link, dict) and set(link) == {"path", "sha256", "caseId"}, "CONTROL_LINK_INVALID")
+    raw = read_bytes(inside(root, link["path"]))
+    require(digest(raw) == link["sha256"], "CONTROL_SOURCE_HASH_MISMATCH")
+    source = parse(raw)
+    require(source.get("status") == "USER_APPROVED_DEVELOPMENT_BOUNDARIES"
+            and source.get("trainingUseAuthorized") is False, "CONTROL_APPROVAL_REQUIRED")
+    matches = [c for c in source.get("normalDrafts", []) if c.get("id") == link["caseId"]]
+    require(len(matches) == 1, "CONTROL_CASE_REQUIRED")
+    case = matches[0]
+    require(case.get("humanApproved") is True and case.get("expectedDecision") == "PASS"
+            and case.get("sourceKind") == "SYNTHETIC_DEVELOPMENT_CONTROL", "CONTROL_APPROVAL_REQUIRED")
+    require(control["text"] == " ".join(s["text"] for s in case["raw"]), "CONTROL_TEXT_MISMATCH")
+
+
 def linked_lines(root, unit):
     source = unit["source"]
     raw = read_bytes(inside(root, source["path"]))
@@ -159,6 +178,8 @@ def compile_preview(base, units, catalog, root, profiles=None):
         require(isinstance(contrasts, list) and 1 <= len(contrasts) <= 4
                 and all(c.get("kind") == "SYNTHETIC_DEVELOPMENT_CONTROL" and text(c.get("text"), 300)
                         for c in contrasts), "UNIT_CONTROL_PROVENANCE_REQUIRED")
+        for control in contrasts:
+            validate_control_link(root, control)
         lines = linked_lines(root, u)
         raw_by_id = {line["id"]: line["text"] for line in lines}
         flow = []

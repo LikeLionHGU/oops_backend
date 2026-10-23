@@ -114,7 +114,9 @@ def input_hashes(root):
         for path in units + profiles:
             inputs.add(path.relative_to(root).as_posix())
         for path in units:
-            source = parse(read_bytes(path))["source"]
+            unit = parse(read_bytes(path))
+            source = unit["source"]
+            inputs.update(c["approvalSource"]["path"] for c in unit["normalContrasts"] if "approvalSource" in c)
             inputs.add(source["path"])
             if source["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
                 document = parse(read_bytes(inside(root, source["path"])))
