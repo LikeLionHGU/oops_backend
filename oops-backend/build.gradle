@@ -772,6 +772,29 @@ tasks.register('contextReferenceAudit', JavaExec) {
     }
 }
 
+// Fresh opt-in stored-text verification; never called by bootRun or test.
+tasks.register('currentContextReferenceTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentContextReferenceTrial'
+    doFirst {
+        def values = providers.gradleProperty('currentContextArgs').orNull
+        if (!values) throw new GradleException('Explicit currentContextArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('currentStoredTextPipelineTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentStoredTextPipelineTrial'
+    doFirst {
+        def values = providers.gradleProperty('storedPipelineArgs').orNull
+        if (!values) throw new GradleException('Explicit storedPipelineArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
 // Opt-in six-request reference comparison; never called by bootRun or test.
 tasks.register('developmentBoundaryReferenceTrial', JavaExec) {
     dependsOn testClasses
