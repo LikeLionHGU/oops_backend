@@ -6,6 +6,15 @@ import org.springframework.mock.web.*;
 import static org.assertj.core.api.Assertions.*;
 
 class LocalDiagnosticsAccessTest {
+    @Test void mutatingLocalRouteRejectsCrossSiteOrigins() throws Exception {
+        var env=new MockEnvironment().withProperty("server.address","127.0.0.1");env.setActiveProfiles("local");
+        var gate=new LocalDiagnosticsAccess(env);
+        for(String origin:new String[]{"https://evil.example","null","http://localhost.evil.example"}) {
+            var request=new MockHttpServletRequest("POST","/api/v1/videos/1/analysis/replay-transcript");
+            request.setRemoteAddr("127.0.0.1");request.addHeader("Origin",origin);
+            assertThat(gate.preHandle(request,new MockHttpServletResponse(),null)).isFalse();
+        }
+    }
     @Test void requiresLocalProfileExplicitBindingAndLocalPeer() throws Exception {
         var env = new MockEnvironment(); var gate = new LocalDiagnosticsAccess(env);
         var request = new MockHttpServletRequest(); request.setRemoteAddr("127.0.0.1");

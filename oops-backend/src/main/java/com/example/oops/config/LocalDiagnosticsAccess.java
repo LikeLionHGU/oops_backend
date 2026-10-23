@@ -15,14 +15,24 @@ public class LocalDiagnosticsAccess implements HandlerInterceptor, WebMvcConfigu
     public LocalDiagnosticsAccess(Environment environment) { this.environment = environment; }
     @Override public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this).addPathPatterns("/api/v1/videos/*/analysis/diagnostics",
-                "/api/v1/videos/*/analysis/stt-review-plan", "/api/v1/videos/*/analysis/request-traces");
+                "/api/v1/videos/*/analysis/stt-review-plan", "/api/v1/videos/*/analysis/request-traces",
+                "/api/v1/videos/*/analysis/replay-transcript");
     }
     @Override public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (!environment.matchesProfiles("local") || !LOOPBACK.contains(environment.getProperty("server.address", ""))
                 || !LOOPBACK.contains(request.getRemoteAddr()) || request.getHeader("Forwarded") != null
-                || request.getHeader("X-Forwarded-For") != null || request.getHeader("X-Forwarded-Host") != null) {
+                || request.getHeader("X-Forwarded-For") != null || request.getHeader("X-Forwarded-Host") != null
+                || !safeOrigin(request)) {
             response.sendError(403); return false;
         }
         return true;
+    }
+    private boolean safeOrigin(HttpServletRequest request) {
+        if (!"POST".equals(request.getMethod()) || request.getHeader("Origin") == null) return true;
+        try {
+            var origin=java.net.URI.create(request.getHeader("Origin"));
+            return Set.of("http","https").contains(origin.getScheme()) && origin.getUserInfo()==null
+                    && ("localhost".equals(origin.getHost()) || LOOPBACK.contains(origin.getHost()));
+        } catch (RuntimeException error) {return false;}
     }
 }

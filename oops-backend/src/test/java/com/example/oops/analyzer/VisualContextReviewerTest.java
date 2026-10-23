@@ -12,6 +12,13 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class VisualContextReviewerTest {
+    @Test void storedTranscriptReplayNeverRequestsFramesOrImages() {
+        video.assignTranscriptSnapshot(7L,"0".repeat(64));
+        var c=context();var proposal=fixture.proposal("stt-index-0","그 집");
+        var result=reviewer.review(c,new Candidate("c",proposal,c.reviewInput().segments(),false,false));
+        assertThat(result.validation().failureCode()).isEqualTo("STORED_TRANSCRIPT_TEXT_ONLY");
+        verifyNoInteractions(ai);
+    }
     @Test void candidatePipelinePassesSameReferenceToActualImageRequest() {
         when(ai.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(
                 new Discovery(List.of("stt-index-0"), List.of(), List.of(), false,

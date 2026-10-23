@@ -68,6 +68,7 @@ public class VisualContextReviewer {
         return review(context, c, guidelinePrompt, null);
     }
     Result review(AnalysisContext context, CandidateReviewEngine.Candidate c, String guidelinePrompt, String repairFailure) {
+        if (context.video().getTranscriptSourceVideoId() != null) return failure(c, "STORED_TRANSCRIPT_TEXT_ONLY", List.of(), false);
         if (!enabled) return failure(c, "VISUAL_DISABLED", List.of(), false);
         if (context.video().getSourceType() != SourceType.UPLOAD) return failure(c, "VISUAL_UPLOAD_ONLY", List.of(), false);
         Long duration = context.video().durationMs();

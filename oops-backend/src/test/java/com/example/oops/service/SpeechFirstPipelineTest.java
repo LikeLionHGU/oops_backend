@@ -22,6 +22,10 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Real pipeline, mocked providers. No video, native OCR or paid model calls. */
 class SpeechFirstPipelineTest {
+    @Test void reusedTranscriptHasNoNewSttCostEstimate() {
+        assertThat(AnalysisPipeline.sttEstimateUsd(600,.01,true)).isZero();
+        assertThat(AnalysisPipeline.sttEstimateUsd(600,.01,false)).isEqualTo(.1);
+    }
     static class Fixture {
         final Video video = Video.builder().filename("synthetic.mp4").build();
         final TranscriptService transcript = mock(TranscriptService.class);
@@ -91,6 +95,15 @@ class SpeechFirstPipelineTest {
             assertThat(dto.screenTextAnalyzed()).isFalse();
             assertThat(AnalysisWarningDto.from(review).code()).isEqualTo("SCREEN_TEXT_REVIEW_NOT_ENABLED");
         }
+    }
+
+    @Test void transcriptReplaySkipsFullOcrEvenWhenGloballyEnabled() {
+        var f=new Fixture();f.video.assignTranscriptSnapshot(5L,"0".repeat(64));
+        ReflectionTestUtils.setField(f.pipeline,"fullScreenOcrEnabled",true);
+        f.pipeline.run(11L);
+        verify(f.screens,never()).extract(any(),anyLong());verify(f.screen,never()).supports(any());
+        assertThat(f.result().coverage().stream().filter(c->c.getStep()==CoverageStep.STT).findFirst().orElseThrow().getMessage())
+                .contains("새 음성인식을 수행하지 않았습니다");
     }
 
     @Test void sttFailureDoesNotSilentlyStartFullScreenOcrOrPublishEmptySuccess() {

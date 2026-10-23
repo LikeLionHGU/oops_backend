@@ -85,6 +85,9 @@ public class AnalysisPipeline {
             return;
         }
 
+        // Stored transcript replay is explicitly text-only, even if full OCR is globally enabled.
+        boolean runFullScreenOcr = fullScreenOcrEnabled && video.getTranscriptSourceVideoId() == null;
+
         // 단계별 소요 시간을 재서 마지막에 한 줄로 보여준다.
         // 어디가 느린지 짐작하지 않고 숫자로 확인하기 위해서다.
         Map<String, Long> elapsed = new LinkedHashMap<>();
@@ -112,13 +115,14 @@ public class AnalysisPipeline {
                         analysisServerClient.lastFailureDetail()
                                 .orElse("음성을 글자로 옮기지 못했습니다."));
             } else {
-                record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS, null);
+                record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS,
+                        video.getTranscriptSourceVideoId() == null ? null : "저장 전사를 재사용했습니다. 새 음성인식을 수행하지 않았습니다.");
             }
 
             // Full-screen OCR is explicit opt-in, not a prerequisite for speech analysis.
             checkStillActive(jobId);
             List<ScreenText> screenTexts = List.of();
-            if (fullScreenOcrEnabled) {
+            if (runFullScreenOcr) {
                 progressService.update(jobId, AnalysisStage.OCR, 35);
                 mark = System.currentTimeMillis();
                 screenTexts = screenTextService.extract(video, jobId);
@@ -150,7 +154,8 @@ public class AnalysisPipeline {
                 log.info("[pipeline] 전체 OCR 미선택, 발언 분석으로 진행 videoId={}", videoId);
             }
             record(coverage, video, CoverageStep.VISUAL, AnalyzerStatus.NOT_ENABLED,
-                    "영상 전체 장면 분석은 제공하지 않습니다. 발언 후보에 대한 선택적 프레임 확인은 별도로 수행할 수 있습니다.");
+                    video.getTranscriptSourceVideoId() != null ? "저장 전사 재사용 실행에서는 영상·프레임 검토를 수행하지 않습니다."
+                    : "영상 전체 장면 분석은 제공하지 않습니다. 발언 후보에 대한 선택적 프레임 확인은 별도로 수행할 수 있습니다.");
 
             // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
             // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
@@ -173,7 +178,7 @@ public class AnalysisPipeline {
             // 사용자에게는 "검수했는데 문제없다" 로 읽히지만 실제로는
             // 아무것도 보지 못한 것이다. 이건 거짓말이다.
             if (transcript.isEmpty() && screenTexts.isEmpty()) {
-                String detail = fullScreenOcrEnabled ? analysisServerClient.lastFailureDetail()
+                String detail = runFullScreenOcr ? analysisServerClient.lastFailureDetail()
                         .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.")
                         : "음성을 글자로 옮기지 못해 발언을 분석하지 못했습니다. 전체 화면 글자 검수는 선택되지 않았습니다.";
                 log.error("[pipeline] videoId={} 분석 불가: {}", videoId, detail);
@@ -188,7 +193,7 @@ public class AnalysisPipeline {
             // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
             // 검수 액션도 지운다. 후보 id 가 새로 발급되므로 옛 액션은 엉뚱한 곳을 가리킨다.
             List<ContentAnalyzer> active = activeAnalyzers().stream()
-                    .filter(a -> fullScreenOcrEnabled || CoverageStep.of(a.key()) != CoverageStep.SCREEN_TEXT_REVIEW)
+                    .filter(a -> runFullScreenOcr || CoverageStep.of(a.key()) != CoverageStep.SCREEN_TEXT_REVIEW)
                     .toList(); // Excluded stages retain NOT_ENABLED and do not distort progress.
             List<RiskFinding> candidates = new ArrayList<>();
             List<com.example.oops.analyzer.ReviewDiagnostics> diagnostics = new ArrayList<>();
@@ -292,7 +297,7 @@ public class AnalysisPipeline {
             log.info("[pipeline] 완료 jobId={} videoId={} score={} events={} 총 {}초",
                     jobId, videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 jobId={} — {}", jobId, formatElapsed(elapsed, total));
-            logCost(videoId, video.getDurationSec());
+            logCost(videoId, video.getDurationSec(), video.getTranscriptSourceVideoId() != null);
 
         } catch (AnalysisStoppedException e) {
             log.info("[pipeline] 종료되었거나 대체된 작업 결과를 저장하지 않습니다. jobId={}", jobId);
@@ -345,13 +350,10 @@ public class AnalysisPipeline {
      * 긴 영상에서는 LLM 비용보다 음성 인식이 훨씬 크다.
      * LLM 만 보여주면 "생각보다 싸네" 라고 잘못 판단하게 된다.
      */
-    private void logCost(Long videoId, Integer durationSec) {
+    private void logCost(Long videoId, Integer durationSec, boolean transcriptReused) {
         OpenAiClient.TokenUsage usage = openAiClient.videoUsage();
 
-        double sttUsd = 0;
-        if (durationSec != null && durationSec > 0) {
-            sttUsd = durationSec / 60.0 * usage.pricing().sttUsdPerMinute();
-        }
+        double sttUsd = sttEstimateUsd(durationSec,usage.pricing().sttUsdPerMinute(),transcriptReused);
         double totalUsd = usage.costUsd() + sttUsd;
         double krw = totalUsd * usage.pricing().krwRate();
 
@@ -376,6 +378,10 @@ public class AnalysisPipeline {
                     Math.round(krw / (durationSec / 60.0)),
                     "%.1f".formatted(durationSec / 60.0));
         }
+    }
+
+    static double sttEstimateUsd(Integer durationSec,double perMinute,boolean transcriptReused) {
+        return transcriptReused || durationSec==null || durationSec<=0 ? 0 : durationSec/60.0*perMinute;
     }
 
     /**

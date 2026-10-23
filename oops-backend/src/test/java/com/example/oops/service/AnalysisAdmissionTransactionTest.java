@@ -39,6 +39,10 @@ class AnalysisAdmissionTransactionTest {
     @Autowired JobProgressService progress;
     @Autowired VideoRepository videos;
     @Autowired AnalysisJobRepository jobs;
+    @Autowired TranscriptReplayService replay;
+    @Autowired TranscriptSegmentRepository transcripts;
+    @Autowired com.example.oops.transcript.TranscriptService transcriptService;
+    @Autowired AnalysisResultWriter resultWriter;
     @Autowired PlatformTransactionManager manager;
     @Autowired javax.sql.DataSource dataSource;
     @Autowired @Qualifier("analysisExecutor") ThreadPoolTaskExecutor executor;
@@ -50,6 +54,32 @@ class AnalysisAdmissionTransactionTest {
 
     private Video seed() {
         return videos.saveAndFlush(Video.builder().sourceType(SourceType.UPLOAD).filename("admission-test.mp4").build());
+    }
+
+    @Test void replayWorkerSeesCommittedOwnedTranscriptWithOneConnection() throws Exception {
+        var source=seed();source.updateStatus(AnalysisStatus.COMPLETED);videos.saveAndFlush(source);
+        transcripts.saveAndFlush(new TranscriptSegment(source,0,1000,"저장된 전체 전사"));
+        var observed=new CompletableFuture<Long>();
+        doAnswer(call->{
+            try {
+                Long id=progress.begin(call.getArgument(0));
+                assertThat(transcripts.findByVideoIdOrderByStartMsAscIdAsc(id)).extracting(TranscriptSegment::getText)
+                        .containsExactly("저장된 전체 전사");
+                var target=videos.findById(id).orElseThrow();
+                var copied=transcriptService.extract(target);
+                assertThat(resultWriter.save(call.getArgument(0),new AnalysisResultWriter.Result(target,ContentGenre.GENERAL,
+                        copied,java.util.List.of(),java.util.List.of(),java.util.List.of(),0,"무료 저장 경로 검증","test-model-not-called",java.util.List.of())))
+                        .isTrue();
+                observed.complete(id);
+            } catch(Throwable error) {observed.completeExceptionally(error);}
+            return null;
+        }).when(pipeline).run(anyLong());
+        var result=replay.create(source.getId());
+        assertThat(observed.get(3,TimeUnit.SECONDS)).isEqualTo(Long.parseLong(result.videoId()));
+        assertThat(videos.findById(source.getId()).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
+        assertThat(analysis.getReport(Long.parseLong(result.videoId())).events()).isEmpty();
+        assertThat(analysis.getTranscript(Long.parseLong(result.videoId()))).hasSize(1);
+        verify(media,never()).transcribe(any());awaitIdle();
     }
 
     @Test void fullExecutorCommitsFailureWithOneConnectionAndAccurateResponse() throws Exception {
