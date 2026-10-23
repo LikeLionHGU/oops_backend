@@ -33,7 +33,7 @@ class ContextFitAdoptionGateTest {
         var rules=new ArrayList<ReviewGuidelineLibrary.Rule>();
         for(var r:archive.get("guidelines")) rules.add(json.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
         var selector=new ContextExampleSelector(assets,rules,StructuredContextSearch.load());
-        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,runtime.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,runtime.toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
         library.load();
         var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
         var rows=new ArrayList<Map<String,Object>>();

@@ -85,7 +85,7 @@ class ContextFitRankingPreviewTest {
         for(var e:archive.get("examples")) examples.add(json.treeToValue(e,ReviewGuidelineLibrary.ContextExample.class));
         var rules=new ArrayList<ReviewGuidelineLibrary.Rule>();
         for(var r:archive.get("guidelines")) rules.add(json.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
-        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,preview.resolve("preview-runtime.json").toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,preview.resolve("preview-runtime.json").toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
         library.load();
         var selector=new ContextExampleSelector(examples,rules,StructuredContextSearch.load());
         var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
@@ -147,7 +147,7 @@ class ContextFitRankingPreviewTest {
             for(var r:archive.get("guidelines")) rules.add(json.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
             var selector=new ContextExampleSelector(assets,rules,StructuredContextSearch.load());
             var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
-            var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,variant.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+            var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,variant.toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
             library.load();
             for(var q:queries) {
                 var input=new ArrayList<ReviewInput.Segment>();
@@ -184,7 +184,7 @@ class ContextFitRankingPreviewTest {
         var rules=new ArrayList<ReviewGuidelineLibrary.Rule>();
         for(var r:archive.get("guidelines")) rules.add(ReviewGuidelineLibrary.JSON.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
         var selector=new ContextExampleSelector(examples,rules,StructuredContextSearch.load());
-        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,path.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+        var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,path.toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
         library.load();
         var queries=List.of(
                 "학원 선생님이 낮은 반 학생에게 했던 모욕을 인용합니다. 그 말을 듣고 충격받았어요.",

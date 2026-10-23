@@ -119,6 +119,7 @@ public class ReviewGuidelineLibrary {
     private final Set<String> excludedFamilies;
     private ContextExampleSelector selector;
     private final boolean structuredSearchEnabled;
+    private final boolean boundarySupplementEnabled;
     private StructuredContextSearch structuredSearch;
     private Archive archive;
     private String state = "NOT_LOADED";
@@ -141,6 +142,12 @@ public class ReviewGuidelineLibrary {
             @Value("${oops.analysis.guidelines-example-max-code-points:3000}") int exampleBudget,
             @Value("${oops.analysis.guidelines-excluded-families:}") String excludedFamilies,
             @Value("${oops.analysis.structured-context-search-enabled:true}") boolean structuredSearchEnabled) {
+        this(resources,enabled,location,budget,maxExamples,exampleBudget,excludedFamilies,structuredSearchEnabled,true);
+    }
+    /** Explicit baseline adapter for offline paired tests; Spring uses the constructor above. */
+    public ReviewGuidelineLibrary(ResourceLoader resources, boolean enabled, String location, int budget,
+            int maxExamples, int exampleBudget, String excludedFamilies, boolean structuredSearchEnabled,
+            boolean boundarySupplementEnabled) {
         if (location == null || !(location.startsWith("classpath:") || location.startsWith("file:"))
                 || budget < 256 || budget > 8000)
             throw new IllegalArgumentException("Guidelines require a local archive and bounded budget");
@@ -155,6 +162,7 @@ public class ReviewGuidelineLibrary {
             throw new IllegalArgumentException("Examples require bounded count and size");
         this.maxExamples = maxExamples; this.exampleBudget = exampleBudget;
         this.structuredSearchEnabled = structuredSearchEnabled;
+        this.boundarySupplementEnabled = boundarySupplementEnabled;
         this.excludedFamilies = Set.copyOf(Arrays.stream(excludedFamilies.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList());
     }
@@ -320,7 +328,13 @@ public class ReviewGuidelineLibrary {
             int baseCodePoints, List<String> exampleIds, List<String> mechanismIds,
             @JsonInclude(JsonInclude.Include.NON_NULL) ContextReferenceBalance.Trace balance,
             @JsonInclude(JsonInclude.Include.NON_NULL) ContextRelationRetrieval.Trace relation,
-            @JsonInclude(JsonInclude.Include.NON_NULL) StructuredContextSearch.Trace structuredSearch) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) StructuredContextSearch.Trace structuredSearch,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ContextBoundarySupplement.Trace boundarySupplement) {
+        public SelectionTrace(String key,String state,String method,int available,int matched,int skipped,
+                int payload,int base,List<String> examples,List<String> mechanisms,ContextReferenceBalance.Trace balance,
+                ContextRelationRetrieval.Trace relation,StructuredContextSearch.Trace structuredSearch) {
+            this(key,state,method,available,matched,skipped,payload,base,examples,mechanisms,balance,relation,structuredSearch,null);
+        }
         public SelectionTrace(String key,String state,String method,int available,int matched,int skipped,
                 int payload,int base,List<String> examples,List<String> mechanisms,ContextReferenceBalance.Trace balance,
                 ContextRelationRetrieval.Trace relation) {
@@ -422,9 +436,20 @@ public class ReviewGuidelineLibrary {
                 }
             }
         }
+        ContextBoundarySupplement.Trace supplementTrace = null;
+        if (boundarySupplementEnabled && structuredSearch != null && relationArchive() && channel == TimelineEventType.SPEECH && !balanced) {
+            var plan=ContextBoundarySupplement.select(ranked,selected,raw,focus,maxExamples,proposed -> {
+                var contexts=proposed.stream().map(e -> new SelectedExample(e.mechanismIds(),e.context())).toList();
+                return codePoints(JSON.writeValueAsString(contexts))<=exampleBudget && codePoints(payload(patterns,contexts))<=budget;
+            });
+            selected.clear(); selected.addAll(plan.selected());
+            supplementTrace=ContextBoundarySupplement.trace(plan);
+        }
         String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
         return new Selection("\n" + referenceContract() + "\ncontextReference=" + payload,
-                new SelectionTrace(requestKey, state, roleAligned ? "V7_ROLE_ALIGNED_LEXICAL_NOT_SEMANTIC"
+                new SelectionTrace(requestKey, state, supplementTrace != null && supplementTrace.addedId() != null
+                        ? "V7_CONTEXT_BOUNDARY_SUPPLEMENT_NOT_SEMANTIC"
+                        : roleAligned ? "V7_ROLE_ALIGNED_LEXICAL_NOT_SEMANTIC"
                         : balanced ? "V6_BALANCED_HINT_COVERAGE_NOT_SEMANTIC"
                         : ranked.stream().anyMatch(ContextExampleSelector.Match::routed)
                         ? "EXPLICIT_MECHANISM_HINT_SOFT_ROUTING_NOT_CLASSIFICATION"
@@ -438,7 +463,7 @@ public class ReviewGuidelineLibrary {
                             .filter(e -> e.channels().contains(channel.name()) && !excludedFamilies.contains(e.familyId())
                                 && e.relationProfile()!=null).count(),selected) : null,
                         structuredSearch == null ? null : structuredSearch.trace(
-                                structuredSearch.queryProfiles(channel, raw), ranked, selected)));
+                                structuredSearch.queryProfiles(channel, raw), ranked, selected),supplementTrace));
     }
     private static String payload(Object patterns, Object contexts) {
         Map<String, Object> values = new LinkedHashMap<>();
