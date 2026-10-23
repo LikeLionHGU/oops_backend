@@ -69,6 +69,7 @@ class SpeechFirstPipelineTest {
         ReflectionTestUtils.setField(f.pipeline, "fullScreenOcrEnabled", enabled);
         f.pipeline.run(11L);
         verify(f.speech).analyze(any());
+        verify(f.progress).update(eq(11L), eq(AnalysisStage.TEXT_RISK), eq(enabled ? 62 : 80), anyString());
         verify(f.screens, times(enabled ? 1 : 0)).extract(f.video, 11L);
         var result = f.result();
         var ocr = result.coverage().stream().filter(c -> c.getStep() == CoverageStep.OCR).findFirst().orElseThrow();

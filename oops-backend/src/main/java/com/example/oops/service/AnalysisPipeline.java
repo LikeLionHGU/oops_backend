@@ -187,16 +187,15 @@ public class AnalysisPipeline {
             // 3. 분석기 실행 → 논란 후보 수집
             // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
             // 검수 액션도 지운다. 후보 id 가 새로 발급되므로 옛 액션은 엉뚱한 곳을 가리킨다.
-            List<ContentAnalyzer> active = activeAnalyzers();
+            List<ContentAnalyzer> active = activeAnalyzers().stream()
+                    .filter(a -> fullScreenOcrEnabled || CoverageStep.of(a.key()) != CoverageStep.SCREEN_TEXT_REVIEW)
+                    .toList(); // Excluded stages retain NOT_ENABLED and do not distort progress.
             List<RiskFinding> candidates = new ArrayList<>();
             List<com.example.oops.analyzer.ReviewDiagnostics> diagnostics = new ArrayList<>();
 
             int index = 0;
             for (ContentAnalyzer analyzer : active) {
                 checkStillActive(jobId);
-                if (!fullScreenOcrEnabled && CoverageStep.of(analyzer.key()) == CoverageStep.SCREEN_TEXT_REVIEW) {
-                    continue; // Keep NOT_ENABLED; never disguise opt-out as missing text or API failure.
-                }
                 index++;
                 progressService.update(jobId, stageOf(analyzer),
                         45 + (35 * index / Math.max(1, active.size())),
@@ -336,7 +335,6 @@ public class AnalysisPipeline {
         };
     }
 
-    /** application.yml 에 켜둔 분석기만, 설정 순서대로 실행한다. */
     /**
      * 이 영상에 실제로 얼마가 나갔는지 한 줄로 정리한다.
      *
@@ -402,6 +400,7 @@ public class AnalysisPipeline {
         coverage.put(step, AnalysisCoverage.of(video, step, merged, combined));
     }
 
+    /** application.yml 에 켜둔 분석기만, 설정 순서대로 실행한다. */
     private List<ContentAnalyzer> activeAnalyzers() {
         List<String> enabled = properties.analysis().enabledAnalyzers();
         return enabled.stream()
