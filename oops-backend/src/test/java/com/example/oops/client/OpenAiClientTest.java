@@ -11,6 +11,21 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class OpenAiClientTest {
+    @Test void diagnosticCodeIsIndependentOfMessageWordsAndClearedBetweenAnalyzers() {
+        var client = new OpenAiClient(RestClient.create(), properties(null, null));
+        client.beginVideo(1L);
+        try {
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(client, "fail",
+                    OpenAiClient.FailureCode.HTTP_FAILED, "연결 거부 한도 해석 중단");
+            assertThat(client.failureCode()).contains("HTTP_FAILED");
+            assertThat(client.failureCount()).isOne();
+            client.beginAnalyzer("next");
+            assertThat(client.failureCode()).isEmpty();
+            assertThat(client.failureReason()).isEmpty();
+            assertThat(client.failureCount()).isZero();
+        } finally { client.endVideo(); }
+        assertThat(client.failureCode()).isEmpty();
+    }
     @Test void optionalRoutingIsSingleAttemptAndDoesNotPoisonMandatoryFailureTracking() {
         var builder = RestClient.builder().baseUrl("https://example.invalid");
         var server = MockRestServiceServer.bindTo(builder).build();
@@ -42,6 +57,7 @@ class OpenAiClientTest {
             assertThat(client.completeRoutingAsJson("JSON","raw",Answer.class)).contains(new Answer(true));
             assertThat(client.failureCount()).isOne();
             assertThat(client.failureReason()).contains(reason);
+            assertThat(client.failureCode()).contains("HTTP_FAILED");
             assertThat(client.videoUsage().calls()).isOne();
         } finally { client.endVideo(); }
         server.verify();

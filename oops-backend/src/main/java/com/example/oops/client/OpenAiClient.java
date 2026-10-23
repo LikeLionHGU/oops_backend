@@ -134,7 +134,10 @@ public class OpenAiClient {
      * 분석은 스레드마다 하나씩 도므로 스레드별로 들고 있으면 충분하다.
      */
     private static final ThreadLocal<int[]> failureCount = ThreadLocal.withInitial(() -> new int[1]);
-    private static final ThreadLocal<String> failureReason = new ThreadLocal<>();
+    enum FailureCode { MODEL_REFUSAL, INCOMPLETE_RESPONSE, JSON_PARSE_FAILED, EMPTY_RESPONSE,
+        RATE_LIMITED, HTTP_FAILED, CONNECTION_FAILED }
+    private record FailureState(FailureCode code, String message) {}
+    private static final ThreadLocal<FailureState> failureState = new ThreadLocal<>();
 
     /**
      * 지금 어느 영상의 어느 분석기를 돌리고 있는지.
@@ -165,7 +168,7 @@ public class OpenAiClient {
      */
     public void endVideo() {
         failureCount.remove();
-        failureReason.remove();
+        failureState.remove();
         currentVideoId.remove();
         currentAnalyzer.remove();
         usageTotals.remove();
@@ -179,7 +182,7 @@ public class OpenAiClient {
 
     public void resetFailureTracking() {
         failureCount.get()[0] = 0;
-        failureReason.remove();
+        failureState.remove();
     }
 
     /** 이 영상에 지금까지 쓴 양. 파이프라인이 마지막에 한 줄로 정리한다. */
@@ -224,26 +227,17 @@ public class OpenAiClient {
     }
 
     public Optional<String> failureReason() {
-        return Optional.ofNullable(failureReason.get());
+        return Optional.ofNullable(failureState.get()).map(FailureState::message);
     }
 
     /** Safe diagnostic code only; never expose provider response bodies or credentials. */
     public Optional<String> failureCode() {
-        return failureReason().map(reason -> {
-            if (reason.contains("거부")) return "MODEL_REFUSAL";
-            if (reason.contains("중단")) return "INCOMPLETE_RESPONSE";
-            if (reason.contains("해석")) return "JSON_PARSE_FAILED";
-            if (reason.contains("비어")) return "EMPTY_RESPONSE";
-            if (reason.contains("한도")) return "RATE_LIMITED";
-            if (reason.contains("HTTP")) return "HTTP_FAILED";
-            if (reason.contains("연결")) return "CONNECTION_FAILED";
-            return "REQUEST_FAILED";
-        });
+        return Optional.ofNullable(failureState.get()).map(f -> f.code().name());
     }
 
-    private <T> Optional<T> fail(String reason) {
+    private <T> Optional<T> fail(FailureCode code, String reason) {
         failureCount.get()[0]++;
-        failureReason.set(reason);
+        failureState.set(new FailureState(code, reason));
         return Optional.empty();
     }
 
@@ -262,14 +256,14 @@ public class OpenAiClient {
     public <T> Optional<T> completeRoutingAsJson(String systemPrompt, String userPrompt, Class<T> type) {
         if (!isEnabled() || Thread.currentThread().isInterrupted()) return Optional.empty();
         int priorCount = failureCount.get()[0];
-        String priorReason = failureReason.get();
+        FailureState priorFailure = failureState.get();
         try {
             var body = requestBody(systemPrompt, userPrompt);
             body.put("max_completion_tokens", 1024);
             return executeJson(body, type, 1);
         } finally {
             failureCount.get()[0] = priorCount;
-            if (priorReason == null) failureReason.remove(); else failureReason.set(priorReason);
+            if (priorFailure == null) failureState.remove(); else failureState.set(priorFailure);
         }
     }
 
@@ -321,13 +315,13 @@ public class OpenAiClient {
                 recordUsage(response);
 
                 if (response == null || response.choices() == null || response.choices().isEmpty()
-                        || response.choices().get(0).message() == null) return fail("AI 응답이 비어 있습니다.");
+                        || response.choices().get(0).message() == null) return fail(FailureCode.EMPTY_RESPONSE, "AI 응답이 비어 있습니다.");
                 var choice = response.choices().get(0);
                 if (choice.message().refusal() != null && !choice.message().refusal().isBlank()) {
-                    return fail("AI가 이 요청에 대한 응답을 거부했습니다.");
+                    return fail(FailureCode.MODEL_REFUSAL, "AI가 이 요청에 대한 응답을 거부했습니다.");
                 }
                 if ("length".equals(choice.finish_reason()) || "content_filter".equals(choice.finish_reason())) {
-                    return fail("AI 응답이 완성되기 전에 중단되었습니다.");
+                    return fail(FailureCode.INCOMPLETE_RESPONSE, "AI 응답이 완성되기 전에 중단되었습니다.");
                 }
 
                 String content = Optional.ofNullable(response)
@@ -337,7 +331,7 @@ public class OpenAiClient {
                         .orElse(null);
 
                 if (content == null || content.isBlank()) {
-                    return fail("AI 응답 본문이 비어 있습니다.");
+                    return fail(FailureCode.EMPTY_RESPONSE, "AI 응답 본문이 비어 있습니다.");
                 }
                 return Optional.of(jsonMapper.readValue(content, type));
 
@@ -358,7 +352,7 @@ public class OpenAiClient {
                                 + "분석 결과가 비어 있을 수 있습니다. "
                                 + "https://platform.openai.com/settings/organization/limits 확인",
                                 waitMs / 60000);
-                        return fail("AI 요청 한도를 모두 써서 이 단계를 수행하지 못했습니다.");
+                        return fail(FailureCode.RATE_LIMITED, "AI 요청 한도를 모두 써서 이 단계를 수행하지 못했습니다.");
                     }
 
                     if (attempt < attempts) {
@@ -370,21 +364,21 @@ public class OpenAiClient {
 
                     log.error("[openai] 요청 한도 초과로 포기했습니다. "
                             + "분석 결과가 비어 있을 수 있습니다.");
-                    return fail("AI 요청 한도 초과로 이 단계를 수행하지 못했습니다.");
+                    return fail(FailureCode.RATE_LIMITED, "AI 요청 한도 초과로 이 단계를 수행하지 못했습니다.");
                 }
 
                 {
                     log.warn("[openai] 호출 실패 HTTP {} : {}", status,
                             abbreviate(e.getResponseBodyAsString()));
                 }
-                return fail("AI 호출이 실패했습니다 (HTTP %d).".formatted(status));
+                return fail(FailureCode.HTTP_FAILED, "AI 호출이 실패했습니다 (HTTP %d).".formatted(status));
 
             } catch (RestClientException e) {
                 log.warn("[openai] 호출 실패: {}", e.getMessage());
-                return fail("AI 서버에 연결하지 못했습니다.");
+                return fail(FailureCode.CONNECTION_FAILED, "AI 서버에 연결하지 못했습니다.");
             } catch (Exception e) {
                 log.warn("[openai] 응답 파싱 실패: {}", e.getMessage());
-                return fail("AI 응답을 해석하지 못했습니다.");
+                return fail(FailureCode.JSON_PARSE_FAILED, "AI 응답을 해석하지 못했습니다.");
             }
         }
         return Optional.empty();
