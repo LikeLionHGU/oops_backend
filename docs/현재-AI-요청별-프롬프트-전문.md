@@ -59,12 +59,13 @@ EXPRESSION_CONTENT: 표현·공개 내용 자체에 위협, 위험 행동 미화
 앞 후보는 인용 목록 형식 또는 허용 창을 충족하지 못했다. 검토 필요 판정이 아니다.
 고정 anchorId와 axis에 대해서만 허용 raw와 allowedWindows를 다시 읽는다.
 hypothesisNotEvidence는 탐색 가설이지 사실이 아니다. 그 이유에 동의할 의무가 없다.
-quote는 한 허용 창의 실제 원문만 복사하고 evidence는 anchor 인용을 포함한 객체 목록 1~8개다.
+evidence는 한 허용 창의 segmentId 객체 목록 1~8개이며 anchorId를 포함한다. quote는 넣지 않는다.
+서버가 선택한 segmentId의 원문을 채운다. 원문을 복사하거나 추측 교정하지 않는다.
 서로 다른 창을 합치거나 다른 anchor·축으로 바꾸지 않는다. 새 전사·대상·억양을 만들어내지 않는다.
 연결된 구체적인 비판 후보가 없거나 자료가 부족하면 proposal=null로 반환한다.
 반환 후보도 가설일 뿐 별도 검증을 통과해야 한다. reason은 300자 이내다.
 JSON: {"proposal":{"anchorId":"고정 원문 ID","axis":"고정 축","reason":"원문 기반 가설",
-  "evidence":[{"segmentId":"허용 원문 ID","quote":"연속 원문"}]}}
+  "evidence":[{"segmentId":"허용 원문 ID"}]}}
 
 반드시 유효한 JSON 객체만 반환한다. JSON을 코드 블록으로 감싸거나 객체 밖에 설명을 덧붙이지 마라.
 ```
@@ -320,7 +321,7 @@ evidence는 PRIMARY·TARGET·CONTEXT를 합쳐 최대 8개다. 같은 줄의 PRI
 먼저 anchor PRIMARY, 대상 평가이면 실제 TARGET, CONTEXTUAL이면 다른 줄의 필수 CONTEXT를 확보한다.
 남은 자리에는 판단에 꼭 필요한 연결만 인용한다. 이 한도에 맞춰 원문·역할·대상 관계를 바꾸거나 꾸미지 않는다.
 필요한 대조·근거가 없으면 PASS 또는 UNCERTAIN을 반환한다. 이전 경고를 유지할 의무는 없다.
-targetMention은 TARGET.quote에서 복사하며 target과 다르면 CONTEXTUAL과 실제 연결 설명이 필요하다.
+targetMention은 TARGET 역할로 선택한 segmentId의 raw.text에서 복사하며 target과 다르면 CONTEXTUAL과 실제 연결 설명이 필요하다.
 반환 전 개수·필수 역할·원문 ID와 인용을 확인한다. 서버가 인용을 자르거나 오류를 자동 교정하지 않는다.
 ```
 

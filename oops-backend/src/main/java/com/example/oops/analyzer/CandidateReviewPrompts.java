@@ -174,12 +174,13 @@ final class CandidateReviewPrompts {
             앞 후보는 인용 목록 형식 또는 허용 창을 충족하지 못했다. 검토 필요 판정이 아니다.
             고정 anchorId와 axis에 대해서만 허용 raw와 allowedWindows를 다시 읽는다.
             hypothesisNotEvidence는 탐색 가설이지 사실이 아니다. 그 이유에 동의할 의무가 없다.
-            quote는 한 허용 창의 실제 원문만 복사하고 evidence는 anchor 인용을 포함한 객체 목록 1~8개다.
+            evidence는 한 허용 창의 segmentId 객체 목록 1~8개이며 anchorId를 포함한다. quote는 넣지 않는다.
+            서버가 선택한 segmentId의 원문을 채운다. 원문을 복사하거나 추측 교정하지 않는다.
             서로 다른 창을 합치거나 다른 anchor·축으로 바꾸지 않는다. 새 전사·대상·억양을 만들어내지 않는다.
             연결된 구체적인 비판 후보가 없거나 자료가 부족하면 proposal=null로 반환한다.
             반환 후보도 가설일 뿐 별도 검증을 통과해야 한다. reason은 300자 이내다.
             JSON: {"proposal":{"anchorId":"고정 원문 ID","axis":"고정 축","reason":"원문 기반 가설",
-              "evidence":[{"segmentId":"허용 원문 ID","quote":"연속 원문"}]}}
+              "evidence":[{"segmentId":"허용 원문 ID"}]}}
             """;
     static final String CONTRAST_REPAIR_PROMPT = """
             # 연결 후보 대조 계약 재검증
@@ -207,16 +208,28 @@ final class CandidateReviewPrompts {
             반환 전 TARGET 역할·지칭어 포함·관계 조건을 점검한다. 대상 이름·인용·관계를 추측해 보충하지 않는다.
             원문 근거가 부족하면 UNCERTAIN, 구체적인 검토 이유가 없으면 PASS다. 경고로 복구할 의무는 없다.
             """;
-    static final String EVIDENCE_BUDGET_REPAIR_PROMPT = """
+    private static final String EVIDENCE_BUDGET_REPAIR_TEMPLATE = """
             # 인용 개수 계약 재검증
-            이전 응답은 evidence 객체 수가 8개를 초과해 채택되지 않았다. 현재 후보의 허용 raw만 다시 읽고 독립 판정한다.
-            evidence는 PRIMARY·TARGET·CONTEXT를 합쳐 최대 8개다. 같은 줄의 PRIMARY와 TARGET도 객체 2개로 센다.
+            이전 응답은 evidence 객체 수가 {{EXCEEDED_LIMIT}}개를 초과해 채택되지 않았다. 현재 후보의 허용 raw만 다시 읽고 독립 판정한다.
+            evidence는 PRIMARY·TARGET·CONTEXT를 합쳐 최대 {{MAX_LIMIT}}개다. 같은 줄의 PRIMARY와 TARGET도 객체 2개로 센다.
             먼저 anchor PRIMARY, 대상 평가이면 실제 TARGET, CONTEXTUAL이면 다른 줄의 필수 CONTEXT를 확보한다.
             남은 자리에는 판단에 꼭 필요한 연결만 인용한다. 이 한도에 맞춰 원문·역할·대상 관계를 바꾸거나 꾸미지 않는다.
             필요한 대조·근거가 없으면 PASS 또는 UNCERTAIN을 반환한다. 이전 경고를 유지할 의무는 없다.
-            targetMention은 TARGET.quote에서 복사하며 target과 다르면 CONTEXTUAL과 실제 연결 설명이 필요하다.
+            targetMention은 TARGET 역할로 선택한 segmentId의 raw.text에서 복사하며 target과 다르면 CONTEXTUAL과 실제 연결 설명이 필요하다.
             반환 전 개수·필수 역할·원문 ID와 인용을 확인한다. 서버가 인용을 자르거나 오류를 자동 교정하지 않는다.
             """;
+    static final String EVIDENCE_BUDGET_REPAIR_PROMPT = evidenceBudgetRepairPrompt(8);
+    static String evidenceBudgetRepairPrompt(int limit) {
+        if (limit <= 0) throw new IllegalArgumentException("A finite positive repair limit is required");
+        String prompt = replaceExactlyOnce(EVIDENCE_BUDGET_REPAIR_TEMPLATE, "{{EXCEEDED_LIMIT}}", Integer.toString(limit));
+        return replaceExactlyOnce(prompt, "{{MAX_LIMIT}}", Integer.toString(limit));
+    }
+    static String replaceExactlyOnce(String template, String marker, String replacement) {
+        int first = template.indexOf(marker);
+        if (first < 0 || first != template.lastIndexOf(marker))
+            throw new IllegalStateException("Prompt contract marker must occur exactly once");
+        return template.substring(0, first) + replacement + template.substring(first + marker.length());
+    }
     static final String ID_REPAIR_PROMPT = """
             # 원문 ID 계약 재검증
             이전 응답은 현재 후보에 허용되지 않는 evidence ID를 반환하여 채택되지 않았다.

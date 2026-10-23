@@ -8,14 +8,17 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-23-candidate-visual-necessity-47";
+    static final String REVISION = "2026-10-23-candidate-repair-contract-48";
     static final String RELATION_REVISION = "2026-10-21-source-relations-responsive-repetition-45";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
     static String verificationPrompt(int limit) {
+        return verificationPrompt(VERIFICATION_PROMPT, limit);
+    }
+    static String verificationPrompt(String template, int limit) {
         if (limit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
-        return VERIFICATION_PROMPT.replace("evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다.",
+        return CandidateReviewPrompts.replaceExactlyOnce(template, "evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다.",
                 limit == 0 ? "evidence는 필요한 허용 원문의 segmentId·role을 반환한다. 고정 개수 상한은 없다. 동일 segmentId·role은 반복하지 않는다."
                         : "evidence는 최대 " + limit + "개로 허용 원문의 segmentId·role을 반환한다.");
     }
@@ -32,7 +35,11 @@ final class CandidateReviewEngine {
             "LINKED_PASS_CONTRAST_REQUIRED", "LINKED_PASS_CONTEXT_REQUIRED");
     static final String CONTRAST_REPAIR_PROMPT = CandidateReviewPrompts.CONTRAST_REPAIR_PROMPT;
     static String repairPrompt(String failure) {
-        if ("EVIDENCE_BUDGET_EXCEEDED".equals(failure)) return EVIDENCE_BUDGET_REPAIR_PROMPT;
+        return repairPrompt(failure, 8);
+    }
+    static String repairPrompt(String failure, int evidenceLimit) {
+        if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
+        if ("EVIDENCE_BUDGET_EXCEEDED".equals(failure)) return CandidateReviewPrompts.evidenceBudgetRepairPrompt(evidenceLimit);
         if ("DECISION_UNKNOWN_EVIDENCE_ID".equals(failure)) return ID_REPAIR_PROMPT;
         if ("LINKED_PASS_CONTRAST_REQUIRED".equals(failure) || "LINKED_PASS_CONTEXT_REQUIRED".equals(failure))
             return CONTRAST_REPAIR_PROMPT;
@@ -631,7 +638,7 @@ final class CandidateReviewEngine {
         TextReviewEngine.LlmDecision repaired = null;
         int failuresBefore = client.failureCount();
         try {
-            var correction = repairPrompt(initial);
+            var correction = repairPrompt(initial, evidenceLimit);
             String system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
             system=verificationSystem(system,features);
             var response = client.completeAsJson(system,
