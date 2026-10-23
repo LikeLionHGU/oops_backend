@@ -38,6 +38,20 @@ public class RestClientConfig {
                 .build();
     }
 
+    /** OCR only: local zero means no total read deadline; connection still bounded. */
+    @Bean
+    public RestClient analysisOcrRestClient(AnalysisServerProperties properties) {
+        HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10)).build();
+        var factory = new JdkClientHttpRequestFactory(client);
+        if (!properties.ocrTimeoutOrDefault().isZero()) {
+            factory.setReadTimeout(properties.ocrTimeoutOrDefault());
+        }
+        return RestClient.builder()
+                .baseUrl(properties.baseUrl() != null ? properties.baseUrl() : "http://localhost:8000")
+                .requestFactory(factory).build();
+    }
+
     /** 헬스 확인과 업로드 전 Worker 확인은 분석 호출과 별도의 짧은 제한을 쓴다. */
     @Bean
     public RestClient analysisHealthRestClient(AnalysisServerProperties properties) {

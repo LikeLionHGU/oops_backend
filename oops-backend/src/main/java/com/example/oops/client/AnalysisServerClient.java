@@ -40,6 +40,7 @@ public class AnalysisServerClient {
 
     private final RestClient restClient;
     private final RestClient healthRestClient;
+    private final RestClient ocrRestClient;
     private final AnalysisServerProperties properties;
     private final StorageService storageService;
 
@@ -47,8 +48,18 @@ public class AnalysisServerClient {
                                 @Qualifier("analysisHealthRestClient") RestClient healthRestClient,
                                 AnalysisServerProperties properties,
                                 StorageService storageService) {
+        this(restClient, healthRestClient, restClient, properties, storageService);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AnalysisServerClient(@Qualifier("analysisRestClient") RestClient restClient,
+                                @Qualifier("analysisHealthRestClient") RestClient healthRestClient,
+                                @Qualifier("analysisOcrRestClient") RestClient ocrRestClient,
+                                AnalysisServerProperties properties,
+                                StorageService storageService) {
         this.restClient = restClient;
         this.healthRestClient = healthRestClient;
+        this.ocrRestClient = ocrRestClient;
         this.properties = properties;
         this.storageService = storageService;
     }
@@ -144,7 +155,7 @@ public class AnalysisServerClient {
         lastFailure.remove();
         ocrAssessment.remove();
         try {
-            OcrResponse response = restClient.post()
+            OcrResponse response = ocrRestClient.post()
                     .uri("/ocr")
                     .body(toRequest(video, properties.ocrIntervalOrDefault(), frameDir))
                     .retrieve()

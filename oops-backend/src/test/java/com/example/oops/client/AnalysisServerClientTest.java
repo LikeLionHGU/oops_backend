@@ -14,6 +14,22 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class AnalysisServerClientTest {
+    @Test void ocrUsesItsDedicatedClientRatherThanTheGeneralClient() {
+        var builder = RestClient.builder().baseUrl("http://worker.invalid");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://worker.invalid/ocr")).andRespond(
+                withSuccess("{\"items\":[],\"processing\":{\"status\":\"SUCCESS\",\"totalFrames\":1,\"successfulFrames\":1,\"failedFrames\":0}}", MediaType.APPLICATION_JSON));
+        var general = mock(RestClient.class);
+        var storage = mock(StorageService.class);
+        var video = mock(Video.class);
+        when(video.getSourceType()).thenReturn(SourceType.YOUTUBE);
+        when(video.getSourceUrl()).thenReturn("https://youtu.be/fixture");
+        var client = new AnalysisServerClient(general, RestClient.create(), builder.build(),
+                new AnalysisServerProperties(null, null, 4.0), storage);
+        assertThat(client.ocr(video, "/fixture/frames")).isPresent();
+        verifyNoInteractions(general);
+        server.verify();
+    }
     @Test void workerDeadlineDetailIsPreservedRatherThanReportedAsConnectionFailure() {
         var builder = RestClient.builder().baseUrl("http://worker.invalid");
         var server = MockRestServiceServer.bindTo(builder).build();
