@@ -242,9 +242,12 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
-            return CandidateReviewEngine.run(openAiClient, context, maxCandidates, visualReviewer, caseLibrary, guidelineLibrary,
-                    trace, evidenceLimit, sourceRelationsEnabled, mechanismRouter,
-                    new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,situationFirstEnabled,sourceUnderstandingEnabled,sourceUnderstandingVersion),ruleUnionEnabled);
+            var services = new CandidateReviewEngine.RunServices(visualReviewer, caseLibrary, guidelineLibrary, trace, mechanismRouter);
+            var features = new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,
+                    situationFirstEnabled, sourceUnderstandingEnabled, sourceUnderstandingVersion);
+            var options = new CandidateReviewEngine.RunOptions(maxCandidates, evidenceLimit,
+                    sourceRelationsEnabled, features, ruleUnionEnabled);
+            return CandidateReviewEngine.run(openAiClient, context, services, options);
         }
     }
 

@@ -102,6 +102,18 @@ final class CandidateReviewEngine {
     private record VerificationScope(String reference, String rawSha256,String isolatedRule) {
         VerificationScope(String reference,String rawSha256) { this(reference,rawSha256,""); }
     }
+    record RunOptions(int maxCandidates, int evidenceLimit, boolean sourceRelationsEnabled,
+                      VerificationFeatures features, boolean ruleUnionEnabled) {
+        RunOptions {
+            Objects.requireNonNull(features, "Verification features required");
+            if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
+            if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
+            if (ruleUnionEnabled && (sourceRelationsEnabled || features.finalBasis() || features.situationFirst() || features.sourceUnderstanding()))
+                throw new IllegalArgumentException("Rule union currently requires the baseline verification contract");
+        }
+    }
+    record RunServices(VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, ContextMechanismRouter router) {}
 
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates) {
         return run(client, context, maxCandidates, null);
@@ -166,11 +178,20 @@ final class CandidateReviewEngine {
                                       VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
                                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, int evidenceLimit,
                                       boolean sourceRelationsEnabled, ContextMechanismRouter router, VerificationFeatures features,boolean ruleUnionEnabled) {
-        if(ruleUnionEnabled && (sourceRelationsEnabled || features.finalBasis() || features.situationFirst() || features.sourceUnderstanding()))
-            throw new IllegalArgumentException("Rule union currently requires the baseline verification contract");
+        // Compatibility adapter for existing replay/trial callers; production uses records below.
+        return run(client, context, new RunServices(visual,caseLibrary,guidelines,requestTrace,router),
+                new RunOptions(maxCandidates,evidenceLimit,sourceRelationsEnabled,features,ruleUnionEnabled));
+    }
+    static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, RunServices services, RunOptions options) {
+        int maxCandidates=options.maxCandidates(), evidenceLimit=options.evidenceLimit();
+        boolean sourceRelationsEnabled=options.sourceRelationsEnabled(), ruleUnionEnabled=options.ruleUnionEnabled();
+        VerificationFeatures features=options.features();
+        VisualContextReviewer visual=services.visual();
+        ReviewCaseLibrary caseLibrary=services.caseLibrary();
+        ReviewGuidelineLibrary guidelines=services.guidelines();
+        var requestTrace=services.requestTrace();
+        ContextMechanismRouter router=services.router();
         boolean finalReviewBasisEnabled = features.finalBasis();
-        if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
-        if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
         var stats = new Stats();
