@@ -252,7 +252,7 @@ final class CandidateReviewEngine {
             explored.addAll(response.reviewedSegmentIds());
             var reviewedIds = response.reviewedSegmentIds();
             primaryIds.stream().filter(id -> !reviewedIds.contains(id)).forEach(unresolved::add);
-            partial |= response.truncated() || batch.contextLimited();
+            partial |= response.truncated();
             if (batch.contextLimited()) stats.limitedBatches++;
             if (response.truncated()) stats.truncatedBatches++;
             if (response.truncated()) unresolved.addAll(primaryIds);
@@ -350,7 +350,7 @@ final class CandidateReviewEngine {
                 }
                 if (candidate.contextExpanded()) stats.expandedCandidates++;
                 if (candidate.contextLimited()) {
-                    stats.verificationLimitedCandidates++; unresolved.add(proposal.anchorId()); partial = true;
+                    stats.verificationLimitedCandidates++;
                 }
                 pending.merge(proposal.anchorId(), 1, Integer::sum);
             }
@@ -381,7 +381,7 @@ final class CandidateReviewEngine {
                             ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal()))));
                     if(prepared.referenceTrace()!=null && stats.contextSelections.size()<MAX_TRACES) stats.contextSelections.add(prepared.referenceTrace());
                     if(c.contextExpanded()) stats.expandedCandidates++;
-                    if(c.contextLimited()) {stats.verificationLimitedCandidates++;unresolved.add(c.proposal().anchorId());partial=true;}
+                    if(c.contextLimited()) {stats.verificationLimitedCandidates++;}
                     pending.merge(c.proposal().anchorId(),1,Integer::sum);
                 }
             } catch(RuntimeException ex) {
@@ -562,7 +562,7 @@ final class CandidateReviewEngine {
         pending.forEach((id, count) -> { if (count > 0) unresolved.add(id); });
         partial |= !unresolved.isEmpty();
         AnalyzerStatus status = explored.isEmpty() ? AnalyzerStatus.FAILED : partial ? AnalyzerStatus.PARTIAL : AnalyzerStatus.SUCCESS;
-        String notice = partial || status == AnalyzerStatus.FAILED ?
+        String notice = partial || status == AnalyzerStatus.FAILED || stats.limitedBatches > 0 || stats.verificationLimitedCandidates > 0 ?
                 "후보 탐색 %d/%d구간 · 미확인 %d구간 · 탐색 응답 검증 실패 %d건 · 검증 누락/실패 %d건 · 판단 보류 %d건 · 예산 제외 %d건 · 문맥 제한 %d배치 · 후보 잘림 %d배치 · 검증 문맥 제한 %d후보"
                         .formatted(explored.size(), input.segments().size(), unresolved.size(), stats.invalidProposals,
                                 stats.verificationFailed, stats.uncertain, stats.budgetSkipped, stats.limitedBatches, stats.truncatedBatches,

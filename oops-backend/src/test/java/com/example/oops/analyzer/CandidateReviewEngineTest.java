@@ -446,6 +446,9 @@ class CandidateReviewEngineTest {
         assertThat(trace.contextSegmentIds()).contains("stt-index-24");
         assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(60000);
         assertThat(trace.contextLimited()).isTrue();
+        assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
+        assertThat(r.unassessedSegmentIds()).isEmpty();
+        assertThat(r.notice()).contains("문맥 제한");
         var discoveryRequests = ArgumentCaptor.forClass(String.class);
         verify(client, atLeastOnce()).completeAsJson(anyString(), discoveryRequests.capture(), eq(Discovery.class));
         assertThat(discoveryRequests.getAllValues()).anySatisfy(request -> {

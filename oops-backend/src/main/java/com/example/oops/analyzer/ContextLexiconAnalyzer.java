@@ -41,6 +41,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
     private final ContextLexicon lexicon;
     private final ContextValidator validator;
     private final ThreadLocal<String> coverageNotice = new ThreadLocal<>();
+    private final ThreadLocal<String> contextLimitNotice = new ThreadLocal<>();
 
     @Override
     public String key() {
@@ -63,6 +64,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         coverageNotice.remove();
+        contextLimitNotice.remove();
         List<Line> lines = collectLines(context);
         List<Candidate> allCandidates = new ArrayList<>();
         int limitedContextCandidates = 0;
@@ -103,7 +105,7 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
         }
         if (limitedContextCandidates > 0) {
             String notice = "일부 맥락 사전 후보의 주변 문맥이 입력 한도로 제한되었습니다. 그룹별 최대 8구간·4,000코드포인트를 확인합니다.";
-            coverageNotice.set(coverageNotice.get() == null ? notice : coverageNotice.get() + " " + notice);
+            contextLimitNotice.set(notice);
         }
 
         // 2단계 — 앞뒤 맥락을 봐야 하는 것만 AI 에게 묻는다
@@ -158,6 +160,13 @@ public class ContextLexiconAnalyzer implements ContentAnalyzer {
     public Optional<String> consumeCoverageNotice(AnalysisContext context) {
         String notice = coverageNotice.get();
         coverageNotice.remove();
+        return Optional.ofNullable(notice);
+    }
+
+    @Override
+    public Optional<String> consumeContextLimitNotice(AnalysisContext context) {
+        String notice = contextLimitNotice.get();
+        contextLimitNotice.remove();
         return Optional.ofNullable(notice);
     }
 

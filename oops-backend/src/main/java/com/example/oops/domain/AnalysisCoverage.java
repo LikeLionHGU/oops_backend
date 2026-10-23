@@ -40,9 +40,17 @@ public class AnalysisCoverage extends BaseTimeEntity {
     @Column(nullable = false, columnDefinition = "varchar(40)")
     private AnalyzerStatus status;
 
-    /** 왜 실패했는지 또는 왜 건너뛰었는지. 성공이면 비어 있다 */
+    /** 실패·생략 이유 또는 정상 처리한 문맥 창의 한도 안내. */
     @Column(length = 300)
     private String message;
+
+    /** Nullable for existing rows. Does not change processing status. */
+    private Boolean contextLimited;
+
+    public void markContextLimited(String notice) {
+        contextLimited = true;
+        message = combineMessages(message, notice);
+    }
 
     private AnalysisCoverage(Video video, CoverageStep step,
                              AnalyzerStatus status, String message) {
@@ -82,7 +90,7 @@ public class AnalysisCoverage extends BaseTimeEntity {
 
     /** 사용자에게 알려야 하는 상태인지. 일부 확인과 실패도 알려야 한다. */
     public boolean needsWarning() {
-        return status == AnalyzerStatus.FAILED || status == AnalyzerStatus.SKIPPED
+        return Boolean.TRUE.equals(contextLimited) || status == AnalyzerStatus.FAILED || status == AnalyzerStatus.SKIPPED
                 || status == AnalyzerStatus.PARTIAL
                 || (status == AnalyzerStatus.NOT_ENABLED
                     && (step == CoverageStep.OCR || step == CoverageStep.SCREEN_TEXT_REVIEW));
@@ -90,6 +98,7 @@ public class AnalysisCoverage extends BaseTimeEntity {
 
     /** 프론트가 분기할 고정 코드. 예: OCR_UNAVAILABLE, FACT_ENTITY_UNAVAILABLE */
     public String warningCode() {
+        if (status == AnalyzerStatus.SUCCESS && Boolean.TRUE.equals(contextLimited)) return step.name() + "_CONTEXT_LIMITED";
         if (status == AnalyzerStatus.NOT_ENABLED) return step.name() + "_NOT_ENABLED";
         if (status == AnalyzerStatus.PARTIAL) {
             return step.name() + "_PARTIAL";

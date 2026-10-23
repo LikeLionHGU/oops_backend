@@ -265,9 +265,16 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     public java.util.Optional<String> consumeCoverageNotice(AnalysisContext context) {
         TextReviewEngine.Result result = lastResult.get();
         if (result == null) return java.util.Optional.empty();
-        String notice = result.notice();
+        String notice = result.status() == AnalyzerStatus.SUCCESS ? null : result.notice();
         String guidelineNotice = guidelineLibrary == null ? null : guidelineLibrary.unavailableNotice(TimelineEventType.SPEECH).orElse(null);
         return java.util.Optional.ofNullable(guidelineNotice == null ? notice : notice == null ? guidelineNotice : notice + " " + guidelineNotice);
+    }
+
+    @Override
+    public java.util.Optional<String> consumeContextLimitNotice(AnalysisContext context) {
+        TextReviewEngine.Result result = lastResult.get();
+        return result != null && result.status() == AnalyzerStatus.SUCCESS
+                ? java.util.Optional.ofNullable(result.notice()) : java.util.Optional.empty();
     }
 
     @Override

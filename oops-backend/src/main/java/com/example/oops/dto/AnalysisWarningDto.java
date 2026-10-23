@@ -3,7 +3,7 @@ package com.example.oops.dto;
 import com.example.oops.domain.AnalysisCoverage;
 
 /**
- * 사용자에게 알려야 할 미수행 단계. 명세 §5-1.
+ * 사용자에게 알려야 할 미수행 단계 또는 문맥 한도 안내. 명세 §5-1.
  *
  * coverage[] 가 전체 현황이라면 이건 "이건 꼭 보세요" 만 추린 것이다.
  * 프론트는 이 배열이 비어 있지 않으면 결과 위에 눈에 띄게 띄워야 한다.

@@ -46,7 +46,12 @@ class CurrentStoredPipelineReplayTest {
             var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,null,library,null,null),
                     new CandidateReviewEngine.RunOptions(24,0,false,new CandidateReviewEngine.VerificationFeatures(false,false,false),false));
             assertThat(index.get()).isEqualTo(row.get("calls").size());
-            assertThat(result.status().name()).isEqualTo(row.path("status").asText());
+            // Historical PARTIAL included bounded-context caveats. Replay the exact same
+            // requests/responses, but now only actual missing work may make processing partial.
+            assertThat(row.path("status").asText()).isIn("PARTIAL", "SUCCESS");
+            assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
+            assertThat(result.unassessedSegmentIds()).isEmpty();
+            if (row.path("status").asText().equals("PARTIAL")) assertThat(result.notice()).contains("문맥 제한");
             assertThat(result.findings()).hasSize(row.get("findings").size());
             var fused=new FindingFusionService().fuse(result.findings());
             var cards=fused.stream().map(f->TimelineEventDto.from(f,null,null,null)).toList();

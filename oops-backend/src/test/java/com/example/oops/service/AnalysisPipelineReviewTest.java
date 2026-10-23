@@ -86,6 +86,25 @@ class AnalysisPipelineReviewTest {
         String longMessage=AnalysisCoverage.combineMessages("발언 검증 " + "가".repeat(290), "맥락 사전 보류 " + "나".repeat(290));
         assertThat(longMessage).hasSizeLessThanOrEqualTo(300).contains("발언 검증", "맥락 사전 보류");
     }
+    @org.junit.jupiter.api.Test
+    void aggregationRetainsContextCaveatWithoutDowngradingSuccessfulProcessing() {
+        var pipeline = mock(AnalysisPipeline.class, CALLS_REAL_METHODS);
+        var video = Video.builder().filename("test.mp4").build();
+        Map<CoverageStep, AnalysisCoverage> coverage = new EnumMap<>(CoverageStep.class);
+        var first = AnalysisCoverage.of(video, CoverageStep.SPEECH_REVIEW, AnalyzerStatus.SUCCESS, null);
+        first.markContextLimited("제한된 문맥 창");
+        coverage.put(CoverageStep.SPEECH_REVIEW, first);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(pipeline, "record", coverage, video,
+                CoverageStep.SPEECH_REVIEW, AnalyzerStatus.SUCCESS, null);
+        var merged = coverage.get(CoverageStep.SPEECH_REVIEW);
+        assertThat(merged.getStatus()).isEqualTo(AnalyzerStatus.SUCCESS);
+        assertThat(merged.warningCode()).isEqualTo("SPEECH_REVIEW_CONTEXT_LIMITED");
+        assertThat(merged.needsWarning()).isTrue();
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(pipeline, "record", coverage, video,
+                CoverageStep.SPEECH_REVIEW, AnalyzerStatus.PARTIAL, "실제 응답 누락");
+        assertThat(coverage.get(CoverageStep.SPEECH_REVIEW).warningCode()).isEqualTo("SPEECH_REVIEW_PARTIAL");
+        assertThat(coverage.get(CoverageStep.SPEECH_REVIEW).getMessage()).contains("문맥 창", "응답 누락");
+    }
     @ParameterizedTest
     @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,true"})
     void propagatesValidatedCoverageAndDrainsIntermediateResults(AnalyzerStatus expected, boolean simulateApiFailure) {

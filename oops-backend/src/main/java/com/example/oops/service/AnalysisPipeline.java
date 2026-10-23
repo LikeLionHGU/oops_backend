@@ -222,6 +222,7 @@ public class AnalysisPipeline {
 
                     List<RiskFinding> produced = analyzer.analyze(context);
                     String coverageNotice = analyzer.consumeCoverageNotice(context).orElse(null);
+                    String contextLimitNotice = analyzer.consumeContextLimitNotice(context).orElse(null);
                     var reviewResult = analyzer.consumeReviewResult(context).orElse(null);
                     if (reviewResult != null && reviewResult.diagnostics() != null) {
                         diagnostics.add(reviewResult.diagnostics());
@@ -251,6 +252,9 @@ public class AnalysisPipeline {
                                         : coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL,
                                 coverageNotice);
                     }
+                    if (contextLimitNotice != null && step != null && coverage.containsKey(step)) {
+                        coverage.get(step).markContextLimited(contextLimitNotice);
+                    }
                 } catch (AnalysisStoppedException e) {
                     throw e;
                 } catch (Exception e) {
@@ -261,6 +265,7 @@ public class AnalysisPipeline {
                 } finally {
                     // Also drain results when cancellation or an exception interrupts the normal consume path.
                     analyzer.consumeReviewResult(context);
+                    analyzer.consumeContextLimitNotice(context);
                 }
             }
 
@@ -403,7 +408,9 @@ public class AnalysisPipeline {
         }
         AnalyzerStatus merged = status.worseOf(existing.getStatus());
         String combined = AnalysisCoverage.combineMessages(existing.getMessage(), message);
-        coverage.put(step, AnalysisCoverage.of(video, step, merged, combined));
+        AnalysisCoverage updated = AnalysisCoverage.of(video, step, merged, combined);
+        if (Boolean.TRUE.equals(existing.getContextLimited())) updated.markContextLimited(null);
+        coverage.put(step, updated);
     }
 
     /** application.yml 에 켜둔 분석기만, 설정 순서대로 실행한다. */

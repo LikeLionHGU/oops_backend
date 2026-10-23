@@ -35,4 +35,9 @@ public interface ContentAnalyzer {
     default Optional<String> consumeCoverageNotice(AnalysisContext context) {
         return Optional.empty();
     }
+
+    /** Bounded input is a caveat, not evidence that processing failed or a response was missing. */
+    default Optional<String> consumeContextLimitNotice(AnalysisContext context) {
+        return Optional.empty();
+    }
 }

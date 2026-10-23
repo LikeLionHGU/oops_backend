@@ -79,8 +79,8 @@ class ContextLexiconAnalyzerTest {
         var context = new AnalysisContext(video, null, transcript, null);
         analyzer.analyze(context);
         assertThat(requests().get(0).before().split("\n")).hasSize(8);
-        assertThat(analyzer.consumeCoverageNotice(context)).hasValueSatisfying(s -> assertThat(s).contains("입력 한도"));
-        assertThat(analyzer.consumeCoverageNotice(context)).isEmpty();
+        assertThat(analyzer.consumeContextLimitNotice(context)).hasValueSatisfying(s -> assertThat(s).contains("입력 한도"));
+        assertThat(analyzer.consumeContextLimitNotice(context)).isEmpty();
     }
 
     @Test
