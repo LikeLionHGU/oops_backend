@@ -106,7 +106,8 @@ class CandidateReviewEngineTest {
     }
 
     @Test void discoveryChecksScreenDependencySeparatelyWithoutRequiringTextualRisk() {
-        assertThat(DISCOVERY_PROMPT).contains("위험 후보 탐색과 별도로 모든 primaryIds", "'텍스트 위험 없음'은 '화면 확인 불필요'가 아니다");
+        assertThat(DISCOVERY_PROMPT).contains("현재 판단에 필수인 화면 사실",
+                "텍스트만으로 위험 근거가 없다는 이유로 제외하지 않는다");
     }
     @Test void missingDuplicateAndUnparsedVerificationHaveDistinctFailureCodes() {
         for (String kind : List.of("MISSING_CANDIDATE", "DUPLICATE_CANDIDATE", "NO_PARSED_RESPONSE")) {
