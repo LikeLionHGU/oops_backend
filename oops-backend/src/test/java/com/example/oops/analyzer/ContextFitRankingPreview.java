@@ -45,8 +45,22 @@ final class ContextFitRankingPreview {
     }
     static Plan select(List<ContextExampleSelector.Match> eligiblePool, List<ContextExample> baseline,
                        Collection<ReviewInput.Segment> raw, int max, Predicate<List<ContextExample>> fits) {
+        return select(eligiblePool,baseline,raw,List.of(),max,fits);
+    }
+    static Plan select(List<ContextExampleSelector.Match> eligiblePool, List<ContextExample> baseline,
+                       Collection<ReviewInput.Segment> raw, Collection<ReviewInput.Segment> focus,
+                       int max, Predicate<List<ContextExample>> fits) {
         if (max < 0 || baseline.size()>max) throw new IllegalArgumentException("Bounded selection required");
-        var query = queryCues(raw);
+        // Resolve focus against raw IDs: caller-provided text is not a new evidence source.
+        var focusIds = new HashSet<String>();
+        focus.forEach(s -> focusIds.add(s.id()));
+        var anchors = raw.stream().filter(s -> focusIds.contains(s.id()) && s.reviewTarget()
+                && s.type()==com.example.oops.domain.TimelineEventType.SPEECH).toList();
+        if (!focus.isEmpty() && anchors.isEmpty())
+            return new Plan(List.copyOf(baseline),Set.of(),"FOCUS_NOT_IN_RAW",null,null);
+        var near = focus.isEmpty() ? raw : raw.stream().filter(s -> anchors.stream().anyMatch(f ->
+                s.startMs()>=f.startMs()-15000 && s.startMs()<=f.endMs()+15000)).toList();
+        var query = queryCues(near);
         if (query.isEmpty()) return new Plan(List.copyOf(baseline),query,"NO_DISCOURSE_CUE",null,null);
         if (baseline.stream().anyMatch(e -> qualified(e,query)))
             return new Plan(List.copyOf(baseline),query,"BOUNDARY_ALREADY_COVERED",null,null);
@@ -59,6 +73,7 @@ final class ContextFitRankingPreview {
             var proposed = new ArrayList<>(baseline);
             String removed = null;
             // Retain leading references; at most one trailing slot can change.
+            if (proposed.size()==max && proposed.size()==1) continue;
             if (proposed.size()==max) removed = proposed.remove(proposed.size()-1).id();
             proposed.add(example);
             if (fits.test(proposed)) return new Plan(List.copyOf(proposed),query,"BOUNDARY_SUPPLEMENTED",example.id(),removed);

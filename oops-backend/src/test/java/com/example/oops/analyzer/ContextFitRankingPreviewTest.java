@@ -41,6 +41,40 @@ class ContextFitRankingPreviewTest {
         var raw=List.of(new ReviewInput.Segment("a",SPEECH,0,1000,"과거 사례",null),new ReviewInput.Segment("b",SPEECH,60000,61000,"굉장히 충격받았어요",null));
         assertThat(ContextFitRankingPreview.queryCues(raw)).doesNotContain(ContextFitRankingPreview.Cue.REPORTED);
     }
+    @Test void remoteCueDoesNotSupplementCandidateButNearbyCueDoes() {
+        var lead=example("lead","주제");
+        var tail=example("tail","주제");
+        var boundary=example("boundary","뜻 설명과 직접 요청");
+        var pool=List.of(new ContextExampleSelector.Match(boundary,1,false,0,List.of("topic")));
+        var anchor=new ReviewInput.Segment("a",SPEECH,0,1000,"그 표현을 이야기합니다",null);
+        var remote=new ReviewInput.Segment("b",SPEECH,60000,61000,"줄임말 뜻을 설명합니다",null);
+        var remotePlan=ContextFitRankingPreview.select(pool,List.of(lead,tail),List.of(anchor,remote),List.of(anchor),2,rows->true);
+        assertThat(remotePlan.selected()).containsExactly(lead,tail);
+        assertThat(remotePlan.state()).isEqualTo("NO_DISCOURSE_CUE");
+        var nearby=new ReviewInput.Segment("b",SPEECH,2000,3000,remote.text(),null);
+        assertThat(ContextFitRankingPreview.select(pool,List.of(lead,tail),List.of(anchor,nearby),List.of(anchor),2,rows->true)
+                .selected()).containsExactly(lead,boundary);
+    }
+    @Test void focusTextCannotInjectCueAndUnknownFocusDoesNotExpandToFullRaw() {
+        var lead=example("lead","주제");
+        var boundary=example("boundary","뜻 설명과 직접 요청");
+        var pool=List.of(new ContextExampleSelector.Match(boundary,1,false,0,List.of("topic")));
+        var fake=new ReviewInput.Segment("s",SPEECH,0,1000,"줄임말 뜻",null);
+        assertThat(ContextFitRankingPreview.select(pool,List.of(lead),raw("오늘 이야기합니다"),List.of(fake),2,rows->true)
+                .state()).isEqualTo("NO_DISCOURSE_CUE");
+        var unknown=new ReviewInput.Segment("unknown",SPEECH,0,1000,"뜻",null);
+        assertThat(ContextFitRankingPreview.select(pool,List.of(lead),raw("뜻을 설명합니다"),List.of(unknown),2,rows->true)
+                .state()).isEqualTo("FOCUS_NOT_IN_RAW");
+    }
+    @Test void singleSlotNeverEvictsLeadingReferenceButEmptySlotCanBeFilled() {
+        var lead=example("lead","주제");
+        var boundary=example("boundary","뜻 설명과 직접 요청");
+        var pool=List.of(new ContextExampleSelector.Match(boundary,1,false,0,List.of("topic")));
+        assertThat(ContextFitRankingPreview.select(pool,List.of(lead),raw("뜻을 설명합니다"),1,rows->true)
+                .selected()).containsExactly(lead);
+        assertThat(ContextFitRankingPreview.select(pool,List.of(),raw("뜻을 설명합니다"),1,rows->true)
+                .selected()).containsExactly(boundary);
+    }
     @Test void compareSameFrozenPoolWithOriginalBudgetWithoutProviderCalls() throws Exception {
         Path root=Path.of("../datasets/controversy"), preview=root.resolve("experiments/speech-act-mechanism-20261023-verified");
         assumeTrue(Files.exists(preview.resolve("preview-runtime.json")));
