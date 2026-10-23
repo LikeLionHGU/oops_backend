@@ -32,7 +32,7 @@ def inventory(runtime, units, incidents, root):
                    "reviewBasis": approval.get("basis", "AUTHORED_BOUNDARY_NO_MACHINE_APPROVAL_RECORD"),
                    "developmentDecision": unit.get("developmentDecision"),
                    "independentGold": False, "trainingUseAuthorized": False,
-                   "contrastKind": "SYNTHETIC_DEVELOPMENT_CONTROL",
+                   "contrastKind": "SYNTHETIC_DEVELOPMENT_CONTROL" if unit["normalContrasts"] else "NONE",
                    "contrastCount": len(unit["normalContrasts"]),
                    "gaps": ["INDEPENDENT_REVIEW_NOT_ESTABLISHED", "REAL_CONTRAST_LINK_NOT_ESTABLISHED"]}
         else:

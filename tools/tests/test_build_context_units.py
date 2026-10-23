@@ -172,6 +172,19 @@ class ContextUnitTests(unittest.TestCase):
         (self.root / "source.json").write_text("{}")
         with self.assertRaises(ValueError): self.compile()
 
+    def test_approved_observed_pass_does_not_require_invented_synthetic_dialogue(self):
+        unit = self.standalone("PASS")
+        unit["normalContrasts"] = []
+        out, _ = self.compile(unit)
+        example = out["examples"][0]
+        self.assertEqual(example["context"]["normalContrasts"], [])
+        self.assertEqual(example["context"]["criticismHypotheses"], [])
+        self.assertIn("정상 경계", example["context"]["flow"][-1])
+        unit = self.standalone("REVIEW_REQUIRED")
+        unit["normalContrasts"] = []
+        with self.assertRaisesRegex(ValueError, "UNIT_CONTROL_PROVENANCE_REQUIRED"):
+            self.compile(unit)
+
     def test_linked_approved_control_is_verbatim_and_not_a_model_label(self):
         doc = {"status": "USER_APPROVED_DEVELOPMENT_BOUNDARIES", "trainingUseAuthorized": False,
                "normalDrafts": [{"id": "normal", "humanApproved": True, "expectedDecision": "PASS",

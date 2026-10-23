@@ -68,7 +68,9 @@ class ContextAssetRetrievalAuditTest {
                     "selfIndexProbeRetrieved", selected.trace().exampleIds().contains(example.get("id").asText()),
                     "payloadCodePoints", selected.trace().payloadCodePoints()));
         }
-        assertThat(probes).hasSize(43);
+        // The active casebook grows; audit every current entry, not a historical count.
+        assertThat(probes).hasSize(archive.get("examples").size());
+        assertThat(probes.stream().map(p -> p.get("id")).toList()).doesNotHaveDuplicates();
         String output = System.getenv("CONTEXT_ASSET_AUDIT_OUTPUT");
         if (output != null && !output.isBlank()) {
             Path destination = Path.of(output).toAbsolutePath();

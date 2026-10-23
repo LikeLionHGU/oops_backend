@@ -175,7 +175,10 @@ def compile_preview(base, units, catalog, root, profiles=None):
         require(text(u.get("retrievalText"), 8000) and text(u.get("interpretation"), 350)
                 and text(u.get("boundary"), 350), "UNIT_TEXT_INVALID")
         contrasts = u.get("normalContrasts")
-        require(isinstance(contrasts, list) and 1 <= len(contrasts) <= 4
+        # A source-linked, approved PASS unit is itself a normal example. Do not
+        # require invented synthetic dialogue merely to admit an observed case.
+        minimum_contrasts = 0 if standalone and u["developmentDecision"] == "PASS" else 1
+        require(isinstance(contrasts, list) and minimum_contrasts <= len(contrasts) <= 4
                 and all(c.get("kind") == "SYNTHETIC_DEVELOPMENT_CONTROL" and text(c.get("text"), 300)
                         for c in contrasts), "UNIT_CONTROL_PROVENANCE_REQUIRED")
         for control in contrasts:

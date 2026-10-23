@@ -59,6 +59,11 @@ class CasebookAssetTests(unittest.TestCase):
         self.assertEqual(report["summary"]["withContrasts"], 1)
         self.assertEqual(self.runtime, original)
         self.assertFalse(any(row["independentGold"] for row in report["rows"]))
+        self.unit["normalContrasts"] = []
+        empty = inventory(self.runtime, [self.unit], incidents, self.root)
+        row = next(r for r in empty["rows"] if r["id"] == self.unit["id"])
+        self.assertEqual(row["contrastKind"], "NONE")
+        self.assertEqual(row["contrastCount"], 0)
 
     def test_inventory_rejects_unlinked_legacy(self):
         with self.assertRaises(ValueError): inventory(self.runtime, [self.unit], [], self.root)
