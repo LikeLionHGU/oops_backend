@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
-/** Offline loading/contract audit of saved responses; no Spring, media or API calls. */
+/** Test-runtime-only audit of saved responses; no Spring, media or API calls. */
 public final class ReviewGuidelineReplay {
     private ReviewGuidelineReplay() {}
     public static void main(String[] args) {

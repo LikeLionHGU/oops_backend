@@ -687,7 +687,8 @@ tasks.register('contextContrastPlan', JavaExec) {
 
 // Saved-response audit with the production evidence validator, without paid calls.
 tasks.register('reviewGuidelineReplay', JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.example.oops.analyzer.ReviewGuidelineReplay'
     doFirst {
         def input = providers.gradleProperty('replayInput').orNull
