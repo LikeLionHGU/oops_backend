@@ -187,9 +187,14 @@ class FinalReviewBasisContractTest {
         assertThat(requests.get(1)).isEqualTo(requests.get(0));
     }
     @Test void springFlagIsOffByDefaultAndLegacyAnalyzerRequestsRemainUnchanged() throws Exception {
-        var setter=SpeechReviewAnalyzer.class.getDeclaredMethod("setFinalReviewBasisEnabled",boolean.class);
-        assertThat(setter.getParameters()[0].getAnnotation(org.springframework.beans.factory.annotation.Value.class).value())
-                .isEqualTo("${oops.analysis.final-review-basis-enabled:false}");
+        var component=Arrays.stream(com.example.oops.config.SpeechReviewProperties.class.getRecordComponents())
+                .filter(c -> c.getName().equals("finalReviewBasisEnabled")).findFirst().orElseThrow();
+        assertThat(component.getAccessor()).isNotNull();
+        var constructor=com.example.oops.config.SpeechReviewProperties.class.getDeclaredConstructors()[0];
+        var parameter=Arrays.stream(constructor.getParameters())
+                .filter(p -> p.getName().equals("finalReviewBasisEnabled")).findFirst().orElseThrow();
+        assertThat(parameter.getAnnotation(org.springframework.boot.context.properties.bind.DefaultValue.class).value())
+                .containsExactly("false");
         try(var in=getClass().getResourceAsStream("/application.yml")) {
             assertThat(new String(Objects.requireNonNull(in).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8))
                     .contains("final-review-basis-enabled: ${FINAL_REVIEW_BASIS_ENABLED:false}");

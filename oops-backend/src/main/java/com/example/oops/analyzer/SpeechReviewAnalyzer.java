@@ -133,33 +133,26 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private boolean situationFirstEnabled;
     private boolean sourceUnderstandingEnabled;
     private boolean ruleUnionEnabled;
-    @org.springframework.beans.factory.annotation.Autowired
-    void setRuleUnionEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.rule-candidate-union-enabled:false}") boolean enabled) {
+    void setRuleUnionEnabled(boolean enabled) {
         this.ruleUnionEnabled=enabled;
     }
     private SourceUnderstandingContract.Version sourceUnderstandingVersion=SourceUnderstandingContract.Version.ACTS_V1;
-    @org.springframework.beans.factory.annotation.Autowired
-    void setSourceUnderstandingVersion(@org.springframework.beans.factory.annotation.Value("${oops.analysis.source-understanding-contract:acts-v1}") String value) {
+    void setSourceUnderstandingVersion(String value) {
         this.sourceUnderstandingVersion=SourceUnderstandingContract.Version.config(value);
     }
-    @org.springframework.beans.factory.annotation.Autowired
-    void setSourceUnderstandingEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.source-understanding-enabled:false}") boolean enabled) {
+    void setSourceUnderstandingEnabled(boolean enabled) {
         this.sourceUnderstandingEnabled=enabled;
     }
-    @org.springframework.beans.factory.annotation.Autowired
-    void setSituationFirstEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.situation-first-verification-enabled:false}") boolean enabled) {
+    void setSituationFirstEnabled(boolean enabled) {
         this.situationFirstEnabled=enabled;
     }
-    @org.springframework.beans.factory.annotation.Autowired
-    void setFinalReviewBasisEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.final-review-basis-enabled:false}") boolean enabled) {
+    void setFinalReviewBasisEnabled(boolean enabled) {
         this.finalReviewBasisEnabled=enabled;
     }
-    @org.springframework.beans.factory.annotation.Autowired
-    void setSourceRelationsEnabled(@org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-source-relations-enabled:false}") boolean enabled) {
+    void setSourceRelationsEnabled(boolean enabled) {
         this.sourceRelationsEnabled = enabled;
     }
-    @org.springframework.beans.factory.annotation.Autowired
-    void setEvidenceLimit(@org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-evidence-limit:0}") int limit) {
+    void setEvidenceLimit(int limit) {
         if (limit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
         this.evidenceLimit = limit;
     }
@@ -167,12 +160,9 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     private ReviewCaseLibrary caseLibrary;
     private ReviewGuidelineLibrary guidelineLibrary;
     private ContextMechanismRouter mechanismRouter;
-    @org.springframework.beans.factory.annotation.Autowired
     void setMechanismRouter(ContextMechanismRouter router) { this.mechanismRouter = router; }
     private com.example.oops.service.ReviewRequestTraceStore requestTraces;
-    @org.springframework.beans.factory.annotation.Autowired
     void setRequestTraces(com.example.oops.service.ReviewRequestTraceStore store) { this.requestTraces = store; }
-    @org.springframework.beans.factory.annotation.Autowired
     void setGuidelineLibrary(ReviewGuidelineLibrary library) { this.guidelineLibrary = library; }
     public SpeechReviewAnalyzer(OpenAiClient client) { this(client, true); }
     /** Legacy constructor retained for existing contract regression tests and baseline comparisons. */
@@ -180,9 +170,9 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         this(client, enabled, false, 24);
     }
     public SpeechReviewAnalyzer(OpenAiClient client,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-enabled:true}") boolean candidateEnabled,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-max-candidates:24}") int maxCandidates) {
+            boolean enabled,
+            boolean candidateEnabled,
+            int maxCandidates) {
         if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
         this.openAiClient = client;
         this.dialogueEnabled = enabled;
@@ -190,23 +180,43 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         this.maxCandidates = maxCandidates;
     }
     public SpeechReviewAnalyzer(OpenAiClient client,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-enabled:true}") boolean candidateEnabled,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-max-candidates:24}") int maxCandidates,
+            boolean enabled,
+            boolean candidateEnabled,
+            int maxCandidates,
             VisualContextReviewer visualReviewer) {
         this(client, enabled, candidateEnabled, maxCandidates);
         this.visualReviewer = visualReviewer;
     }
-    @org.springframework.beans.factory.annotation.Autowired
     public SpeechReviewAnalyzer(OpenAiClient client,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.dialogue-review-enabled:true}") boolean enabled,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-enabled:true}") boolean candidateEnabled,
-            @org.springframework.beans.factory.annotation.Value("${oops.analysis.candidate-review-max-candidates:24}") int maxCandidates,
+            boolean enabled,
+            boolean candidateEnabled,
+            int maxCandidates,
             VisualContextReviewer visualReviewer, ReviewCaseLibrary caseLibrary) {
         this(client, enabled, candidateEnabled, maxCandidates, visualReviewer);
         this.caseLibrary = caseLibrary;
     }
     private final ThreadLocal<TextReviewEngine.Result> lastResult = new ThreadLocal<>();
+
+    /** Single production injection path. Legacy constructors/setters remain for offline comparisons. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public SpeechReviewAnalyzer(OpenAiClient client,
+            com.example.oops.config.SpeechReviewProperties settings,
+            VisualContextReviewer visualReviewer, ReviewCaseLibrary caseLibrary,
+            ReviewGuidelineLibrary guidelineLibrary, ContextMechanismRouter mechanismRouter,
+            com.example.oops.service.ReviewRequestTraceStore requestTraces) {
+        this(client, settings.dialogueReviewEnabled(), settings.candidateReviewEnabled(),
+                settings.candidateReviewMaxCandidates(), visualReviewer, caseLibrary);
+        setEvidenceLimit(settings.candidateReviewEvidenceLimit());
+        setSourceRelationsEnabled(settings.candidateSourceRelationsEnabled());
+        setFinalReviewBasisEnabled(settings.finalReviewBasisEnabled());
+        setSituationFirstEnabled(settings.situationFirstVerificationEnabled());
+        setSourceUnderstandingEnabled(settings.sourceUnderstandingEnabled());
+        setSourceUnderstandingVersion(settings.sourceUnderstandingContract());
+        setRuleUnionEnabled(settings.ruleCandidateUnionEnabled());
+        setGuidelineLibrary(guidelineLibrary);
+        setMechanismRouter(mechanismRouter);
+        setRequestTraces(requestTraces);
+    }
 
     @Override
     public String key() {
