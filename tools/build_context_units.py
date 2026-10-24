@@ -27,6 +27,31 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+def projection_flow(unit):
+    """Authored summaries retain an ordered, complete mapping; never quote text."""
+    p = unit.get("contextProjection")
+    require(unit.get("schemaVersion") == "context-reference-unit-2"
+            and unit.get("source", {}).get("kind") == "STORED_TRANSCRIPT_SNAPSHOT",
+            "PROJECTION_TRANSCRIPT_DEVELOPMENT_ONLY")
+    require(isinstance(p, dict) and set(p) == {"kind", "entries"}
+            and p["kind"] == "AUTHORED_CONTEXT_SUMMARY_NOT_QUOTE", "PROJECTION_KIND_REQUIRED")
+    entries = p["entries"]
+    require(isinstance(entries, list) and 1 <= len(entries) <= 7, "PROJECTION_ENTRY_LIMIT")
+    covered, flow = [], []
+    for entry in entries:
+        require(isinstance(entry, dict) and set(entry) == {"sourceIds", "text"}
+                and isinstance(entry["sourceIds"], list) and entry["sourceIds"]
+                and all(isinstance(i, str) for i in entry["sourceIds"])
+                and text(entry["text"], 250), "PROJECTION_ENTRY_INVALID")
+        covered.extend(entry["sourceIds"])
+        line = "작성 요약(원문 인용 아님; " + ",".join(entry["sourceIds"]) + "): " + entry["text"]
+        require(text(line, 350), "PROJECTION_COMPILED_TEXT_LIMIT")
+        flow.append(line)
+    require(covered == unit["utteranceIds"], "PROJECTION_COMPLETE_ORDERED_COVERAGE_REQUIRED")
+    require(13 <= len(covered) <= 64, "PROJECTION_LONG_CONTEXT_ONLY")
+    return flow
+
+
 def validate_control_link(root, control):
     """Optional approved development provenance stays out of the model payload."""
     if "approvalSource" not in control:
@@ -95,7 +120,7 @@ def linked_lines(root, unit):
     index = {line["id"]: line for line in lines}
     require(len(index) == len(lines), "UNIT_SOURCE_DUPLICATE_ID")
     ids = unit["utteranceIds"]
-    require(isinstance(ids, list) and 1 <= len(ids) <= 12 and len(ids) == len(set(ids))
+    require(isinstance(ids, list) and 1 <= len(ids) <= (64 if "contextProjection" in unit else 12) and len(ids) == len(set(ids))
             and all(i in index for i in ids), "UNIT_UTTERANCE_IDS_INVALID")
     positions = {line["id"]: i for i, line in enumerate(lines)}
     require([positions[i] for i in ids] == sorted(positions[i] for i in ids), "UNIT_UTTERANCE_ORDER_INVALID")
@@ -186,11 +211,13 @@ def compile_preview(base, units, catalog, root, profiles=None):
         lines = linked_lines(root, u)
         raw_by_id = {line["id"]: line["text"] for line in lines}
         flow = []
-        for line in lines:
+        for line in ([] if "contextProjection" in u else lines):
             labels = [label for role, label in (("situationIds", "상황"), ("evaluationIds", "평가"))
                       if line["id"] in u["roles"][role]]
             if labels:
                 flow.append("·".join(labels) + " 원문: " + raw_by_id[line["id"]])
+        if "contextProjection" in u:
+            flow = projection_flow(u)
         require(1 <= len(flow) <= 12 and all(text(s, 350) for s in flow), "UNIT_FLOW_LIMIT")
         context = {"coverage": "SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "flow": flow,
                    "criticismHypotheses": [u["interpretation"]],
@@ -201,6 +228,8 @@ def compile_preview(base, units, catalog, root, profiles=None):
             source_doc = parse(read_bytes(inside(root, u["source"]["path"])))
             if source_doc.get("sourceKind") == "USER_SUPPLIED_SCRIPT_NOT_AUDIO_VERIFIED":
                 context["missingContext"][-1] = "사용자 제공 자막 스크립트 발췌이며 원음·화자·억양·독립 검수는 확인하지 않았다. 보충 관계 설명은 사용자 문맥이지 전사 사실이 아니다. 과거 사례를 현재 원문 근거로 복사하지 않는다."
+        if "contextProjection" in u:
+            context["missingContext"].append("흐름은 개발자가 작성한 구간 연결 요약이며 원문 인용·별도 사용자 요약 승인·현재 영상의 증거가 아니다. 구간ID 전체 연결은 구조 검사이지 요약 의미의 정확성 보증이 아니다.")
         if standalone:
             review_label = "사용자 승인 개발"
             if u["source"]["kind"] == "STORED_OCR_FRAME_SNAPSHOT":

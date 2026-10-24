@@ -130,7 +130,7 @@ def source_lines(root, spec):
     rows = original.get(keys[src["format"]])
     require(isinstance(rows, list), "SOURCE_SEGMENTS_REQUIRED")
     entries = spec["segments"]
-    require(isinstance(entries, list) and 1 <= len(entries) <= (11 if spec["decision"] == "PASS" else 12),
+    require(isinstance(entries, list) and 1 <= len(entries) <= (64 if "contextProjection" in spec else (11 if spec["decision"] == "PASS" else 12)),
             "COMPLETE_CONTEXT_MUST_FIT_UNIT_CONTRACT")
     lines, situations, evaluations = [], [], []
     indexes, ids = [], []
@@ -170,13 +170,14 @@ def plan(root, spec):
     exact(spec, ("schemaVersion", "action", "slug", "id", "familyId", "sourceGroupId", "decision", "source",
                  "approval", "segments", "interpretation", "boundary"),
           ("mechanismIds", "routingKeys", "retrievalText", "relation", "normalContrasts", "relatedUnitIds",
-           "expectedUnitSha256", "missingInformation"))
+           "expectedUnitSha256", "missingInformation", "contextProjection"))
     require(spec["schemaVersion"] == "casebook-intake-1" and spec["action"] in {"ADD", "UPDATE", "HOLD"}, "INTAKE_ACTION_REQUIRED")
     require(isinstance(spec["slug"], str) and SLUG.fullmatch(spec["slug"]), "SAFE_SLUG_REQUIRED")
     require(all(isinstance(spec[k], str) and IDENTITY.fullmatch(spec[k]) for k in ("id", "familyId", "sourceGroupId"))
             and "#" not in spec["familyId"] and "#" not in spec["sourceGroupId"], "IDENTITY_REQUIRED")
     require(spec["decision"] in {"PASS", "REVIEW_REQUIRED", "UNCERTAIN"}, "DECISION_REQUIRED")
     require((spec["action"] == "HOLD") == (spec["decision"] == "UNCERTAIN"), "UNCERTAIN_IS_HOLD_ONLY")
+    require("contextProjection" not in spec or spec["action"] == "ADD", "PROJECTION_ADD_ONLY")
     require(all(text(spec[k], 350) for k in ("interpretation", "boundary")), "AUTHORED_BOUNDARY_REQUIRED")
     implementation = implementation_hashes()
     before = baseline(root)
@@ -212,6 +213,8 @@ def plan(root, spec):
                 "source": {"kind": "STORED_TRANSCRIPT_SNAPSHOT", "path": source_path, "sha256": digest(encoded(source))},
                 "utteranceIds": ids, "roles": roles, "retrievalText": spec["retrievalText"],
                 "interpretation": spec["interpretation"], "boundary": spec["boundary"], "normalContrasts": spec.get("normalContrasts", [])}
+        if "contextProjection" in spec:
+            unit["contextProjection"] = copy.deepcopy(spec["contextProjection"])
         if spec["action"] == "UPDATE":
             old_raw = read_bytes(local(root, unit_path)); old = parse(old_raw)
             require(digest(old_raw) == spec.get("expectedUnitSha256"), "EXPECTED_UNIT_HASH_REQUIRED_OR_STALE")

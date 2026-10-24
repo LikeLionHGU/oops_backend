@@ -12,6 +12,19 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic role/search contracts only; no provider calls or semantic-accuracy claims. */
 class ContextRelationRetrievalTest {
+    @Test void longSourceIdsRemainBoundedAndDistinct() {
+        for (int count : List.of(24, 64, 65)) {
+            var ids = java.util.stream.IntStream.range(0, count).mapToObj(i -> "s" + i).toList();
+            var p = new ContextRelationRetrieval.Profile("authored-relation-search-1",
+                    "AUTHORED_RETRIEVAL_NOT_SOURCE_EVIDENCE", "a".repeat(64), ids,
+                    "상황", "대상", "작성 평가", "작성 연결");
+            assertThat(ContextRelationRetrieval.valid(p)).isEqualTo(count <= 64);
+        }
+        var duplicate = new ContextRelationRetrieval.Profile("authored-relation-search-1",
+                "AUTHORED_RETRIEVAL_NOT_SOURCE_EVIDENCE", "a".repeat(64), List.of("s1", "s1"),
+                "상황", "대상", "작성 평가", "작성 연결");
+        assertThat(ContextRelationRetrieval.valid(duplicate)).isFalse();
+    }
     private static final String SITUATION = "가게가 없는 상황 설명";
     private static final String EVALUATION = "선택지를 낮추는 평가 표현";
     private final ContextExampleSelectionTest fixture = new ContextExampleSelectionTest();

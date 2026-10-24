@@ -80,6 +80,59 @@ def fake_audit(plan):
             "retrieved": True, "providerCalls": 0, "testFixtureNotJavaExecution": True}
 
 
+def projected_spec(root, count=24):
+    value = spec(root)
+    value['source'].update(save(root, 'research/projected.json', {'transcript': [
+        {'text': f'합성 원문 {i}', 'startMs': i * 1000, 'endMs': (i + 1) * 1000}
+        for i in range(count)]}))
+    value['segments'] = [{'index': i, 'id': f'stt-index-{i}',
+                          'role': 'EVALUATION' if i == 0 else 'SITUATION'} for i in range(count)]
+    value['contextProjection'] = {'kind': 'AUTHORED_CONTEXT_SUMMARY_NOT_QUOTE', 'entries': [
+        {'sourceIds': [f'stt-index-{i}' for i in range(n, min(n + 4, count))],
+         'text': f'합성 작성 요약 {n}'} for n in range(0, count, 4)]}
+    return value
+
+
+def test_projection_keeps_complete_raw_and_labels_authored_payload(dataset):
+    value = projected_spec(dataset)
+    before = snapshot(dataset)
+    plan = tool.plan(dataset, value)
+    assert snapshot(dataset) == before
+    source = plan['payload']['files']['context-sources/new-boundary.json']
+    assert len(source['segments']) == 24
+    assert [s['text'] for s in source['segments']] == [f'합성 원문 {i}' for i in range(24)]
+    example = next(e for e in plan['payload']['candidateRuntime']['examples'] if e['id'] == value['id'])
+    assert len(example['context']['flow']) == 7  # Six authored groups + PASS boundary.
+    assert all(s.startswith('작성 요약(원문 인용 아님;') for s in example['context']['flow'][:-1])
+    assert 'stt-index-23' in example['context']['flow'][-2]
+    assert '합성 원문 0' not in str(example['context']['flow'])
+    assert len(example['relationProfile']['sourceIds']) == 24
+
+
+def test_projection_does_not_bypass_source_or_approval_caps(dataset):
+    value = projected_spec(dataset)
+    value['approval']['sha256'] = '0' * 64
+    with pytest.raises(tool.PilotError, match='REFERENCE_HASH_MISMATCH'):
+        tool.plan(dataset, value)
+    with pytest.raises(tool.PilotError, match='COMPLETE_CONTEXT'):
+        tool.source_lines(dataset, projected_spec(dataset, 65))
+
+
+@pytest.mark.parametrize('fault', ['missing', 'duplicate', 'foreign', 'order', 'kind', 'oversize', 'too-many', 'too-short'])
+def test_projection_rejects_incomplete_or_unbounded_mapping(dataset, fault):
+    value = projected_spec(dataset, 12 if fault == 'too-short' else 24)
+    p = value['contextProjection']; entries = p['entries']
+    if fault == 'missing': entries[-1]['sourceIds'].pop()
+    if fault == 'duplicate': entries[-1]['sourceIds'].append('stt-index-0')
+    if fault == 'foreign': entries[-1]['sourceIds'][-1] = 'outside'
+    if fault == 'order': entries.reverse()
+    if fault == 'kind': p['kind'] = 'QUOTE'
+    if fault == 'oversize': entries[0]['text'] = '가' * 251
+    if fault == 'too-many': entries.extend(copy.deepcopy(entries))
+    with pytest.raises(tool.PilotError, match='PROJECTION_'):
+        tool.plan(dataset, value)
+
+
 @pytest.mark.parametrize('count,accepted', [(11, True), (12, False)])
 def test_long_pass_keeps_every_source_line(dataset, count, accepted):
     value = spec(dataset)
