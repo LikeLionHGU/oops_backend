@@ -35,5 +35,7 @@ public record AnalysisReportResponse(
         ContentGenre genre,
         /** Optional watch-list occurrences, excluded from events, score and reviewSummary. */
         List<ExpressionOccurrenceDto> expressionOccurrences,
-        String expressionDetectionStatus
+        String expressionDetectionStatus,
+        /** Advisory repeated raw passages; events and review counts remain unchanged. */
+        List<RepeatedPassageDto> repeatedPassages
 ) {}

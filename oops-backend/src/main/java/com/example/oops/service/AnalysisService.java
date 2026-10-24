@@ -156,7 +156,8 @@ public class AnalysisService {
                 video.genreOrGeneral(),
                 expressionService.find(videoId),
                 coverage.stream().filter(c -> c.getStep() == CoverageStep.EXPRESSION_SCAN)
-                        .map(c -> c.getStatus().name()).findFirst().orElse("NOT_ANALYZED")
+                        .map(c -> c.getStatus().name()).findFirst().orElse("NOT_ANALYZED"),
+                com.example.oops.dto.RepeatedPassageDto.from(findings)
         );
     }
 
