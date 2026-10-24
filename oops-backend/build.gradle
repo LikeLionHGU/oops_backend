@@ -772,6 +772,19 @@ tasks.register('contextReferenceAudit', JavaExec) {
     }
 }
 
+// Offline intake gate: production local selector only, never a provider call.
+tasks.register('casebookIntakeAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookIntakeAudit'
+    doFirst {
+        def query = providers.gradleProperty('intakeQuery').orNull
+        def runtime = providers.gradleProperty('intakeRuntime').orNull
+        if (!query || !runtime) throw new GradleException('Set intakeQuery and intakeRuntime local paths')
+        args query, runtime
+    }
+}
+
 // Fresh opt-in stored-text verification; never called by bootRun or test.
 tasks.register('currentContextReferenceTrial', JavaExec) {
     dependsOn testClasses
