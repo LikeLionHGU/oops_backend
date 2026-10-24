@@ -197,6 +197,10 @@ def compile_preview(base, units, catalog, root, profiles=None):
                    "missingContext": [u["boundary"], "발췌 STT이며 원음·화자·억양·독립 검수는 확인하지 않았다. 과거 사례를 현재 원문 근거로 복사하지 않는다."],
                    "sourceInterpretations": [],
                    "normalContrasts": ["합성 개발 대조(실제 관측 아님): " + c["text"] for c in contrasts]}
+        if u["source"]["kind"] == "STORED_TRANSCRIPT_SNAPSHOT":
+            source_doc = parse(read_bytes(inside(root, u["source"]["path"])))
+            if source_doc.get("sourceKind") == "USER_SUPPLIED_SCRIPT_NOT_AUDIO_VERIFIED":
+                context["missingContext"][-1] = "사용자 제공 자막 스크립트 발췌이며 원음·화자·억양·독립 검수는 확인하지 않았다. 보충 관계 설명은 사용자 문맥이지 전사 사실이 아니다. 과거 사례를 현재 원문 근거로 복사하지 않는다."
         if standalone:
             review_label = "사용자 승인 개발"
             if u["source"]["kind"] == "STORED_OCR_FRAME_SNAPSHOT":

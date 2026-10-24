@@ -124,6 +124,20 @@ class ContextUnitTests(unittest.TestCase):
         self.assertIn("사용자 승인 개발 검토 경계", out["examples"][0]["context"]["criticismHypotheses"][0])
         self.assertIn("공개 논란 사건이 아닌", out["examples"][0]["context"]["missingContext"][0])
 
+    def test_user_script_provenance_is_not_presented_as_verified_stt(self):
+        unit = self.standalone()
+        before, _ = self.compile(unit)
+        source = json.loads((self.root / "source.json").read_bytes())
+        source["sourceKind"] = "USER_SUPPLIED_SCRIPT_NOT_AUDIO_VERIFIED"
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        after, _ = self.compile(unit)
+        self.assertIn("발췌 STT", before["examples"][0]["context"]["missingContext"][-1])
+        self.assertIn("사용자 제공 자막 스크립트", after["examples"][0]["context"]["missingContext"][-1])
+        self.assertEqual(before["examples"][0]["context"]["flow"], after["examples"][0]["context"]["flow"])
+        self.assertNotIn("발췌 STT", after["examples"][0]["context"]["missingContext"][-1])
+
     def test_standalone_rejects_unknown_pattern_or_approval_mismatch(self):
         for field, value in [("mechanismIds", ["unknown"]), ("developmentDecision", "REVIEW_REQUIRED"),
                              ("referencePurpose", "PUBLIC_CONTROVERSY"), ("parentCaseId", "old"),
