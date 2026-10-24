@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oops.example/schemas/incident-2.schema.json",
   "title": "Controversy Incident (incident-2)",
-  "description": "사건 = 파일 하나. 재설계 1단계 확정 스키마. 소비자는 tools/ 의 Python 데이터셋 도구이며 Java 런타임과 무관하다. 실제 incidents/*.json 데이터는 /datasets/ 아래 로컬 생성물로 Git 제외이고, 이 스키마 파일만 Git 추적한다. 설계 근거: docs/casebook/논란사례-구조-확정-및-마이그레이션.md",
+  "description": "사건 = 파일 하나. 재설계 1단계 확정 스키마. 소비자는 tools/ 의 Python 데이터셋 도구이며 Java 런타임과 무관하다. 실제 incidents/*.json 데이터는 /datasets/ 아래 로컬 생성물로 Git 제외이고, 이 스키마 파일만 Git 추적한다. 설계 근거: docs/casebook/사례집-구조와-이관-기록.md",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "incidentId", "status", "humanApproved", "runtimeEligible", "trainingUseAuthorized", "split", "catalogMeta", "statements"],

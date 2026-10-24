@@ -2,7 +2,7 @@
 
 ## 현재 입력 계약 — 2026-10-14
 
-새 사건의 직접 입력은 incidents/{incidentId}.json이고 계약은 tools/schemas/incident-2.schema.json이다. [확정 스키마·마이그레이션](논란사례-구조-확정-및-마이그레이션.md)을 먼저 읽는다. 실제 statement는 mechanismIds/topicTags 및 legacyCard/legacyDictionaryCard 등 호환 자료를 보존한다. 아래 카드/원장 형식은 기존 컴파일 계약과 이력이며 새 사건을 여러 plan에 수동 추가하는 안내로 사용하지 않는다.
+새 사건의 직접 입력은 incidents/{incidentId}.json이고 계약은 tools/schemas/incident-2.schema.json이다. [확정 스키마·마이그레이션](사례집-구조와-이관-기록.md#record-2)을 먼저 읽는다. 실제 statement는 mechanismIds/topicTags 및 legacyCard/legacyDictionaryCard 등 호환 자료를 보존한다. 아래 카드/원장 형식은 기존 컴파일 계약과 이력이며 새 사건을 여러 plan에 수동 추가하는 안내로 사용하지 않는다.
 
 기사-only와 빈 reactions를 지원한다. 기사·STT·댓글의 출처 종류/한계를 구분하고 정상 경계는 출처 해시와 별개로 검수한다. 입력 저장·빌드 통과는 런타임 적격·학습 권한 승인과 다르다. 후보 공유/미리보기/확인 후 추가 원칙을 따른다.
 
