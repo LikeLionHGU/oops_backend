@@ -2,7 +2,7 @@
 
 영상의 발언과 화면 문구에서 사람이 다시 확인할 지점을 찾아, 원문·앞뒤 맥락·시간과 함께 보여주는 서비스다. 특정 사건을 맞히는 것보다 여러 소재의 영상에서 정상적인 리뷰와 검토할 표현을 구별하는 것이 목표다.
 
-> 2026-10-16 · `minwook` 코드 기준. STT 기본은 Groq `whisper-large-v3`, 텍스트 판단은 `gpt-6-luna`다. AWS에 실제 배포된 버전·설정은 별도로 확인해야 한다.
+> 2026-10-24 · `minwook` 코드·로컬 사전 파일 기준. STT 기본은 Groq `whisper-large-v3`, 텍스트 판단은 `gpt-6-luna`다. 실행 중 서버의 사전 로드 상태와 AWS 배포 버전은 별도로 확인해야 한다.
 
 ## 서버 구성
 
@@ -17,6 +17,19 @@
 `oops-backend/`와 `oops-analysis/`는 별도 프로세스다. 같은 머신에서 실행할 때 Spring의 `./uploads`와 Python의 `../oops-backend/uploads`가 같은 실제 저장소를 가리켜야 한다. 로컬 DB는 H2 파일 모드이고 재시작 후에도 기록이 남는다.
 
 ## 현재 분석 흐름
+
+```text
+영상 파일 / YouTube URL → 작업 접수 → Python STT ──┐
+외부 스크립트 / 저장 전사 재사용 → 전사 스냅샷 ─────┤
+                                                    ↓
+시간순 읽기 창 → 관련 사례 검색 → AI 후보 탐색
+→ 후보별 원문·문맥과 참고 재선택 → AI 검증 → 서버 근거·계약 검사
+→ 검토 대상 finding → 보수적 중복 병합 → 리포트 저장 → 사람 검수
+```
+
+기본 후보 엔진은 `2026-10-23-candidate-repair-contract-48`이다. 설정된 분석기는 순차 실행하며 여러 페르소나가 병렬 투표하는 구조는 아니다. 전체 OCR은 기본 OFF, 필요한 후보의 프레임 확인은 별도 경로다. 스크립트·저장 전사 입력은 STT/OCR/프레임을 재호출하지 않는다.
+
+`PASS`, 후보 미생성, 정보 부족, 계약 실패, 예산상 미평가는 구분한다. 사례집은 판단 참고이며 과거 라벨이 새 영상의 판정을 강제하지 않는다. 아래 날짜별 수치와 실험은 당시 조건의 기록이지 현재 버전의 성능 보장이 아니다. 최신 검증 상태는 아래 전용 절과 [문서 안내](docs/README.md)를 먼저 확인한다.
 
 10/20 실험 옵션: `RULE_CANDIDATE_UNION_ENABLED` 기본 OFF. ON에서 규칙 후보와 AI 후보를 합쳐 기존 근거 검증으로 전달한다. 현재는 모의 회귀만 통과했으며 실제 모델 비교·운영 활성화는 하지 않았다. [설정·지원 범위](docs/메커니즘-후보-그림자-실행.md#실제-분석기-연결--기본-off).
 
@@ -88,6 +101,8 @@ read -s "OPENAI_API_KEY?OpenAI API 키 입력: "
 export OPENAI_API_KEY
 echo
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH="$JAVA_HOME/bin:$PATH"
+export FULL_SCREEN_OCR_ENABLED=false
 bash ./gradlew bootRun --args='--spring.profiles.active=local --server.address=127.0.0.1'
 ```
 
@@ -118,7 +133,7 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 | 파일 | 역할 |
 |---|---|
-| `datasets/controversy/guidelines/runtime.json` | 현재 로컬 v7 맥락 사전. 41개 참고·6개 공통 기준(개발 경계 2개 포함) |
+| `datasets/controversy/guidelines/runtime.json` | 생성된 로컬 v7 실행 사전. 55개 참고·6개 공통 기준(10/24 파일 기준) |
 | `oops-backend/src/main/resources/context-lexicon.json` | 표현의 맥락 확인용 사전 |
 | `oops-backend/src/main/resources/expression-dictionary.json` | 욕설·논쟁 표현의 별도 등장 목록 |
 
@@ -126,7 +141,33 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 `datasets/**`는 Git 제외다. **코드를 pull하거나 빌드해도 비공개 사전이 자동 배포되지 않는다.** 실행 서버에 별도로 제공하고 Spring을 재시작해야 한다. [데이터셋 파일 관리](docs/데이터셋-파일-관리.md)와 [v7 승격 기록](docs/v7-기본사전-승격.md)을 따른다.
 
-## 최신 점검과 다음 작업
+### 정본 데이터와 docs의 차이
+
+현재 자산은 실제 논란 사건뿐 아니라 사람이 승인한 정상·검토 경계를 포함하는 **콘텐츠 검수 맥락 사례집**이다. 기존 사건 ID는 출처 추적을 위해 유지한다.
+
+| 위치 | 역할 |
+|---|---|
+| `datasets/controversy/incidents/`, `context-units/` | 사건 원장·작성한 맥락 참조 단위 |
+| `datasets/controversy/context-sources/`, `context-relations/` | 원문·출처·승인 연결 및 검색 관계 프로필 |
+| `datasets/controversy/definitions/` | 공통 기준·빌드·검색 설정 |
+| `datasets/controversy/guidelines/runtime.json` | 빌더가 생성하고 Spring이 로드하는 실제 분석 참고 |
+| `docs/*보강*`, `docs/*분석결과*` 등 | 왜 추가했는지, 사용자가 무엇을 승인했는지, 무엇을 검증했는지 설명하는 변경·검수 기록 |
+
+**docs는 실행 사전이나 데이터 정본이 아니며 AI가 docs 전체를 읽지 않는다.** 승인과 적용 경계를 사람이 추적하고 과거 결정을 반복하지 않기 위해 기록한다. 정본 JSON과 생성 사전이 실제 자산이고 문서는 설명이다. 문서만 수정해도 분석 사전이 갱신되는 것은 아니다. 원문·식별 정보·원시 응답의 정본은 Git 제외 데이터 영역에 보관하고, 문서에는 필요한 검수 근거와 연결만 남긴다.
+
+정본 수정 후 저장소 루트에서 `python3 tools/build_incident_dataset.py --write`와 `--verify`로 생성·일치를 확인한다. runtime은 직접 편집하지 않는다. 빌드 후 Spring 재시작·로드 개수·해시 확인까지가 반영 절차다.
+
+### 최신 확인 상태 — 2026-10-24
+
+- 로컬 사전은 기존49개에 팟캐스트 정상4개·검토2흐름을 추가한55참고·6기준이다. 기존 사건 원장32개는 유지한다. [보강 근거·파일 해시](docs/팟캐스트-검수경계-사례집-보강.md)를 따른다.
+- 새6개 원문 검색 회수와 기존 건축학과·물리학과 경계 회귀를 무료 검증했다. 최근 기록상 Java1,221개·관련 Python46개 통과이며 이번 문서 갱신에서 재실행한 수치는 아니다.
+- 새55참고로 실제 모델을 재검증하지는 않았다. 실행 중 서버에 적용됐는지는 재시작·로드 해시 확인이 필요하다. 검색 성공은 최종 판정 개선이나 범용 정확도 입증이 아니다.
+- 스크립트 입력과 저장 전사 재사용은 원본을 보존하고 새 ID로 분석한다. [스크립트 입력](docs/외부-스크립트-로컬분석-입력.md)·[저장 전사 재사용](docs/저장-전사-재사용-분석.md)을 참고한다. 사용자 스크립트는 원음·화자·정확한 종료 시각이 검증된 전사가 아니다.
+- 규칙 외부화·조기 중복 제거·한국어 정규화·검색 가중치 변경은 검토 제안이며 아직 구현하지 않았다. 다음은 사례집 실제 연결과 정상/검토 경계 유지 확인이다.
+
+## 과거 점검·실험 이력
+
+아래는 당시 실행 결과다. 이후 변경으로 대체된 기본값·미실행 안내가 포함될 수 있으므로 현재 상태는 위 요약과 상세 문서의 후속 기록을 따른다.
 
 10/23 [v1 ID112](docs/v1-발언우선-실영상-확인.md)은49.884초·카드2장(지역 선택지·신체 비유)이었다. 전체 OCR 없이 도입부 중국 후보의 이미지만3장 확인하고 PASS한 경로를 확인했다. 메뉴 흐름은 STT에 있으나 NO_CANDIDATE라 미탐이 남는다. 필요 이미지 확인은 OCR 자동 호출이 아니며 문맥 제한PARTIAL·구간 상태 집계 차이도 보존했다.
 

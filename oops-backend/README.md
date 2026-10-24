@@ -1,6 +1,6 @@
 # oops-backend
 
-2026-10-16 · `minwook` 코드 기준. Spring Boot 4·Java 17 기반 API·분석 오케스트레이터다.
+2026-10-24 · `minwook` 코드 기준. Spring Boot 4·Java 17 기반 API·분석 오케스트레이터다.
 
 Spring은 영상·작업·리포트를 저장하고 Python에 전사·OCR·프레임 추출을 요청한다. 전사는 Python이 Groq `whisper-large-v3`로 처리하고, 후보 탐색·검증은 Spring이 OpenAI `gpt-6-luna`로 요청한다. Python 콜백 구조는 사용하지 않는다.
 
@@ -15,6 +15,8 @@ read -s "OPENAI_API_KEY?OpenAI API 키 입력: "
 export OPENAI_API_KEY
 echo
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH="$JAVA_HOME/bin:$PATH"
+export FULL_SCREEN_OCR_ENABLED=false
 bash ./gradlew bootRun --args='--spring.profiles.active=local --server.address=127.0.0.1'
 ```
 
@@ -32,9 +34,11 @@ Windows PowerShell:
 
 ## 현재 분석 경로
 
-업로드·YouTube 등록 → 분석 접수 → Python 길이 확인·STT·OCR → 별도 표현 등장 목록 → 맥락 사전과 후보 탐색 → 후보별 원문 검증 → 근거 기반 병합 → 결과·완료 상태 저장.
+업로드·YouTube 등록 → 분석 접수 → Python 길이 확인·STT → 맥락 사전 검색과 후보 탐색 → 후보별 원문·문맥 검증 → 근거 기반 병합 → 결과·완료 상태 저장. 욕설·논쟁 표현 목록은 별도 트랙이다. 전체 OCR은 `FULL_SCREEN_OCR_ENABLED=false`가 기본이며 명시적으로 켠 경우만 화면 글자 경로를 수행한다. 필요한 후보 프레임 확인은 OCR과 별개다.
 
-- 기본 후보 엔진 개정은 `2026-10-14-target-contract-diagnostics-37`이다.
+로컬 전용 외부 스크립트 입력과 저장 전사 재사용은 새 video/job에 전사 스냅샷을 저장하고 STT/OCR/프레임 호출 없이 텍스트 경로로 분석한다. [스크립트 입력](../docs/외부-스크립트-로컬분석-입력.md)·[전사 재사용](../docs/저장-전사-재사용-분석.md)을 따른다.
+
+- 기본 후보 엔진 개정은 `2026-10-23-candidate-repair-contract-48`이다.
 - 기본 맥락 사전은 외부 파일의 v7 작업 참고다. 사람 검수 완료·학습 완료 데이터라는 뜻은 아니다.
 - v7의 로컬 개념 조합 검색은 기본 ON이다. [구조화 검색 보완](../docs/맥락사전-구조화검색-보완.md)은 기존 문자 검색을 보완하며 외부 호출이나 최종 판정을 추가하지 않는다. `STRUCTURED_CONTEXT_SEARCH_ENABLED=false`로 이전 검색을 재현한다.
 - 자동 검색 키 분류와 원문 관계 추가 기능은 기본 OFF다.
@@ -91,6 +95,6 @@ WebSocket은 `/ws` → `/topic/videos/{videoId}/progress`다. `GET /health`에�
 
 [Groq 후속 점검](../docs/Groq-전사-후속-점검.md)에서 전사 복원 이후에도 사례 회수 누락, 후보 쟁점 이동, `targetRelation` 불일치, 필수 `truncated` 누락이 남았다. FAILED/PARTIAL·미판정을 경고 0개라는 이유로 정상 처리하지 않는다.
 
-원본은 기본 설정에서 24시간 뒤 정리 대상이 될 수 있다. `source-retention-hours`·프로필 설정과 실제 파일 존재를 확인한다. 기존 완료 리포트는 모델 교체로 자동 갱신되지 않으며 완료 영상의 새 비교는 재업로드로 진행한다.
+원본은 기본 설정에서 24시간 뒤 정리 대상이 될 수 있다. `source-retention-hours`·프로필 설정과 실제 파일 존재를 확인한다. 기존 완료 리포트는 모델·사전 교체로 자동 갱신되지 않는다. 완료 영상은 재업로드하거나 로컬 저장 전사 재사용 API로 새 ID에 분석한다. 후자는 음성·화면을 다시 검수하지 않는다.
 
 최신 우선순위는 [개선 계획](../docs/AI-분석-개선-계획.md), 서버 확장 과제는 [아키텍처](../docs/서버-아키텍처.md)에 정리한다.
