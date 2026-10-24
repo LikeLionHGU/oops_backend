@@ -16,7 +16,7 @@ public class LocalDiagnosticsAccess implements HandlerInterceptor, WebMvcConfigu
     @Override public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this).addPathPatterns("/api/v1/videos/*/analysis/diagnostics",
                 "/api/v1/videos/*/analysis/stt-review-plan", "/api/v1/videos/*/analysis/request-traces",
-                "/api/v1/videos/*/analysis/replay-transcript");
+                "/api/v1/videos/*/analysis/replay-transcript", "/api/v1/videos/analysis/import-script");
     }
     @Override public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (!environment.matchesProfiles("local") || !LOOPBACK.contains(environment.getProperty("server.address", ""))

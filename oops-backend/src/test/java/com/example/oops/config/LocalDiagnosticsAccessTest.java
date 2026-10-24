@@ -6,6 +6,20 @@ import org.springframework.mock.web.*;
 import static org.assertj.core.api.Assertions.*;
 
 class LocalDiagnosticsAccessTest {
+    @Test void importRouteIsCoveredAndRejectsRemoteOrigin() throws Exception {
+        var env = new MockEnvironment().withProperty("server.address", "127.0.0.1"); env.setActiveProfiles("local");
+        var gate = new LocalDiagnosticsAccess(env);
+        var registry = org.mockito.Mockito.mock(org.springframework.web.servlet.config.annotation.InterceptorRegistry.class);
+        var registration = org.mockito.Mockito.mock(org.springframework.web.servlet.config.annotation.InterceptorRegistration.class);
+        org.mockito.Mockito.when(registry.addInterceptor(gate)).thenReturn(registration);
+        gate.addInterceptors(registry);
+        var paths = org.mockito.ArgumentCaptor.forClass(String[].class);
+        org.mockito.Mockito.verify(registration).addPathPatterns(paths.capture());
+        assertThat(paths.getValue()).contains("/api/v1/videos/analysis/import-script");
+        var request = new MockHttpServletRequest("POST", "/api/v1/videos/analysis/import-script");
+        request.setRemoteAddr("127.0.0.1"); request.addHeader("Origin", "https://evil.example");
+        assertThat(gate.preHandle(request,new MockHttpServletResponse(),null)).isFalse();
+    }
     @Test void mutatingLocalRouteRejectsCrossSiteOrigins() throws Exception {
         var env=new MockEnvironment().withProperty("server.address","127.0.0.1");env.setActiveProfiles("local");
         var gate=new LocalDiagnosticsAccess(env);

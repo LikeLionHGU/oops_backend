@@ -13,7 +13,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StoredTranscriptProvider implements TranscriptProvider {
     private final TranscriptSegmentRepository transcripts;
-    @Override public boolean supports(Video video) {return video.getTranscriptSourceVideoId()!=null;}
+    @Override public boolean supports(Video video) {return video.hasStoredTranscript();}
     @Override public List<TranscriptLine> fetch(Video video) {
         var lines=transcripts.findByVideoIdOrderByStartMsAscIdAsc(video.getId()).stream()
                 .map(s->new TranscriptLine(s.getStartMs(),s.getEndMs(),s.getText())).toList();

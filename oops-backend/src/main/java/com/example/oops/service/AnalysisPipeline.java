@@ -86,7 +86,7 @@ public class AnalysisPipeline {
         }
 
         // Stored transcript replay is explicitly text-only, even if full OCR is globally enabled.
-        boolean runFullScreenOcr = fullScreenOcrEnabled && video.getTranscriptSourceVideoId() == null;
+        boolean runFullScreenOcr = fullScreenOcrEnabled && !video.hasStoredTranscript();
 
         // 단계별 소요 시간을 재서 마지막에 한 줄로 보여준다.
         // 어디가 느린지 짐작하지 않고 숫자로 확인하기 위해서다.
@@ -116,7 +116,9 @@ public class AnalysisPipeline {
                                 .orElse("음성을 글자로 옮기지 못했습니다."));
             } else {
                 record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS,
-                        video.getTranscriptSourceVideoId() == null ? null : "저장 전사를 재사용했습니다. 새 음성인식을 수행하지 않았습니다.");
+                        !video.hasStoredTranscript() ? null : video.getTranscriptSourceVideoId() == null
+                                ? "사용자 제공 스크립트입니다. 원음·화자 정확도는 검증하지 않았고 종료 시각은 다음 자막 경계 추정입니다. 새 음성인식을 수행하지 않았습니다."
+                                : "저장 전사를 재사용했습니다. 새 음성인식을 수행하지 않았습니다.");
             }
 
             // Full-screen OCR is explicit opt-in, not a prerequisite for speech analysis.
@@ -154,7 +156,7 @@ public class AnalysisPipeline {
                 log.info("[pipeline] 전체 OCR 미선택, 발언 분석으로 진행 videoId={}", videoId);
             }
             record(coverage, video, CoverageStep.VISUAL, AnalyzerStatus.NOT_ENABLED,
-                    video.getTranscriptSourceVideoId() != null ? "저장 전사 재사용 실행에서는 영상·프레임 검토를 수행하지 않습니다."
+                    video.hasStoredTranscript() ? "저장 텍스트 실행에서는 영상·프레임 검토를 수행하지 않습니다."
                     : "영상 전체 장면 분석은 제공하지 않습니다. 발언 후보에 대한 선택적 프레임 확인은 별도로 수행할 수 있습니다.");
 
             // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
@@ -302,7 +304,7 @@ public class AnalysisPipeline {
             log.info("[pipeline] 완료 jobId={} videoId={} score={} events={} 총 {}초",
                     jobId, videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 jobId={} — {}", jobId, formatElapsed(elapsed, total));
-            logCost(videoId, video.getDurationSec(), video.getTranscriptSourceVideoId() != null);
+            logCost(videoId, video.getDurationSec(), video.hasStoredTranscript());
 
         } catch (AnalysisStoppedException e) {
             log.info("[pipeline] 종료되었거나 대체된 작업 결과를 저장하지 않습니다. jobId={}", jobId);

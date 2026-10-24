@@ -51,6 +51,16 @@ public class Video extends BaseTimeEntity {
         this.transcriptSnapshotSha256 = sha256;
     }
 
+    /** External text has no source video row; never invent a replay parent. */
+    public void assignImportedTranscriptSnapshot(String sha256) {
+        if (sha256 == null || !sha256.matches("[0-9a-f]{64}"))
+            throw new IllegalArgumentException("Valid transcript hash required");
+        this.transcriptSourceVideoId = null;
+        this.transcriptSnapshotSha256 = sha256;
+    }
+
+    public boolean hasStoredTranscript() { return transcriptSnapshotSha256 != null; }
+
     @Column(length = 300)
     private String title;
 
