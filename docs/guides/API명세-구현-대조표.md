@@ -28,6 +28,8 @@
 
 기존 `repeatedPassages`는60초 이상 떨어진 반복 원문 표시라 별도로 유지한다. 새 배열은 판정 병합을 대신하는 것이 아니라 근거 중첩을 드러낸다. 저장126 리포트 근거 재생과 모의 경계 테스트까지 무료 확인했으며 실행 서버의 실제 응답은 재시작 후 확인해야 한다.
 
+후속 재시작 후126 GET 실응답에서 근육216/215·친구213/214의2쌍 반환과 기존 events/summary/reviewSummary/coverage/warnings/검수 상태 불변을 확인했다. 신규 분석·모델 호출 없이 조회만 검증했으며 프론트 표시는 별도다.
+
 > 2026-10-10 후속 계약: 리포트에 expressionOccurrences와 expressionDetectionStatus를 추가했다. 선택 표현은 기존 events/summary/reviewSummary에서 제외하며 옛 리포트의 미분석 상태는 NOT_ANALYZED다. STT 적중만 수집하고 프론트 필터/OCR 적중/relatedEventIds는 미구현이다. 진단 snapshot은 분석기별 promptRevisions를 추가하고 최상위 버전은 실제 발언 엔진 버전을 우선한다. 결과와 COMPLETED는 같은 트랜잭션에서 확정한다. [표현 API·스키마·배포 경계](표현-탐지-및-선택-필터-설계.md)를 따른다.
 
 > 명세 v2.1 · 최초 대조·영상 검증 기록: 2026-08-18 · 문서 정리: 2026-10-06
