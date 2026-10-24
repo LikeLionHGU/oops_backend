@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-23-candidate-repair-contract-48";
-    static final String RELATION_REVISION = "2026-10-21-source-relations-responsive-repetition-45";
+    static final String REVISION = "2026-10-25-shared-conversation-window-49";
+    static final String RELATION_REVISION = "2026-10-25-source-relations-shared-window-49";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -220,8 +220,8 @@ final class CandidateReviewEngine {
             var primaryIds = batch.primary().stream().map(ReviewInput.Segment::id).toList();
             if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {unresolved.addAll(primaryIds);partial=true;continue;}
             if (batch.oversizedPrimary()) { unresolved.addAll(primaryIds); partial = true; continue; }
-            List<ReviewUnit> units = ReviewUnit.all(batch);
-            List<ReviewUnit> targetUnits = CandidateContextWindow.discoveryUnits(batch);
+            List<ReviewUnit> units = CandidateContextWindow.conversationUnits(batch);
+            List<ReviewUnit> targetUnits = units;
             List<ReviewInput.Segment> raw = raw(batch);
             String discoveryRequestKey = "discovery-" + (stats.discoveryCalls + 1);
             var routed = routing == null ? null : routing.route(guidelines, raw, discoveryRequestKey);

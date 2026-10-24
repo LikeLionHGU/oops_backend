@@ -170,12 +170,11 @@ class SourceRelationsTest {
             return Optional.of(new Discovery(ids,ids.contains("stt-index-10")?List.of(new Proposal("stt-index-10",
                     "EXPRESSION_CONTENT",null,List.of(new Quote("stt-index-10",null)),relations)):List.of(),List.of(),false));
         });
+        fixture.verification(new Verification("candidate-1", fixture.assessment("stt-index-10", "PASS", "그 집")));
         var result=run(fixture.client,c,24,null,null,null,null,0,true);
         assertThat(result.diagnostics().candidatePipeline().candidates()).singleElement()
-                .extracting(CandidateReviewDiagnostics.Trace::failureCode).isEqualTo("PROPOSAL_WINDOW_MISMATCH");
-        assertThat(result.diagnostics().candidatePipeline().candidates().get(0).windowMatch().detail())
-                .isEqualTo("EVIDENCE_SPANS_DIFFERENT_WINDOWS");
-        verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
+                .extracting(CandidateReviewDiagnostics.Trace::state).isEqualTo("PASS");
+        verify(fixture.client).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
     }
     @Test void sourceRoleListsAreImmutableAndLegacyProposalJsonShapeIsUnchanged() {
         var mutable=new ArrayList<>(List.of("s")); var roles=new SourceRelations(mutable,List.of(),List.of(),List.of("s"),List.of());

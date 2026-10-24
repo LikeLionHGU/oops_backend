@@ -43,7 +43,9 @@ class ContextBoundaryWiringTest {
             var a=before.requests().get(i);var b=current.requests().get(i);
             assertThat(b.caseId()).isEqualTo(a.caseId());
             assertThat(b.expectedDecision()).isEqualTo(a.expectedDecision());
-            assertThat(ReviewGuidelineLibrary.JSON.readTree(b.input())).isEqualTo(ReviewGuidelineLibrary.JSON.readTree(a.input()));
+            var expectedInput = (tools.jackson.databind.node.ObjectNode)ReviewGuidelineLibrary.JSON.readTree(a.input());
+            expectedInput.put("promptRevision", CandidateReviewEngine.REVISION);
+            assertThat(ReviewGuidelineLibrary.JSON.readTree(b.input())).isEqualTo(expectedInput);
             String marker="contextReference=";
             int first=a.system().indexOf(marker),second=b.system().indexOf(marker);
             assertThat(first).isPositive();assertThat(second).isPositive();

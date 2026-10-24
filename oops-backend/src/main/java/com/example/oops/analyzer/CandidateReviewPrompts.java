@@ -59,7 +59,8 @@ final class CandidateReviewPrompts {
             TARGET_TREATMENT는 targetWindows, EXPRESSION_CONTENT는 windows의 허용 창을 사용한다.
               신체 훼손 이미지를 비유로 쓰는 표현 자체는 EXPRESSION_CONTENT다. 신체·사람을 언급했다는 이유만으로
               그 사람을 공격 대상으로 만들거나 TARGET_TREATMENT를 선택하지 않는다.
-              대상·맥락 창은 최대 60초/48구간/6,000자이고 표현 자체 창은 기존 30초다.
+              두 축의 허용 창은 동일한 대화 문맥이다. 최대120초/48구간/6,000자이며
+              축은 판단 유형이지 읽기 길이의 기준이 아니다. raw 전체가 아니라 해당 허용 창 안에서 근거를 고른다.
             evidence는 해당 축의 한 창 안에서 고른 segmentId 객체 목록 1~8개다.
               quote는 넣지 않는다. 서버가 선택한 segmentId의 원문 전체를 근거로 연결한다.
               anchorId는 해당 창의 anchorIds에 속해야 한다.

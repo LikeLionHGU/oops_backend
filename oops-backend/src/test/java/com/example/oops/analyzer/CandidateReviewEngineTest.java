@@ -444,11 +444,11 @@ class CandidateReviewEngineTest {
         var trace = r.diagnostics().candidatePipeline().candidates().get(0);
         assertThat(trace.contextExpanded()).isFalse();
         assertThat(trace.contextSegmentIds()).contains("stt-index-24");
-        assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(60000);
-        assertThat(trace.contextLimited()).isTrue();
+        assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(120000);
+        assertThat(trace.contextLimited()).isFalse();
         assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(r.unassessedSegmentIds()).isEmpty();
-        assertThat(r.notice()).contains("문맥 제한");
+        assertThat(r.notice()).isNull();
         var discoveryRequests = ArgumentCaptor.forClass(String.class);
         verify(client, atLeastOnce()).completeAsJson(anyString(), discoveryRequests.capture(), eq(Discovery.class));
         assertThat(discoveryRequests.getAllValues()).anySatisfy(request -> {

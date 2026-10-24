@@ -196,17 +196,18 @@ class CandidateDiscoveryContractTest {
                 .extracting(CandidateReviewDiagnostics.Trace::failureCode).isEqualTo("PROPOSAL_UNKNOWN_EVIDENCE_ID");
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class));
     }
-    @Test void expressionAxisCannotBorrowSixtySecondTargetWindow() {
+    @Test void expressionAxisCanUseTheSameAdvertisedConversationWindow() {
         var f = new CandidateReviewEngineTest();
         String[] lines = IntStream.range(0, 21).mapToObj(i -> "일반 대화 " + i).toArray(String[]::new);
         var p = new Proposal("stt-index-10", "EXPRESSION_CONTENT", "표현 내용 가설",
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-20", lines[20])));
         batchDiscovery(f, p);
+        f.verification(new Verification("candidate-1", f.assessment(p.anchorId(), "PASS", "그 집")));
         var r = run(f.client, f.context(lines), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement()
-                .extracting(CandidateReviewDiagnostics.Trace::failureCode).isEqualTo("PROPOSAL_WINDOW_MISMATCH");
-        verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
+                .extracting(CandidateReviewDiagnostics.Trace::state).isEqualTo("PASS");
+        verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void nullRepairDoesNotLoopAndDiscoveryAndVerificationShareTotalBudget() {
         var f = new CandidateReviewEngineTest();

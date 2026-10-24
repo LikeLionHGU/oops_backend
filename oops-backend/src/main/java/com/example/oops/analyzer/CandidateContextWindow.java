@@ -16,6 +16,15 @@ final class CandidateContextWindow {
 
     /** Discovery permissions use only raw already supplied in this batch, never unseen transcript. */
     static List<ReviewUnit> discoveryUnits(TextReviewBatchPlanner.Batch batch) {
+        return discoveryUnits(batch, MAX_SPAN_MS);
+    }
+
+    /** Both judgment axes read bounded dialogue, not an axis-dependent permission window. */
+    static List<ReviewUnit> conversationUnits(TextReviewBatchPlanner.Batch batch) {
+        return discoveryUnits(batch, 120_000);
+    }
+
+    private static List<ReviewUnit> discoveryUnits(TextReviewBatchPlanner.Batch batch, long maxSpan) {
         List<ReviewInput.Segment> supplied = new ArrayList<>(batch.primary());
         supplied.addAll(batch.context());
         var input = new ReviewInput(supplied.stream().filter(s -> s.type() == TimelineEventType.SPEECH).toList());
@@ -25,19 +34,23 @@ final class CandidateContextWindow {
             var anchor = input.find(unit.anchorId()).orElse(null);
             if (anchor == null) continue;
             var base = input.segments().stream().filter(s -> unit.segmentIds().contains(s.id())).toList();
-            var window = extend(input, unit.anchorId(), base);
+            var window = extend(input, unit.anchorId(), base, maxSpan);
             var ids = window.raw().stream().map(ReviewInput.Segment::id).toList();
             // Never advertise an oversized legacy singleton as an admissible target window.
-            if (!fits(window.raw()) || hasGap(window.raw())) continue;
+            if (!fits(window.raw(), maxSpan) || hasGap(window.raw())) continue;
             String key = unit.anchorId() + "|" + String.join(",", ids);
             if (seen.add(key)) result.add(new ReviewUnit(unit.anchorId(), ids,
                     window.raw().get(0).startMs(), window.raw().stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow(),
-                    unit.limited() || window.limited(), unit.view()));
+                    (maxSpan == MAX_SPAN_MS ? unit.limited() : batch.contextLimited()) || window.limited(), unit.view()));
         }
         return List.copyOf(result);
     }
 
     static Window extend(ReviewInput input, String anchorId, List<ReviewInput.Segment> base) {
+        return extend(input, anchorId, base, MAX_SPAN_MS);
+    }
+
+    private static Window extend(ReviewInput input, String anchorId, List<ReviewInput.Segment> base, long maxSpan) {
         var source = input.segments().stream().filter(s -> s.type() == TimelineEventType.SPEECH).toList();
         var anchor = input.find(anchorId).orElseThrow();
         if (anchor.type() != TimelineEventType.SPEECH || base.isEmpty() || !base.contains(anchor)) {
@@ -50,7 +63,7 @@ final class CandidateContextWindow {
             left = Math.min(left, index); right = Math.max(right, index);
         }
         List<ReviewInput.Segment> contiguous = source.subList(left, right + 1);
-        if (!fits(contiguous) || hasGap(contiguous)) return new Window(base, false, true);
+        if (!fits(contiguous, maxSpan) || hasGap(contiguous)) return new Window(base, false, true);
         int characters = contiguous.stream().mapToInt(CandidateContextWindow::size).sum();
         long start = contiguous.get(0).startMs(), end = contiguous.stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow();
         boolean blockedLeft = false, blockedRight = false, limited = false;
@@ -65,7 +78,7 @@ final class CandidateContextWindow {
             var next = takeLeft ? before : after;
             long gap = takeLeft ? Math.max(0, start - next.endMs()) : Math.max(0, next.startMs() - end);
             long nextStart = Math.min(start, next.startMs()), nextEnd = Math.max(end, next.endMs());
-            if (gap > MAX_GAP_MS || nextEnd - nextStart > MAX_SPAN_MS || right - left + 1 >= MAX_SEGMENTS
+            if (gap > MAX_GAP_MS || nextEnd - nextStart > maxSpan || right - left + 1 >= MAX_SEGMENTS
                     || characters + size(next) > MAX_CODE_POINTS) {
                 if (gap <= MAX_GAP_MS) limited = true;
                 if (takeLeft) blockedLeft = true; else blockedRight = true;
@@ -77,9 +90,9 @@ final class CandidateContextWindow {
         var selected = source.subList(left, right + 1);
         return new Window(selected, !selected.equals(base), limited);
     }
-    private static boolean fits(List<ReviewInput.Segment> lines) {
+    private static boolean fits(List<ReviewInput.Segment> lines, long maxSpan) {
         return lines.size() <= MAX_SEGMENTS && lines.stream().mapToInt(CandidateContextWindow::size).sum() <= MAX_CODE_POINTS
-                && lines.stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow() - lines.get(0).startMs() <= MAX_SPAN_MS;
+                && lines.stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow() - lines.get(0).startMs() <= maxSpan;
     }
     private static boolean hasGap(List<ReviewInput.Segment> lines) {
         long end = lines.get(0).endMs();
