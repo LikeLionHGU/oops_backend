@@ -135,7 +135,7 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 | 파일 | 역할 |
 |---|---|
-| `datasets/controversy/guidelines/runtime.json` | 생성된 로컬 v7 실행 사전. 61개 참고·6개 공통 기준(10/25 정상2건 추가,긴 문맥 승인3건은 미반영·묶음 검증 대기) |
+| `datasets/controversy/guidelines/runtime.json` | 생성된 로컬 v7 실행 사전. 64개 참고·6개 공통 기준(10/25 승인5건 모두 반영,새 로더 재시작·유료 묶음 검증 대기) |
 | `oops-backend/src/main/resources/context-lexicon.json` | 표현의 맥락 확인용 사전 |
 | `oops-backend/src/main/resources/expression-dictionary.json` | 욕설·논쟁 표현의 별도 등장 목록 |
 
