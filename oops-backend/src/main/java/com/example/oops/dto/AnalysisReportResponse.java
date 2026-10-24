@@ -37,5 +37,7 @@ public record AnalysisReportResponse(
         List<ExpressionOccurrenceDto> expressionOccurrences,
         String expressionDetectionStatus,
         /** Advisory repeated raw passages; events and review counts remain unchanged. */
-        List<RepeatedPassageDto> repeatedPassages
+        List<RepeatedPassageDto> repeatedPassages,
+        /** Pairwise shared evidence only; does not establish same issue/target or merge events. */
+        List<RelatedFindingEvidenceDto> relatedFindingEvidence
 ) {}
