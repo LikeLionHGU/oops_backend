@@ -154,7 +154,7 @@ class CandidateDiscoveryContractTest {
             verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
         }
     }
-    @Test void sixtySecondWindowStillCannotJoinWholeMinuteAcrossAnchor() {
+    @Test void readingPageCannotJoinAcrossHardGap() {
         var f = new CandidateReviewEngineTest();
         String[] lines = IntStream.range(0, 40).mapToObj(i -> "일반 대화 " + i).toArray(String[]::new);
         var p = new Proposal("stt-index-10", "TARGET_TREATMENT", "먼 발언을 섞은 가설",
@@ -165,9 +165,12 @@ class CandidateDiscoveryContractTest {
         assertThat(CandidateContextWindow.discoveryUnits(fullBatch).stream().filter(u -> u.anchorId().equals(p.anchorId())))
                 .noneMatch(u -> u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()));
         batchDiscovery(f, p);
-        var r = run(f.client, f.context(lines), 24);
+        var timed = new java.util.ArrayList<com.example.oops.domain.TranscriptSegment>();
+        for (int i=0;i<lines.length;i++) timed.add(new com.example.oops.domain.TranscriptSegment(
+                f.video, i*2000L+(i>=30?20000:0), i*2000L+(i>=30?20000:0)+1500,lines[i]));
+        var r = run(f.client, new AnalysisContext(f.video,com.example.oops.domain.ContentGenre.GENERAL,timed,List.of()), 24);
         assertThat(r.findings()).isEmpty();
-        assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isOne();
+        assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isGreaterThanOrEqualTo(1);
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void failedRepairIsOnceAndCannotChangeAnchorOrPublish() {

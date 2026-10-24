@@ -64,7 +64,7 @@ class FrozenCandidateContextTest {
         var f = new CandidateReviewEngineTest();
         List<com.example.oops.domain.TranscriptSegment> lines = new ArrayList<>();
         for (int i = 0; i < 40; i++) lines.add(new com.example.oops.domain.TranscriptSegment(
-                f.video, i * 2000L, i * 2000L + 1500, "그 집 대화 " + i));
+                f.video, i * 4000L, i * 4000L + 1500, "그 집 대화 " + i));
         var context = new AnalysisContext(f.video, com.example.oops.domain.ContentGenre.GENERAL, lines, List.of());
         when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(invocation -> {
             var request = json.readTree((String) invocation.getArgument(1));

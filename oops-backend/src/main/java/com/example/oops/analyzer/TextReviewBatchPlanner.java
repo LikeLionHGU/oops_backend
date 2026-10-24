@@ -97,7 +97,10 @@ final class TextReviewBatchPlanner {
     }
 
     record Batch(List<ReviewInput.Segment> primary, List<ReviewInput.Segment> context,
-                 boolean contextLimited, boolean oversizedPrimary) {
+                 boolean contextLimited, boolean oversizedPrimary, boolean sharedReadingPage) {
+        Batch(List<ReviewInput.Segment> primary,List<ReviewInput.Segment> context,boolean limited,boolean oversized) {
+            this(primary,context,limited,oversized,false);
+        }
         Batch { primary = List.copyOf(primary); context = List.copyOf(context); }
     }
 }

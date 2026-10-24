@@ -7,7 +7,7 @@ import static com.example.oops.domain.TimelineEventType.SPEECH;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-/** Production-planner replay only. No provider, generated interpretation or decision labels. */
+/** Legacy and current planner replay. No provider, generated interpretation or decision labels. */
 class TranscriptFragmentationAuditTest {
     private static final Path ROOT = Path.of("../datasets/controversy");
     private ReviewInput input(Path file) throws Exception {
@@ -38,7 +38,7 @@ class TranscriptFragmentationAuditTest {
         }
         return Map.of("inputSegments",input.segments().size(),"batches",rows);
     }
-    @Test void reproducesCountDrivenFragmentationWithoutChangingProductionLimits() throws Exception {
+    @Test void reproducesLegacyCountDrivenFragmentation() throws Exception {
         var oldFile=ROOT.resolve("experiments/podcast-five-live-20261025/request-childhood-confrontation.json");
         var newFile=ROOT.resolve("experiments/podcast-meaning-edit-20261025/import-request-corrected-meaning.json");
         assumeTrue(Files.exists(oldFile)&&Files.exists(newFile));
@@ -69,5 +69,21 @@ class TranscriptFragmentationAuditTest {
                     "providerCalls",0,"scope","PLANNER_WINDOW_SHAPE_ONLY_NOT_ASR_OR_SEMANTIC_ACCURACY",
                     "oldScript",audit(old),"nativeMeaningEdit",audit(granular))),StandardOpenOption.CREATE_NEW);
         }
+    }
+
+    @Test void currentPagesPreserveAllFiftyEightStoredAtomsInOneSharedWindow() throws Exception {
+        var file=ROOT.resolve("experiments/podcast-meaning-edit-20261025/import-request-corrected-meaning.json");
+        assumeTrue(Files.exists(file));
+        var source=input(file);
+        var pages=DialogueReadingPage.plan(source);
+        assertThat(source.segments()).hasSize(58);
+        assertThat(pages).hasSize(1);
+        var page=pages.get(0);
+        assertThat(page.primary()).containsExactlyElementsOf(source.segments());
+        assertThat(page.contextLimited()).isFalse();
+        assertThat(page.oversizedPrimary()).isFalse();
+        assertThat(DialogueReadingPage.inputCodePoints(DialogueReadingPage.raw(page),page.primary())).isLessThan(24000);
+        assertThat(CandidateContextWindow.conversationUnits(page)).hasSize(58).allSatisfy(w ->
+                assertThat(w.segmentIds()).containsExactlyElementsOf(ids(source.segments())));
     }
 }

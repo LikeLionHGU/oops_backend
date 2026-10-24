@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-25-shared-conversation-window-49";
-    static final String RELATION_REVISION = "2026-10-25-source-relations-shared-window-49";
+    static final String REVISION = "2026-10-25-shared-reading-page-50";
+    static final String RELATION_REVISION = "2026-10-25-source-relations-reading-page-50";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -216,7 +216,7 @@ final class CandidateReviewEngine {
         Map<String, Integer> pending = new HashMap<>();
         boolean partial = false;
         int counter = 0;
-        for (var batch : TextReviewBatchPlanner.plan(input, TimelineEventType.SPEECH, 3)) {
+        for (var batch : DialogueReadingPage.plan(input)) {
             var primaryIds = batch.primary().stream().map(ReviewInput.Segment::id).toList();
             if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {unresolved.addAll(primaryIds);partial=true;continue;}
             if (batch.oversizedPrimary()) { unresolved.addAll(primaryIds); partial = true; continue; }
@@ -237,6 +237,7 @@ final class CandidateReviewEngine {
                         "promptRevision", modelPromptRevision, "primaryIds", primaryIds,
                         "raw", compact(raw), "windows", compactWindows(units), "targetWindows", compactWindows(targetUnits),
                         "contextLimited", batch.contextLimited()));
+                request.put("readingPage", DialogueReadingPage.metadata());
                 boolean hasReferences = references != null && !references.examples().isEmpty();
                 if (hasReferences) request.put("referenceCases", references.examples());
                 response = client.completeAsJson((sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : DISCOVERY_PROMPT)

@@ -175,9 +175,9 @@ class ContextMechanismRouterTest {
     }
     @Test void longVideoBudgetDoesNotStopDiscoveryOnRemainingBatches() {
         var f = new CandidateReviewEngineTest();
-        String[] lines = java.util.stream.IntStream.range(0,45).mapToObj(i -> "다른 이야기 " + i).toArray(String[]::new);
+        String[] lines = java.util.stream.IntStream.range(0,150).mapToObj(i -> "다른 이야기 " + i).toArray(String[]::new);
         var context = f.context(lines);
-        int batches = TextReviewBatchPlanner.plan(context.reviewInput(),com.example.oops.domain.TimelineEventType.SPEECH,3).size();
+        int batches = DialogueReadingPage.plan(context.reviewInput()).size();
         assertThat(batches).isGreaterThan(1);
         when(f.client.completeAsJson(anyString(),anyString(),eq(Discovery.class))).thenAnswer(inv -> {
             var json = JSON.readTree((String)inv.getArgument(1));
@@ -187,7 +187,7 @@ class ContextMechanismRouterTest {
         var result = run(f.client,context,24,null,null,units,null,0,false,router(true,1));
         var diagnostics = result.diagnostics().candidatePipeline();
         assertThat(diagnostics.discoveryCalls()).isEqualTo(batches);
-        assertThat(diagnostics.exploredSegments()).isEqualTo(45);
+        assertThat(diagnostics.exploredSegments()).isEqualTo(150);
         assertThat(diagnostics.mechanismRouting()).hasSize(batches);
         assertThat(diagnostics.mechanismRouting().stream().filter(Trace::attempted).count()).isOne();
         assertThat(diagnostics.mechanismRouting().stream().skip(1).map(Trace::state))

@@ -200,27 +200,27 @@ class DiscoveryStructuredOutputTest {
         server.verify();
     }
     @Test void overlappingBatchContextIsAvailableAsEvidenceButCannotBecomeUncertaintyReview() {
-        var context=new CandidateReviewEngineTest().context(java.util.stream.IntStream.range(0,21)
+        var context=new CandidateReviewEngineTest().context(java.util.stream.IntStream.range(0,80)
                 .mapToObj(i -> "발언 "+i).toArray(String[]::new));
-        var batches=TextReviewBatchPlanner.plan(context.reviewInput(),com.example.oops.domain.TimelineEventType.SPEECH,3);
+        var batches=DialogueReadingPage.plan(context.reviewInput());
         assertThat(batches).hasSize(2);
-        String contextId="stt-index-20";
-        assertThat(batches.get(0).context()).extracting(ReviewInput.Segment::id).contains(contextId);
+        String contextId=batches.get(1).context().get(0).id();
+        assertThat(batches.get(1).primary()).extracting(ReviewInput.Segment::id).doesNotContain(contextId);
         var builder=RestClient.builder().baseUrl("https://example.invalid");var server=MockRestServiceServer.bindTo(builder).build();
-        var primary=batches.get(0).primary().stream().map(ReviewInput.Segment::id).toList();
+        var primary=batches.get(1).primary().stream().map(ReviewInput.Segment::id).toList();
         String invalid=JSON.writeValueAsString(Map.of("reviewedSegmentIds",primary,"candidates",List.of(),
                 "visualCandidates",List.of(),"truncated",false,"uncertainSegments",List.of(
                         Map.of("segmentId",contextId,"missingInformation",List.of("문맥 부족")))));
         server.expect(requestTo("https://example.invalid/chat/completions"))
-                .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.primaryId.enum.length()").value(20))
-                .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.rawId.enum.length()").value(21))
-                .andRespond(withSuccess(response(invalid,"stop",null),MediaType.APPLICATION_JSON));
-        String second=JSON.writeValueAsString(batches.get(1).primary().stream().map(ReviewInput.Segment::id).toList());
+                .andRespond(withSuccess(response(emptyDiscovery(JSON.writeValueAsString(
+                        batches.get(0).primary().stream().map(ReviewInput.Segment::id).toList()),"false"),"stop",null),MediaType.APPLICATION_JSON));
         server.expect(requestTo("https://example.invalid/chat/completions"))
-                .andRespond(withSuccess(response(emptyDiscovery(second,"false"),"stop",null),MediaType.APPLICATION_JSON));
+                .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.primaryId.enum.length()").value(primary.size()))
+                .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.rawId.enum.length()").value(DialogueReadingPage.raw(batches.get(1)).size()))
+                .andRespond(withSuccess(response(invalid,"stop",null),MediaType.APPLICATION_JSON));
         var r=CandidateReviewEngine.run(new OpenAiClient(builder.build(),properties(),true),context,24);
         assertThat(r.status().name()).isEqualTo("PARTIAL");
-        assertThat(r.unassessedSegmentIds()).contains("stt-index-0");
+        assertThat(r.unassessedSegmentIds()).contains(primary.get(0));
         assertThat(r.diagnostics().candidatePipeline().candidates()).anySatisfy(c ->
                 assertThat(c.failureCode()).isEqualTo("DISCOVERY_ENVELOPE_INVALID"));
         server.verify();

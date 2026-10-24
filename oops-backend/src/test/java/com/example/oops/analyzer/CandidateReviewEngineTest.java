@@ -38,9 +38,9 @@ class CandidateReviewEngineTest {
         assertThat(prompt.getValue()).contains("대화의 마지막 연결 발언");
         var trace = result.diagnostics().candidatePipeline().candidates().get(0);
         assertThat(trace.contextSegmentIds()).contains("stt-index-21", "stt-index-39");
-        assertThat(trace.contextStartMs()).isGreaterThan(0);
+        assertThat(trace.contextStartMs()).isZero();
         assertThat(trace.contextEndMs()).isGreaterThanOrEqualTo(61500);
-        assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(60000);
+        assertThat(trace.contextEndMs() - trace.contextStartMs()).isLessThanOrEqualTo(DialogueReadingPage.MAX_SPAN_MS);
         assertThat(result.findings()).isEmpty(); // More context is not forced agreement with a proposal.
     }
     @Test void contextualTargetUsesRawMentionAndSeparateGroundingWithoutRequiringResolvedLabelInQuote() {
@@ -361,7 +361,12 @@ class CandidateReviewEngineTest {
         List<TranscriptSegment> lines = List.of(new TranscriptSegment(video, 0, 1500, "그 집 음식 이야기"),
                 new TranscriptSegment(video, 60000, 61500, "먼 구간 이야기"));
         var c = new AnalysisContext(video, ContentGenre.GENERAL, lines, List.of());
-        discovery(List.of("stt-index-0", "stt-index-1"), proposal("stt-index-0", "그 집"));
+        when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(inv -> {
+            var request = JsonMapper.builder().build().readTree((String) inv.getArgument(1));
+            var id = request.get("primaryIds").get(0).asText();
+            return Optional.of(new Discovery(List.of(id), id.equals("stt-index-0")
+                    ? List.of(proposal(id, "그 집")) : List.of(), List.of(), false));
+        });
         var original = assessment("stt-index-0", "PASS", "그 집");
         var invalid = new LlmDecision(original.segmentId(), original.decision(), original.evidenceText(), original.reason(),
                 null, null, null, null, null, List.of(), List.of(new LlmEvidence("stt-index-0", "그 집", "PRIMARY"),

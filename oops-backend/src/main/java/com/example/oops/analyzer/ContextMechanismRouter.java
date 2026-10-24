@@ -58,7 +58,7 @@ public final class ContextMechanismRouter {
                     : keys.isEmpty() ? "NO_ROUTABLE_KEYS" : calls >= maxCalls ? "CALL_BUDGET_EXHAUSTED"
                     : Thread.currentThread().isInterrupted() ? "INTERRUPTED" : null;
             if (skip != null) return result(requestKey, skip, false, keys, List.of(), null, 0);
-            if (raw.isEmpty() || raw.size() > 36 || raw.stream().anyMatch(s -> s.text() == null)
+            if (raw.isEmpty() || raw.size() > DialogueReadingPage.MAX_ATOMS || raw.stream().anyMatch(s -> s.text() == null)
                     || raw.stream().mapToInt(s -> s.text().codePointCount(0, s.text().length())).sum() > 20_000)
                 return result(requestKey, "INPUT_LIMIT", false, keys, List.of(), null, 0);
             String input = JSON.writeValueAsString(Map.of("keys", keys, "raw", raw.stream()

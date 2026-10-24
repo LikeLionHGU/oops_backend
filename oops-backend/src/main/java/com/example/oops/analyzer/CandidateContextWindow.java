@@ -21,6 +21,7 @@ final class CandidateContextWindow {
 
     /** Both judgment axes read bounded dialogue, not an axis-dependent permission window. */
     static List<ReviewUnit> conversationUnits(TextReviewBatchPlanner.Batch batch) {
+        if(batch.sharedReadingPage())return DialogueReadingPage.windows(batch);
         return discoveryUnits(batch, 120_000);
     }
 
