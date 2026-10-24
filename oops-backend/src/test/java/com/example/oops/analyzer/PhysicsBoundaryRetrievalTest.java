@@ -17,7 +17,7 @@ class PhysicsBoundaryRetrievalTest {
         var runtime = root.resolve("guidelines/runtime.json").toAbsolutePath().toUri().toString();
         var library = new ReviewGuidelineLibrary(new DefaultResourceLoader(), true, runtime, 6000, 3, 3000, "", true);
         library.load();
-        for (var slug : List.of("physics-choice-dismissal", "physics-affinity-banter", "physics-facial-care")) {
+        for (var slug : List.of("physics-choice-dismissal", "physics-affinity-banter", "physics-facial-care", "physics-hygiene-boundary")) {
             var unit = ReviewGuidelineLibrary.JSON.readTree(Files.readAllBytes(root.resolve("context-units/mimiminu-" + slug + ".json")));
             var bytes = Files.readAllBytes(root.resolve(unit.at("/source/path").asText()));
             assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)))
