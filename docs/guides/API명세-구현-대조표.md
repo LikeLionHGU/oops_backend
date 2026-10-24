@@ -1,5 +1,33 @@
 # API 명세 ↔ 구현 대조표
 
+## 2026-10-24 리포트 확장 — 카드 간 공유 근거
+
+`GET /api/v1/videos/{id}/report`의 data에 `relatedFindingEvidence` 배열을 추가했다. 이는 **검증 근거가 겹치는 두 카드의 연결 정보**이며 같은 논란·같은 대상·중복이라는 확정 판정이 아니다. 기존 `events`,summary,reviewSummary,점수,occurrences,supportCount,검수 결정은 변경하지 않는다. DB 저장·스키마 이관·모델 호출도 없다. 서버 재시작 후 기존 완료 결과를 조회할 때도 저장 근거로 계산하며,근거가 없는 과거 결과는 빈 배열이다.
+
+```json
+{
+  "relatedFindingEvidence": [{
+    "basis": "SHARED_VALIDATED_EVIDENCE_NOT_CONFIRMED_SAME_ISSUE",
+    "leftEventId": "1",
+    "rightEventId": "2",
+    "targetLabelsDiffer": true,
+    "sharedEvidence": [{
+      "segmentId": "example-segment",
+      "startMs": 1000,
+      "endMs": 1500,
+      "leftRoles": ["PRIMARY", "TARGET"],
+      "rightRoles": ["CONTEXT"]
+    }]
+  }]
+}
+```
+
+위 JSON은 필드 설명용 축약이며 실제 연결에는 서로 다른 원문 segment2개 이상을 공유해야 한다. 같은 영상·SPEECH·동일 카테고리·60초 이내의 다른anchor·각1개 검증support와 단일PRIMARY가 전제다. segmentID·시각·원문이 완전히 일치한 공유 근거와 PRIMARY↔CONTEXT 연결이 필요하다. 역할 중복을 근거2개로 세거나 문자열 유사도·인접성만으로 연결하지 않는다. 잘못된 역할·시각·모순된 인용은 제외한다.
+
+연결은 pairwise다. A-B,B-C가 있어도 A-C나 하나의 동일쟁점 그룹을 만들지 않는다. `targetLabelsDiffer=false`도 같은 대상이라는 증거가 아니다. targetType 차이도 자동 해소하지 않는다. 프론트는 ‘공유 근거가 있는 카드’ 등의 보조 연결로 사용할 수 있지만 자동 숨김·병합·검수 결정을 해서는 안 된다. 프론트 구현은 이번 범위 밖이며 기존 클라이언트는 이 필드를 무시할 수 있다.
+
+기존 `repeatedPassages`는60초 이상 떨어진 반복 원문 표시라 별도로 유지한다. 새 배열은 판정 병합을 대신하는 것이 아니라 근거 중첩을 드러낸다. 저장126 리포트 근거 재생과 모의 경계 테스트까지 무료 확인했으며 실행 서버의 실제 응답은 재시작 후 확인해야 한다.
+
 > 2026-10-10 후속 계약: 리포트에 expressionOccurrences와 expressionDetectionStatus를 추가했다. 선택 표현은 기존 events/summary/reviewSummary에서 제외하며 옛 리포트의 미분석 상태는 NOT_ANALYZED다. STT 적중만 수집하고 프론트 필터/OCR 적중/relatedEventIds는 미구현이다. 진단 snapshot은 분석기별 promptRevisions를 추가하고 최상위 버전은 실제 발언 엔진 버전을 우선한다. 결과와 COMPLETED는 같은 트랜잭션에서 확정한다. [표현 API·스키마·배포 경계](표현-탐지-및-선택-필터-설계.md)를 따른다.
 
 > 명세 v2.1 · 최초 대조·영상 검증 기록: 2026-08-18 · 문서 정리: 2026-10-06
