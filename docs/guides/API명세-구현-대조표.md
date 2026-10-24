@@ -1,5 +1,9 @@
 # API 명세 ↔ 구현 대조표
 
+## 2026-10-25 로컬 진단 확장 — 정보부족 사유 신호
+
+로컬 전용 `GET /api/v1/videos/{id}/analysis/diagnostics`의 `segments[].decisions[]`에서 UNCERTAIN일 때만 `uncertaintyDiagnostic`을 추가한다. `basis=LEXICAL_REASON_SIGNALS_NOT_SEMANTIC_VALIDATION`, `signals`는 TRANSCRIPT_QUALITY/CONTEXT_REQUEST/SPEAKER_OR_DELIVERY_REQUEST/UNCLASSIFIED이며 여러 신호가 함께 나올 수 있다. `necessityValidated=false`는 항상 유지한다. 이는 기존에 길이를 제한한 missingInformation 문구의 어휘 분류라 누락·오분류가 가능하고 실제 원인·필수성 검증이 아니다. 모델 응답·원래 판단·근거·카드·점수·DB는 바꾸지 않는다. PASS/검토에는 이 필드를 생략한다. 접근 제어·1시간 보존 정책은 유지한다.
+
 ## 2026-10-24 리포트 확장 — 카드 간 공유 근거
 
 `GET /api/v1/videos/{id}/report`의 data에 `relatedFindingEvidence` 배열을 추가했다. 이는 **검증 근거가 겹치는 두 카드의 연결 정보**이며 같은 논란·같은 대상·중복이라는 확정 판정이 아니다. 기존 `events`,summary,reviewSummary,점수,occurrences,supportCount,검수 결정은 변경하지 않는다. DB 저장·스키마 이관·모델 호출도 없다. 서버 재시작 후 기존 완료 결과를 조회할 때도 저장 근거로 계산하며,근거가 없는 과거 결과는 빈 배열이다.
