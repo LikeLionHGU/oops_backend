@@ -61,6 +61,11 @@ public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int t
     public record DecisionTrace(Decision decision, String reason, String category, String target,
                                 List<String> missingInformation, List<EvidenceLink> evidence, boolean truncated) {
         public DecisionTrace { missingInformation = List.copyOf(missingInformation); evidence = List.copyOf(evidence); }
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        @com.fasterxml.jackson.annotation.JsonProperty("uncertaintyDiagnostic")
+        public UncertaintyDiagnostic uncertaintyDiagnostic() {
+            return decision == Decision.UNCERTAIN ? UncertaintyDiagnostic.from(missingInformation) : null;
+        }
     }
     public record Rejection(String returnedDecision, Failure failure, boolean repair) {}
     public record SegmentTrace(String segmentId, TimelineEventType type, long startMs, long endMs, State state,
