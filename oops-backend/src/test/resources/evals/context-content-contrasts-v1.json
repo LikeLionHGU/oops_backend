@@ -9,7 +9,7 @@
     "date": "2026-10-18",
     "scope": "CONTEXT_DECISION_ONLY",
     "message": "동의",
-    "reference": "docs/표현-탐지-및-선택-필터-설계.md"
+    "reference": "docs/guides/표현-탐지-및-선택-필터-설계.md"
   },
   "cases": [
     {
