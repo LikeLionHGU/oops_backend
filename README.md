@@ -131,6 +131,8 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 ## 사전과 데이터
 
+검수 입력JSON 하나로 [사례 등록·보강 도구](docs/casebook/데이터셋-파일-관리.md#단일-검수-입력-도구--2026-10-24)를 사용할 수 있다. `python3 tools/casebook_intake.py 입력.json`은 쓰기 없는 계획이고,`--check-retrieval`은 무료 Java 검색 확인이다. 실제 적용은 검토한 planSha256을 지정한 `--apply`로만 가능하며 출처·승인·빌드·검색을 재검증한다. 정보 부족은 HOLD로 기록만 하고 사전에 넣지 않는다. 모델/API 호출·자동 학습은 없다.
+
 | 파일 | 역할 |
 |---|---|
 | `datasets/controversy/guidelines/runtime.json` | 생성된 로컬 v7 실행 사전. 57개 참고·6개 공통 기준(10/24 파일 기준,서버 재시작 후 반영) |
