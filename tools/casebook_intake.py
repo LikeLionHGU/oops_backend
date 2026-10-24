@@ -130,7 +130,7 @@ def source_lines(root, spec):
     rows = original.get(keys[src["format"]])
     require(isinstance(rows, list), "SOURCE_SEGMENTS_REQUIRED")
     entries = spec["segments"]
-    require(isinstance(entries, list) and 1 <= len(entries) <= (7 if spec["decision"] == "PASS" else 8),
+    require(isinstance(entries, list) and 1 <= len(entries) <= (11 if spec["decision"] == "PASS" else 12),
             "COMPLETE_CONTEXT_MUST_FIT_UNIT_CONTRACT")
     lines, situations, evaluations = [], [], []
     indexes, ids = [], []

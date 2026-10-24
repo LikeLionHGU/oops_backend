@@ -227,7 +227,7 @@ public class ReviewGuidelineLibrary {
                 for (var ref : r.referenceContexts()) {
                     if (ref == null || !r.sourceCaseIds().contains(ref.sourceCaseId()) || !references.add(ref.sourceCaseId())
                             || !Set.of("SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT").contains(ref.coverage() == null ? "" : ref.coverage())
-                            || !texts(ref.flow(), 1, 8) || !texts(ref.criticismHypotheses(), 0, dictionary ? 16 : 2)
+                            || !texts(ref.flow(), 1, units ? 12 : 8) || !texts(ref.criticismHypotheses(), 0, dictionary ? 16 : 2)
                             || !texts(ref.missingContext(), 1, 8)) return false;
                     if (dictionary && ref.sourceInterpretations() == null) return false;
                     if (ref.sourceInterpretations() != null && (ref.sourceInterpretations().size() > 16
@@ -262,7 +262,7 @@ public class ReviewGuidelineLibrary {
                 var c = e.context();
                 if (units && !texts(c.normalContrasts(), 0, 4)) return false;
                 if (!Set.of("SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT").contains(c.coverage() == null ? "" : c.coverage())
-                        || !texts(c.flow(), 1, 8) || !texts(c.criticismHypotheses(), 0, 16) || !texts(c.missingContext(), 1, 8)
+                        || !texts(c.flow(), 1, units ? 12 : 8) || !texts(c.criticismHypotheses(), 0, 16) || !texts(c.missingContext(), 1, 8)
                         || c.sourceInterpretations() == null || c.sourceInterpretations().size() > 16
                         || c.sourceInterpretations().stream().anyMatch(s -> s == null || !text(s.excerpt(), 350)
                         || !Set.of("AUTHOR_INTERPRETATION", "REPORTED_AUDIENCE_REACTION").contains(s.statementKind() == null ? "" : s.statementKind()))) return false;

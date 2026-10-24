@@ -18,7 +18,7 @@ public final class CasebookIntakeAudit {
                 || !sha.equals(query.path("runtimeSha256").asText())
                 || !query.path("planSha256").asText().matches("[0-9a-f]{64}")
                 || !query.path("unitId").asText().matches("[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?")
-                || !query.path("raw").isArray() || query.path("raw").isEmpty() || query.path("raw").size() > 8
+                || !query.path("raw").isArray() || query.path("raw").isEmpty() || query.path("raw").size() > 12
                 || !query.path("focusIds").isArray() || query.path("focusIds").isEmpty())
             throw new IllegalArgumentException("INVALID_INTAKE_QUERY");
         var raw = new ArrayList<ReviewInput.Segment>(); var seen = new HashSet<String>(); long previousEnd = 0;

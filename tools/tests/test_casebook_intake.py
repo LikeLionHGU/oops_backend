@@ -80,6 +80,25 @@ def fake_audit(plan):
             "retrieved": True, "providerCalls": 0, "testFixtureNotJavaExecution": True}
 
 
+@pytest.mark.parametrize('count,accepted', [(11, True), (12, False)])
+def test_long_pass_keeps_every_source_line(dataset, count, accepted):
+    value = spec(dataset)
+    value['source'].update(save(dataset, 'research/long.json', {'transcript': [
+        {'text': f'합성 문맥 {i}', 'startMs': i * 1000, 'endMs': (i + 1) * 1000}
+        for i in range(count)]}))
+    value['segments'] = [{'index': i, 'id': f'stt-index-{i}',
+                          'role': 'EVALUATION' if i == 0 else 'SITUATION'} for i in range(count)]
+    lines, _ = tool.source_lines(dataset, value) if accepted else (None, None)
+    if accepted:
+        assert len(lines) == count
+        plan = tool.plan(dataset, value)
+        example = next(e for e in plan['payload']['candidateRuntime']['examples'] if e['id'] == value['id'])
+        assert len(example['context']['flow']) == count + 1
+    else:
+        with pytest.raises(tool.PilotError, match='COMPLETE_CONTEXT'):
+            tool.source_lines(dataset, value)
+
+
 def test_preview_is_deterministic_no_write_and_shows_exact_changed_paths(dataset):
     before = snapshot(dataset); first = tool.plan(dataset, spec(dataset)); second = tool.plan(dataset, spec(dataset))
     assert first == second and snapshot(dataset) == before

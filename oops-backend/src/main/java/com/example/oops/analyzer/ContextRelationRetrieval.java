@@ -31,7 +31,7 @@ final class ContextRelationRetrieval {
         if (p==null) return true;
         return "authored-relation-search-1".equals(p.version()) && "AUTHORED_RETRIEVAL_NOT_SOURCE_EVIDENCE".equals(p.basis())
                 && p.sourceSha256()!=null && p.sourceSha256().matches("[0-9a-f]{64}")
-                && p.sourceIds()!=null && !p.sourceIds().isEmpty() && p.sourceIds().size()<=8
+                && p.sourceIds()!=null && !p.sourceIds().isEmpty() && p.sourceIds().size()<=12
                 && new HashSet<>(p.sourceIds()).size()==p.sourceIds().size()
                 && p.sourceIds().stream().allMatch(id -> id!=null && id.matches("[A-Za-z0-9_-]{1,64}"))
                 && field(p.situation(),false) && field(p.target(),false) && field(p.evaluation(),true) && field(p.linkage(),true);

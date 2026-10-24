@@ -95,7 +95,7 @@ def linked_lines(root, unit):
     index = {line["id"]: line for line in lines}
     require(len(index) == len(lines), "UNIT_SOURCE_DUPLICATE_ID")
     ids = unit["utteranceIds"]
-    require(isinstance(ids, list) and 1 <= len(ids) <= 8 and len(ids) == len(set(ids))
+    require(isinstance(ids, list) and 1 <= len(ids) <= 12 and len(ids) == len(set(ids))
             and all(i in index for i in ids), "UNIT_UTTERANCE_IDS_INVALID")
     positions = {line["id"]: i for i, line in enumerate(lines)}
     require([positions[i] for i in ids] == sorted(positions[i] for i in ids), "UNIT_UTTERANCE_ORDER_INVALID")
@@ -191,7 +191,7 @@ def compile_preview(base, units, catalog, root, profiles=None):
                       if line["id"] in u["roles"][role]]
             if labels:
                 flow.append("·".join(labels) + " 원문: " + raw_by_id[line["id"]])
-        require(1 <= len(flow) <= 8 and all(text(s, 350) for s in flow), "UNIT_FLOW_LIMIT")
+        require(1 <= len(flow) <= 12 and all(text(s, 350) for s in flow), "UNIT_FLOW_LIMIT")
         context = {"coverage": "SELECTED_EXCERPTS_NOT_FULL_TRANSCRIPT", "flow": flow,
                    "criticismHypotheses": [u["interpretation"]],
                    "missingContext": [u["boundary"], "발췌 STT이며 원음·화자·억양·독립 검수는 확인하지 않았다. 과거 사례를 현재 원문 근거로 복사하지 않는다."],
@@ -210,7 +210,7 @@ def compile_preview(base, units, catalog, root, profiles=None):
             if u["developmentDecision"] == "PASS":
                 context["criticismHypotheses"] = []
                 context["flow"].append(review_label + " 정상 경계(원문 아님·독립 검수 아님): " + u["interpretation"])
-                require(len(context["flow"]) <= 8, "UNIT_FLOW_LIMIT")
+                require(len(context["flow"]) <= 12, "UNIT_FLOW_LIMIT")
             else:
                 context["criticismHypotheses"] = [review_label + " 검토 경계(독립 검수 아님): " + u["interpretation"]]
         example = {"id": uid, "familyId": u["familyId"], "mechanismIds": mechanisms,
