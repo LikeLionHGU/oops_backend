@@ -86,4 +86,46 @@ class TranscriptFragmentationAuditTest {
         assertThat(CandidateContextWindow.conversationUnits(page)).hasSize(58).allSatisfy(w ->
                 assertThat(w.segmentIds()).containsExactlyElementsOf(ids(source.segments())));
     }
+
+    @Test void actualDiscoveryAssemblyPreservesReferenceFlowAndAllCurrentAtomsWithoutProviderCalls() throws Exception {
+        var file=ROOT.resolve("experiments/podcast-meaning-edit-20261025/import-request-corrected-meaning.json");
+        var runtime=ROOT.resolve("guidelines/runtime.json");
+        var unitFile=ROOT.resolve("context-units/podcast-childhood-confrontation.json");
+        assumeTrue(Files.exists(file)&&Files.exists(runtime)&&Files.exists(unitFile));
+        var source=input(file);
+        var unit=ReviewGuidelineLibrary.JSON.readTree(Files.readAllBytes(unitFile));
+        var library=new ReviewGuidelineLibrary(new org.springframework.core.io.DefaultResourceLoader(),true,
+                runtime.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
+        library.load();
+        var f=new CandidateReviewEngineTest();
+        var transcript=source.segments().stream().map(s -> new com.example.oops.domain.TranscriptSegment(
+                f.video,s.startMs(),s.endMs(),s.text())).toList();
+        var context=new AnalysisContext(f.video,com.example.oops.domain.ContentGenre.TALK_PODCAST,transcript,List.of());
+        org.mockito.Mockito.when(f.client.completeAsJson(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.eq(CandidateReviewEngine.Discovery.class)))
+                .thenAnswer(inv -> {
+                    String system=inv.getArgument(0),body=inv.getArgument(1);
+                    var request=ReviewGuidelineLibrary.JSON.readTree(body);
+                    assertThat(request.path("raw").size()).isEqualTo(58);
+                    assertThat(request.path("primaryIds").size()).isEqualTo(58);
+                    assertThat(request.path("windows")).isEqualTo(request.path("targetWindows"));
+                    assertThat(request.path("windows").get(0).path("segmentIds").size()).isEqualTo(58);
+                    for(int i=0;i<58;i++) {
+                        assertThat(request.path("raw").get(i).path("text").asText()).isEqualTo(source.segments().get(i).text());
+                    }
+                    var payload=ReviewGuidelineLibrary.JSON.readTree(system.substring(system.indexOf("contextReference=")+17));
+                    assertThat(payload.path("referenceContexts").size()).isEqualTo(1);
+                    assertThat(system).contains(unit.path("interpretation").asText(),unit.path("boundary").asText());
+                    for(var row:unit.path("contextProjection").path("entries"))assertThat(system).contains(row.path("text").asText());
+                    assertThat(system).contains(unit.path("normalContrasts").get(0).path("text").asText());
+                    return Optional.of(new CandidateReviewEngine.Discovery(ids(source.segments()),List.of(),List.of(),false));
+                });
+        var result=CandidateReviewEngine.run(f.client,context,24,null,null,library);
+        assertThat(result.diagnostics().candidatePipeline().discoveryCalls()).isOne();
+        assertThat(result.diagnostics().candidatePipeline().contextSelections().get(0).exampleIds())
+                .containsExactly("podcast-dev#podcast-childhood-confrontation");
+        org.mockito.Mockito.verify(f.client,org.mockito.Mockito.times(1)).completeAsJson(
+                org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(CandidateReviewEngine.Discovery.class));
+    }
 }
