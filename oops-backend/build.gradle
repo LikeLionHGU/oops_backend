@@ -785,6 +785,18 @@ tasks.register('casebookIntakeAudit', JavaExec) {
     }
 }
 
+// Opt-in stage diagnosis. Preparation is offline; run requires fresh plan-specific consent.
+tasks.register('confrontationStageTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ConfrontationStageTrial'
+    doFirst {
+        def values = providers.gradleProperty('stageTrialArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run stageTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
 // Fresh opt-in stored-text verification; never called by bootRun or test.
 tasks.register('currentContextReferenceTrial', JavaExec) {
     dependsOn testClasses
