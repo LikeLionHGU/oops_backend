@@ -329,6 +329,9 @@ def compare(suite: dict, baseline: dict, candidate: dict, criteria: dict,
     require(approval is None or isinstance(approval, dict), "PROMOTION_APPROVAL_INVALID")
     approval = approval or {}
     approval_matches = (approval.get("status") == "USER_APPROVED_FOR_DEPLOYMENT"
+                        and approval.get("suiteSha256") == suite_sha
+                        and approval.get("baselineRunSha256") == canonical_sha(baseline)
+                        and approval.get("candidateRunSha256") == canonical_sha(candidate)
                         and approval.get("candidateArtifactBundleSha256") == candidate.get("artifactBundleSha256")
                         and approval.get("criteriaSha256") == criteria_sha
                         and approval.get("rollbackRehearsal") == "PASS"

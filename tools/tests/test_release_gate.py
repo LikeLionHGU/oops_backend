@@ -119,6 +119,15 @@ class ReleaseGateTest(unittest.TestCase):
                             self.suite_sha if s is self.suite else gate.canonical_sha(s),
                             self.criteria_sha if c is self.criteria else gate.canonical_sha(c), approval)
 
+    def make_approval(self, suite=None, baseline=None, candidate=None):
+        s, b, c = suite or self.suite, baseline or self.baseline, candidate or self.candidate
+        return {"status": "USER_APPROVED_FOR_DEPLOYMENT",
+            "suiteSha256": gate.canonical_sha(s),
+            "baselineRunSha256": gate.canonical_sha(b),
+            "candidateRunSha256": gate.canonical_sha(c),
+            "candidateArtifactBundleSha256": c["artifactBundleSha256"],
+            "criteriaSha256": self.criteria_sha, "rollbackRehearsal": "PASS"}
+
     def test_improvement_is_reported_but_never_promoted_automatically(self):
         result = self.compare()
         self.assertEqual("READY_FOR_HUMAN_REVIEW", result["decision"])
@@ -129,9 +138,7 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertEqual(1, result["baselineMetrics"]["overall"]["missedReviews"])
 
     def test_exact_candidate_and_criteria_approval_is_only_eligibility_not_deploy(self):
-        approval = {"status": "USER_APPROVED_FOR_DEPLOYMENT",
-            "candidateArtifactBundleSha256": self.candidate["artifactBundleSha256"],
-            "criteriaSha256": self.criteria_sha, "rollbackRehearsal": "PASS"}
+        approval = self.make_approval()
         result = self.compare(approval=approval)
         self.assertFalse(result["deploymentEligible"])
         self.assertEqual("NOT_RUN", result["rollbackRehearsal"])
@@ -140,9 +147,7 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertFalse(self.compare(approval=approval)["deploymentEligible"])
 
     def test_exact_bundles_rollback_and_approval_are_all_required_for_eligibility(self):
-        approval = {"status": "USER_APPROVED_FOR_DEPLOYMENT",
-            "candidateArtifactBundleSha256": self.candidate["artifactBundleSha256"],
-            "criteriaSha256": self.criteria_sha, "rollbackRehearsal": "PASS"}
+        approval = self.make_approval()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             base, cand = root / "base", root / "candidate"
@@ -153,6 +158,31 @@ class ReleaseGateTest(unittest.TestCase):
             self.assertTrue(result["deploymentEligible"])
             self.assertEqual("PASS", result["rollbackRehearsal"])
             self.assertFalse(result["automaticPromotion"])
+
+    def test_promotion_approval_is_invalidated_by_suite_or_run_changes(self):
+        approval = self.make_approval()
+        changed_suite = copy.deepcopy(self.suite)
+        changed_suite["cases"][0]["inputSha256"] = sha("new-evaluation-input")
+        suite_sha = gate.canonical_sha(changed_suite)
+        baseline, candidate = copy.deepcopy(self.baseline), copy.deepcopy(self.candidate)
+        for run in (baseline, candidate):
+            run["suiteSha256"] = suite_sha
+            run["cases"][0]["inputSha256"] = changed_suite["cases"][0]["inputSha256"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_dir, candidate_dir = root / "base", root / "candidate"
+            self.materialize_bundle(baseline, base_dir)
+            self.materialize_bundle(candidate, candidate_dir)
+            changed_suite_result = gate.compare(changed_suite, baseline, candidate, self.criteria,
+                suite_sha, self.criteria_sha, approval, base_dir, candidate_dir, True)
+            self.assertFalse(changed_suite_result["deploymentEligible"])
+
+        changed_candidate = copy.deepcopy(self.candidate)
+        changed_candidate["cases"][0]["costUsd"] = "0.013"
+        stale_run_approval = self.make_approval(candidate=changed_candidate)
+        stale_run_approval["candidateRunSha256"] = gate.canonical_sha(self.candidate)
+        self.assertFalse(self.compare(candidate=changed_candidate,
+                                      approval=stale_run_approval)["promotionApprovalMatched"])
 
     def test_bundle_verification_rejects_extra_files_and_hash_drift(self):
         with tempfile.TemporaryDirectory() as temp:
