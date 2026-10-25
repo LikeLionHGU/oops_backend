@@ -98,7 +98,7 @@ def validate_suite(suite: dict, criteria: dict) -> dict:
     require(all(isinstance(v, dict) and set(v) == set(THRESHOLD_METRICS) for v in categories.values()),
             "CATEGORY_THRESHOLDS_INCOMPLETE")
 
-    ids, source_groups, category_counts = set(), set(), Counter()
+    ids, source_groups, category_counts, source_group_by_hash = set(), set(), Counter(), {}
     development_groups = set(suite.get("developmentSourceGroups", []))
     for case in cases:
         require(isinstance(case, dict) and isinstance(case.get("caseId"), str) and case["caseId"], "CASE_INVALID")
@@ -110,6 +110,8 @@ def validate_suite(suite: dict, criteria: dict) -> dict:
         require(case.get("sourceGroupVerified") is True and isinstance(group, str) and group
                 and group not in development_groups, "CASE_SOURCE_NOT_INDEPENDENT")
         require(is_sha(case.get("sourceSha256")) and is_sha(case.get("inputSha256")), "CASE_HASH_INVALID")
+        prior_group = source_group_by_hash.setdefault(case["sourceSha256"], group)
+        require(prior_group == group, "SOURCE_HASH_GROUP_CONFLICT")
         categories_for_case = case.get("categoryIds")
         require(isinstance(categories_for_case, list) and categories_for_case
                 and len(categories_for_case) == len(set(categories_for_case)), "CASE_CATEGORIES_INVALID")
@@ -282,7 +284,9 @@ def compare(suite: dict, baseline: dict, candidate: dict, criteria: dict,
                      "payloadBefore": b["payloadCodePoints"], "payloadAfter": c["payloadCodePoints"]})
     for metrics in metric_sets.values():
         for scope, group in metrics.items():
-            group["displacedRelevantReferences"] = displaced_by_scope[scope]
+            group["displacedRelevantReferences"] = 0
+    for scope, count in displaced_by_scope.items():
+        metric_sets["candidate"][scope]["displacedRelevantReferences"] = count
 
     failures, improvements = [], []
     require_no_regression = criteria["requireNoQualityRegression"]

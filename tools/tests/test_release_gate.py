@@ -213,6 +213,12 @@ class ReleaseGateTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "REFERENCE_RELEVANCE_NOT_REVIEWED"):
             self.compare(suite=suite)
 
+    def test_identical_source_hash_cannot_claim_multiple_independent_groups(self):
+        suite = copy.deepcopy(self.suite)
+        suite["cases"][1]["sourceSha256"] = suite["cases"][0]["sourceSha256"]
+        with self.assertRaisesRegex(ValueError, "SOURCE_HASH_GROUP_CONFLICT"):
+            self.compare(suite=suite)
+
     def test_run_input_hash_must_match_the_frozen_suite_case(self):
         candidate = copy.deepcopy(self.candidate)
         candidate["cases"][0]["inputSha256"] = sha("different-input")
@@ -285,6 +291,33 @@ class ReleaseGateTest(unittest.TestCase):
             sorted(candidate["artifactManifest"], key=lambda row: row["path"]))
         with self.assertRaisesRegex(ValueError, "RUN_FINGERPRINT_ARTIFACT_MISMATCH"):
             self.compare(candidate=candidate)
+
+    def test_displaced_relevant_reference_is_a_candidate_regression(self):
+        suite = copy.deepcopy(self.suite)
+        suite["cases"][0]["expectedRelevantReferenceIds"] = ["ref-a", "ref-b"]
+        suite_sha = gate.canonical_sha(suite)
+        criteria = copy.deepcopy(self.criteria)
+        criteria["requireImprovement"] = False
+        for thresholds in (criteria["overallThresholds"], criteria["categoryThresholds"]["body-image"]):
+            thresholds["missedRelevantReferences"] = 1
+            thresholds["displacedRelevantReferences"] = 1
+        criteria_sha = gate.canonical_sha(criteria)
+        baseline, candidate = copy.deepcopy(self.baseline), copy.deepcopy(self.candidate)
+        baseline["suiteSha256"] = candidate["suiteSha256"] = suite_sha
+        baseline["criteriaSha256"] = candidate["criteriaSha256"] = criteria_sha
+        baseline["cases"][0]["decision"] = candidate["cases"][0]["decision"] = "REVIEW_REQUIRED"
+        baseline["cases"][0]["evidenceStatus"] = candidate["cases"][0]["evidenceStatus"] = "REVIEWED_VALID"
+        baseline["cases"][0]["selectedReferenceIds"] = ["ref-a"]
+        candidate["cases"][0]["selectedReferenceIds"] = ["ref-b"]
+
+        result = gate.compare(suite, baseline, candidate, criteria, suite_sha, criteria_sha)
+
+        self.assertEqual(0, result["baselineMetrics"]["overall"]["displacedRelevantReferences"])
+        self.assertEqual(1, result["candidateMetrics"]["overall"]["displacedRelevantReferences"])
+        self.assertEqual("REJECT_CANDIDATE", result["decision"])
+        self.assertTrue(any(failure["metric"] == "displacedRelevantReferences"
+                            and failure.get("reason") == "WORSE_THAN_BASELINE"
+                            for failure in result["failures"]))
 
     def test_rollback_round_trip_only_changes_temporary_stage(self):
         with tempfile.TemporaryDirectory() as temp:
