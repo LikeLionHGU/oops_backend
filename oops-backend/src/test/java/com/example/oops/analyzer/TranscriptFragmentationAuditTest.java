@@ -128,4 +128,35 @@ class TranscriptFragmentationAuditTest {
                 org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq(CandidateReviewEngine.Discovery.class));
     }
+
+    @Test void developerSeededNarrativeCanReachVerificationWithFullRawWithoutClaimingDetection() throws Exception {
+        var file=ROOT.resolve("experiments/podcast-meaning-edit-20261025/import-request-corrected-meaning.json");
+        assumeTrue(Files.exists(file));
+        var source=input(file);
+        var f=new CandidateReviewEngineTest();
+        var evidence=List.of(2,14,28,29,45,46,49,57).stream().map(i ->
+                new CandidateReviewEngine.Quote(source.segments().get(i).id(),source.segments().get(i).text())).toList();
+        var proposal=new CandidateReviewEngine.Proposal("stt-index-29","EXPRESSION_CONTENT",
+                "서열 소개·거친 맞대응·체격 비교와 자기 회고의 전달 방식을 대조한다. 실제 폭행을 전제하지 않는다.",evidence);
+        f.discovery(ids(source.segments()),proposal); // Developer injection only: not a model discovery result.
+        var context=new AnalysisContext(f.video,com.example.oops.domain.ContentGenre.TALK_PODCAST,
+                source.segments().stream().map(s -> new com.example.oops.domain.TranscriptSegment(
+                        f.video,s.startMs(),s.endMs(),s.text())).toList(),List.of());
+        org.mockito.Mockito.when(f.client.completeAsJson(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.eq(CandidateReviewEngine.VerificationResult.class)))
+                .thenAnswer(inv -> {
+                    var request=ReviewGuidelineLibrary.JSON.readTree((String)inv.getArgument(1));
+                    assertThat(request.path("raw").size()).isEqualTo(58);
+                    assertThat(request.path("candidates").size()).isEqualTo(1);
+                    assertThat(request.path("candidates").get(0).path("anchorId").asText()).isEqualTo("stt-index-29");
+                    assertThat(request.path("candidates").get(0).path("axis").asText()).isEqualTo("EXPRESSION_CONTENT");
+                    assertThat(request.has("expectedDecision")).isFalse();
+                    return Optional.empty(); // Intentionally no fake semantic verdict.
+                });
+        var result=CandidateReviewEngine.run(f.client,context,24);
+        assertThat(result.diagnostics().candidatePipeline().invalidProposals()).isZero();
+        assertThat(result.findings()).isEmpty();
+        org.mockito.Mockito.verify(f.client).completeAsJson(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.eq(CandidateReviewEngine.VerificationResult.class));
+    }
 }
