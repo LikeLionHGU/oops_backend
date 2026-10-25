@@ -644,18 +644,22 @@ final class CandidateReviewEngine {
         stats.discoveryRepairCalls++; stats.discoveryCalls++;
         Candidate result = null;
         String failure = "PROPOSAL_REPAIR_NO_RESPONSE";
+        String system = "DISCOVERY_REPAIR_REQUEST_NOT_BUILT";
+        String request = "DISCOVERY_REPAIR_REQUEST_NOT_BUILT";
+        boolean traceRecorded = false;
         try {
             var windows = units.stream().filter(u -> u.anchorId().equals(original.anchorId())).toList();
             Set<String> permitted = new HashSet<>(); windows.forEach(w -> permitted.addAll(w.segmentIds()));
-            String request = JSON.writeValueAsString(Map.of("promptRevision", REVISION,
+            request = JSON.writeValueAsString(Map.of("promptRevision", REVISION,
                     "anchorId", original.anchorId(), "axis", original.axis(),
                     "hypothesisNotEvidence", original.reason(), "raw", compact(raw(batch).stream().filter(s -> permitted.contains(s.id())).toList()),
                     "allowedWindows", compactWindows(windows), "repair", Map.of("attempt", 1, "failureCode", initial)));
-            String system = DISCOVERY_REPAIR_PROMPT + reference;
+            system = DISCOVERY_REPAIR_PROMPT + reference;
             context.checkActive();
             var response = client.completeAsJson(system, request, ProposalRepairResult.class).orElse(null);
             if (requestTrace != null) requestTrace.record("CANDIDATE_DISCOVERY_REPAIR", system, request, null, response,
                     response == null ? "NO_PARSED_RESPONSE" : "PARSED_RESPONSE_NOT_YET_VALIDATED");
+            traceRecorded = true;
             if (response != null && response.proposal() == null) failure = "PROPOSAL_REPAIR_NO_CANDIDATE";
             else if (response != null) {
                 var p = response.proposal();
@@ -670,8 +674,15 @@ final class CandidateReviewEngine {
                     if (failure == null) result = candidate(id, p, batch, units, reviewed, input, freezeWindow);
                 }
             }
-        } catch (java.util.concurrent.CancellationException ex) { throw ex;
-        } catch (RuntimeException ex) { failure = "PROPOSAL_REPAIR_REQUEST_EXCEPTION"; }
+        } catch (java.util.concurrent.CancellationException ex) {
+            if (requestTrace != null && !traceRecorded)
+                requestTrace.record("CANDIDATE_DISCOVERY_REPAIR", system, request, null, null, "CANCELLED_BEFORE_RESPONSE");
+            throw ex;
+        } catch (RuntimeException ex) {
+            failure = "PROPOSAL_REPAIR_REQUEST_EXCEPTION";
+            if (requestTrace != null && !traceRecorded)
+                requestTrace.record("CANDIDATE_DISCOVERY_REPAIR", system, request, null, null, failure);
+        }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(id, initial,
                 result == null ? "FAILED" : "RECOVERED", failure));
         return result;
@@ -683,18 +694,22 @@ final class CandidateReviewEngine {
                                              com.example.oops.service.ReviewRequestTraceStore.Session requestTrace) {
         boolean finalReviewBasisEnabled=features.finalBasis();
         stats.repairCalls++; stats.verificationCalls++;
-        Validation result;
+        Validation result = invalid("REQUEST_EXCEPTION");
         TextReviewEngine.LlmDecision repaired = null;
         int failuresBefore = client.failureCount();
+        String system = "VERIFICATION_REPAIR_REQUEST_NOT_BUILT";
+        String request = "VERIFICATION_REPAIR_REQUEST_NOT_BUILT";
+        boolean traceRecorded = false;
         try {
             var correction = repairPrompt(initial, evidenceLimit);
-            String system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
+            system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
             system=verificationSystem(system,features);
-            String request = verificationRequest(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled);
+            request = verificationRequest(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled);
             context.checkActive();
             var response = client.completeAsJson(system, request, VerificationResult.class).orElse(null);
             if (requestTrace != null) requestTrace.record("CANDIDATE_VERIFICATION_REPAIR", system, request, null, response,
                     response == null ? "NO_PARSED_RESPONSE" : "PARSED_RESPONSE_NOT_YET_VALIDATED");
+            traceRecorded = true;
             if (response == null) result = invalid(client.failureCount() > failuresBefore
                     ? client.failureCode().orElse("NO_PARSED_RESPONSE") : "NO_PARSED_RESPONSE");
             else if (response.verifications() == null || response.verifications().size() != 1
@@ -712,8 +727,15 @@ final class CandidateReviewEngine {
                             ?response.verifications().get(0).reviewBasis():null,
                     features.sourceUnderstanding(),response!=null && response.verifications()!=null && response.verifications().size()==1 && response.verifications().get(0)!=null
                             ?response.verifications().get(0).sourceUnderstanding():null,features.understandingVersion());
-        } catch (java.util.concurrent.CancellationException ex) { throw ex;
-        } catch (RuntimeException ex) { result = invalid("REQUEST_EXCEPTION"); }
+        } catch (java.util.concurrent.CancellationException ex) {
+            if (requestTrace != null && !traceRecorded)
+                requestTrace.record("CANDIDATE_VERIFICATION_REPAIR", system, request, null, null, "CANCELLED_BEFORE_RESPONSE");
+            throw ex;
+        } catch (RuntimeException ex) {
+            result = invalid("REQUEST_EXCEPTION");
+            if (requestTrace != null && !traceRecorded)
+                requestTrace.record("CANDIDATE_VERIFICATION_REPAIR", system, request, null, null, "REQUEST_EXCEPTION");
+        }
         if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
                 c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode(),
                 previous == null ? null : previous.decision(), repaired == null ? null : repaired.decision(),

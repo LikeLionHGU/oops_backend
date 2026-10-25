@@ -48,4 +48,48 @@ class CandidateRequestTraceTest {
         assertThat(store.find(2L).orElseThrow().requests()).extracting(ReviewRequestTraceStore.Entry::stage)
                 .contains("CANDIDATE_DISCOVERY", "CANDIDATE_DISCOVERY_REPAIR");
     }
+
+    @Test void recordsDiscoveryRepairRequestWhenProviderThrowsBeforeReturning() {
+        var f = new CandidateReviewEngineTest();
+        var empty = new Proposal("stt-index-0", "TARGET_TREATMENT", "후보 근거 복구가 필요한 가설입니다.", List.of());
+        when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class)))
+                .thenReturn(java.util.Optional.of(new Discovery(List.of("stt-index-0"), List.of(empty), List.of(), false)));
+        when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
+                .thenThrow(new IllegalStateException("synthetic provider failure"));
+        var env = new MockEnvironment().withProperty("server.address", "127.0.0.1")
+                .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
+        var store = new ReviewRequestTraceStore(true, env);
+        try (var trace = store.begin(3L)) {
+            run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), 24, null, null, null, trace);
+        }
+        var repair = store.find(3L).orElseThrow().requests().stream()
+                .filter(entry -> entry.stage().equals("CANDIDATE_DISCOVERY_REPAIR")).findFirst().orElseThrow();
+        assertThat(repair.input()).contains("repair", "stt-index-0");
+        assertThat(repair.outcome()).isEqualTo("PROPOSAL_REPAIR_REQUEST_EXCEPTION");
+        assertThat(repair.parsedResponse()).isNull();
+    }
+
+    @Test void recordsVerificationRepairRequestWhenProviderThrowsBeforeReturning() {
+        var f = new CandidateReviewEngineTest();
+        var linked = new Proposal("stt-index-0", "TARGET_TREATMENT", "연결된 검토의 정상 해석 문맥을 요구합니다.",
+                List.of(new Quote("stt-index-0", "그 집 메뉴 평가"),
+                        new Quote("stt-index-1", "대화의 후속 문맥")));
+        f.discovery(List.of("stt-index-0", "stt-index-1"), linked);
+        var initial = new VerificationResult(List.of(new Verification("candidate-1",
+                f.assessment("stt-index-0", "PASS", "그 집"))));
+        when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
+                .thenReturn(java.util.Optional.of(initial))
+                .thenThrow(new IllegalStateException("synthetic provider failure"));
+        var env = new MockEnvironment().withProperty("server.address", "127.0.0.1")
+                .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
+        var store = new ReviewRequestTraceStore(true, env);
+        try (var trace = store.begin(4L)) {
+            run(f.client, f.context("그 집 메뉴 평가", "대화의 후속 문맥"), 24, null, null, null, trace);
+        }
+        var repair = store.find(4L).orElseThrow().requests().stream()
+                .filter(entry -> entry.stage().equals("CANDIDATE_VERIFICATION_REPAIR")).findFirst().orElseThrow();
+        assertThat(repair.input()).contains("repair", "LINKED_PASS_CONTRAST_REQUIRED");
+        assertThat(repair.outcome()).isEqualTo("REQUEST_EXCEPTION");
+        assertThat(repair.parsedResponse()).isNull();
+    }
 }

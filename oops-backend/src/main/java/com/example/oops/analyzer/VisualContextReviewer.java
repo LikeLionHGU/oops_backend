@@ -108,7 +108,9 @@ public class VisualContextReviewer {
                 correction = "\n" + CandidateReviewEngine.repairPrompt(repairFailure);
             }
             String input = JsonMapper.builder().build().writeValueAsString(request);
+            context.checkActive();
             response = ai.completeWithImagesAsJson(PROMPT + guidelinePrompt + correction, input, images, Response.class).orElse(null);
+        } catch (java.util.concurrent.CancellationException ex) { throw ex;
         } catch (IllegalArgumentException ex) { return failure(c, "INVALID_IMAGE_INPUT", frames, false); }
         catch (Exception ex) { return failure(c, "VISUAL_REQUEST_FAILED", frames, true); }
         if (response == null) return failure(c, ai.failureCount() > failuresBefore

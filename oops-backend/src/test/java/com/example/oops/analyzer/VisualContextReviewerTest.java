@@ -94,6 +94,26 @@ class VisualContextReviewerTest {
         assertThat(r.validation().observation()).isNull(); assertThat(r.modelCalled()).isFalse();
         verifyNoInteractions(ai);
     }
+
+    @Test void cancellationAfterFrameExtractionStopsBeforeMultimodalProviderCall() {
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var c = new AnalysisContext(video, ContentGenre.GENERAL,
+                List.of(new TranscriptSegment(video, 0, 1500, "그 집 이용자는 수준이 낮아")), List.of(),
+                ReviewInput.from(List.of(new TranscriptSegment(video, 0, 1500, "그 집 이용자는 수준이 낮아")), List.of()),
+                cancelled::get);
+        when(media.sceneFrames(eq(video), anyList())).thenAnswer(invocation -> {
+            cancelled.set(true);
+            return Optional.of(new AnalysisServerClient.SceneFrames(List.of(
+                    new AnalysisServerClient.SceneFrames.Frame("scene-0", 0, 0, "/9j/2Q=="),
+                    new AnalysisServerClient.SceneFrames.Frame("scene-750", 750, 760, "/9j/2Q=="),
+                    new AnalysisServerClient.SceneFrames.Frame("scene-2750", 2750, 2760, "/9j/2Q=="))));
+        });
+        var candidate = new Candidate("candidate-1", fixture.proposal("stt-index-0", "그 집"),
+                c.reviewInput().segments(), false, false);
+        assertThatThrownBy(() -> reviewer.review(c, candidate))
+                .isInstanceOf(java.util.concurrent.CancellationException.class);
+        verify(ai, never()).completeWithImagesAsJson(anyString(), anyString(), anyList(), any());
+    }
     @Test void disabledAndYoutubeRemainExplicitlyUnassessed() {
         assertThat(new VisualContextReviewer(media, ai, false, 3).review(context(), candidate()).validation().failureCode())
                 .isEqualTo("VISUAL_DISABLED");
