@@ -8,8 +8,8 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-25-shared-reading-page-50";
-    static final String RELATION_REVISION = "2026-10-25-source-relations-reading-page-50";
+    static final String REVISION = "2026-10-25-shared-reading-page-51-linked-pass-all-axes";
+    static final String RELATION_REVISION = "2026-10-25-source-relations-reading-page-51-linked-pass-all-axes";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;
@@ -99,6 +99,12 @@ final class CandidateReviewEngine {
     }
     /** Frozen routing data, not evidence or an instruction to retain the discovery verdict. */
     private record FrozenReference(String discoveryRequestKey, String prompt, ContextMechanismRouter.LinkTrace routingLink) {}
+    private record CandidateReferenceContext(String discoveryRequestKey, String guidelinePrompt,
+                                             ContextMechanismRouter.Result routed,
+                                             List<ReviewCaseLibrary.Example> referenceCases) {
+        CandidateReferenceContext { referenceCases = referenceCases == null ? List.of() : List.copyOf(referenceCases); }
+    }
+    private record BudgetedCandidate(Candidate candidate, boolean visual) {}
     private record VerificationScope(String reference, String rawSha256,String isolatedRule) {
         VerificationScope(String reference,String rawSha256) { this(reference,rawSha256,""); }
     }
@@ -209,6 +215,7 @@ final class CandidateReviewEngine {
         Set<String> fingerprints = new HashSet<>();
         List<Candidate> candidates = new ArrayList<>();
         List<Candidate> visualCandidates = new ArrayList<>();
+        Map<String, CandidateReferenceContext> candidateReferences = new LinkedHashMap<>();
         Map<String, FrozenReference> frozenReferences = new LinkedHashMap<>();
         Map<String,MechanismVerificationBridge.Prepared> ruleRequests=new LinkedHashMap<>();
         RuntimeCandidateUnion.Trace unionTrace=null;
@@ -234,18 +241,12 @@ final class CandidateReviewEngine {
             if (references != null && stats.retrievalTraces.size() < MAX_TRACES) stats.retrievalTraces.add(references.trace());
             stats.discoveryCalls++;
             Discovery response;
-            String discoverySystem = (sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : DISCOVERY_PROMPT)
-                    + guidelinePrompt + (references != null && !references.examples().isEmpty() ? "\n" + CASE_REFERENCE_CONTRACT : "");
-            String discoveryInput = null;
+            var builtDiscovery = CandidateReviewRequestFactory.discovery(modelPromptRevision, sourceRelationsEnabled,
+                    guidelinePrompt, primaryIds, raw, units, targetUnits, batch.contextLimited(),
+                    references == null ? List.of() : references.examples());
+            String discoverySystem = builtDiscovery.system();
+            String discoveryInput = builtDiscovery.input();
             try {
-                Map<String, Object> request = new LinkedHashMap<>(Map.of(
-                        "promptRevision", modelPromptRevision, "primaryIds", primaryIds,
-                        "raw", compact(raw), "windows", compactWindows(units), "targetWindows", compactWindows(targetUnits),
-                        "contextLimited", batch.contextLimited()));
-                request.put("readingPage", DialogueReadingPage.metadata());
-                boolean hasReferences = references != null && !references.examples().isEmpty();
-                if (hasReferences) request.put("referenceCases", references.examples());
-                discoveryInput = JSON.writeValueAsString(request);
                 context.checkActive();
                 response = client.completeAsJson(discoverySystem, discoveryInput, Discovery.class).orElse(null);
             } catch (java.util.concurrent.CancellationException ex) { throw ex; }
@@ -331,39 +332,61 @@ final class CandidateReviewEngine {
                         + "|" + proposal.evidence().stream().map(q -> q.segmentId() + "=" + q.quote()).sorted().toList()
                         + (proposal.sourceRelations() == null ? "" : "|" + JSON.writeValueAsString(proposal.sourceRelations()));
                 if (!fingerprints.add(fingerprint)) { stats.duplicates++; continue; }
-                if ((ruleUnionEnabled ? needsVisual ? visualCandidates.size()>=maxCandidates : candidates.size()>=1000
-                        : candidates.size() + visualCandidates.size() >= maxCandidates)
-                        || needsVisual && visualCandidates.size() >= (visual == null ? 3 : visual.maxCandidates())) {
+                if (ruleUnionEnabled && (needsVisual ? visualCandidates.size() >= (visual == null ? 3 : visual.maxCandidates())
+                        : candidates.size() >= 1000)) {
                     stats.budgetSkipped++; unresolved.add(proposal.anchorId()); partial = true;
                     stats.trace(id, proposal.anchorId(), proposal.axis(), "BUDGET_SKIPPED"); continue;
                 }
                 if (needsVisual) visualCandidates.add(candidate);
+                else if (ruleUnionEnabled) {
+                    candidates.add(candidate);
+                    freezeReference(candidate, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt,
+                            routed, references == null ? List.of() : references.examples()), guidelines,
+                            frozenReferences, stats);
+                    if (candidate.contextExpanded()) stats.expandedCandidates++;
+                    if (candidate.contextLimited()) stats.verificationLimitedCandidates++;
+                    pending.merge(proposal.anchorId(), 1, Integer::sum);
+                } else {
+                    candidates.add(candidate);
+                    candidateReferences.put(id, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt,
+                            routed, references == null ? List.of() : references.examples()));
+                }
+            }
+        }
+        if (!ruleUnionEnabled) {
+            List<BudgetedCandidate> pool = new ArrayList<>(candidates.size() + visualCandidates.size());
+            candidates.forEach(candidate -> pool.add(new BudgetedCandidate(candidate, false)));
+            visualCandidates.forEach(candidate -> pool.add(new BudgetedCandidate(candidate, true)));
+            var selection = CandidateBudgetPlanner.select(pool, maxCandidates,
+                    item -> input.find(item.candidate().proposal().anchorId()).map(ReviewInput.Segment::startMs).orElse(0L),
+                    item -> item.visual() ? "visual" : "speech",
+                    Map.of("visual", visual == null ? 3 : visual.maxCandidates()));
+            Set<String> selectedIds = selection.selected().stream()
+                    .map(item -> item.candidate().candidateId()).collect(java.util.stream.Collectors.toSet());
+            // Fair allocation decides membership; keep the original discovery order for request batching.
+            List<BudgetedCandidate> selectedInDiscoveryOrder = pool.stream()
+                    .filter(item -> selectedIds.contains(item.candidate().candidateId())).toList();
+            candidates.clear();
+            visualCandidates.clear();
+            for (var item : selectedInDiscoveryOrder) {
+                Candidate candidate = item.candidate();
+                if (item.visual()) visualCandidates.add(candidate);
                 else {
                     candidates.add(candidate);
-                    // Approved historical cases are copied too, never retrieved afresh at verification.
-                    String reference = guidelinePrompt;
-                    String referenceKey = discoveryRequestKey;
-                    ContextMechanismRouter.LinkTrace routingLink = null;
-                    // Explicit v6 archive only: choose unit references once using the validated candidate,
-                    // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
-                    if (guidelines != null && guidelines.contextUnitArchive()) {
-                        referenceKey = "unit-" + id;
-                        var evidenceIds = new HashSet<>(candidate.proposal().evidence().stream().map(Quote::segmentId).toList());
-                        routingLink = routed==null?null:routed.linkFor(evidenceIds);
-                        reference = stats.candidateReference(guidelines, candidate, referenceKey,
-                                routed == null ? Set.of() : routed.keysFor(evidenceIds));
-                    }
-                    if (references != null && !references.examples().isEmpty()) reference += "\n" + CASE_REFERENCE_CONTRACT
-                            + "\nreferenceCases: " + JSON.writeValueAsString(references.examples());
-                    var frozen = new FrozenReference(referenceKey, reference, routingLink);
-                    frozenReferences.put(id, frozen);
-                    stats.snapshot(candidate, frozen);
+                    var candidateReference = candidateReferences.get(candidate.candidateId());
+                    if (candidateReference == null) throw new IllegalStateException("Missing frozen candidate reference context");
+                    freezeReference(candidate, candidateReference, guidelines, frozenReferences, stats);
                 }
                 if (candidate.contextExpanded()) stats.expandedCandidates++;
-                if (candidate.contextLimited()) {
-                    stats.verificationLimitedCandidates++;
-                }
-                pending.merge(proposal.anchorId(), 1, Integer::sum);
+                if (candidate.contextLimited()) stats.verificationLimitedCandidates++;
+                pending.merge(candidate.proposal().anchorId(), 1, Integer::sum);
+            }
+            for (var item : selection.skipped()) {
+                Candidate candidate = item.candidate();
+                stats.budgetSkipped++;
+                unresolved.add(candidate.proposal().anchorId());
+                partial = true;
+                stats.trace(candidate, "BUDGET_SKIPPED");
             }
         }
         if(ruleUnionEnabled) {
@@ -416,6 +439,9 @@ final class CandidateReviewEngine {
         Map<String,RiskFinding> publishedFindings=new HashMap<>();
         // Share calls only with the same frozen references. Per-candidate segment permissions still apply.
         Map<VerificationScope, List<Candidate>> referenceGroups = new LinkedHashMap<>();
+        Map<String, Validation> candidateValidations = new LinkedHashMap<>();
+        Map<String, TextReviewEngine.LlmDecision> initialAssessments = new HashMap<>();
+        Map<String, String> verificationReferences = new HashMap<>();
         for (var c : candidates) {
             String reference = frozenReferences.get(c.candidateId()).prompt();
             var scope = ruleRequests.containsKey(c.candidateId()) ? new VerificationScope(reference,
@@ -429,17 +455,17 @@ final class CandidateReviewEngine {
             String guidelinePrompt = entry.getKey().reference();
             var ruleRequest=ruleRequests.get(group.get(0).candidateId());
             if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {
-                for(var c:group) {stats.verificationFailed++;unresolved.add(c.proposal().anchorId());stats.trace(c,"CANCELLED","INTERRUPTED");}
-                partial=true; continue;
+                for(var c:group) candidateValidations.put(c.candidateId(), invalid("INTERRUPTED"));
+                continue;
             }
             stats.verificationCalls++;
             VerificationResult response;
             String responseFailure = null;
             int failuresBefore = client.failureCount();
-            String requestSystem = ruleRequest!=null ? ruleRequest.system() : (group.get(0).proposal().sourceRelations() == null ? verificationPrompt(evidenceLimit)
-                    : SourceRelationPrompts.verification(evidenceLimit)) + guidelinePrompt;
-            requestSystem=verificationSystem(requestSystem,features);
-            String requestInput = ruleRequest!=null ? ruleRequest.user() : verificationRequest(group, null, null, finalReviewBasisEnabled);
+            String requestSystem = ruleRequest != null ? ruleRequest.system()
+                    : CandidateReviewRequestFactory.verificationSystem(group.get(0), evidenceLimit, guidelinePrompt, features);
+            String requestInput = ruleRequest != null ? ruleRequest.user()
+                    : CandidateReviewRequestFactory.verification(group, null, null, finalReviewBasisEnabled);
             try {
                 context.checkActive();
                 response = client.completeAsJson(requestSystem, requestInput,
@@ -470,42 +496,70 @@ final class CandidateReviewEngine {
                 Validation validation = matches.size() == 1 ? ruleRequest!=null ? MechanismVerificationBridge.validate(ruleRequest,response,input)
                         : SourceUnderstandingContract.validate(c, matches.get(0), input, evidenceLimit,finalReviewBasisEnabled,features.sourceUnderstanding(),features.understandingVersion())
                         : invalid(responseFailure != null ? responseFailure : matches.isEmpty() ? "MISSING_CANDIDATE" : "DUPLICATE_CANDIDATE");
+                candidateValidations.put(c.candidateId(), validation);
+                initialAssessments.put(c.candidateId(), matches.size() == 1 ? matches.get(0).assessment() : null);
+                verificationReferences.put(c.candidateId(), guidelinePrompt);
                 stats.evidenceCount(c, "INITIAL", matches.size() == 1 ? matches.get(0).assessment() : null,
                         evidenceLimit, validation.failureCode(), finalReviewBasisEnabled, matches.size()==1?matches.get(0).reviewBasis():null,
                         features.sourceUnderstanding(),matches.size()==1?matches.get(0).sourceUnderstanding():null,features.understandingVersion());
-                if (ruleRequest==null && REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode())) {
-                    if (stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
-                        validation = repairContract(client, c, input, guidelinePrompt, stats, validation.failureCode(), evidenceLimit,
-                                matches.size() == 1 ? matches.get(0).assessment() : null, features, context, requestTrace);
-                    } else if (stats.repairs.size() < MAX_TRACES) {
-                        stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(c.candidateId(),
-                                validation.failureCode(), "NOT_ATTEMPTED_BUDGET", validation.failureCode()));
-                    }
-                }
-                Observation observation = validation.observation();
-                if (observation == null) {
-                    stats.verificationFailed++; unresolved.add(c.proposal().anchorId()); partial = true;
-                    stats.trace(c, "VERIFICATION_FAILED", validation.failureCode());
-                    continue;
-                }
-                pending.computeIfPresent(observation.anchorId(), (key, value) -> value - 1);
-                stats.conflicts.record(c,observation,"TEXT");
-                observations.computeIfAbsent(observation.anchorId(), key -> new ArrayList<>()).add(observation);
-                evaluations.add(new ReviewEvaluation("speech-review:verification", ExecutionStatus.SUCCESS,
-                        List.of(observation.anchorId()), List.of(observation), c.raw().stream().map(ReviewInput.Segment::id).toList()));
-                stats.trace(c, observation.decision().name());
-                if (observation.decision() == Decision.REVIEW_REQUIRED) {
-                    var finding=TextReviewEngine.finding(context, input.find(observation.anchorId()).orElseThrow(), observation);
-                    if(!ruleUnionEnabled || findingGate.publish(c.candidateId(),ruleRequest!=null,c.proposal().axis(),observation)) {
-                        findings.add(finding);publishedFindings.put(c.candidateId(),finding);
-                    } else {
-                        var retained=publishedFindings.get(findingGate.retainedCandidateId(c.candidateId()));
-                        var support=new ArrayList<>(retained.validatedSupports());support.addAll(finding.validatedSupports());
-                        retained.recordValidatedSupports(support);
-                    }
-                } else if (observation.decision() == Decision.PASS) stats.rejected++;
-                else { stats.uncertain++; unresolved.add(observation.anchorId()); partial = true; }
             }
+        }
+        // First finish every initial text verification. Then allocate the fixed repair budget
+        // across the timeline, so one early failure cannot consume both repair calls.
+        List<Candidate> repairCandidates = candidates.stream().filter(candidate -> !ruleRequests.containsKey(candidate.candidateId()))
+                .filter(candidate -> {
+                    Validation validation = candidateValidations.get(candidate.candidateId());
+                    return validation != null && validation.observation() == null
+                            && REPAIRABLE_FAILURES.contains(validation.failureCode() == null ? "" : validation.failureCode());
+                }).toList();
+        int repairCapacity = Math.max(0, MAX_CONTRACT_REPAIRS - stats.discoveryRepairCalls);
+        var repairPlan = CandidateBudgetPlanner.select(repairCandidates, repairCapacity,
+                candidate -> input.find(candidate.proposal().anchorId()).map(ReviewInput.Segment::startMs).orElse(0L),
+                ignored -> "contract", Map.of());
+        for (var candidate : repairPlan.selected()) {
+            Validation initial = candidateValidations.get(candidate.candidateId());
+            Validation repaired = repairContract(client, candidate, input,
+                    verificationReferences.getOrDefault(candidate.candidateId(), ""), stats,
+                    initial.failureCode(), evidenceLimit, initialAssessments.get(candidate.candidateId()),
+                    features, context, requestTrace);
+            candidateValidations.put(candidate.candidateId(), repaired);
+        }
+        for (var candidate : repairPlan.skipped()) {
+            Validation initial = candidateValidations.get(candidate.candidateId());
+            if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+                    candidate.candidateId(), initial.failureCode(), "NOT_ATTEMPTED_BUDGET", initial.failureCode()));
+        }
+        // Publication consumes validated decisions only; discovery, verification, repair and
+        // publication now have explicit in-memory boundaries and replayable inputs.
+        for (var candidate : candidates) {
+            Validation validation = candidateValidations.getOrDefault(candidate.candidateId(), invalid("MISSING_VALIDATION"));
+            Observation observation = validation.observation();
+            if (observation == null) {
+                stats.verificationFailed++; unresolved.add(candidate.proposal().anchorId()); partial = true;
+                stats.trace(candidate, "VERIFICATION_FAILED", validation.failureCode());
+                continue;
+            }
+            var ruleRequest = ruleRequests.get(candidate.candidateId());
+            pending.computeIfPresent(observation.anchorId(), (key, value) -> value - 1);
+            stats.conflicts.record(candidate, observation, "TEXT");
+            observations.computeIfAbsent(observation.anchorId(), key -> new ArrayList<>()).add(observation);
+            evaluations.add(new ReviewEvaluation("speech-review:verification", ExecutionStatus.SUCCESS,
+                    List.of(observation.anchorId()), List.of(observation), candidate.raw().stream().map(ReviewInput.Segment::id).toList()));
+            stats.trace(candidate, observation.decision().name());
+            if (observation.decision() == Decision.REVIEW_REQUIRED) {
+                var finding = TextReviewEngine.finding(context, input.find(observation.anchorId()).orElseThrow(), observation);
+                if (!ruleUnionEnabled || findingGate.publish(candidate.candidateId(), ruleRequest != null,
+                        candidate.proposal().axis(), observation)) {
+                    findings.add(finding);
+                    publishedFindings.put(candidate.candidateId(), finding);
+                } else {
+                    var retained = publishedFindings.get(findingGate.retainedCandidateId(candidate.candidateId()));
+                    var support = new ArrayList<>(retained.validatedSupports());
+                    support.addAll(finding.validatedSupports());
+                    retained.recordValidatedSupports(support);
+                }
+            } else if (observation.decision() == Decision.PASS) stats.rejected++;
+            else { stats.uncertain++; unresolved.add(observation.anchorId()); partial = true; }
         }
         for (var c : visualCandidates) {
             context.checkActive();
@@ -610,32 +664,26 @@ final class CandidateReviewEngine {
         return new TextReviewEngine.Result(findings, evaluations, status, notice, unresolved.stream().sorted().toList(), List.of(), diagnostic);
     }
 
-    private static String verificationRequest(List<Candidate> candidates, String failure, String detail,boolean finalReviewBasisEnabled) {
-        Map<String, ReviewInput.Segment> raw = new LinkedHashMap<>();
-        candidates.forEach(c -> c.raw().forEach(s -> raw.put(s.id(), s)));
-        Map<String, Object> request = new LinkedHashMap<>();
-        boolean relations = candidates.stream().anyMatch(c -> c.proposal().sourceRelations() != null);
-        request.put("promptRevision", relations ? RELATION_REVISION : REVISION);
-        if(finalReviewBasisEnabled) request.put("verificationContract",FinalReviewBasisContract.VERSION);
-        request.put("raw", compact(raw.values().stream()
-                .sorted(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id)).toList()));
-        if (!relations) request.put("candidates", candidates.stream().map(c -> Map.of("candidateId", c.candidateId(),
-                "anchorId", c.proposal().anchorId(), "axis", c.proposal().axis(),
-                "hypothesisNotEvidence", c.proposal().reason(),
-                "proposedEvidence", c.proposal().evidence(),
-                "contextExpanded", c.contextExpanded(), "contextLimited", c.contextLimited(),
-                "segmentIds", c.raw().stream().map(ReviewInput.Segment::id).toList())).toList());
-        else request.put("candidates", candidates.stream().map(c -> Map.of("candidateId", c.candidateId(),
-                "anchorId", c.proposal().anchorId(), "axis", c.proposal().axis(),
-                "sourceRelations", c.proposal().sourceRelations(), "proposedEvidence", c.proposal().evidence(),
-                "contextExpanded", c.contextExpanded(), "contextLimited", c.contextLimited(),
-                "segmentIds", c.raw().stream().map(ReviewInput.Segment::id).toList())).toList());
-        if (failure != null) {
-            Map<String, Object> repair = new LinkedHashMap<>(Map.of("attempt", 1, "failureCode", failure));
-            if (detail != null) repair.put("failureDetail", detail);
-            request.put("repair", repair);
+    private static void freezeReference(Candidate candidate, CandidateReferenceContext context,
+                                        ReviewGuidelineLibrary guidelines,
+                                        Map<String, FrozenReference> frozenReferences, Stats stats) {
+        String reference = context.guidelinePrompt();
+        String referenceKey = context.discoveryRequestKey();
+        ContextMechanismRouter.LinkTrace routingLink = null;
+        // Explicit v6 archive only: choose unit references once using the validated candidate,
+        // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
+        if (guidelines != null && guidelines.contextUnitArchive()) {
+            referenceKey = "unit-" + candidate.candidateId();
+            var evidenceIds = new HashSet<>(candidate.proposal().evidence().stream().map(Quote::segmentId).toList());
+            routingLink = context.routed() == null ? null : context.routed().linkFor(evidenceIds);
+            reference = stats.candidateReference(guidelines, candidate, referenceKey,
+                    context.routed() == null ? Set.of() : context.routed().keysFor(evidenceIds));
         }
-        return JSON.writeValueAsString(request);
+        if (!context.referenceCases().isEmpty()) reference += "\n" + CASE_REFERENCE_CONTRACT
+                + "\nreferenceCases: " + JSON.writeValueAsString(context.referenceCases());
+        var frozen = new FrozenReference(referenceKey, reference, routingLink);
+        frozenReferences.put(candidate.candidateId(), frozen);
+        stats.snapshot(candidate, frozen);
     }
     private static Candidate repairProposal(OpenAiClient client, String id, Proposal original,
             TextReviewBatchPlanner.Batch batch, List<ReviewUnit> units, List<String> reviewed,
@@ -704,7 +752,7 @@ final class CandidateReviewEngine {
             var correction = repairPrompt(initial, evidenceLimit);
             system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
             system=verificationSystem(system,features);
-            request = verificationRequest(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled);
+            request = CandidateReviewRequestFactory.verification(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled);
             context.checkActive();
             var response = client.completeAsJson(system, request, VerificationResult.class).orElse(null);
             if (requestTrace != null) requestTrace.record("CANDIDATE_VERIFICATION_REPAIR", system, request, null, response,
@@ -899,7 +947,7 @@ final class CandidateReviewEngine {
                     || d.targetType() != null || d.targetRelation() != null || d.targetReason() != null || d.targetMention() != null)) return invalid("NON_REVIEW_FIELDS");
             if (d.score() != null && (!Double.isFinite(d.score()) || d.score() < 0 || d.score() > 1)) return invalid("INVALID_SCORE");
             if (decision == Decision.REVIEW_REQUIRED && !useful(d.alternativeInterpretation(), 300)) return invalid("ALTERNATIVE_INTERPRETATION_REQUIRED");
-            if (decision == Decision.PASS && "TARGET_TREATMENT".equals(c.proposal().axis())
+            if (decision == Decision.PASS
                     && c.proposal().evidence().stream().map(Quote::segmentId).distinct().count() > 1) {
                 if (!useful(d.alternativeInterpretation(), 300)) return invalid("LINKED_PASS_CONTRAST_REQUIRED");
                 // A normal interpretation may be grounded in a line discovery did not select.
@@ -990,11 +1038,11 @@ final class CandidateReviewEngine {
         var all = new ArrayList<>(batch.primary()); all.addAll(batch.context());
         return all.stream().sorted(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id)).toList();
     }
-    private static List<Map<String, Object>> compact(List<ReviewInput.Segment> raw) {
+    static List<Map<String, Object>> compact(List<ReviewInput.Segment> raw) {
         return raw.stream().map(s -> Map.<String, Object>of("id", s.id(), "startMs", s.startMs(), "endMs", s.endMs(), "text", s.text())).toList();
     }
     /** Identical raw windows share one ID list; anchor permissions remain explicit. */
-    private static List<Map<String, Object>> compactWindows(List<ReviewUnit> units) {
+    static List<Map<String, Object>> compactWindows(List<ReviewUnit> units) {
         Map<List<String>, Set<String>> grouped = new LinkedHashMap<>();
         units.forEach(u -> grouped.computeIfAbsent(u.segmentIds(), key -> new LinkedHashSet<>()).add(u.anchorId()));
         return grouped.entrySet().stream().map(e -> Map.<String, Object>of("anchorIds", List.copyOf(e.getValue()),

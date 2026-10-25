@@ -11,6 +11,8 @@ import java.util.*;
 /** Selective frame-assisted speech review, not whole-video or audio/pose analysis. */
 @Component
 public class VisualContextReviewer {
+    static final int MAX_FRAME_SAMPLES = 3;
+    static final int MAX_FRAME_OBSERVATIONS = 3;
     static final String PROMPT = CandidateReviewEngine.VERIFICATION_PROMPT.substring(0,
             CandidateReviewEngine.VERIFICATION_PROMPT.indexOf("JSON:")) + """
             # 장면 문맥 보충
@@ -116,7 +118,7 @@ public class VisualContextReviewer {
         if (response == null) return failure(c, ai.failureCount() > failuresBefore
                 ? "VISUAL_" + ai.failureCode().orElse("NO_PARSED_RESPONSE") : "VISUAL_NO_PARSED_RESPONSE", frames, true);
         if (!c.candidateId().equals(response.candidateId()) || response.observations() == null
-                || response.observations().isEmpty() || response.observations().size() > 3
+                || response.observations().isEmpty() || response.observations().size() > MAX_FRAME_OBSERVATIONS
                 || response.connectionReason() == null || response.connectionReason().isBlank() || response.connectionReason().length() > 300)
             return failure(c, "VISUAL_RESPONSE_CONTRACT", frames, true);
         Set<String> observed = new HashSet<>();
@@ -144,10 +146,10 @@ public class VisualContextReviewer {
                         .thenComparing(ReviewInput.Segment::id))
                 .forEach(s -> {
                     long t = Math.max(0, Math.min(duration - 1, midpoint(s)));
-                    if (selected.size() < 3 && selected.stream().allMatch(existing -> Math.abs(existing - t) >= 2000)) selected.add(t);
+                    if (selected.size() < MAX_FRAME_SAMPLES && selected.stream().allMatch(existing -> Math.abs(existing - t) >= 2000)) selected.add(t);
                 });
         for (long t : new long[]{mid - 2000, mid + 2000}) {
-            if (selected.size() < 3) selected.add(Math.max(0, Math.min(duration - 1, t)));
+            if (selected.size() < MAX_FRAME_SAMPLES) selected.add(Math.max(0, Math.min(duration - 1, t)));
         }
         return selected.stream().sorted().toList();
     }

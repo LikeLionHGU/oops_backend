@@ -160,7 +160,7 @@ oops:
     review-cases-max-code-points: 2400 # 사례 JSON 글자 한도. 실제 토큰/비용 상한은 아님.
     review-cases-excluded-families: ${REVIEW_CASES_EXCLUDED_FAMILIES:} # 평가 대상 사건 familyId를 쉼표로 제외.
     visual-context-enabled: ${VISUAL_CONTEXT_ENABLED:true} # 선택적 장면 검증. 포즈/음성/전체 영상 분석은 아님.
-    visual-context-max-candidates: 3 # 영상당 최대 3후보 × 후보당 최대 3프레임. 초과는 PARTIAL.
+    visual-context-max-candidates: 3 # 설정 가능한 것은 후보 수. 후보당 프레임 샘플·응답 observation은 각각 코드 고정 상한 3.
     dialogue-review-enabled: true # 기존 방식에서만 적용. candidate-review-enabled=true이면 추가 대화 호출 없음.
     review-diagnostics-enabled: false # 공개 서버에서는 활성화하지 않는다.
     review-request-trace-enabled: false # 민감 원문 포함: 로컬에서만 명시적으로 활성화

@@ -104,7 +104,7 @@ final class CandidateReviewPrompts {
             각 candidateId에 정확히 하나의 assessment를 반환한다. 새 후보·다른 anchor는 만들지 않는다.
             reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 해석이 설명하는 범위와
               별도의 검토 이유가 남는지를 적는다. REVIEW_REQUIRED에는 대조 해석이 필수다.
-              TARGET_TREATMENT의 proposedEvidence가 서로 다른 두 줄 이상이면 PASS에도 대조 해석이 필수다.
+              proposedEvidence가 서로 다른 두 줄 이상을 연결한 후보이면 축과 무관하게 PASS에도 대조 해석이 필수다.
               이 PASS의 reason에는 전체 연결의 정상 해석을, alternativeInterpretation에는 가장 강한 비판 가설과
               그 가설을 현재 원문이 뒷받침하지 않는 이유를 적는다. 후보 이유를 사실로 받아들이지 않는다.
               또한 해당 후보의 허용 raw 중 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.
@@ -185,7 +185,7 @@ final class CandidateReviewPrompts {
             """;
     static final String CONTRAST_REPAIR_PROMPT = """
             # 연결 후보 대조 계약 재검증
-            이전 응답은 여러 줄로 연결된 후보의 PASS 대조 또는 CONTEXT 계약을 충족하지 않아 채택되지 않았다.
+            이전 응답은 여러 줄로 연결된 후보의 PASS 대조 또는 CONTEXT 계약을 충족하지 않아 채택되지 않았다. 축과 무관하게 동일 계약을 적용한다.
             허용 raw만 다시 읽고 정상 해석과 가장 강한 비판 가설을 대조한다. 가설은 사실이 아니다.
             PASS이면 전체 연결이 정상인 이유와 비판 가설의 근거 부족을 설명하고 실제 별도 CONTEXT를 인용한다.
             CONTEXT는 해당 후보의 허용 raw에서 고르며 proposedEvidence에 포함될 필요는 없다. 창 밖 근거는 금지다.
