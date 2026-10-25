@@ -19,6 +19,26 @@ class CandidateBudgetPlannerTest {
         assertThat(result.skipped()).extracting(Item::id).containsExactly("early-3", "late-2");
     }
 
+    @Test void constrainedBudgetSamplesAcrossTheFullTimeline() {
+        var input = List.of(new Item("start", 0, "speech"), new Item("middle", 30 * 60_000L, "speech"),
+                new Item("end", 90 * 60_000L, "speech"));
+
+        var result = CandidateBudgetPlanner.select(input, 2, Item::time, Item::kind, Map.of());
+
+        assertThat(result.selected()).extracting(Item::id).containsExactly("start", "end");
+        assertThat(result.skipped()).extracting(Item::id).containsExactly("middle");
+    }
+
+    @Test void threeSlotBudgetSamplesBeginningMiddleAndEndWhenManyWindowsCompete() {
+        var input = List.of(new Item("w0", 0, "speech"), new Item("w1", 30 * 60_000L, "speech"),
+                new Item("w2", 60 * 60_000L, "speech"), new Item("w3", 90 * 60_000L, "speech"),
+                new Item("w4", 120 * 60_000L, "speech"));
+
+        var result = CandidateBudgetPlanner.select(input, 3, Item::time, Item::kind, Map.of());
+
+        assertThat(result.selected()).extracting(Item::id).containsExactly("w0", "w2", "w4");
+    }
+
     @Test void visualCeilingAndSharedGlobalCeilingAreBothEnforced() {
         var input = List.of(new Item("v1", 0, "visual"), new Item("s1", 1, "speech"),
                 new Item("v2", 360_000, "visual"), new Item("s2", 360_001, "speech"));

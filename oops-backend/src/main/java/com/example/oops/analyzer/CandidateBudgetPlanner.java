@@ -39,6 +39,7 @@ final class CandidateBudgetPlanner {
                     .add(new Indexed<>(i, timestamp, candidate, Objects.requireNonNull(kind.apply(candidate))));
         }
         windows.values().forEach(items -> items.sort(Comparator.comparingLong(Indexed<T>::timestamp).thenComparingInt(Indexed<T>::index)));
+        List<List<Indexed<T>>> orderedWindows = orderedWindows(windows, totalLimit);
 
         Set<Integer> consideredIndexes = new HashSet<>();
         Set<Integer> selectedIndexes = new HashSet<>();
@@ -47,7 +48,7 @@ final class CandidateBudgetPlanner {
         boolean progressed;
         do {
             progressed = false;
-            for (var items : windows.values()) {
+            for (var items : orderedWindows) {
                 if (selected.size() >= totalLimit) break;
                 for (var item : items) {
                     if (consideredIndexes.contains(item.index())) continue;
@@ -69,6 +70,38 @@ final class CandidateBudgetPlanner {
         List<T> skipped = new ArrayList<>();
         for (int i = 0; i < candidates.size(); i++) if (!selectedIndexes.contains(i)) skipped.add(candidates.get(i));
         return new Selection<>(selected, skipped);
+    }
+
+    /**
+     * If there are more active windows than the shared budget, start with evenly spaced
+     * windows so a small budget still represents the beginning, middle, and end of a video.
+     * Remaining windows retain chronological order for any capacity left by kind limits.
+     */
+    private static <T> List<List<Indexed<T>>> orderedWindows(
+            SortedMap<Long, List<Indexed<T>>> windows, int totalLimit) {
+        List<List<Indexed<T>>> chronological = new ArrayList<>(windows.values());
+        if (totalLimit <= 0 || chronological.size() <= totalLimit) return chronological;
+
+        int count = chronological.size();
+        int slots = Math.min(count, totalLimit);
+        List<List<Indexed<T>>> ordered = new ArrayList<>(count);
+        Set<Integer> included = new HashSet<>();
+        if (slots == 1) {
+            int middle = (count - 1) / 2;
+            ordered.add(chronological.get(middle));
+            included.add(middle);
+        } else {
+            for (int slot = 0; slot < slots; slot++) {
+                long numerator = (long) slot * (count - 1);
+                int index = (int) ((numerator + (slots - 1L) / 2) / (slots - 1L));
+                ordered.add(chronological.get(index));
+                included.add(index);
+            }
+        }
+        for (int index = 0; index < count; index++) {
+            if (included.add(index)) ordered.add(chronological.get(index));
+        }
+        return ordered;
     }
 
     private record Indexed<T>(int index, long timestamp, T value, String kind) {}
