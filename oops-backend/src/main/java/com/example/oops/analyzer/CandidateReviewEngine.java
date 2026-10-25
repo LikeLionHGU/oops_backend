@@ -1052,8 +1052,7 @@ final class CandidateReviewEngine {
         String revision = REVISION;
         int discoveryCalls, verificationCalls, proposed, duplicates, invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches;
         int expandedCandidates, verificationLimitedCandidates, repairCalls, discoveryRepairCalls;
-        int traceCount;
-        final List<CandidateReviewDiagnostics.Trace> traces = new ArrayList<>();
+        final CandidateTraceBuffer traces = new CandidateTraceBuffer(MAX_TRACES);
         final List<VisualContextReviewer.Trace> visualTraces = new ArrayList<>();
         final List<ReviewCaseLibrary.Trace> retrievalTraces = new ArrayList<>();
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
@@ -1099,7 +1098,6 @@ final class CandidateReviewEngine {
                              List<ReviewUnit> units, List<String> reviewed) {
             var anchor = p == null ? null : raw(batch).stream().filter(s -> s.id().equals(p.anchorId())).findFirst().orElse(null);
             String axis = p != null && Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis()) ? p.axis() : null;
-            traceCount++;
             // Raw-free shape metadata: counts and a boolean only, never the quote text, so a stored
             // INVALID_PROPOSAL can later be told apart (over-budget vs window-mismatch vs missing anchor).
             Integer evidenceCount = p == null || p.evidence() == null ? null : p.evidence().size();
@@ -1113,7 +1111,7 @@ final class CandidateReviewEngine {
                 anchorQuotePresent = p.evidence().stream().anyMatch(q -> q != null && p.anchorId().equals(q.segmentId()));
             }
             String failure = proposalFailure(p,batch,units,reviewed);
-            if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id,
+            traces.auxiliary(new CandidateReviewDiagnostics.Trace(id,
                     anchor == null ? null : anchor.id(), axis, "INVALID_PROPOSAL",
                     anchor == null ? null : anchor.startMs(), anchor == null ? null : anchor.endMs(),
                     List.of(), false, false, failure,
@@ -1147,29 +1145,30 @@ final class CandidateReviewEngine {
             return selection.prompt();
         }
         void trace(String id, String anchor, String axis, String state, String failure) {
-            traceCount++;
-            if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id,anchor,axis,state,
-                    null,null,List.of(),false,false,failure));
+            var trace = new CandidateReviewDiagnostics.Trace(id,anchor,axis,state,
+                    null,null,List.of(),false,false,failure);
+            if ("BUDGET_SKIPPED".equals(state)) traces.budgetSkipped(trace); else traces.auxiliary(trace);
         }
         void trace(String id, String anchor, String axis, String state) {
-            traceCount++; if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(id, anchor, axis, state));
+            var trace = new CandidateReviewDiagnostics.Trace(id, anchor, axis, state);
+            if ("BUDGET_SKIPPED".equals(state)) traces.budgetSkipped(trace); else traces.auxiliary(trace);
         }
         void trace(Candidate candidate, String state) {
             trace(candidate, state, null);
         }
         void trace(Candidate candidate, String state, String failureCode) {
-            traceCount++;
-            if (traces.size() < MAX_TRACES) traces.add(new CandidateReviewDiagnostics.Trace(candidate.candidateId(),
+            var trace = new CandidateReviewDiagnostics.Trace(candidate.candidateId(),
                     candidate.proposal().anchorId(), candidate.proposal().axis(), state,
                     candidate.raw().stream().mapToLong(ReviewInput.Segment::startMs).min().orElseThrow(),
                     candidate.raw().stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow(),
                     candidate.raw().stream().map(ReviewInput.Segment::id).toList(), candidate.contextExpanded(), candidate.contextLimited(), failureCode,
-                    null, null, null, snapshots.get(candidate.candidateId())));
+                    null, null, null, snapshots.get(candidate.candidateId()));
+            if ("BUDGET_SKIPPED".equals(state)) traces.budgetSkipped(trace); else traces.outcome(trace);
         }
         CandidateReviewDiagnostics finish(int explored) {
             return new CandidateReviewDiagnostics(revision, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
-                    expandedCandidates, verificationLimitedCandidates, traceCount > MAX_TRACES, traces, visualTraces, retrievalTraces,
+                    expandedCandidates, verificationLimitedCandidates, traces.truncated(), traces.snapshot(), visualTraces, retrievalTraces,
                     guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting,conflicts.traces());
         }
     }
