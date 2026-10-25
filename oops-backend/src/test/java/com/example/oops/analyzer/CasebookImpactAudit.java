@@ -74,6 +74,11 @@ public final class CasebookImpactAudit {
             String referenceFingerprintAfter = selectedFingerprint(after.exampleIds(), candidateReferenceFingerprints);
             var addedReferenceMechanisms = mechanismsFor(added, candidateMechanisms);
             var removedReferenceMechanisms = mechanismsFor(removed, baselineMechanisms);
+            var changedContentMechanisms = changedContentMechanisms(before.exampleIds(), after.exampleIds(),
+                    baselineReferenceFingerprints, candidateReferenceFingerprints, baselineMechanisms, candidateMechanisms);
+            var rankAffectedMechanisms = rankChanged
+                    ? mechanismsFor(commonIds(before.exampleIds(), after.exampleIds()), baselineMechanisms,
+                            candidateMechanisms) : List.<String>of();
             var beforeMechanisms = new TreeSet<>(before.mechanismIds());
             var afterMechanisms = new TreeSet<>(after.mechanismIds());
             var addedMechanisms = new TreeSet<>(afterMechanisms); addedMechanisms.removeAll(beforeMechanisms);
@@ -105,6 +110,8 @@ public final class CasebookImpactAudit {
             row.put("removedMechanisms", List.copyOf(removedMechanisms));
             row.put("addedReferenceMechanisms", addedReferenceMechanisms);
             row.put("removedReferenceMechanisms", removedReferenceMechanisms);
+            row.put("changedContentReferenceMechanisms", changedContentMechanisms);
+            row.put("rankAffectedReferenceMechanisms", rankAffectedMechanisms);
             row.put("payloadCodePointsBefore", before.payloadCodePoints());
             row.put("payloadCodePointsAfter", after.payloadCodePoints());
             row.put("changed", didChange);
@@ -117,14 +124,19 @@ public final class CasebookImpactAudit {
             if (sourceGroup == null) missingGroups++;
             if (evaluationGroup == null) missingEvaluationGroups++;
             if (sourceGroup == null && evaluationGroup == null) missingAnyHoldoutGroup++;
-            for (String mechanism : union(List.copyOf(addedMechanisms), List.copyOf(removedMechanisms),
-                    addedReferenceMechanisms, removedReferenceMechanisms)) {
-                int[] mechanismCount = mechanismCounts.computeIfAbsent(mechanism, ignored -> new int[5]);
+            var affectedMechanisms = new TreeSet<String>();
+            affectedMechanisms.addAll(addedMechanisms); affectedMechanisms.addAll(removedMechanisms);
+            affectedMechanisms.addAll(addedReferenceMechanisms); affectedMechanisms.addAll(removedReferenceMechanisms);
+            affectedMechanisms.addAll(changedContentMechanisms); affectedMechanisms.addAll(rankAffectedMechanisms);
+            for (String mechanism : affectedMechanisms) {
+                int[] mechanismCount = mechanismCounts.computeIfAbsent(mechanism, ignored -> new int[7]);
                 mechanismCount[0]++;
                 if (addedMechanisms.contains(mechanism)) mechanismCount[1]++;
                 if (removedMechanisms.contains(mechanism)) mechanismCount[2]++;
                 if (addedReferenceMechanisms.contains(mechanism)) mechanismCount[3]++;
                 if (removedReferenceMechanisms.contains(mechanism)) mechanismCount[4]++;
+                if (changedContentMechanisms.contains(mechanism)) mechanismCount[5]++;
+                if (rankAffectedMechanisms.contains(mechanism)) mechanismCount[6]++;
             }
         }
 
@@ -157,16 +169,20 @@ public final class CasebookImpactAudit {
         mechanismCounts.forEach((mechanism, counts) -> mechanismSummary.put(mechanism,
                 Map.of("affectedQueryCount", counts[0], "queriesWithAddedSelectedMechanism", counts[1],
                         "queriesWithRemovedSelectedMechanism", counts[2], "queriesWithAddedReferences", counts[3],
-                        "queriesWithRemovedReferences", counts[4])));
+                        "queriesWithRemovedReferences", counts[4],
+                        "queriesWithChangedSelectedReferenceContent", counts[5],
+                        "queriesWithRankAffectedSelectedReferences", counts[6])));
         Map<String, Object> relatedMechanismImpact = new TreeMap<>();
         for (String mechanism : intakeMechanisms)
             relatedMechanismImpact.put(mechanism, mechanismSummary.getOrDefault(mechanism,
                     Map.of("affectedQueryCount", 0, "queriesWithAddedSelectedMechanism", 0,
                             "queriesWithRemovedSelectedMechanism", 0, "queriesWithAddedReferences", 0,
-                            "queriesWithRemovedReferences", 0)));
+                            "queriesWithRemovedReferences", 0,
+                            "queriesWithChangedSelectedReferenceContent", 0,
+                            "queriesWithRankAffectedSelectedReferences", 0)));
         String policyFingerprint = sha(json.writeValueAsBytes(request.path("policyImplementationHashes")));
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("schemaVersion", "casebook-impact-report-4");
+        result.put("schemaVersion", "casebook-impact-report-5");
         result.put("planSha256", planSha); result.put("evaluationFingerprint", evaluationFingerprint);
         result.put("baselineRuntimeSha256", baselineSha); result.put("candidateRuntimeSha256", candidateSha);
         result.put("policyImplementationFingerprint", policyFingerprint);
@@ -251,18 +267,38 @@ public final class CasebookImpactAudit {
                 .anyMatch(id -> !Objects.equals(before.get(id), after.get(id)));
     }
 
+    static List<String> commonIds(List<String> before, List<String> after) {
+        Set<String> afterSet = new HashSet<>(after);
+        return before.stream().filter(afterSet::contains).toList();
+    }
+
+    static List<String> changedContentMechanisms(List<String> beforeIds, List<String> afterIds,
+                                                 Map<String, String> beforeFingerprints,
+                                                 Map<String, String> afterFingerprints,
+                                                 Map<String, List<String>> beforeMechanisms,
+                                                 Map<String, List<String>> afterMechanisms) {
+        var changed = new TreeSet<String>();
+        for (String id : commonIds(beforeIds, afterIds)) {
+            if (!Objects.equals(beforeFingerprints.get(id), afterFingerprints.get(id))) {
+                changed.addAll(beforeMechanisms.getOrDefault(id, List.of()));
+                changed.addAll(afterMechanisms.getOrDefault(id, List.of()));
+            }
+        }
+        return List.copyOf(changed);
+    }
+
+    static List<String> mechanismsFor(List<String> exampleIds, Map<String, List<String>> before,
+                                      Map<String, List<String>> after) {
+        var result = new TreeSet<String>();
+        result.addAll(mechanismsFor(exampleIds, before));
+        result.addAll(mechanismsFor(exampleIds, after));
+        return List.copyOf(result);
+    }
+
     private static List<String> mechanismsFor(List<String> exampleIds, Map<String, List<String>> mechanismMap) {
         var result = new TreeSet<String>();
         for (String id : exampleIds) result.addAll(mechanismMap.getOrDefault(id, List.of()));
         return List.copyOf(result);
-    }
-
-    private static Set<String> union(List<String> first, List<String> second, List<String> third, List<String> fourth) {
-        var result = new TreeSet<>(first);
-        result.addAll(second);
-        result.addAll(third);
-        result.addAll(fourth);
-        return result;
     }
 
     private static ReviewGuidelineLibrary library(Path runtime) {

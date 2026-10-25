@@ -40,4 +40,16 @@ class CasebookImpactAuditTest {
                 List.of("same-id"), Map.of("same-id", "same"), List.of("same-id"),
                 Map.of("same-id", "same"))).isFalse();
     }
+
+    @Test void attributesChangedContentAndRelativeRankToSelectedReferenceMechanisms() {
+        var beforeMechanisms = Map.of("same", List.of("local-choice"), "other", List.of("body-image"));
+        var afterMechanisms = Map.of("same", List.of("local-choice"), "other", List.of("body-image"));
+        org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.changedContentMechanisms(
+                List.of("same", "other"), List.of("other", "same"),
+                Map.of("same", "old", "other", "fixed"), Map.of("same", "new", "other", "fixed"),
+                beforeMechanisms, afterMechanisms)).containsExactly("local-choice");
+        var common = CasebookImpactAudit.commonIds(List.of("same", "other"), List.of("other", "same"));
+        org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.mechanismsFor(
+                common, beforeMechanisms, afterMechanisms)).containsExactly("body-image", "local-choice");
+    }
 }
