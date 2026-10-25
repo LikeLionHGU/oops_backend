@@ -189,7 +189,9 @@ public class AnalysisPipeline {
                 return;
             }
 
-            AnalysisContext context = new AnalysisContext(video, genre, transcript, screenTexts);
+            AnalysisContext context = new AnalysisContext(video, genre, transcript, screenTexts,
+                    com.example.oops.analyzer.ReviewInput.from(transcript, screenTexts),
+                    () -> progressService.isStopped(jobId));
 
             // 3. 분석기 실행 → 논란 후보 수집
             // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
@@ -245,20 +247,24 @@ public class AnalysisPipeline {
                                 .orElse("AI 호출이 실패했습니다.");
                         log.warn("[pipeline] {} AI 호출 {}건 실패 — {}",
                                 analyzer.key(), openAiClient.failureCount(), why);
+                        AnalyzerStatus status = coverageStatus(
+                                reviewResult == null ? AnalyzerStatus.FAILED : reviewResult.status(), coverageNotice);
                         record(coverage, video, step,
-                                reviewResult == null ? AnalyzerStatus.FAILED : reviewResult.status(),
+                                status,
                                 coverageNotice == null ? why : coverageNotice + " " + why);
                     } else {
-                        record(coverage, video, step,
-                                reviewResult != null ? reviewResult.status()
-                                        : coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL,
-                                coverageNotice);
+                        AnalyzerStatus status = reviewResult != null ? reviewResult.status()
+                                        : coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL;
+                        status = coverageStatus(status, coverageNotice);
+                        record(coverage, video, step, status, coverageNotice);
                     }
                     if (contextLimitNotice != null && step != null && coverage.containsKey(step)) {
                         coverage.get(step).markContextLimited(contextLimitNotice);
                     }
                 } catch (AnalysisStoppedException e) {
                     throw e;
+                } catch (java.util.concurrent.CancellationException e) {
+                    throw new AnalysisStoppedException();
                 } catch (Exception e) {
                     // 분석기 하나가 죽어도 나머지 결과는 살린다
                     log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);
@@ -308,6 +314,8 @@ public class AnalysisPipeline {
 
         } catch (AnalysisStoppedException e) {
             log.info("[pipeline] 종료되었거나 대체된 작업 결과를 저장하지 않습니다. jobId={}", jobId);
+        } catch (java.util.concurrent.CancellationException e) {
+            log.info("[pipeline] 외부 분석 호출 전에 취소된 작업을 저장하지 않습니다. jobId={}", jobId);
         } catch (Exception e) {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             progressService.fail(jobId, "ANALYSIS_FAILED", "분석 처리 또는 결과 저장에 실패했습니다.");
@@ -322,6 +330,11 @@ public class AnalysisPipeline {
         if (progressService.isStopped(jobId)) {
             throw new AnalysisStoppedException();
         }
+    }
+
+    static AnalyzerStatus coverageStatus(AnalyzerStatus status, String notice) {
+        return status == AnalyzerStatus.SUCCESS && notice != null && !notice.isBlank()
+                ? AnalyzerStatus.PARTIAL : status;
     }
 
     private static final class AnalysisStoppedException extends RuntimeException {}

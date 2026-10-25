@@ -73,17 +73,23 @@ class ConfrontationStageTrialTest {
         ConfrontationStageTrial.validate(valid);
         assertThat(ConfrontationStageTrial.seed(valid).candidates().get(0).evidence().get(0).quote()).isEqualTo("현재 원문");
     }
-    @Test void privateFrozenPreparationBuildsSixLabelFreeInitialRequestsWithoutProviders() throws Exception {
+    @Test void privateFrozenPreparationBuildsRequestsOrRejectsAnOutdatedRuntimePin() throws Exception {
         var source=Path.of("../datasets/controversy/experiments/confrontation-stage-plan-20261025/plan.json");
         assumeTrue(Files.exists(source));
-        var plan=ConfrontationStageTrial.prepare(source);
-        assertThat(plan.cases()).hasSize(3);assertThat(plan.requests()).hasSize(6);
-        assertThat(plan.worstReservedUsd()).isLessThan(.50);
-        for(var r:plan.requests()) {
-            var input=JSON.readTree(r.input());assertThat(input.has("expectedDecision")).isFalse();
-            assertThat(input.has("developerProposal")).isFalse();
-            assertThat(r.kind()).isEqualTo(r.mode().equals("AUTO")?"Discovery":"VerificationResult");
-            if(r.caseId().equals("actual-confrontation"))assertThat(input.path("raw").size()).isEqualTo(58);
+        try {
+            var plan=ConfrontationStageTrial.prepare(source);
+            assertThat(plan.cases()).hasSize(3);assertThat(plan.requests()).hasSize(6);
+            assertThat(plan.worstReservedUsd()).isLessThan(.50);
+            for(var r:plan.requests()) {
+                var input=JSON.readTree(r.input());assertThat(input.has("expectedDecision")).isFalse();
+                assertThat(input.has("developerProposal")).isFalse();
+                assertThat(r.kind()).isEqualTo(r.mode().equals("AUTO")?"Discovery":"VerificationResult");
+                if(r.caseId().equals("actual-confrontation"))assertThat(input.path("raw").size()).isEqualTo(58);
+            }
+        } catch (IllegalArgumentException stale) {
+            // Frozen plans must not be rewritten when runtime metadata changes; they require a fresh review.
+            assertThat(stale).hasMessageContaining("Runtime drift");
+            assertThatThrownBy(() -> ConfrontationStageTrial.prepare(source)).hasMessageContaining("Runtime drift");
         }
     }
     @Test void executablePlanRejectsWrongApprovalHashBeforeAnyCredentialOrNetworkUse() throws Exception {

@@ -51,6 +51,11 @@ public final class ContextMechanismRouter {
     final class Session {
         private int calls;
         Result route(ReviewGuidelineLibrary library, List<ReviewInput.Segment> raw, String requestKey) {
+            return route(library, raw, requestKey, null, null);
+        }
+        Result route(ReviewGuidelineLibrary library, List<ReviewInput.Segment> raw, String requestKey,
+                     AnalysisContext context, com.example.oops.service.ReviewRequestTraceStore.Session requestTrace) {
+            if (context != null) context.checkActive();
             var available = library == null ? Set.<String>of() : library.routingKeys();
             var keys = registry.stream().filter(k -> available.contains(k.id())).toList();
             String skip = !enabled ? "DISABLED" : library == null || !library.contextUnitArchive() ? "REQUIRES_V6"
@@ -66,13 +71,23 @@ public final class ContextMechanismRouter {
             String hash = ReviewGuidelineLibrary.retrievalHash(input);
             calls++;
             long start = System.nanoTime();
+            Response response = null;
+            String state;
             try {
-                var response = client.completeRoutingAsJson(PROMPT, input, Response.class).orElse(null);
+                if (context != null) context.checkActive();
+                response = client.completeRoutingAsJson(PROMPT, input, Response.class).orElse(null);
                 String failure = validate(response, keys, raw);
-                return result(requestKey, failure == null ? response.routes().isEmpty() ? "EMPTY" : "ROUTED" : failure,
-                        true, keys, failure == null ? response.routes() : List.of(), hash, (System.nanoTime()-start)/1_000_000);
+                state = failure == null ? response.routes().isEmpty() ? "EMPTY" : "ROUTED" : failure;
+                var result = result(requestKey, state, true, keys,
+                        failure == null ? response.routes() : List.of(), hash, (System.nanoTime()-start)/1_000_000);
+                if (requestTrace != null) requestTrace.record("CONTEXT_ROUTING", PROMPT, input, null, response, state);
+                return result;
+            } catch (java.util.concurrent.CancellationException ex) {
+                throw ex;
             } catch (RuntimeException ex) {
-                return result(requestKey, "REQUEST_FAILED", true, keys, List.of(), hash, (System.nanoTime()-start)/1_000_000);
+                state = "REQUEST_FAILED";
+                if (requestTrace != null) requestTrace.record("CONTEXT_ROUTING", PROMPT, input, null, response, state);
+                return result(requestKey, state, true, keys, List.of(), hash, (System.nanoTime()-start)/1_000_000);
             }
         }
     }

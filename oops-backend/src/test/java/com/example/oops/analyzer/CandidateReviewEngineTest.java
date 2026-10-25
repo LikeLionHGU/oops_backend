@@ -14,6 +14,27 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class CandidateReviewEngineTest {
+    @Test void alreadyCancelledContextMakesNoModelRequests() {
+        var c = new AnalysisContext(video, ContentGenre.GENERAL,
+                List.of(new TranscriptSegment(video, 0, 1000, "정상 대화")), List.of(),
+                ReviewInput.from(List.of(new TranscriptSegment(video, 0, 1000, "정상 대화")), List.of()), () -> true);
+        assertThatThrownBy(() -> run(client, c, 24)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        verifyNoInteractions(client);
+    }
+    @Test void cancellationDuringDiscoveryPreventsTheFollowingVerificationRequest() {
+        var stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        var c = new AnalysisContext(video, ContentGenre.GENERAL,
+                List.of(new TranscriptSegment(video, 0, 1000, "그 집 음식 이야기")), List.of(),
+                ReviewInput.from(List.of(new TranscriptSegment(video, 0, 1000, "그 집 음식 이야기")), List.of()),
+                stopped::get);
+        when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(invocation -> {
+            stopped.set(true);
+            return Optional.of(new Discovery(List.of("stt-index-0"), List.of(proposal("stt-index-0", "그 집")), List.of(), false));
+        });
+        assertThatThrownBy(() -> run(client, c, 24)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        verify(client, times(1)).completeAsJson(anyString(), anyString(), eq(Discovery.class));
+        verify(client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
+    }
     @Test void denseEarlySpeechDoesNotDisplaceLateContinuationFromActualVerificationRequest() {
         // Synthetic text, irregular cadence: exercise planner + view selection + expansion together.
         long[] times = {0,1500,3000,4500,6000,9000,10000,11500,12500,13500,14500,15500,16500,
@@ -430,6 +451,26 @@ class CandidateReviewEngineTest {
                 null, null, null, null, null, List.of(), List.of(new LlmEvidence("stt-index-0", "매장이 없어서", "PRIMARY")),
                 null, null, null, "실제 이동의 불편을 설명하는 지역 정보로 읽힙니다.")));
         assertThat(run(client, context("매장이 없어서 옆 마을로 가야 하니 불편하다"), 24).findings()).isEmpty();
+    }
+    @Test void linkedTargetPassCanGroundNormalReadingOnUnproposedLineInSameWindow() {
+        var c = context("이 동네에 가게가 없네", "그래서 아쉬워", "집에서 직접 만들어 먹어요");
+        var p = new Proposal("stt-index-1", "TARGET_TREATMENT", "지역 평가 연결을 함께 확인합니다.",
+                List.of(new Quote("stt-index-0", "이 동네에 가게가 없네"),
+                        new Quote("stt-index-1", "그래서 아쉬워")));
+        var candidate = new Candidate("candidate-1", p, c.reviewInput().segments(), false, false);
+        var withoutContext = new LlmDecision("stt-index-1", "PASS", "그래서 아쉬워",
+                "주변 흐름을 보면 지역의 생활을 낮추는 평가로 볼 근거가 부족합니다.",
+                null, null, null, null, null, List.of(),
+                List.of(new LlmEvidence("stt-index-1", "그래서 아쉬워", "PRIMARY")),
+                null, null, null, "단순한 이용 불편과 개인의 대체 행동을 설명하는 흐름으로 읽을 수 있습니다.");
+        assertThat(validate(candidate, withoutContext, c.reviewInput()).failureCode())
+                .isEqualTo("LINKED_PASS_CONTEXT_REQUIRED");
+        var withContext = new LlmDecision(withoutContext.segmentId(), withoutContext.decision(),
+                withoutContext.evidenceText(), withoutContext.reason(), null, null, null, null, null, List.of(),
+                List.of(new LlmEvidence("stt-index-1", "그래서 아쉬워", "PRIMARY"),
+                        new LlmEvidence("stt-index-2", "집에서 직접 만들어 먹어요", "CONTEXT")),
+                null, null, null, withoutContext.alternativeInterpretation());
+        assertThat(validate(candidate, withContext, c.reviewInput()).failureCode()).isNull();
     }
     @Test void targetContextKeepsTheAdvertisedDiscoveryWindowWithoutLaterReconstruction() {
         List<TranscriptSegment> lines = new ArrayList<>();

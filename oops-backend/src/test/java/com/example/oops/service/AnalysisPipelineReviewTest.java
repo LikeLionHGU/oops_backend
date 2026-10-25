@@ -19,6 +19,14 @@ import static org.mockito.Mockito.*;
 
 class AnalysisPipelineReviewTest {
     @org.junit.jupiter.api.Test
+    void successfulFindingResultWithCoverageGapCannotHideTheWarning() {
+        assertThat(AnalysisPipeline.coverageStatus(AnalyzerStatus.SUCCESS, "사례집을 불러오지 못했습니다."))
+                .isEqualTo(AnalyzerStatus.PARTIAL);
+        assertThat(AnalysisPipeline.coverageStatus(AnalyzerStatus.SUCCESS, null)).isEqualTo(AnalyzerStatus.SUCCESS);
+        assertThat(AnalysisPipeline.coverageStatus(AnalyzerStatus.FAILED, "사례집을 불러오지 못했습니다."))
+                .isEqualTo(AnalyzerStatus.FAILED);
+    }
+    @org.junit.jupiter.api.Test
     void snapshotReadFailureIsHandledBeforeAnyExternalAnalysis() {
         var progress=mock(JobProgressService.class); var videos=mock(VideoRepository.class);
         var ai=mock(OpenAiClient.class); var transcript=mock(TranscriptService.class);

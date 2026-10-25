@@ -284,6 +284,7 @@ public final class TextReviewEngine {
         int dialogueCalls = 0;
         int dialogueBudgetSkipped = 0;
         while (!pending.isEmpty()) {
+            context.checkActive();
             Attempt attempt = pending.removeFirst();
             var batch = attempt.batch();
             if (attempt.repair()) {
@@ -308,6 +309,7 @@ public final class TextReviewEngine {
                         continue;
                     }
                     dialogueCalls++;
+                    context.checkActive();
                     reviewDialogue(client, context, evaluatorId, systemPrompt, categories, batch, single, dialogue);
                 }
                 // Preserve planner omissions independently from the per-request unit list.
@@ -321,6 +323,7 @@ public final class TextReviewEngine {
                 referencePrompt = selection.prompt();
                 if (contextSelections.size() < 200) contextSelections.add(selection.trace());
             }
+            context.checkActive();
             LlmResult response = client.completeAsJson(systemPrompt + referencePrompt + "\n" + CONTRACT,
                     prompt(batch, context.genreOrGeneral()), LlmResult.class).orElse(null);
             if (response == null || response.evaluations() == null || response.evaluations().isEmpty()) {
@@ -636,6 +639,7 @@ public final class TextReviewEngine {
                                        TextReviewBatchPlanner.Batch batch, DialogueReview.Plan single,
                                        DialogueReview.Collector collector) {
         var unit = single.units().get(0);
+        context.checkActive();
         var response = client.completeAsJson(systemPrompt + "\n" + dialogueEvidenceContract() + "\n" + DIALOGUE_CONTRACT,
                 isolatedDialoguePrompt(batch, context.genreOrGeneral(), single), LlmResult.class).orElse(null);
         collector.consume(single, response == null ? null : response.unitEvaluations(), response == null, item -> {

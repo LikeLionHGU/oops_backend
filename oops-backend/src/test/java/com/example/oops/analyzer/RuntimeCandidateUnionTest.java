@@ -209,8 +209,9 @@ class RuntimeCandidateUnionTest {
         var h=new Harness(false,t -> answer(t,true));
         try {
             Thread.currentThread().interrupt();
-            var result=h.run(context("피부를 찢는"),true,24,null);
-            assertTrue(h.requests.isEmpty());assertTrue(result.findings().isEmpty());
+            assertThrows(java.util.concurrent.CancellationException.class,
+                    () -> h.run(context("피부를 찢는"),true,24,null));
+            assertTrue(h.requests.isEmpty());
         } finally { Thread.interrupted(); }
     }
     @Test void unionSelectionDoesNotReorderUnchangedAiVerificationBatch() {

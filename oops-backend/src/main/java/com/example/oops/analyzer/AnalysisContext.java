@@ -6,6 +6,8 @@ import com.example.oops.domain.TranscriptSegment;
 import com.example.oops.domain.Video;
 
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.function.BooleanSupplier;
 
 /**
  * 분석기들이 공유하는 입력 묶음.
@@ -16,18 +18,25 @@ public record AnalysisContext(
         ContentGenre genre,                   // 영상 유형. 분석기가 자기를 돌릴지 판단하는 데 쓴다
         List<TranscriptSegment> transcript,   // 음성 → STT 대본
         List<ScreenText> screenTexts,         // 화면 → OCR 텍스트
-        ReviewInput reviewInput
+        ReviewInput reviewInput,
+        BooleanSupplier cancellationRequested
         // TODO: List<YoutubeComment> comments
 ) {
     public AnalysisContext(Video video, ContentGenre genre, List<TranscriptSegment> transcript,
                            List<ScreenText> screenTexts) {
-        this(video, genre, transcript, screenTexts, ReviewInput.from(transcript, screenTexts));
+        this(video, genre, transcript, screenTexts, ReviewInput.from(transcript, screenTexts), () -> false);
+    }
+
+    public AnalysisContext(Video video, ContentGenre genre, List<TranscriptSegment> transcript,
+                           List<ScreenText> screenTexts, ReviewInput reviewInput) {
+        this(video, genre, transcript, screenTexts, reviewInput, () -> false);
     }
 
     public AnalysisContext {
         transcript = transcript == null ? List.of() : List.copyOf(transcript);
         screenTexts = screenTexts == null ? List.of() : List.copyOf(screenTexts);
         java.util.Objects.requireNonNull(reviewInput, "reviewInput");
+        cancellationRequested = cancellationRequested == null ? () -> false : cancellationRequested;
     }
 
     public boolean hasTranscript() {
@@ -40,5 +49,11 @@ public record AnalysisContext(
 
     public ContentGenre genreOrGeneral() {
         return genre == null ? ContentGenre.GENERAL : genre;
+    }
+
+    /** Stops the current analysis before another external model/provider request. */
+    public void checkActive() {
+        if (Thread.currentThread().isInterrupted() || cancellationRequested.getAsBoolean())
+            throw new CancellationException("Analysis job is no longer active");
     }
 }
