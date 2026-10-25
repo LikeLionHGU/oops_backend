@@ -170,7 +170,8 @@ class SourceRelationsTest {
             return Optional.of(new Discovery(ids,ids.contains("stt-index-10")?List.of(new Proposal("stt-index-10",
                     "EXPRESSION_CONTENT",null,List.of(new Quote("stt-index-10",null)),relations)):List.of(),List.of(),false));
         });
-        fixture.verification(new Verification("candidate-1", fixture.assessment("stt-index-10", "PASS", "그 집")));
+        fixture.verification(new Verification("candidate-1",
+                fixture.linkedPass("stt-index-10", "대화 10", "stt-index-20", "대화 20")));
         var result=run(fixture.client,c,24,null,null,null,null,0,true);
         assertThat(result.diagnostics().candidatePipeline().candidates()).singleElement()
                 .extracting(CandidateReviewDiagnostics.Trace::state).isEqualTo("PASS");

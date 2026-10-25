@@ -205,7 +205,7 @@ class CandidateDiscoveryContractTest {
         var p = new Proposal("stt-index-10", "EXPRESSION_CONTENT", "표현 내용 가설",
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-20", lines[20])));
         batchDiscovery(f, p);
-        f.verification(new Verification("candidate-1", f.assessment(p.anchorId(), "PASS", "그 집")));
+        f.verification(new Verification("candidate-1", f.linkedPass(p.anchorId(), lines[10], "stt-index-20", lines[20])));
         var r = run(f.client, f.context(lines), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement()

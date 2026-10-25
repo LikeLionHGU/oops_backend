@@ -60,9 +60,10 @@ class LinkedContrastContractTest {
                 input.segments(), false, false);
         assertThat(validate(candidate, decision, input).failureCode()).startsWith("DECISION_");
     }
-    @Test void SingleQuoteAndExpressionPassDoNotAcquireLinkedTargetRequirement() {
+    @Test void SingleQuoteDoesNotAcquireLinkedRequirementButLinkedExpressionUsesIt() {
         assertThat(check(pass(null, null), "TARGET_TREATMENT", false).failureCode()).isNull();
-        assertThat(check(pass(null, null), "EXPRESSION_CONTENT", true).failureCode()).isNull();
+        assertThat(check(pass(null, null), "EXPRESSION_CONTENT", true).failureCode())
+                .isEqualTo("LINKED_PASS_CONTRAST_REQUIRED");
     }
     @Test void TextAndVisualRepairsShareNeutralCorrection() {
         assertThat(repairPrompt("LINKED_PASS_CONTEXT_REQUIRED")).isEqualTo(CONTRAST_REPAIR_PROMPT);

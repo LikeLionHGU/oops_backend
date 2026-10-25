@@ -126,6 +126,21 @@ class VisualContextReviewerTest {
         frames(); response("REVIEW_REQUIRED", "invented-frame");
         assertThat(reviewer.review(context(), candidate()).validation().failureCode()).isEqualTo("VISUAL_EVIDENCE_ID_OR_DESCRIPTION");
     }
+    @Test void configuredCandidateCeilingIsSeparateFromTheFixedThreeFrameAndObservationCaps() {
+        assertThat(reviewer.maxCandidates()).isEqualTo(3);
+        assertThat(VisualContextReviewer.MAX_FRAME_SAMPLES).isEqualTo(3);
+        assertThat(VisualContextReviewer.MAX_FRAME_OBSERVATIONS).isEqualTo(3);
+        frames();
+        when(ai.completeWithImagesAsJson(anyString(), anyString(), anyList(), eq(VisualContextReviewer.Response.class)))
+                .thenReturn(Optional.of(new VisualContextReviewer.Response("candidate-1",
+                        fixture.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집"),
+                        List.of(new VisualContextReviewer.Observation("scene-0", "관찰1"),
+                                new VisualContextReviewer.Observation("scene-750", "관찰2"),
+                                new VisualContextReviewer.Observation("scene-2750", "관찰3"),
+                                new VisualContextReviewer.Observation("scene-0", "관찰4")),
+                        "화면 관찰 상한을 초과한 응답입니다.")));
+        assertThat(reviewer.review(context(), candidate()).validation().failureCode()).isEqualTo("VISUAL_RESPONSE_CONTRACT");
+    }
     @Test void wrongTimestampMetadataStopsBeforePaidCall() {
         when(media.sceneFrames(any(), anyList())).thenReturn(Optional.of(new AnalysisServerClient.SceneFrames(List.of(
                 new AnalysisServerClient.SceneFrames.Frame("scene-0", 0, 8000, "x"),
@@ -151,8 +166,8 @@ class VisualContextReviewerTest {
                 new Discovery(List.of("stt-index-0"), List.of(), List.of(), false, List.of(p1, p2))));
         frames(); response("PASS", "scene-0");
         var r = CandidateReviewEngine.run(ai, context(), 24, new VisualContextReviewer(media, ai, true, 1));
-        assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(r.diagnostics().candidatePipeline().budgetSkipped()).isOne();
+        assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         verify(ai, times(1)).completeWithImagesAsJson(anyString(), anyString(), anyList(), any());
     }
     @Test void anchorEndingExactlyAtVideoBoundaryStillAttemptsBoundedExtraction() {

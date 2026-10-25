@@ -9,7 +9,7 @@ import static com.example.oops.analyzer.TextBoundaryTrial.check;
 /** Test-only output-instruction comparison. No policy/validator changes and no provider calls. */
 public final class VerificationContractComparison {
     private VerificationContractComparison() {}
-    static final String REVISION = "2026-10-15-verification-output-contract-42";
+    static final String REVISION = "2026-10-25-verification-output-contract-51";
 
     static final String OLD_CONTRAST = """
             reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 해석이 설명하는 범위와
@@ -23,20 +23,17 @@ public final class VerificationContractComparison {
     static final String CONTRAST = """
             판정을 정한 뒤 아래 조건별 출력 계약을 확인한다. reason은 400자, alternativeInterpretation은 300자 이내다.
               REVIEW_REQUIRED: alternativeInterpretation에 정상 해석과 그래도 검토 이유가 남는 근거를 반드시 적는다.
-              PASS이고 axis=TARGET_TREATMENT이며 proposedEvidence의 서로 다른 segmentId가 2개 이상인 경우:
-                reason에는 전체 연결의 정상 해석을 적는다. alternativeInterpretation에도 비판 가설이 왜 원문으로
-                뒷받침되지 않는지 반드시 적는다. reason에 이미 설명했어도 이 필드는 null/빈 문자열이면 안 된다.
-                evidence에는 proposedEvidence 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.
+              proposedEvidence가 서로 다른 두 줄 이상을 연결한 후보이면 축과 무관하게 PASS 대조를 적는다.
+                reason에는 전체 연결의 정상 해석을, alternativeInterpretation에는 비판 가설이 왜 원문으로
+                뒷받침되지 않는지를 적는다. reason에 이미 설명했어도 이 필드는 null/빈 문자열이면 안 된다.
+                evidence에는 허용 raw 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.
               그 외 PASS/UNCERTAIN은 alternativeInterpretation=null도 허용한다.
               후보 가설은 사실이 아니다. 비판 근거를 꾸며 대조를 채우지 않는다. 필요한 연결 정보가 없으면 UNCERTAIN이다.
               출력 계약을 맞추려고 판정을 바꾸거나 없는 근거를 만들지 않는다.
             """;
-    static final String CURRENT_CONTRAST=OLD_CONTRAST.replace(
-            "  또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.\n",
-            "  또한 해당 후보의 허용 raw 중 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.\n"
-            +"  정상 해석의 근거는 proposedEvidence에 선택되지 않은 허용 원문에서도 고를 수 있다. 창 밖 근거는 금지다.\n");
+    static final String CURRENT_CONTRAST = currentContrastSection(CandidateReviewPrompts.VERIFICATION_PROMPT);
     static final String CURRENT_REPLACEMENT=CONTRAST.replace(
-            "evidence에는 proposedEvidence 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.",
+            "evidence에는 허용 raw 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.",
             "evidence에는 해당 후보의 허용 raw 중 anchor가 아닌 줄의 실제 CONTEXT를 하나 이상 선택한다.");
     static final String OLD_RELATION = """
               EXPLICIT은 targetMention이 target과 같아야 한다. CONTEXTUAL은 '여기' 같은 지칭어와
@@ -61,12 +58,25 @@ public final class VerificationContractComparison {
         return source.substring(0, at) + after + source.substring(at + before.length());
     }
 
+    private static String currentContrastSection(String prompt) {
+        String start = "reason은 400자 이내, alternativeInterpretation은 300자 이내로 정상 해석이 설명하는 범위와\n";
+        String end = "evidence는 최대 8개로 허용 원문의 segmentId·role을 반환한다.";
+        int from = prompt.indexOf(start), to = prompt.indexOf(end, from);
+        check(from >= 0 && to > from, "Current linked-PASS contract section required");
+        return prompt.substring(from, to);
+    }
+
     static String replaceContract(String baseline) {
         check(baseline != null && java.util.stream.Stream.of(SourceRelationPrompts.verification(0),CandidateReviewPrompts.VERIFICATION_PROMPT)
                 .anyMatch(p -> baseline.startsWith(p) || baseline.startsWith(p.replace(CURRENT_CONTRAST,OLD_CONTRAST))), "Known baseline verification required");
         // Only verification output sections; shared judgment policy and reference suffix remain unchanged.
         boolean current=baseline.contains(CURRENT_CONTRAST);
-        String updated = replaceOnce(baseline, current?CURRENT_CONTRAST:OLD_CONTRAST, current?CURRENT_REPLACEMENT:CONTRAST);
+        String previous = OLD_CONTRAST.replace(
+                "  또한 proposedEvidence의 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.\n",
+                "  또한 해당 후보의 허용 raw 중 anchor 이외 줄에서 실제 연결을 설명하는 CONTEXT 인용을 하나 이상 반환한다.\n"
+                        + "  정상 해석의 근거는 proposedEvidence에 선택되지 않은 허용 원문에서도 고를 수 있다. 창 밖 근거는 금지다.\n");
+        String marker = current ? CURRENT_CONTRAST : baseline.contains(previous) ? previous : OLD_CONTRAST;
+        String updated = replaceOnce(baseline, marker, current ? CURRENT_REPLACEMENT : CONTRAST);
         updated = replaceOnce(updated, OLD_RELATION, RELATION);
         return replaceOnce(updated, OLD_JSON_INTRO, JSON_INTRO);
     }

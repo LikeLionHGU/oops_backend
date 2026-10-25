@@ -43,11 +43,15 @@ class PromptSnapshotTest {
         assertThat(document).contains("```text\n" + CandidateReviewEngine.CONTRAST_REPAIR_PROMPT.stripTrailing() + "\n```");
         assertThat(document).contains("```text\n" + (CandidateReviewEngine.verificationPrompt(0)
                 + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing() + "\n```");
+        int promptIndex = 0;
         for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT,
                 CandidateReviewEngine.DISCOVERY_REPAIR_PROMPT,
                 VisualContextReviewer.PROMPT,
                 CandidateReviewEngine.DISCOVERY_PROMPT + "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT)) {
-            assertThat(document).contains("```text\n" + (system + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing() + "\n```");
+            promptIndex++;
+            String snapshot = "```text\n" + (system + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing() + "\n```";
+            assertThat(document.contains(snapshot)).as("documented system prompt %s", promptIndex)
+                    .isTrue();
         }
     }
 }

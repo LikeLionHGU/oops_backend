@@ -37,6 +37,10 @@ class ContextBoundaryWiringTest {
         var frozen=root.resolve("experiments/current-context-20261023-plan/plan.json");
         assumeTrue(Files.exists(frozen));
         var before=ReviewGuidelineLibrary.JSON.readValue(Files.readAllBytes(frozen),CurrentContextReferenceTrial.Plan.class);
+        // This paid plan predates the axis-neutral linked-PASS contract and is intentionally immutable.
+        // It is no longer a valid exact-prompt comparison until a new plan is prepared and approved.
+        assumeTrue(before.requests().stream().allMatch(r -> r.system().contains(
+                "축과 무관하게 PASS에도 대조 해석이 필수다")), "Frozen paid plan uses an earlier verification contract");
         var current=CurrentContextReferenceTrial.prepare(root);
         assertThat(current.requests()).hasSameSizeAs(before.requests());
         for(int i=0;i<current.requests().size();i++) {

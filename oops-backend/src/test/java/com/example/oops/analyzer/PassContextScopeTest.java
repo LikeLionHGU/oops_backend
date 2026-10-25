@@ -41,6 +41,19 @@ class PassContextScopeTest {
         assertThat(validate(candidate(),JSON.treeToValue(tree,TextReviewEngine.LlmDecision.class),context.reviewInput(),0).failureCode())
                 .isEqualTo("NON_REVIEW_FIELDS");
     }
+    @Test void linkedPassContractAppliesAcrossAxesButNotToSingleLineExpressions() {
+        var linkedExpression = new Candidate("candidate-expression", new Proposal("stt-index-1", "EXPRESSION_CONTENT",
+                "표현과 설명의 연결을 확인", proposal.evidence()), context.reviewInput().segments(), false, false);
+        assertThat(validate(linkedExpression, pass("stt-index-0"), context.reviewInput(), 0).failureCode()).isNull();
+        assertThat(validate(linkedExpression, pass("stt-index-1"), context.reviewInput(), 0).failureCode())
+                .isEqualTo("LINKED_PASS_CONTEXT_REQUIRED");
+
+        var singleExpression = new Candidate("candidate-expression-single", new Proposal("stt-index-1", "EXPRESSION_CONTENT",
+                "단일 표현 자체를 확인", List.of(new Quote("stt-index-1", "その言葉は引用です"))),
+                context.reviewInput().segments(), false, false);
+        var singlePass = f.assessment("stt-index-1", "PASS", "その言葉は引用です");
+        assertThat(validate(singleExpression, singlePass, context.reviewInput(), 0).failureCode()).isNull();
+    }
     @Test void productionUsesNewScopeWithoutRepairOrExtraDiscovery() {
         f.discovery(List.of("stt-index-0","stt-index-1","stt-index-2"),proposal);
         f.verification(new Verification("candidate-1",pass("stt-index-0")));
