@@ -30,6 +30,10 @@ class CasebookImpactAuditTest {
                 List.of("a", "b", "c"), List.of("b", "a", "new"))).isTrue();
         org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.rankingChanged(
                 List.of("a", "b"), List.of("new", "a", "b"))).isFalse();
+        org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.rankAffectedIds(
+                List.of("a", "b", "c"), List.of("b", "a", "c"))).containsExactly("a", "b");
+        org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.rankAffectedIds(
+                List.of("a", "b", "c"), List.of("new", "a", "b", "c"))).isEmpty();
     }
 
     @Test void detectsEditedReferenceContentEvenWhenItsIdIsUnchanged() {
@@ -42,14 +46,19 @@ class CasebookImpactAuditTest {
     }
 
     @Test void attributesChangedContentAndRelativeRankToSelectedReferenceMechanisms() {
-        var beforeMechanisms = Map.of("same", List.of("local-choice"), "other", List.of("body-image"));
-        var afterMechanisms = Map.of("same", List.of("local-choice"), "other", List.of("body-image"));
+        var beforeMechanisms = Map.of("same", List.of("local-choice"), "other", List.of("body-image"),
+                "unchanged", List.of("tertiary"));
+        var afterMechanisms = Map.of("same", List.of("local-choice"), "other", List.of("body-image"),
+                "unchanged", List.of("tertiary"));
         org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.changedContentMechanisms(
-                List.of("same", "other"), List.of("other", "same"),
-                Map.of("same", "old", "other", "fixed"), Map.of("same", "new", "other", "fixed"),
+                List.of("same", "other", "unchanged"), List.of("other", "same", "unchanged"),
+                Map.of("same", "old", "other", "fixed", "unchanged", "stable"),
+                Map.of("same", "new", "other", "fixed", "unchanged", "stable"),
                 beforeMechanisms, afterMechanisms)).containsExactly("local-choice");
-        var common = CasebookImpactAudit.commonIds(List.of("same", "other"), List.of("other", "same"));
+        var affected = CasebookImpactAudit.rankAffectedIds(
+                List.of("same", "other", "unchanged"), List.of("other", "same", "unchanged"));
+        org.assertj.core.api.Assertions.assertThat(affected).containsExactly("same", "other");
         org.assertj.core.api.Assertions.assertThat(CasebookImpactAudit.mechanismsFor(
-                common, beforeMechanisms, afterMechanisms)).containsExactly("body-image", "local-choice");
+                affected, beforeMechanisms, afterMechanisms)).containsExactly("body-image", "local-choice");
     }
 }

@@ -67,7 +67,8 @@ public final class CasebookImpactAudit {
                     focus, Set.of(), ContextRelationRetrieval.Query.empty(), true, heldOutGroups).trace();
             var added = new ArrayList<>(after.exampleIds()); added.removeAll(before.exampleIds());
             var removed = new ArrayList<>(before.exampleIds()); removed.removeAll(after.exampleIds());
-            boolean rankChanged = rankingChanged(before.exampleIds(), after.exampleIds());
+            var rankAffectedReferenceIds = rankAffectedIds(before.exampleIds(), after.exampleIds());
+            boolean rankChanged = !rankAffectedReferenceIds.isEmpty();
             boolean referenceContentChanged = referenceContentChanged(before.exampleIds(), baselineReferenceFingerprints,
                     after.exampleIds(), candidateReferenceFingerprints);
             String referenceFingerprintBefore = selectedFingerprint(before.exampleIds(), baselineReferenceFingerprints);
@@ -77,7 +78,7 @@ public final class CasebookImpactAudit {
             var changedContentMechanisms = changedContentMechanisms(before.exampleIds(), after.exampleIds(),
                     baselineReferenceFingerprints, candidateReferenceFingerprints, baselineMechanisms, candidateMechanisms);
             var rankAffectedMechanisms = rankChanged
-                    ? mechanismsFor(commonIds(before.exampleIds(), after.exampleIds()), baselineMechanisms,
+                    ? mechanismsFor(rankAffectedReferenceIds, baselineMechanisms,
                             candidateMechanisms) : List.<String>of();
             var beforeMechanisms = new TreeSet<>(before.mechanismIds());
             var afterMechanisms = new TreeSet<>(after.mechanismIds());
@@ -101,6 +102,7 @@ public final class CasebookImpactAudit {
             row.put("selectedBefore", before.exampleIds()); row.put("selectedAfter", after.exampleIds());
             row.put("added", added); row.put("removed", removed);
             row.put("rankChanged", rankChanged);
+            row.put("rankAffectedReferenceIds", rankAffectedReferenceIds);
             row.put("referenceContentChanged", referenceContentChanged);
             row.put("selectedReferenceFingerprintBefore", referenceFingerprintBefore);
             row.put("selectedReferenceFingerprintAfter", referenceFingerprintAfter);
@@ -182,7 +184,7 @@ public final class CasebookImpactAudit {
                             "queriesWithRankAffectedSelectedReferences", 0)));
         String policyFingerprint = sha(json.writeValueAsBytes(request.path("policyImplementationHashes")));
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("schemaVersion", "casebook-impact-report-5");
+        result.put("schemaVersion", "casebook-impact-report-6");
         result.put("planSha256", planSha); result.put("evaluationFingerprint", evaluationFingerprint);
         result.put("baselineRuntimeSha256", baselineSha); result.put("candidateRuntimeSha256", candidateSha);
         result.put("policyImplementationFingerprint", policyFingerprint);
@@ -255,9 +257,31 @@ public final class CasebookImpactAudit {
     }
 
     static boolean rankingChanged(List<String> before, List<String> after) {
+        return !rankAffectedIds(before, after).isEmpty();
+    }
+
+    static List<String> rankAffectedIds(List<String> before, List<String> after) {
         Set<String> beforeSet = new HashSet<>(before), afterSet = new HashSet<>(after);
-        return !before.stream().filter(afterSet::contains).toList()
-                .equals(after.stream().filter(beforeSet::contains).toList());
+        List<String> common = before.stream().filter(afterSet::contains).toList();
+        Map<String, Integer> beforePosition = positions(before), afterPosition = positions(after);
+        Set<String> affected = new HashSet<>();
+        for (int i = 0; i < common.size(); i++) {
+            for (int j = i + 1; j < common.size(); j++) {
+                String left = common.get(i), right = common.get(j);
+                if (Integer.compare(beforePosition.get(left), beforePosition.get(right))
+                        != Integer.compare(afterPosition.get(left), afterPosition.get(right))) {
+                    affected.add(left);
+                    affected.add(right);
+                }
+            }
+        }
+        return common.stream().filter(affected::contains).toList();
+    }
+
+    private static Map<String, Integer> positions(List<String> ids) {
+        Map<String, Integer> result = new HashMap<>();
+        for (int i = 0; i < ids.size(); i++) result.put(ids.get(i), i);
+        return result;
     }
 
     static boolean referenceContentChanged(List<String> beforeIds, Map<String, String> before,
