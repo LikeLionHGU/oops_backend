@@ -785,6 +785,21 @@ tasks.register('casebookIntakeAudit', JavaExec) {
     }
 }
 
+// Before/after production-selector audit over the fixed, user-approved development suite.
+tasks.register('casebookImpactAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookImpactAudit'
+    doFirst {
+        def request = providers.gradleProperty('impactRequest').orNull
+        def baseline = providers.gradleProperty('impactBaseline').orNull
+        def candidate = providers.gradleProperty('impactCandidate').orNull
+        if (!request || !baseline || !candidate)
+            throw new GradleException('Set impactRequest, impactBaseline and impactCandidate local paths')
+        args request, baseline, candidate
+    }
+}
+
 // Opt-in stage diagnosis. Preparation is offline; run requires fresh plan-specific consent.
 tasks.register('confrontationStageTrial', JavaExec) {
     dependsOn testClasses

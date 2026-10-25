@@ -50,7 +50,13 @@ final class ContextExampleSelector {
     }
     List<Match> rank(TimelineEventType channel, Collection<ReviewInput.Segment> raw, Set<String> excludedFamilies,
                      Set<String> mechanismCandidates, ContextRelationRetrieval.Query relation) {
+        return rank(channel, raw, excludedFamilies, mechanismCandidates, relation, Set.of());
+    }
+    List<Match> rank(TimelineEventType channel, Collection<ReviewInput.Segment> raw, Set<String> excludedFamilies,
+                     Set<String> mechanismCandidates, ContextRelationRetrieval.Query relation,
+                     Set<String> excludedProvenanceGroups) {
         // Source IDs, hypotheses, URLs, popularity and article metadata are not queries.
+        // Held-out provenance aliases may match either the concrete media group or the approved evaluation family.
         StringBuilder query = new StringBuilder();
         for (var s : raw) {
             if (s.type() == channel && s.reviewTarget() && s.text() != null) {
@@ -66,7 +72,9 @@ final class ContextExampleSelector {
         List<Match> matches = new ArrayList<>();
         for (var item : index) {
             var e = item.example();
-            if (!e.channels().contains(channel.name()) || excludedFamilies.contains(e.familyId())) continue;
+            if (!e.channels().contains(channel.name()) || excludedFamilies.contains(e.familyId())
+                    || excludedProvenanceGroups.contains(e.familyId())
+                    || e.sourceGroupId() != null && excludedProvenanceGroups.contains(e.sourceGroupId())) continue;
             int hits = 0; double score = 0;
             for (var t : item.terms()) if (queryTerms.contains(t)) {
                 hits++; score += 1 + Math.log((index.size() + 1.0) / (frequencies.get(t) + 1.0));

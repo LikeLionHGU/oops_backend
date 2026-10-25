@@ -88,6 +88,16 @@ class EvaluationSuiteAuditTest(unittest.TestCase):
         self.assertFalse(snapshot["deploymentVerified"])
         self.assertEqual(self.registry["sourcePacket"]["sha256"], snapshot["files"][0]["sha256"])
 
+    def test_physical_source_group_requires_explicit_matching_verification(self):
+        source = {"sourceKind": "STORED_STT", "sourceGroupId": "youtube-video-1"}
+        review = {"sourceGroupId": "youtube-video-1"}
+        self.assertIsNone(audit.verified_media_source_group(review, source))
+        review["sourceGroupVerified"] = True
+        self.assertEqual("youtube-video-1", audit.verified_media_source_group(review, source))
+        self.assertIsNone(audit.verified_media_source_group(review, {**source, "sourceGroupId": "other-video"}))
+        self.assertIsNone(audit.verified_media_source_group(
+            review, {**source, "sourceKind": "SYNTHETIC_DRAFT"}))
+
     def test_only_full_approved_dialogues_are_active_with_separate_labels(self):
         before = audit.canonical(self.packet)
         result = audit.prepare(self.root, self.registry)
@@ -163,8 +173,13 @@ class EvaluationSuiteAuditTest(unittest.TestCase):
     def test_full_window_approved_units_share_one_family_without_relabeling_old_case(self):
         self.focused_review()
         result = audit.prepare(self.root, self.registry)
+        focused_labels = [row for row in result["labels.json"] if row["caseId"].startswith("focus-")]
+        self.assertTrue(all(row["sourceGroupId"] is None for row in focused_labels))
+        self.assertEqual({"one-shared-dialogue"}, {row["evaluationGroupId"] for row in focused_labels})
+        self.assertEqual("active-evaluation-bundle-2", result["manifest.json"]["schemaVersion"])
         self.assertEqual(4, result["manifest.json"]["activeCount"])
-        self.assertEqual(1, result["manifest.json"]["realVideoFamiliesInActiveSuite"])
+        self.assertEqual(0, result["manifest.json"]["verifiedMediaSourceGroupCount"])
+        self.assertEqual(1, result["manifest.json"]["evaluationGroupCount"])
         self.assertEqual(2, result["manifest.json"]["storedSttIssueCount"])
         self.assertEqual(result["inputs.json"][-1]["raw"], result["inputs.json"][-2]["raw"])
         self.assertNotIn("expectedDecision", json.dumps(result["inputs.json"]))

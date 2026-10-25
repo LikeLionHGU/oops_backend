@@ -22,7 +22,7 @@
   "focusCase": "R01",
   "supplementalContrasts": {
     "path": "oops-backend/src/test/resources/evals/context-content-contrasts-v1.json",
-    "sha256": "962dee4a54c1c2cad17ba44ce0257d6026c0d1b82214ba8d3d0703e98a26f6b0",
+    "sha256": "60a67c288f63e70cdc23d931065cb83ab279d17d293161eb7cca1e6bacd94207",
     "activeDecisions": {"A01": "PASS", "A02": "REVIEW_REQUIRED", "A03": "PASS", "A04": "REVIEW_REQUIRED"}
   },
   "workflow": {

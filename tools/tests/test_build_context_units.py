@@ -40,14 +40,23 @@ class ContextUnitTests(unittest.TestCase):
         return compile_preview(self.base, [unit or self.unit], self.catalog, self.root)
 
     def standalone(self, decision="PASS"):
+        approval_doc = {"schemaVersion": "development-human-review-1", "reviews": [
+            {"eventId": "approved-unit", "anchorIds": ["s1"], "decision": decision,
+             "scope": "합성 테스트 범위", "userReply": "승인"}]}
+        approval_raw = json.dumps(approval_doc).encode()
+        (self.root / "approval.json").write_bytes(approval_raw)
         source = {"schemaVersion": "context-transcript-source-1", "familyId": "development-family",
+                  "sourceGroupId": "synthetic-video-group",
                   "audioVerified": False, "developmentReview": {
-                      "decision": decision, "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": "제공 문맥 승인"},
+                      "decision": decision, "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": "제공 문맥 승인",
+                      "approvalRecord": {"path": "approval.json",
+                                         "sha256": hashlib.sha256(approval_raw).hexdigest(),
+                                         "eventIds": ["approved-unit"]}},
                   "segments": [{"id": "s1", "text": "평가 표현"}, {"id": "s2", "text": "후속 상황"}]}
         raw = json.dumps(source).encode()
         (self.root / "source.json").write_bytes(raw)
         unit = copy.deepcopy(self.unit)
-        unit.update(schemaVersion="context-reference-unit-2", familyId="development-family",
+        unit.update(schemaVersion="context-reference-unit-3", familyId="development-family",
                     referencePurpose="DEVELOPMENT_BOUNDARY_NOT_PUBLIC_CONTROVERSY",
                     developmentDecision=decision, mechanismIds=["broad"])
         unit.pop("parentCaseId")
@@ -55,6 +64,25 @@ class ContextUnitTests(unittest.TestCase):
                           "sha256": hashlib.sha256(raw).hexdigest()}
         self.base["guidelines"][0]["channels"] = ["SPEECH"]
         return unit
+
+    def test_standalone_rejects_missing_or_out_of_scope_approval_record(self):
+        unit = self.standalone()
+        source = json.loads((self.root / "source.json").read_bytes())
+        source["developmentReview"].pop("approvalRecord")
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "UNIT_APPROVAL_RECORD_REQUIRED"):
+            self.compile(unit)
+
+        unit = self.standalone()
+        source = json.loads((self.root / "source.json").read_bytes())
+        source["developmentReview"]["approvalRecord"]["eventIds"] = ["not-approved"]
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "UNIQUE_APPROVAL_REQUIRED"):
+            self.compile(unit)
 
     def test_standalone_normal_boundary_does_not_invent_or_replace_an_incident(self):
         unit = self.standalone()
@@ -71,6 +99,7 @@ class ContextUnitTests(unittest.TestCase):
 
     def ocr_unit(self):
         unit = self.standalone()
+        unit["schemaVersion"] = "context-reference-unit-2"
         (self.root / "frame.jpg").write_bytes(b"synthetic frame fixture")
         rows = [{"text": "그림 생성 조건", "startMs": 10, "endMs": 20, "frameUrl": "/synthetic/frame"},
                 {"text": "대학생 외모로 표현", "startMs": 10, "endMs": 20, "frameUrl": "/synthetic/frame"}]

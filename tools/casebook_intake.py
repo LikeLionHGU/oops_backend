@@ -19,8 +19,9 @@ from pathlib import Path, PurePosixPath
 import build_incident_dataset as builder
 from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text, PilotError
+from casebook_provenance import validate_approval_document
 
-REVISION = "casebook-intake-tool-1"
+REVISION = "casebook-intake-tool-2"
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 IDENTITY = re.compile(r"[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?\Z")
 
@@ -35,12 +36,21 @@ def digest(raw):
 
 def implementation_hashes():
     repo = Path(__file__).resolve().parents[1]
-    names = ["tools/" + name + ".py" for name in ("casebook_intake", "build_incident_dataset", "build_context_units",
+    names = ["tools/" + name + ".py" for name in ("casebook_intake", "casebook_provenance", "build_incident_dataset", "build_context_units",
              "build_context_dictionary", "build_review_guidelines", "incidents_migration", "review_context_pilot")]
     names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
               ("ReviewGuidelineLibrary", "ContextExampleSelector", "ContextRelationRetrieval", "ContextBoundarySupplement",
-               "ContextReferenceBalance", "StructuredContextSearch")]
-    names += ["oops-backend/src/test/java/com/example/oops/analyzer/CasebookIntakeAudit.java", "oops-backend/build.gradle"]
+               "ContextReferenceBalance", "StructuredContextSearch", "ReviewJudgmentPolicy", "CandidateReviewPrompts",
+               "ContextualComparisonPolicy", "SourceRelationPrompts", "CandidateReviewEngine", "TextReviewEngine")]
+    names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
+              ("ContextMechanismRouter", "AnalysisContext")]
+    names += ["oops-backend/src/main/java/com/example/oops/domain/AnalysisCoverage.java",
+              "oops-backend/src/main/java/com/example/oops/service/AnalysisPipeline.java",
+              "oops-backend/src/main/java/com/example/oops/service/ReviewRequestTraceStore.java"]
+    names += ["oops-backend/src/test/java/com/example/oops/analyzer/CasebookIntakeAudit.java",
+              "oops-backend/src/test/java/com/example/oops/analyzer/CasebookImpactAudit.java", "oops-backend/build.gradle"]
+    names += ["tools/audit_evaluation_suites.py", "tools/evaluation-suites.json",
+              "oops-backend/src/test/resources/evals/context-content-contrasts-v1.json"]
     return {name: digest(read_bytes(repo / name)) for name in names}
 
 
@@ -101,20 +111,7 @@ def approval(root, spec, selected):
     ref = spec["approval"]
     exact(ref, ("path", "sha256", "eventIds"))
     document = reference(root, {k: ref[k] for k in ("path", "sha256")})
-    ids = ref["eventIds"]
-    require(isinstance(ids, list) and ids and all(text(i, 100) for i in ids)
-            and len(ids) == len(set(ids)), "APPROVAL_EVENT_IDS_REQUIRED")
-    require(isinstance(document.get("reviews"), list), "APPROVAL_REVIEWS_REQUIRED")
-    for event in ids:
-        matches = [r for r in document["reviews"] if r.get("eventId") == event or event in r.get("eventIds", [])]
-        require(len(matches) == 1, "UNIQUE_APPROVAL_REQUIRED")
-        r = matches[0]
-        require(r.get("decision") == spec["decision"] and text(r.get("scope"), 2000)
-                and (text(r.get("userReply"), 2000) or text(r.get("userConfirmation"), 2000)),
-                "EXPLICIT_MATCHING_USER_REVIEW_REQUIRED")
-        anchors = [r["anchorId"]] if r.get("anchorId") else r.get("anchorIds", [])
-        require(anchors and set(anchors) <= set(selected), "APPROVAL_ANCHOR_OUTSIDE_SELECTION")
-    return ref
+    return validate_approval_document(ref, document, spec["decision"], selected)
 
 
 def source_lines(root, spec):
@@ -206,7 +203,7 @@ def plan(root, spec):
                   "audioVerified": False, "developmentReview": {"decision": spec["decision"],
                       "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": spec["interpretation"],
                       "approvalRecord": approved}, "segments": lines}
-        unit = {"schemaVersion": "context-reference-unit-2", "id": spec["id"], "familyId": spec["familyId"],
+        unit = {"schemaVersion": "context-reference-unit-3", "id": spec["id"], "familyId": spec["familyId"],
                 "status": "DRAFT", "humanVerified": False, "trainingUseAuthorized": False,
                 "referencePurpose": "DEVELOPMENT_BOUNDARY_NOT_PUBLIC_CONTROVERSY", "developmentDecision": spec["decision"],
                 "mechanismIds": spec["mechanismIds"], "routingKeys": spec["routingKeys"],
@@ -218,7 +215,7 @@ def plan(root, spec):
         if spec["action"] == "UPDATE":
             old_raw = read_bytes(local(root, unit_path)); old = parse(old_raw)
             require(digest(old_raw) == spec.get("expectedUnitSha256"), "EXPECTED_UNIT_HASH_REQUIRED_OR_STALE")
-            require(old.get("schemaVersion") == "context-reference-unit-2"
+            require(old.get("schemaVersion") in {"context-reference-unit-2", "context-reference-unit-3"}
                     and old.get("source", {}).get("kind") == "STORED_TRANSCRIPT_SNAPSHOT", "DEVELOPMENT_UNIT_UPDATE_ONLY")
             old_source = reference(root, {k: old["source"][k] for k in ("path", "sha256")})
             require(all(old.get(k) == unit[k] for k in ("id", "familyId", "developmentDecision", "utteranceIds", "roles", "mechanismIds", "routingKeys"))
@@ -288,28 +285,68 @@ def query_document(planned):
 
 
 def audit_retrieval(planned):
-    """Run only the production local selector, using a pinned offline Gradle task."""
+    """Compare production retrieval before/after the proposed casebook change, offline."""
     require(planned["summary"]["action"] != "HOLD", "HOLD_HAS_NO_RETRIEVAL_TARGET")
+    import audit_evaluation_suites as evaluation
+    repo = Path(__file__).resolve().parents[1]
+    registry = parse(read_bytes(repo / "tools/evaluation-suites.json"))
+    bundle = evaluation.prepare(repo, registry)
+    label_by_id = {row["caseId"]: row for row in bundle["labels.json"]}
+    cases = []
+    for row in bundle["inputs.json"]:
+        label = label_by_id[row["caseId"]]
+        cases.append({"caseId": row["caseId"], "sourceGroupId": label.get("sourceGroupId"),
+                      "evaluationGroupId": label.get("evaluationGroupId"),
+                      "anchorId": row["anchorId"], "raw": row["raw"]})
+    eval_manifest = bundle["manifest.json"]
+    evaluation_fingerprint = digest(encoded({key: eval_manifest[key] for key in
+        ("suiteId", "registryCanonicalSha256", "inputsCanonicalSha256", "labelsCanonicalSha256", "activeCases")}))
+    intake_query = {**query_document(planned),
+                    "baselineRuntimeSha256": planned["payload"]["baseline"]["runtime"]}
+    request = {"schemaVersion": "casebook-impact-request-1", "planSha256": planned["sha"],
+               "evaluationFingerprint": evaluation_fingerprint, "evaluationCaseCount": len(cases),
+               "evaluation": cases, "intake": intake_query,
+               "policyImplementationHashes": planned["payload"]["implementationHashes"]}
     with tempfile.TemporaryDirectory(prefix="oops-intake-audit-") as folder:
         directory = Path(folder)
+        before_path = local(Path(planned["payload"]["datasetRoot"]), "guidelines/runtime.json")
+        before_raw = read_bytes(before_path)
+        require(digest(before_raw) == planned["payload"]["baseline"]["runtime"], "BASELINE_RUNTIME_CHANGED")
+        (directory / "baseline-runtime.json").write_bytes(before_raw)
         write_private(directory / "runtime.json", planned["payload"]["candidateRuntime"])
-        write_private(directory / "query.json", query_document(planned))
-        repo = Path(__file__).resolve().parents[1]
+        write_private(directory / "request.json", request)
         env = {k: v for k, v in os.environ.items() if k in
                {"PATH", "JAVA_HOME", "HOME", "USER", "TMPDIR", "LANG", "GRADLE_USER_HOME"}}
         try:
-            process = subprocess.run(["bash", "./gradlew", "--offline", "--console=plain", "-q", "casebookIntakeAudit",
-                    "-PintakeQuery=" + str(directory / "query.json"), "-PintakeRuntime=" + str(directory / "runtime.json")],
+            process = subprocess.run(["bash", "./gradlew", "--offline", "--console=plain", "-q", "casebookImpactAudit",
+                    "-PimpactRequest=" + str(directory / "request.json"),
+                    "-PimpactBaseline=" + str(directory / "baseline-runtime.json"),
+                    "-PimpactCandidate=" + str(directory / "runtime.json")],
                     cwd=repo / "oops-backend", env=env, text=True, capture_output=True, timeout=60)
         except (OSError, subprocess.TimeoutExpired):
             raise PilotError("LOCAL_RETRIEVAL_AUDIT_UNAVAILABLE") from None
-        rows = [s.removeprefix("CASEBOOK_INTAKE_AUDIT=") for s in process.stdout.splitlines()
-                if s.startswith("CASEBOOK_INTAKE_AUDIT=")]
+        rows = [s.removeprefix("CASEBOOK_IMPACT_AUDIT=") for s in process.stdout.splitlines()
+                if s.startswith("CASEBOOK_IMPACT_AUDIT=")]
         require(process.returncode == 0 and len(rows) == 1, "LOCAL_RETRIEVAL_AUDIT_FAILED")
         result = parse(rows[0])
+        require(planned["payload"]["implementationHashes"] == implementation_hashes(),
+                "IMPLEMENTATION_CHANGED_DURING_IMPACT_AUDIT")
         require(result.get("planSha256") == planned["sha"]
-                and result.get("runtimeSha256") == planned["summary"]["candidateRuntimeSha256"]
-                and result.get("providerCalls") == 0 and result.get("retrieved") is True,
+                and result.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
+                and result.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
+                and result.get("evaluationFingerprint") == evaluation_fingerprint
+                and result.get("providerCalls") == 0 and result.get("intakeRetrieved") is True
+                and result.get("modelAccuracyMeasured") is False
+                and result.get("judgmentPolicyExecuted") is False
+                and result.get("retrievalOnlyImpact") is True
+                and result.get("semanticQualityConclusion") == "NOT_MEASURED"
+                and isinstance(result.get("mechanismSelectionImpact"), dict)
+                and isinstance(result.get("intakeRelatedMechanismImpact"), dict)
+                and isinstance(result.get("sourceGroupSummary"), dict)
+                and isinstance(result.get("evaluationGroupSummary"), dict)
+                and isinstance(result.get("casesWithoutSourceGroup"), int)
+                and isinstance(result.get("intakeMechanismIds"), list)
+                and isinstance(result.get("cases"), list) and len(result["cases"]) == len(cases),
                 "RETRIEVAL_REPORT_MISMATCH")
         return result
 
@@ -338,8 +375,22 @@ def apply_plan(root, spec, expected_sha, audit_runner=None):
         audit = (audit_runner or audit_retrieval)(planned) if spec["action"] != "HOLD" else None
         if audit is not None:
             require(audit.get("planSha256") == planned["sha"]
-                    and audit.get("runtimeSha256") == planned["summary"]["candidateRuntimeSha256"]
-                    and audit.get("providerCalls") == 0 and audit.get("retrieved") is True,
+                    and audit.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
+                    and audit.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
+                    and isinstance(audit.get("evaluationFingerprint"), str)
+                    and re.fullmatch(r"[0-9a-f]{64}", audit["evaluationFingerprint"])
+                    and audit.get("providerCalls") == 0 and audit.get("intakeRetrieved") is True
+                    and audit.get("modelAccuracyMeasured") is False
+                    and audit.get("judgmentPolicyExecuted") is False
+                    and audit.get("retrievalOnlyImpact") is True
+                    and audit.get("semanticQualityConclusion") == "NOT_MEASURED"
+                    and isinstance(audit.get("mechanismSelectionImpact"), dict)
+                    and isinstance(audit.get("intakeRelatedMechanismImpact"), dict)
+                    and isinstance(audit.get("sourceGroupSummary"), dict)
+                    and isinstance(audit.get("evaluationGroupSummary"), dict)
+                    and isinstance(audit.get("casesWithoutSourceGroup"), int)
+                    and isinstance(audit.get("intakeMechanismIds"), list)
+                    and isinstance(audit.get("cases"), list) and audit["cases"],
                     "RETRIEVAL_REPORT_MISMATCH")
         names = list(files) + [planned["receipt"]]
         if spec["action"] != "HOLD": names += ["guidelines/runtime.json", "guidelines/build-manifest.json"]
@@ -394,7 +445,8 @@ def main():
     parser.add_argument("--dataset-root", type=Path, default=builder.DEFAULT_ROOT)
     parser.add_argument("--output", type=Path, help="Optional new preview directory inside dataset root")
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--check-retrieval", action="store_true", help="Offline Java selector audit; no provider calls")
+    parser.add_argument("--check-retrieval", "--check-impact", dest="check_retrieval", action="store_true",
+                        help="Compare fixed-suite retrieval before/after with the production Java selector; no provider calls or accuracy claim")
     parser.add_argument("--expected-plan-sha")
     args = parser.parse_args()
     if args.apply != bool(args.expected_plan_sha) or args.apply and args.output:

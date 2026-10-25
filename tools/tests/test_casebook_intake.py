@@ -1,6 +1,7 @@
 """Synthetic isolated datasets; no provider calls or real dataset writes."""
 import copy
 import json
+import os
 import sys
 import subprocess
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import casebook_intake as tool
+from casebook_provenance import validate_approval_document
 import build_incident_dataset as builder
 from test_incident_publish import setup
 
@@ -76,8 +78,26 @@ def spec(root, action='ADD'):
 
 
 def fake_audit(plan):
-    return {"planSha256": plan['sha'], "runtimeSha256": plan['summary']['candidateRuntimeSha256'],
-            "retrieved": True, "providerCalls": 0, "testFixtureNotJavaExecution": True}
+    return {"planSha256": plan['sha'], "candidateRuntimeSha256": plan['summary']['candidateRuntimeSha256'],
+            "baselineRuntimeSha256": plan['payload']['baseline']['runtime'],
+            "evaluationFingerprint": "1" * 64, "intakeRetrieved": True,
+            "providerCalls": 0, "modelAccuracyMeasured": False, "judgmentPolicyExecuted": False,
+            "retrievalOnlyImpact": True, "semanticQualityConclusion": "NOT_MEASURED",
+            "mechanismSelectionImpact": {}, "intakeRelatedMechanismImpact": {}, "sourceGroupSummary": {},
+            "casesWithoutSourceGroup": 1,
+            "evaluationGroupSummary": {}, "intakeMechanismIds": ["mechanism"],
+            "cases": [{"caseId": "fixture", "changed": False}], "testFixtureNotJavaExecution": True}
+
+
+def test_one_approved_review_can_cover_a_group_of_selected_event_ids():
+    document = {"reviews": [{"eventIds": ["e1", "e2"], "anchorIds": ["s1", "s2"],
+                             "decision": "PASS", "scope": "묶음 문맥", "userReply": "두 항목 모두 PASS"}]}
+    link = {"path": "approved.json", "sha256": "a" * 64, "eventIds": ["e1", "e2"]}
+    validate_approval_document(link, document, "PASS", ["s1", "s2"])
+    document["reviews"].append({"eventId": "e2", "anchorId": "s2", "decision": "PASS",
+                                "scope": "중복", "userReply": "PASS"})
+    with pytest.raises(ValueError, match="UNIQUE_APPROVAL_REQUIRED"):
+        validate_approval_document(link, document, "PASS", ["s1", "s2"])
 
 
 def projected_spec(root, count=24):
@@ -343,6 +363,26 @@ def test_invalid_audit_result_is_not_accepted(dataset):
     with pytest.raises(ValueError, match='RETRIEVAL_REPORT_MISMATCH'):
         tool.apply_plan(dataset, value, preview['sha'], lambda _: {'retrieved': True})
     assert snapshot(dataset) == before
+
+
+@pytest.mark.skipif(os.environ.get("OOPS_RUN_CASEBOOK_IMPACT_AUDIT") != "1",
+                    reason="Requires Java 17 and the local offline Gradle cache")
+def test_production_selector_reports_before_after_impact_without_models(dataset):
+    preview = tool.plan(dataset, spec(dataset))
+    report = tool.audit_retrieval(preview)
+    assert report["schemaVersion"] == "casebook-impact-report-3"
+    assert report["planSha256"] == preview["sha"]
+    assert report["providerCalls"] == 0 and report["modelAccuracyMeasured"] is False
+    assert report["judgmentPolicyExecuted"] is False and report["policyHashesPinned"] is True
+    assert report["evaluationCaseCount"] == len(report["cases"]) > 0
+    assert report["intakeRetrieved"] is True
+    assert report["retrievalOnlyImpact"] is True and report["semanticQualityConclusion"] == "NOT_MEASURED"
+    assert isinstance(report["mechanismSelectionImpact"], dict) and report["intakeMechanismIds"] == ["mechanism"]
+    assert set(report["intakeRelatedMechanismImpact"]) == {"mechanism"}
+    assert report["casesWithoutSourceGroup"] == len(report["cases"])
+    assert report["casesWithoutAnyHoldoutGroup"] > 0
+    assert all(case["sourceGroupIndependence"] == "UNKNOWN_NOT_EXCLUDED" for case in report["cases"])
+    assert all("selectedMechanismsBefore" in case and "addedReferenceMechanisms" in case for case in report["cases"])
 
 
 def test_target_created_during_audit_is_not_overwritten(dataset):

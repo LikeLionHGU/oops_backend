@@ -18,6 +18,7 @@ from pathlib import Path
 from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text
 from review_dataset_catalog import inside
+from casebook_provenance import validate_approval_document
 
 ROOT = Path(__file__).resolve().parents[1] / "datasets/controversy"
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?\Z")
@@ -30,7 +31,7 @@ def digest(raw):
 def projection_flow(unit):
     """Authored summaries retain an ordered, complete mapping; never quote text."""
     p = unit.get("contextProjection")
-    require(unit.get("schemaVersion") == "context-reference-unit-2"
+    require(unit.get("schemaVersion") in {"context-reference-unit-2", "context-reference-unit-3"}
             and unit.get("source", {}).get("kind") == "STORED_TRANSCRIPT_SNAPSHOT",
             "PROJECTION_TRANSCRIPT_DEVELOPMENT_ONLY")
     require(isinstance(p, dict) and set(p) == {"kind", "entries"}
@@ -80,7 +81,13 @@ def linked_lines(root, unit):
         require(doc.get("schemaVersion") == "context-transcript-source-1"
                 and doc.get("familyId") == unit["familyId"] and doc.get("audioVerified") is False,
                 "UNIT_TRANSCRIPT_SOURCE_REQUIRED")
-        if unit.get("schemaVersion") == "context-reference-unit-2":
+        if unit.get("schemaVersion") == "context-reference-unit-3":
+            approval_link = doc.get("developmentReview", {}).get("approvalRecord")
+            require(isinstance(approval_link, dict), "UNIT_APPROVAL_RECORD_REQUIRED")
+            approval_bytes = read_bytes(inside(root, approval_link.get("path", "")))
+            require(digest(approval_bytes) == approval_link.get("sha256"), "UNIT_APPROVAL_HASH_MISMATCH")
+            validate_approval_document(approval_link, parse(approval_bytes), unit["developmentDecision"],
+                                       unit.get("utteranceIds", []))
             require(doc.get("developmentReview", {}).get("decision") == unit["developmentDecision"]
                     and doc["developmentReview"].get("basis") == "USER_APPROVED_DEVELOPMENT_BOUNDARY"
                     and text(doc["developmentReview"].get("scope"), 350),
@@ -170,8 +177,8 @@ def compile_preview(base, units, catalog, root, profiles=None):
     relations = relation_profiles(profiles, units)
     replaced, seen, examples, links = set(), set(), [], []
     for u in units:
-        standalone = u.get("schemaVersion") == "context-reference-unit-2"
-        require(u.get("schemaVersion") in {"context-reference-unit-1", "context-reference-unit-2"} and u.get("status") == "DRAFT"
+        standalone = u.get("schemaVersion") in {"context-reference-unit-2", "context-reference-unit-3"}
+        require(u.get("schemaVersion") in {"context-reference-unit-1", "context-reference-unit-2", "context-reference-unit-3"} and u.get("status") == "DRAFT"
                 and u.get("humanVerified") is False and u.get("trainingUseAuthorized") is False, "UNIT_DRAFT_REQUIRED")
         uid, parent = u.get("id"), u.get("parentCaseId")
         require(isinstance(uid, str) and ID.fullmatch(uid) and uid not in seen and uid not in source,
@@ -183,6 +190,9 @@ def compile_preview(base, units, catalog, root, profiles=None):
                     and u.get("developmentDecision") in {"PASS", "REVIEW_REQUIRED"}
                     and u["source"].get("kind") in {"STORED_TRANSCRIPT_SNAPSHOT", "STORED_OCR_FRAME_SNAPSHOT"},
                     "UNIT_DEVELOPMENT_BOUNDARY_REQUIRED")
+            require(u.get("schemaVersion") != "context-reference-unit-3"
+                    or u["source"].get("kind") == "STORED_TRANSCRIPT_SNAPSHOT",
+                    "APPROVED_BOUNDARY_TRANSCRIPT_ONLY")
             mechanisms = u.get("mechanismIds")
             require(isinstance(mechanisms, list) and mechanisms and len(set(mechanisms)) == len(mechanisms)
                     and all(m in rules for m in mechanisms), "UNIT_MECHANISMS_REQUIRED")
@@ -246,6 +256,14 @@ def compile_preview(base, units, catalog, root, profiles=None):
                    "channels": channels, "context": context, "routingKeys": routing,
                    "retrievalView": {"version": "context-unit-retrieval-1", "basis": "AUTHORED_ROUTING_NOT_SOURCE_EVIDENCE",
                                      "text": u["retrievalText"], "sha256": digest(u["retrievalText"].encode())}}
+        if u["source"].get("kind") == "STORED_TRANSCRIPT_SNAPSHOT":
+            source_doc = parse(read_bytes(inside(root, u["source"]["path"])))
+            source_group = source_doc.get("sourceGroupId")
+            if source_group is not None:
+                require(text(source_group, 100), "UNIT_SOURCE_GROUP_INVALID")
+                example["sourceGroupId"] = source_group
+            if u.get("schemaVersion") == "context-reference-unit-3":
+                require(text(source_group, 100), "UNIT_SOURCE_GROUP_REQUIRED")
         require(all(text(s, 350) for s in context["flow"] + context["criticismHypotheses"])
                 and all(text(s, 350) for s in context["normalContrasts"]), "UNIT_COMPILED_TEXT_LIMIT")
         examples.append(example)
@@ -268,8 +286,10 @@ def compile_preview(base, units, catalog, root, profiles=None):
         examples.append(e)
     out["schemaVersion"] = "review-guidelines-7" if relations else "review-guidelines-6"
     out["version"] = "2026-10-15-context-relations-v1" if relations else "2026-10-15-context-units-v1"
-    if any(u.get("schemaVersion") == "context-reference-unit-2" for u in units):
+    if any(u.get("schemaVersion") in {"context-reference-unit-2", "context-reference-unit-3"} for u in units):
         out["version"] = "2026-10-22-development-boundaries-v1"
+    if any(u.get("schemaVersion") == "context-reference-unit-3" for u in units):
+        out["version"] = "2026-10-25-approved-development-boundaries-v3"
     if any(u.get("source", {}).get("kind") == "STORED_OCR_FRAME_SNAPSHOT" for u in units):
         out["version"] = "2026-10-22-development-ocr-boundaries-v2"
     out["examples"] = examples

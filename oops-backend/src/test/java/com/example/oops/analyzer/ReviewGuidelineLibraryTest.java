@@ -51,6 +51,20 @@ class ReviewGuidelineLibraryTest {
             assertThat(l.trace(channel).payloadCodePoints()).isLessThanOrEqualTo(6000);
         }
     }
+    @Test void independentEvaluationExcludesSameSourceGroupWithoutChangingOtherSelection() throws Exception {
+        var tree = JSON.readTree(JSON.writeValueAsString(new ContextRelationRetrievalTest().archive()));
+        var example = (tools.jackson.databind.node.ObjectNode) tree.path("examples").get(0);
+        example.put("sourceGroupId", "video-source-a");
+        String id = example.path("id").asText();
+        String queryText = example.at("/retrievalView/text").asText();
+        var library = library(JSON.writeValueAsBytes(tree), 6000);
+        var raw = List.of(new ReviewInput.Segment("query-1", SPEECH, 0, 1000, queryText, null));
+        var unfiltered = library.select(SPEECH, raw, "without-group-exclusion", raw).trace();
+        var heldOut = library.select(SPEECH, raw, "with-group-exclusion", raw, Set.of(),
+                ContextRelationRetrieval.Query.empty(), true, Set.of("video-source-a")).trace();
+        assertThat(unfiltered.exampleIds()).contains(id);
+        assertThat(heldOut.exampleIds()).doesNotContain(id);
+    }
     @Test void dictionaryArchiveRequiresFingerprintAndKeepsTypedInterpretations() {
         var a = enrichedArchive(); var rule = a.guidelines().get(0); var old = rule.referenceContexts().get(0);
         var ref = new ReferenceContext(old.sourceCaseId(), old.coverage(), old.flow(),

@@ -33,6 +33,15 @@ def index(cases, key):
     return result
 
 
+def verified_media_source_group(review, source):
+    """Only treat an explicitly verified, source-matched media group as physical provenance."""
+    group = review.get("sourceGroupId")
+    if (review.get("sourceGroupVerified") is True and isinstance(group, str) and group
+            and source.get("sourceGroupId") == group and source.get("sourceKind") != "SYNTHETIC_DRAFT"):
+        return group
+    return None
+
+
 def focused_units(root, registry, sources):
     spec = registry.get("approvedFocusedReview")
     if not spec:
@@ -66,9 +75,12 @@ def focused_units(root, registry, sources):
         labels.append({"caseId": unit_id, "expectedDecision": decision, "userAnswer": unit["userAnswer"],
                        "labelScope": "USER_APPROVED_ANCHOR_ISSUE_WITH_FULL_SOURCE_WINDOW_DEVELOPMENT_ONLY",
                        "recordedAt": review.get("recordedAt"), "evidenceIdsUserApproved": False,
-                       "sourceGroupId": review["familyId"]})
+                       "sourceGroupId": verified_media_source_group(review, source),
+                       "evaluationGroupId": review.get("familyId")})
     return inputs, labels, {"reviewSha256": spec["sha256"], "sourceReviewId": source_id,
-                            "sourceGroupId": review["familyId"], "approvedUnitIds": list(spec["activeDecisions"])}
+                            "sourceGroupId": verified_media_source_group(review, source),
+                            "evaluationGroupId": review.get("familyId"),
+                            "approvedUnitIds": list(spec["activeDecisions"])}
 
 
 def supplemental_units(root, registry):
@@ -99,7 +111,8 @@ def supplemental_units(root, registry):
                        "timeBasis": "SYNTHETIC_ORDER_ONLY_NOT_MEDIA"})
         labels.append({"caseId": case_id, "expectedDecision": decision,
                        "labelScope": "USER_APPROVED_CONTEXT_ONLY_DEVELOPMENT",
-                       "sourceGroupId": "synthetic-food-contrasts-20261018", "evidenceIdsUserApproved": False,
+                       "sourceGroupId": None, "evaluationGroupId": "synthetic-food-contrasts-20261018",
+                       "evidenceIdsUserApproved": False,
                        "advisoryLabelApproved": False, "reviewedAt": fixture["approval"].get("date")})
     return inputs, labels
 
@@ -139,7 +152,8 @@ def prepare(root, registry):
             decisions.append({"caseId": case_id, "expectedDecision": label["expectedDecision"],
                               "labelScope": "USER_APPROVED_FULL_SYNTHETIC_DIALOGUE_DEVELOPMENT_ONLY",
                               "userAnswer": label["userAnswer"], "reviewedAt": label.get("reviewedAt"),
-                              "evidenceIdsUserApproved": False})
+                              "evidenceIdsUserApproved": False, "sourceGroupId": label.get("sourceGroupId"),
+                              "evaluationGroupId": label.get("evaluationGroupId")})
         else:
             excluded.append({"caseId": case_id, "status": "SCOPED_APPROVAL_DIAGNOSTIC_ONLY",
                              "previousApprovedDecision": label["expectedDecision"],
@@ -180,12 +194,16 @@ def prepare(root, registry):
         require(path.is_relative_to(root.resolve()) and path.is_dir(), "HISTORY_ROOT_INVALID")
         history.append({"path": relative, "jsonFiles": sum(1 for _ in path.rglob("*.json")),
                         "role": "IMMUTABLE_REPRODUCTION_HISTORY_NOT_ACTIVE_SUITE", "relocated": False})
-    manifest = {"schemaVersion": "active-evaluation-bundle-1", "suiteId": registry["activeSuite"],
+    verified_source_groups = {row["sourceGroupId"] for row in decisions if row.get("sourceGroupId")}
+    evaluation_groups = {row["evaluationGroupId"] for row in decisions if row.get("evaluationGroupId")}
+    manifest = {"schemaVersion": "active-evaluation-bundle-2", "suiteId": registry["activeSuite"],
                 "purpose": registry["purpose"], "activeCases": [c["caseId"] for c in inputs], "activeCount": len(inputs),
                 "sourcePacketSha256": registry["sourcePacket"]["sha256"], "humanReviewSha256": registry["humanReview"]["sha256"],
                 "registryCanonicalSha256": sha(canonical(registry)), "inputsCanonicalSha256": sha(canonical(inputs)),
                 "labelsCanonicalSha256": sha(canonical(decisions)), "independentGold": False,
-                "realVideoFamiliesInActiveSuite": 1 if focused else 0, "providerCalls": 0, "runtimePromotion": False,
+                "verifiedMediaSourceGroupCount": len(verified_source_groups),
+                "evaluationGroupCount": len(evaluation_groups),
+                "providerCalls": 0, "runtimePromotion": False,
                 "focusCase": focus_id, "excludedFromMainScore": excluded}
     if focused:
         manifest["approvedFocusedReview"] = focused

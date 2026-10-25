@@ -118,6 +118,13 @@ def input_hashes(root):
             source = unit["source"]
             inputs.update(c["approvalSource"]["path"] for c in unit["normalContrasts"] if "approvalSource" in c)
             inputs.add(source["path"])
+            if source["kind"] == "STORED_TRANSCRIPT_SNAPSHOT":
+                source_doc = parse(read_bytes(inside(root, source["path"])))
+                approval_link = source_doc.get("developmentReview", {}).get("approvalRecord")
+                if approval_link is not None:
+                    require(isinstance(approval_link, dict) and isinstance(approval_link.get("path"), str),
+                            "APPROVAL_RECORD_PATH_REQUIRED")
+                    inputs.add(approval_link["path"])
             if source["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
                 document = parse(read_bytes(inside(root, source["path"])))
                 inputs.update(document[k]["path"] for k in ("frame", "ocrSnapshot"))

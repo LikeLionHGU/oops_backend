@@ -87,18 +87,24 @@ public class ReviewGuidelineLibrary {
     public record ContextExample(String id, String familyId, List<String> mechanismIds,
                                  List<String> channels, Comparison context, RetrievalView retrievalView,
                                  @JsonInclude(JsonInclude.Include.NON_NULL) List<String> routingKeys,
-                                 @JsonInclude(JsonInclude.Include.NON_NULL) ContextRelationRetrieval.Profile relationProfile) {
+                                 @JsonInclude(JsonInclude.Include.NON_NULL) ContextRelationRetrieval.Profile relationProfile,
+                                 @JsonInclude(JsonInclude.Include.NON_NULL) String sourceGroupId) {
         public ContextExample(String id, String familyId, List<String> mechanismIds,
                               List<String> channels, Comparison context, RetrievalView retrievalView, List<String> routingKeys) {
-            this(id, familyId, mechanismIds, channels, context, retrievalView, routingKeys, null);
+            this(id, familyId, mechanismIds, channels, context, retrievalView, routingKeys, null, null);
+        }
+        public ContextExample(String id, String familyId, List<String> mechanismIds,
+                              List<String> channels, Comparison context, RetrievalView retrievalView, List<String> routingKeys,
+                              ContextRelationRetrieval.Profile relationProfile) {
+            this(id, familyId, mechanismIds, channels, context, retrievalView, routingKeys, relationProfile, null);
         }
         public ContextExample(String id, String familyId, List<String> mechanismIds,
                               List<String> channels, Comparison context, RetrievalView retrievalView) {
-            this(id, familyId, mechanismIds, channels, context, retrievalView, null);
+            this(id, familyId, mechanismIds, channels, context, retrievalView, null, null, null);
         }
         public ContextExample(String id, String familyId, List<String> mechanismIds,
                               List<String> channels, Comparison context) {
-            this(id, familyId, mechanismIds, channels, context, null);
+            this(id, familyId, mechanismIds, channels, context, null, null, null, null);
         }
     }
     public record SelectedExample(List<String> mechanismIds, Comparison context) {}
@@ -372,6 +378,13 @@ public class ReviewGuidelineLibrary {
     Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
                      Collection<ReviewInput.Segment> focus, Set<String> mechanismCandidates,
                      ContextRelationRetrieval.Query suppliedRelation, boolean rewardNewKeys) {
+        return select(channel, raw, requestKey, focus, mechanismCandidates, suppliedRelation, rewardNewKeys, Set.of());
+    }
+    /** Evaluation excludes examples from explicitly linked media-source or evaluation-family groups. */
+    Selection select(TimelineEventType channel, Collection<ReviewInput.Segment> raw, String requestKey,
+                     Collection<ReviewInput.Segment> focus, Set<String> mechanismCandidates,
+                     ContextRelationRetrieval.Query suppliedRelation, boolean rewardNewKeys,
+                     Set<String> excludedProvenanceGroups) {
         var relation = relationArchive() ? suppliedRelation : ContextRelationRetrieval.Query.empty();
         var base = examples(channel);
         if (!splitArchive() || base.isEmpty() || selector == null) {
@@ -380,14 +393,14 @@ public class ReviewGuidelineLibrary {
                     t.availableExampleCount(), 0, 0, t.payloadCodePoints(), t.payloadCodePoints(), List.of(), t.guidelineIds()));
         }
         var patterns = patternRows(base);
-        var focused = selector.rank(channel, focus, excludedFamilies, mechanismCandidates, relation);
+        var focused = selector.rank(channel, focus, excludedFamilies, mechanismCandidates, relation, excludedProvenanceGroups);
         // Prefer context near the proposed quotations before unrelated material at the far
         // ends of an expanded 60s validation window. This is lexical routing, not a decision.
         var near = focus.isEmpty() ? raw : raw.stream().filter(s -> focus.stream().anyMatch(f ->
                 s.startMs() >= f.startMs() - 15000 && s.startMs() <= f.endMs() + 15000)).toList();
-        var contextual = new ArrayList<>(selector.rank(channel, near, excludedFamilies, mechanismCandidates, relation));
+        var contextual = new ArrayList<>(selector.rank(channel, near, excludedFamilies, mechanismCandidates, relation, excludedProvenanceGroups));
         Set<String> contextIds = new HashSet<>(); contextual.forEach(m -> contextIds.add(m.example().id()));
-        selector.rank(channel, raw, excludedFamilies, mechanismCandidates, relation).stream()
+        selector.rank(channel, raw, excludedFamilies, mechanismCandidates, relation, excludedProvenanceGroups).stream()
                 .filter(m -> contextIds.add(m.example().id())).forEach(contextual::add);
         List<ContextExampleSelector.Match> ranked = new ArrayList<>();
         Set<String> rankedIds = new HashSet<>();
