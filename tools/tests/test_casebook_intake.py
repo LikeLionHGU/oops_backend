@@ -93,7 +93,7 @@ def spec(root, action='ADD'):
 
 
 def fake_audit(plan):
-    return {"schemaVersion": "casebook-impact-report-4", "planSha256": plan['sha'], "candidateRuntimeSha256": plan['summary']['candidateRuntimeSha256'],
+    return {"schemaVersion": "casebook-impact-report-5", "planSha256": plan['sha'], "candidateRuntimeSha256": plan['summary']['candidateRuntimeSha256'],
             "baselineRuntimeSha256": plan['payload']['baseline']['runtime'],
             "evaluationFingerprint": "1" * 64, "intakeRetrieved": True,
             "providerCalls": 0, "modelAccuracyMeasured": False, "judgmentPolicyExecuted": False,
@@ -233,6 +233,46 @@ def test_update_preserves_source_and_label_and_only_writes_authored_views(datase
     assert builder.verify(dataset)['examples'] == 2
     receipt = json.loads((dataset / plan['receipt']).read_bytes())
     assert json.loads(receipt['previousFiles']['context-units/seed.json'])['interpretation'] == '합성 정상 해석'
+
+
+def test_legacy_v2_update_can_rebind_source_approval_without_changing_label_or_segments(dataset):
+    source_path = dataset / 'context-sources/seed.json'
+    source = json.loads(source_path.read_bytes())
+    source['developmentReview'].pop('approvalRecord')
+    source_path.write_bytes(tool.encoded(source))
+    source_ref = {'path': 'context-sources/seed.json', 'sha256': tool.digest(source_path.read_bytes())}
+    unit_path = dataset / 'context-units/seed.json'
+    unit = json.loads(unit_path.read_bytes())
+    unit['source'].update(source_ref)
+    unit_path.write_bytes(tool.encoded(unit))
+    relation_path = dataset / 'context-relations/seed.json'
+    relation = json.loads(relation_path.read_bytes())
+    relation['sourceSha256'] = source_ref['sha256']
+    relation_path.write_bytes(tool.encoded(relation))
+    review_path = dataset / 'research/reviews.json'
+    review_doc = json.loads(review_path.read_bytes())
+    for field in ('sourceSha256', 'videoId', 'segmentIds'):
+        review_doc['reviews'][0].pop(field)
+    review_path.write_bytes(tool.encoded(review_doc))
+    builder.publish(dataset)
+
+    value = spec(dataset, 'UPDATE')
+    bind_approval_to_selection(dataset, value, ['stt-index-0', 'stt-index-1'])
+    preview = tool.plan(dataset, value)
+    assert preview['summary']['changedFiles'] == [
+        'context-relations/seed.json', 'context-sources/seed.json', 'context-units/seed.json']
+    assert preview['payload']['files']['context-units/seed.json']['schemaVersion'] == 'context-reference-unit-3'
+    assert preview['payload']['files']['context-sources/seed.json']['segments'] == source['segments']
+    result = tool.apply_plan(dataset, value, preview['sha'], fake_audit,
+                              expected_impact_sha=tool.impact_report_sha256(fake_audit(preview)))
+    manifest = builder.verify(dataset)
+    assert result['applied'] and manifest['examples'] == 2
+    assert 'research/source.json' in manifest['inputHashes']
+    upgraded = json.loads(unit_path.read_bytes())
+    upgraded_source = json.loads(source_path.read_bytes())
+    assert upgraded['developmentDecision'] == 'PASS'
+    assert upgraded_source['developmentReview']['approvalRecord']['path'].startswith('research/approval-')
+    assert upgraded['source']['sha256'] == tool.digest(source_path.read_bytes())
 
 
 def test_hold_keeps_runtime_identical_and_never_audits(dataset):
@@ -427,7 +467,7 @@ def test_invalid_audit_result_is_not_accepted(dataset):
 def test_production_selector_reports_before_after_impact_without_models(dataset):
     preview = tool.plan(dataset, spec(dataset))
     report = tool.audit_retrieval(preview)
-    assert report["schemaVersion"] == "casebook-impact-report-4"
+    assert report["schemaVersion"] == "casebook-impact-report-5"
     assert report["planSha256"] == preview["sha"]
     assert report["providerCalls"] == 0 and report["modelAccuracyMeasured"] is False
     assert report["judgmentPolicyExecuted"] is False and report["policyHashesPinned"] is True

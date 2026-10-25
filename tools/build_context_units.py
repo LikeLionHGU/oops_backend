@@ -72,6 +72,44 @@ def validate_control_link(root, control):
     require(control["text"] == " ".join(s["text"] for s in case["raw"]), "CONTROL_TEXT_MISMATCH")
 
 
+def validate_transcript_origin(root, origin, segments):
+    """Bind a v3 source snapshot to the selected rows in its hashed original file."""
+    require(isinstance(origin, dict) and isinstance(origin.get("path"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", str(origin.get("sha256", "")))
+            and type(origin.get("videoId")) is int and origin["videoId"] > 0,
+            "UNIT_ORIGIN_REFERENCE_REQUIRED")
+    raw = read_bytes(inside(root, origin["path"]))
+    require(digest(raw) == origin["sha256"], "UNIT_ORIGIN_HASH_MISMATCH")
+    original = parse(raw)
+    format_keys = {"RESULT_TRANSCRIPT": "transcript", "API_TRANSCRIPT": "data",
+                   "TIMED_SEGMENTS": "segments"}
+
+    def rows_for(format_name):
+        key = format_keys.get(format_name)
+        return original.get(key) if key else None
+
+    source_format = origin.get("format")
+    if source_format is not None:
+        candidates = [(source_format, rows_for(source_format))]
+    else:
+        # Older v3 snapshots did not store format. Infer it only when the selected
+        # rows match exactly one supported original transcript field.
+        candidates = [(name, rows_for(name)) for name in format_keys]
+    matches = []
+    for name, rows in candidates:
+        if not isinstance(rows, list):
+            continue
+        by_id = {row.get("id", f"stt-index-{i}"): row for i, row in enumerate(rows)
+                 if isinstance(row, dict)}
+        if len(by_id) != sum(isinstance(row, dict) for row in rows):
+            continue
+        if all(segment["id"] in by_id and all(
+                segment.get(key) == by_id[segment["id"]].get(key)
+                for key in ("text", "startMs", "endMs")) for segment in segments):
+            matches.append(name)
+    require(len(matches) == 1, "UNIT_ORIGIN_TRANSCRIPT_MISMATCH")
+
+
 def linked_lines(root, unit):
     source = unit["source"]
     raw = read_bytes(inside(root, source["path"]))
@@ -87,6 +125,7 @@ def linked_lines(root, unit):
                     and review.get("basis") == "USER_APPROVED_DEVELOPMENT_BOUNDARY"
                     and text(review.get("scope"), 350), "UNIT_DEVELOPMENT_APPROVAL_REQUIRED")
         if unit.get("schemaVersion") == "context-reference-unit-3":
+            validate_transcript_origin(root, doc.get("origin"), doc.get("segments", []))
             approval_link = doc.get("developmentReview", {}).get("approvalRecord")
             require(isinstance(approval_link, dict), "UNIT_APPROVAL_RECORD_REQUIRED")
             approval_bytes = read_bytes(inside(root, approval_link.get("path", "")))

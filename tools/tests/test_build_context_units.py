@@ -40,21 +40,29 @@ class ContextUnitTests(unittest.TestCase):
         return compile_preview(self.base, [unit or self.unit], self.catalog, self.root)
 
     def standalone(self, decision="PASS"):
+        origin_doc = {"transcript": [
+            {"id": "s1", "text": "평가 표현", "startMs": 0, "endMs": 1000},
+            {"id": "s2", "text": "후속 상황", "startMs": 1000, "endMs": 2000}]}
+        origin_raw = json.dumps(origin_doc).encode()
+        (self.root / "origin.json").write_bytes(origin_raw)
+        origin_sha = hashlib.sha256(origin_raw).hexdigest()
         approval_doc = {"schemaVersion": "development-human-review-1", "reviews": [
             {"eventId": "approved-unit", "anchorIds": ["s1"], "decision": decision,
-             "scope": "합성 테스트 범위", "userReply": "승인", "sourceSha256": "a" * 64,
+             "scope": "합성 테스트 범위", "userReply": "승인", "sourceSha256": origin_sha,
              "videoId": 1, "segmentIds": ["s1", "s2"]}]}
         approval_raw = json.dumps(approval_doc).encode()
         (self.root / "approval.json").write_bytes(approval_raw)
         source = {"schemaVersion": "context-transcript-source-1", "familyId": "development-family",
                   "sourceGroupId": "synthetic-video-group",
-                  "origin": {"sha256": "a" * 64, "videoId": 1},
+                  "origin": {"path": "origin.json", "sha256": origin_sha, "videoId": 1,
+                             "format": "RESULT_TRANSCRIPT"},
                   "audioVerified": False, "developmentReview": {
                       "decision": decision, "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": "제공 문맥 승인",
                       "approvalRecord": {"path": "approval.json",
                                          "sha256": hashlib.sha256(approval_raw).hexdigest(),
                                          "eventIds": ["approved-unit"]}},
-                  "segments": [{"id": "s1", "text": "평가 표현"}, {"id": "s2", "text": "후속 상황"}]}
+                  "segments": [{"id": "s1", "text": "평가 표현", "startMs": 0, "endMs": 1000},
+                               {"id": "s2", "text": "후속 상황", "startMs": 1000, "endMs": 2000}]}
         raw = json.dumps(source).encode()
         (self.root / "source.json").write_bytes(raw)
         unit = copy.deepcopy(self.unit)
@@ -84,6 +92,22 @@ class ContextUnitTests(unittest.TestCase):
         (self.root / "source.json").write_bytes(raw)
         unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
         with self.assertRaisesRegex(ValueError, "UNIQUE_APPROVAL_REQUIRED"):
+            self.compile(unit)
+
+    def test_v3_rejects_snapshot_text_changed_after_approval(self):
+        unit = self.standalone()
+        source = json.loads((self.root / "source.json").read_bytes())
+        source["segments"][0]["text"] = "바뀐 발언"
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "UNIT_ORIGIN_TRANSCRIPT_MISMATCH"):
+            self.compile(unit)
+
+    def test_v3_rejects_changed_original_transcript_hash(self):
+        unit = self.standalone()
+        (self.root / "origin.json").write_text('{"transcript": []}')
+        with self.assertRaisesRegex(ValueError, "UNIT_ORIGIN_HASH_MISMATCH"):
             self.compile(unit)
 
     def test_standalone_normal_boundary_does_not_invent_or_replace_an_incident(self):

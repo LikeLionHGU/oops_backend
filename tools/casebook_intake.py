@@ -3,7 +3,8 @@
 
 ADD/UPDATE project into existing context source/unit/relation contracts; HOLD is
 review-only. --apply requires the current preview hash and publishes via the
-existing builder. Source text, identity, approval and label are immutable on UPDATE.
+existing builder. Source text and decision remain immutable; a legacy v2 unit may
+be rebound to a fresh source-scoped approval without changing its selected source.
 """
 import argparse
 import copy
@@ -21,7 +22,7 @@ from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text, PilotError
 from casebook_provenance import validate_approval_document
 
-REVISION = "casebook-intake-tool-3"
+REVISION = "casebook-intake-tool-4"
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 IDENTITY = re.compile(r"[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?\Z")
 
@@ -205,7 +206,7 @@ def plan(root, spec):
         source_path = f"context-sources/{slug}.json"
         source = {"schemaVersion": "context-transcript-source-1", "familyId": spec["familyId"],
                   "sourceKind": spec["source"]["kind"], "sourceGroupId": spec["sourceGroupId"],
-                  "origin": {k: spec["source"][k] for k in ("path", "sha256", "videoId", "url") if k in spec["source"]},
+                  "origin": {k: spec["source"][k] for k in ("path", "sha256", "videoId", "url", "format") if k in spec["source"]},
                   "audioVerified": False, "developmentReview": {"decision": spec["decision"],
                       "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": spec["interpretation"],
                       "approvalRecord": approved}, "segments": lines}
@@ -224,11 +225,36 @@ def plan(root, spec):
             require(old.get("schemaVersion") in {"context-reference-unit-2", "context-reference-unit-3"}
                     and old.get("source", {}).get("kind") == "STORED_TRANSCRIPT_SNAPSHOT", "DEVELOPMENT_UNIT_UPDATE_ONLY")
             old_source = reference(root, {k: old["source"][k] for k in ("path", "sha256")})
+            old_approval = old_source.get("developmentReview", {}).get("approvalRecord")
+            approval_changed = old_approval != approved
+            rebind_legacy_v2 = old.get("schemaVersion") == "context-reference-unit-2" and approval_changed
+            old_origin = old_source.get("origin", {})
+            new_origin = source.get("origin", {})
+            origin_matches = (isinstance(old_origin, dict) and {"path", "sha256", "videoId"} <= set(old_origin)
+                              and all(new_origin.get(k) == v for k, v in old_origin.items()))
             require(all(old.get(k) == unit[k] for k in ("id", "familyId", "developmentDecision", "utteranceIds", "roles", "mechanismIds", "routingKeys"))
-                    and all(old_source.get(k) == source[k] for k in ("familyId", "sourceKind", "sourceGroupId", "origin", "segments"))
-                    and old_source.get("developmentReview", {}).get("approvalRecord") == approved,
+                    and old_source.get("familyId") == source["familyId"]
+                    and old_source.get("sourceKind") == source["sourceKind"]
+                    and old_source.get("sourceGroupId") == source["sourceGroupId"]
+                    and origin_matches
+                    and old_source.get("segments") == source["segments"]
+                    and old_source.get("developmentReview", {}).get("decision") == source["developmentReview"]["decision"]
+                    and old_source.get("developmentReview", {}).get("basis") == source["developmentReview"]["basis"]
+                    and (not approval_changed or rebind_legacy_v2),
                     "UPDATE_CANNOT_CHANGE_SOURCE_LABEL_OR_IDENTITY")
-            unit = copy.deepcopy(old)
+            if rebind_legacy_v2:
+                require({"path", "sha256", "videoId", "format"} <= set(new_origin)
+                        and old["source"]["path"] == source_path,
+                        "UPDATE_LEGACY_SOURCE_BINDING_MISMATCH")
+                unit = copy.deepcopy(old)
+                unit["schemaVersion"] = "context-reference-unit-3"
+                unit["source"] = {"kind": "STORED_TRANSCRIPT_SNAPSHOT", "path": source_path,
+                                  "sha256": digest(encoded(source))}
+                files[source_path] = source
+            else:
+                # Ordinary view edits do not rewrite the original approval/source snapshot.
+                source = old_source
+                unit = copy.deepcopy(old)
             for key in ("retrievalText", "interpretation", "boundary"): unit[key] = spec[key]
             if "normalContrasts" in spec: unit["normalContrasts"] = spec["normalContrasts"]
             source_path = old["source"]["path"]
@@ -243,9 +269,11 @@ def plan(root, spec):
         if spec["action"] == "UPDATE":
             previous_relation = parse(read_bytes(local(root, relation_path)))
             require(all(previous_relation.get(k) == relation[k] for k in
-                        ("schemaVersion", "unitId", "status", "humanVerified", "trainingUseAuthorized", "sourceSha256", "utteranceIds")),
+                        ("schemaVersion", "unitId", "status", "humanVerified", "trainingUseAuthorized", "utteranceIds"))
+                    and (previous_relation.get("sourceSha256") == relation["sourceSha256"] or rebind_legacy_v2),
                     "UPDATE_RELATION_IDENTITY_MISMATCH")
-            relation = {**previous_relation, **{k: relation[k] for k in ("situation", "target", "evaluation", "linkage")}}
+            relation = {**previous_relation, **{k: relation[k] for k in
+                        ("sourceSha256", "situation", "target", "evaluation", "linkage")}}
         for name, value in ((unit_path, unit), (relation_path, relation)):
             previous = read_bytes(local(root, name)) if local(root, name).exists() else None
             if previous is None or parse(previous) != value: files[name] = value
@@ -338,7 +366,7 @@ def audit_retrieval(planned):
         require(planned["payload"]["implementationHashes"] == implementation_hashes(),
                 "IMPLEMENTATION_CHANGED_DURING_IMPACT_AUDIT")
         require(result.get("planSha256") == planned["sha"]
-                and result.get("schemaVersion") == "casebook-impact-report-4"
+                and result.get("schemaVersion") == "casebook-impact-report-5"
                 and result.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
                 and result.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
                 and result.get("evaluationFingerprint") == evaluation_fingerprint
@@ -386,7 +414,7 @@ def apply_plan(root, spec, expected_sha, audit_runner=None, expected_impact_sha=
         audit = (audit_runner or audit_retrieval)(planned) if spec["action"] != "HOLD" else None
         if spec["action"] != "HOLD":
             require(isinstance(audit, dict), "RETRIEVAL_REPORT_MISMATCH")
-            require(audit.get("schemaVersion") == "casebook-impact-report-4"
+            require(audit.get("schemaVersion") == "casebook-impact-report-5"
                     and audit.get("planSha256") == planned["sha"]
                     and audit.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
                     and audit.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]

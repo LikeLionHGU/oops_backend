@@ -120,6 +120,11 @@ def input_hashes(root):
             inputs.add(source["path"])
             if source["kind"] == "STORED_TRANSCRIPT_SNAPSHOT":
                 source_doc = parse(read_bytes(inside(root, source["path"])))
+                if unit.get("schemaVersion") == "context-reference-unit-3":
+                    origin = source_doc.get("origin", {})
+                    require(isinstance(origin, dict) and isinstance(origin.get("path"), str),
+                            "UNIT_ORIGIN_REFERENCE_REQUIRED")
+                    inputs.add(origin["path"])
                 approval_link = source_doc.get("developmentReview", {}).get("approvalRecord")
                 if approval_link is not None:
                     require(isinstance(approval_link, dict) and isinstance(approval_link.get("path"), str),
