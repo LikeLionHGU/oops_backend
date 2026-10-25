@@ -42,11 +42,13 @@ class ContextUnitTests(unittest.TestCase):
     def standalone(self, decision="PASS"):
         approval_doc = {"schemaVersion": "development-human-review-1", "reviews": [
             {"eventId": "approved-unit", "anchorIds": ["s1"], "decision": decision,
-             "scope": "합성 테스트 범위", "userReply": "승인"}]}
+             "scope": "합성 테스트 범위", "userReply": "승인", "sourceSha256": "a" * 64,
+             "videoId": 1, "segmentIds": ["s1", "s2"]}]}
         approval_raw = json.dumps(approval_doc).encode()
         (self.root / "approval.json").write_bytes(approval_raw)
         source = {"schemaVersion": "context-transcript-source-1", "familyId": "development-family",
                   "sourceGroupId": "synthetic-video-group",
+                  "origin": {"sha256": "a" * 64, "videoId": 1},
                   "audioVerified": False, "developmentReview": {
                       "decision": decision, "basis": "USER_APPROVED_DEVELOPMENT_BOUNDARY", "scope": "제공 문맥 승인",
                       "approvalRecord": {"path": "approval.json",
@@ -96,6 +98,17 @@ class ContextUnitTests(unittest.TestCase):
         self.assertTrue(all(s.startswith("합성 개발 대조") for s in example["context"]["normalContrasts"]))
         self.assertFalse(unit["humanVerified"])
         self.assertFalse(unit["trainingUseAuthorized"])
+
+    def test_v2_transcript_boundary_still_requires_decision_and_scope_consistency(self):
+        unit = self.standalone()
+        unit["schemaVersion"] = "context-reference-unit-2"
+        source = json.loads((self.root / "source.json").read_bytes())
+        source["developmentReview"]["decision"] = "REVIEW_REQUIRED"
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "UNIT_DEVELOPMENT_APPROVAL_REQUIRED"):
+            self.compile(unit)
 
     def ocr_unit(self):
         unit = self.standalone()

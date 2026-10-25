@@ -24,7 +24,7 @@ def compile_assets(profile, unit, root):
             and profile["status"] == "AUTHOR_DRAFT_NOT_LABEL_APPROVAL"
             and profile["unitId"] == unit["id"], "ASSET_DRAFT_REQUIRED")
     require(profile["unitSha256"] == digest(canonical(unit)), "ASSET_UNIT_CHANGED")
-    require(unit.get("schemaVersion") in {"context-reference-unit-1", "context-reference-unit-2"}
+    require(unit.get("schemaVersion") in {"context-reference-unit-1", "context-reference-unit-2", "context-reference-unit-3"}
             and unit.get("status") == "DRAFT" and unit.get("humanVerified") is False
             and unit.get("trainingUseAuthorized") is False, "ASSET_UNIT_DRAFT_REQUIRED")
     lines = linked_lines(root, unit)

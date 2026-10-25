@@ -81,17 +81,20 @@ def linked_lines(root, unit):
         require(doc.get("schemaVersion") == "context-transcript-source-1"
                 and doc.get("familyId") == unit["familyId"] and doc.get("audioVerified") is False,
                 "UNIT_TRANSCRIPT_SOURCE_REQUIRED")
+        if unit.get("schemaVersion") in {"context-reference-unit-2", "context-reference-unit-3"}:
+            review = doc.get("developmentReview", {})
+            require(review.get("decision") == unit["developmentDecision"]
+                    and review.get("basis") == "USER_APPROVED_DEVELOPMENT_BOUNDARY"
+                    and text(review.get("scope"), 350), "UNIT_DEVELOPMENT_APPROVAL_REQUIRED")
         if unit.get("schemaVersion") == "context-reference-unit-3":
             approval_link = doc.get("developmentReview", {}).get("approvalRecord")
             require(isinstance(approval_link, dict), "UNIT_APPROVAL_RECORD_REQUIRED")
             approval_bytes = read_bytes(inside(root, approval_link.get("path", "")))
             require(digest(approval_bytes) == approval_link.get("sha256"), "UNIT_APPROVAL_HASH_MISMATCH")
             validate_approval_document(approval_link, parse(approval_bytes), unit["developmentDecision"],
-                                       unit.get("utteranceIds", []))
-            require(doc.get("developmentReview", {}).get("decision") == unit["developmentDecision"]
-                    and doc["developmentReview"].get("basis") == "USER_APPROVED_DEVELOPMENT_BOUNDARY"
-                    and text(doc["developmentReview"].get("scope"), 350),
-                    "UNIT_DEVELOPMENT_APPROVAL_REQUIRED")
+                                       unit.get("utteranceIds", []),
+                                       doc.get("origin", {}).get("sha256"),
+                                       doc.get("origin", {}).get("videoId"))
         lines = doc["segments"]
     elif source["kind"] == "STORED_OCR_FRAME_SNAPSHOT":
         require(doc.get("schemaVersion") == "context-ocr-frame-source-1"

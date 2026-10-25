@@ -37,6 +37,8 @@ public final class CasebookImpactAudit {
         var candidate = library(candidatePath);
         var baselineMechanisms = mechanismMap(baselineBytes);
         var candidateMechanisms = mechanismMap(candidateBytes);
+        var baselineReferenceFingerprints = referenceFingerprints(baselineBytes);
+        var candidateReferenceFingerprints = referenceFingerprints(candidateBytes);
         Set<String> caseIds = new HashSet<>();
         List<Map<String, Object>> rows = new ArrayList<>();
         Map<String, int[]> groupCounts = new TreeMap<>();
@@ -65,13 +67,18 @@ public final class CasebookImpactAudit {
                     focus, Set.of(), ContextRelationRetrieval.Query.empty(), true, heldOutGroups).trace();
             var added = new ArrayList<>(after.exampleIds()); added.removeAll(before.exampleIds());
             var removed = new ArrayList<>(before.exampleIds()); removed.removeAll(after.exampleIds());
+            boolean rankChanged = rankingChanged(before.exampleIds(), after.exampleIds());
+            boolean referenceContentChanged = referenceContentChanged(before.exampleIds(), baselineReferenceFingerprints,
+                    after.exampleIds(), candidateReferenceFingerprints);
+            String referenceFingerprintBefore = selectedFingerprint(before.exampleIds(), baselineReferenceFingerprints);
+            String referenceFingerprintAfter = selectedFingerprint(after.exampleIds(), candidateReferenceFingerprints);
             var addedReferenceMechanisms = mechanismsFor(added, candidateMechanisms);
             var removedReferenceMechanisms = mechanismsFor(removed, baselineMechanisms);
             var beforeMechanisms = new TreeSet<>(before.mechanismIds());
             var afterMechanisms = new TreeSet<>(after.mechanismIds());
             var addedMechanisms = new TreeSet<>(afterMechanisms); addedMechanisms.removeAll(beforeMechanisms);
             var removedMechanisms = new TreeSet<>(beforeMechanisms); removedMechanisms.removeAll(afterMechanisms);
-            boolean didChange = !added.isEmpty() || !removed.isEmpty();
+            boolean didChange = !added.isEmpty() || !removed.isEmpty() || rankChanged || referenceContentChanged;
             if (didChange) changed++;
             int excludedBefore = countSourceGroup(baselineBytes, sourceGroup);
             int excludedAfter = countSourceGroup(candidateBytes, sourceGroup);
@@ -88,6 +95,10 @@ public final class CasebookImpactAudit {
             row.put("sameEvaluationGroupExamplesExcludedAfter", excludedEvalAfter);
             row.put("selectedBefore", before.exampleIds()); row.put("selectedAfter", after.exampleIds());
             row.put("added", added); row.put("removed", removed);
+            row.put("rankChanged", rankChanged);
+            row.put("referenceContentChanged", referenceContentChanged);
+            row.put("selectedReferenceFingerprintBefore", referenceFingerprintBefore);
+            row.put("selectedReferenceFingerprintAfter", referenceFingerprintAfter);
             row.put("selectedMechanismsBefore", before.mechanismIds());
             row.put("selectedMechanismsAfter", after.mechanismIds());
             row.put("addedMechanisms", List.copyOf(addedMechanisms));
@@ -155,7 +166,7 @@ public final class CasebookImpactAudit {
                             "queriesWithRemovedReferences", 0)));
         String policyFingerprint = sha(json.writeValueAsBytes(request.path("policyImplementationHashes")));
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("schemaVersion", "casebook-impact-report-3");
+        result.put("schemaVersion", "casebook-impact-report-4");
         result.put("planSha256", planSha); result.put("evaluationFingerprint", evaluationFingerprint);
         result.put("baselineRuntimeSha256", baselineSha); result.put("candidateRuntimeSha256", candidateSha);
         result.put("policyImplementationFingerprint", policyFingerprint);
@@ -187,6 +198,57 @@ public final class CasebookImpactAudit {
             result.put(example.path("id").asText(), List.copyOf(mechanisms));
         }
         return result;
+    }
+
+    private static Map<String, String> referenceFingerprints(byte[] runtime) throws Exception {
+        Map<String, String> result = new HashMap<>();
+        for (var example : ReviewGuidelineLibrary.JSON.readTree(runtime).path("examples")) {
+            String id = example.path("id").asText();
+            String fingerprint = sha(ReviewGuidelineLibrary.JSON.writeValueAsBytes(canonical(example)));
+            if (id.isBlank() || result.putIfAbsent(id, fingerprint) != null)
+                throw new IllegalArgumentException("INVALID_RUNTIME_EXAMPLE_ID");
+        }
+        return result;
+    }
+
+    /** Canonicalize object-key order so formatting alone cannot appear as a content change. */
+    private static Object canonical(JsonNode node) {
+        if (node.isObject()) {
+            Map<String, Object> sorted = new TreeMap<>();
+            node.properties().forEach(entry -> sorted.put(entry.getKey(), canonical(entry.getValue())));
+            return sorted;
+        }
+        if (node.isArray()) {
+            List<Object> ordered = new ArrayList<>(); node.forEach(value -> ordered.add(canonical(value)));
+            return ordered;
+        }
+        if (node.isTextual()) return node.asText();
+        if (node.isBoolean()) return node.booleanValue();
+        if (node.isNumber()) return node.numberValue();
+        return null;
+    }
+
+    private static String selectedFingerprint(List<String> ids, Map<String, String> fingerprints) throws Exception {
+        List<Map<String, String>> selected = new ArrayList<>();
+        for (String id : ids) {
+            String fingerprint = fingerprints.get(id);
+            if (fingerprint == null) throw new IllegalArgumentException("SELECTED_REFERENCE_MISSING");
+            selected.add(Map.of("id", id, "sha256", fingerprint));
+        }
+        return sha(ReviewGuidelineLibrary.JSON.writeValueAsBytes(selected));
+    }
+
+    static boolean rankingChanged(List<String> before, List<String> after) {
+        Set<String> beforeSet = new HashSet<>(before), afterSet = new HashSet<>(after);
+        return !before.stream().filter(afterSet::contains).toList()
+                .equals(after.stream().filter(beforeSet::contains).toList());
+    }
+
+    static boolean referenceContentChanged(List<String> beforeIds, Map<String, String> before,
+                                           List<String> afterIds, Map<String, String> after) {
+        Set<String> afterSet = new HashSet<>(afterIds);
+        return beforeIds.stream().filter(afterSet::contains)
+                .anyMatch(id -> !Objects.equals(before.get(id), after.get(id)));
     }
 
     private static List<String> mechanismsFor(List<String> exampleIds, Map<String, List<String>> mechanismMap) {

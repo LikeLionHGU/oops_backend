@@ -21,7 +21,7 @@ from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text, PilotError
 from casebook_provenance import validate_approval_document
 
-REVISION = "casebook-intake-tool-2"
+REVISION = "casebook-intake-tool-3"
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 IDENTITY = re.compile(r"[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?\Z")
 
@@ -32,6 +32,11 @@ def encoded(value):
 
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def impact_report_sha256(report):
+    canonical = json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return digest(canonical)
 
 
 def implementation_hashes():
@@ -111,7 +116,8 @@ def approval(root, spec, selected):
     ref = spec["approval"]
     exact(ref, ("path", "sha256", "eventIds"))
     document = reference(root, {k: ref[k] for k in ("path", "sha256")})
-    return validate_approval_document(ref, document, spec["decision"], selected)
+    return validate_approval_document(ref, document, spec["decision"], selected,
+                                      spec["source"]["sha256"], spec["source"]["videoId"])
 
 
 def source_lines(root, spec):
@@ -332,6 +338,7 @@ def audit_retrieval(planned):
         require(planned["payload"]["implementationHashes"] == implementation_hashes(),
                 "IMPLEMENTATION_CHANGED_DURING_IMPACT_AUDIT")
         require(result.get("planSha256") == planned["sha"]
+                and result.get("schemaVersion") == "casebook-impact-report-4"
                 and result.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
                 and result.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
                 and result.get("evaluationFingerprint") == evaluation_fingerprint
@@ -361,7 +368,7 @@ def restore_bytes(path, raw):
         if os.path.exists(temporary): os.unlink(temporary)
 
 
-def apply_plan(root, spec, expected_sha, audit_runner=None):
+def apply_plan(root, spec, expected_sha, audit_runner=None, expected_impact_sha=None):
     root = Path(root).resolve()
     lock = local(root, ".casebook-intake.lock")
     fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -372,9 +379,15 @@ def apply_plan(root, spec, expected_sha, audit_runner=None):
         require(expected_sha == planned["sha"], "PLAN_HASH_MISMATCH_REVIEW_NEW_PREVIEW")
         files = planned["payload"]["files"]
         require(files or spec["action"] == "HOLD", "NO_CHANGE")
+        if spec["action"] != "HOLD":
+            require(isinstance(expected_impact_sha, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", expected_impact_sha),
+                    "IMPACT_APPROVAL_HASH_REQUIRED")
         audit = (audit_runner or audit_retrieval)(planned) if spec["action"] != "HOLD" else None
-        if audit is not None:
-            require(audit.get("planSha256") == planned["sha"]
+        if spec["action"] != "HOLD":
+            require(isinstance(audit, dict), "RETRIEVAL_REPORT_MISMATCH")
+            require(audit.get("schemaVersion") == "casebook-impact-report-4"
+                    and audit.get("planSha256") == planned["sha"]
                     and audit.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
                     and audit.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
                     and isinstance(audit.get("evaluationFingerprint"), str)
@@ -392,6 +405,8 @@ def apply_plan(root, spec, expected_sha, audit_runner=None):
                     and isinstance(audit.get("intakeMechanismIds"), list)
                     and isinstance(audit.get("cases"), list) and audit["cases"],
                     "RETRIEVAL_REPORT_MISMATCH")
+            actual_impact_sha = impact_report_sha256(audit)
+            require(actual_impact_sha == expected_impact_sha, "IMPACT_REPORT_HASH_MISMATCH_REVIEW_NEW_REPORT")
         names = list(files) + [planned["receipt"]]
         if spec["action"] != "HOLD": names += ["guidelines/runtime.json", "guidelines/build-manifest.json"]
         backups = {n: read_bytes(local(root, n)) if local(root, n).exists() else None for n in names}
@@ -401,6 +416,7 @@ def apply_plan(root, spec, expected_sha, audit_runner=None):
         receipt_value = {"schemaVersion": "casebook-intake-receipt-1", "planSha256": planned["sha"], "intake": spec,
                          "state": "HOLD_NOT_RUNTIME" if spec["action"] == "HOLD" else "DEVELOPMENT_REFERENCE_NOT_INDEPENDENT_GOLD",
                          "trainingUseAuthorized": False, "semanticValidation": "NOT_PERFORMED", "retrievalAudit": audit,
+                         "impactReportSha256": impact_report_sha256(audit) if audit is not None else None,
                          "previousFiles": planned["payload"]["previousFiles"],
                          "previousRuntimeSha256": planned["payload"]["baseline"]["runtime"],
                          "publishedRuntimeSha256": planned["summary"]["candidateRuntimeSha256"]}
@@ -434,6 +450,7 @@ def apply_plan(root, spec, expected_sha, audit_runner=None):
             require(not conflicts, "ROLLBACK_CONFLICT_MANUAL_REVIEW_REQUIRED")
             raise
         return {**planned["summary"], "applied": True, "retrievalAudit": audit,
+                "impactReportSha256": impact_report_sha256(audit) if audit is not None else None,
                 "serverRestartRequired": spec["action"] != "HOLD"}
     finally:
         lock.unlink()
@@ -448,16 +465,24 @@ def main():
     parser.add_argument("--check-retrieval", "--check-impact", dest="check_retrieval", action="store_true",
                         help="Compare fixed-suite retrieval before/after with the production Java selector; no provider calls or accuracy claim")
     parser.add_argument("--expected-plan-sha")
+    parser.add_argument("--expected-impact-sha")
     args = parser.parse_args()
-    if args.apply != bool(args.expected_plan_sha) or args.apply and args.output:
-        parser.error("APPLY_REQUIRES_PLAN_SHA_AND_NO_OUTPUT")
+    if (args.apply != bool(args.expected_plan_sha) or args.apply and args.output
+            or not args.apply and args.expected_impact_sha):
+        parser.error("APPLY_REQUIRES_PLAN_SHA_AND_NO_OUTPUT; IMPACT_SHA_ONLY_WITH_APPLY")
     try:
         spec = parse(read_bytes(args.intake))
-        if args.apply: result = apply_plan(args.dataset_root, spec, args.expected_plan_sha)
+        if args.apply:
+            if spec["action"] != "HOLD" and not args.expected_impact_sha:
+                parser.error("ADD_UPDATE_APPLY_REQUIRES_EXPECTED_IMPACT_SHA")
+            result = apply_plan(args.dataset_root, spec, args.expected_plan_sha,
+                                expected_impact_sha=args.expected_impact_sha)
         else:
             preview = plan(args.dataset_root, spec); result = preview["summary"]
             if args.check_retrieval:
-                result = {**result, "retrievalAudit": audit_retrieval(preview)}
+                report = audit_retrieval(preview)
+                result = {**result, "retrievalAudit": report,
+                          "impactReportSha256": impact_report_sha256(report)}
             if args.output:
                 root = args.dataset_root.resolve(); output = args.output.absolute()
                 relative = output.relative_to(root).as_posix()
@@ -468,6 +493,8 @@ def main():
                 write_private(output / "summary.json", result)
                 write_private(output / "runtime.json", preview["payload"]["candidateRuntime"])
                 write_private(output / "query.json", query_document(preview))
+                if args.check_retrieval:
+                    write_private(output / "impact-report.json", report)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except PilotError as error:
         parser.exit(2, "INTAKE_REJECTED: " + str(error) + "\n")

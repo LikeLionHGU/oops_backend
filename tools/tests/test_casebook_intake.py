@@ -24,6 +24,20 @@ def snapshot(root):
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*') if p.is_file()}
 
 
+def bind_approval_to_selection(root, value, segment_ids):
+    original = root / value['approval']['path']
+    document = json.loads(original.read_bytes())
+    for review in document['reviews']:
+        review['sourceSha256'] = value['source']['sha256']
+        review['videoId'] = value['source']['videoId']
+        review['segmentIds'] = list(segment_ids)
+    raw = tool.encoded(document)
+    relative = 'research/approval-' + Path(value['source']['path']).stem + '.json'
+    approval_path = root / relative
+    approval_path.write_bytes(raw)
+    value['approval'].update(path=relative, sha256=tool.digest(raw))
+
+
 @pytest.fixture
 def dataset(tmp_path):
     setup(tmp_path)
@@ -31,7 +45,8 @@ def dataset(tmp_path):
         {"text": "합성 평가 표현", "startMs": 0, "endMs": 1000},
         {"text": "합성 후속 상황", "startMs": 1000, "endMs": 2000}]})
     review = save(tmp_path, 'research/reviews.json', {"trainingUseAuthorized": False, "reviews": [
-        {"eventId": "e1", "anchorId": "stt-index-0", "decision": "PASS", "scope": "합성 제공 문맥", "userReply": "PASS"}]})
+        {"eventId": "e1", "anchorId": "stt-index-0", "decision": "PASS", "scope": "합성 제공 문맥", "userReply": "PASS",
+         "sourceSha256": origin["sha256"], "videoId": 1, "segmentIds": ["stt-index-0", "stt-index-1"]}]})
     source = {"schemaVersion": "context-transcript-source-1", "familyId": "development-seed",
         "sourceKind": "USER_SUPPLIED_SCRIPT_NOT_AUDIO_VERIFIED", "sourceGroupId": "synthetic-video",
         "origin": {**origin, "videoId": 1}, "audioVerified": False,
@@ -78,7 +93,7 @@ def spec(root, action='ADD'):
 
 
 def fake_audit(plan):
-    return {"planSha256": plan['sha'], "candidateRuntimeSha256": plan['summary']['candidateRuntimeSha256'],
+    return {"schemaVersion": "casebook-impact-report-4", "planSha256": plan['sha'], "candidateRuntimeSha256": plan['summary']['candidateRuntimeSha256'],
             "baselineRuntimeSha256": plan['payload']['baseline']['runtime'],
             "evaluationFingerprint": "1" * 64, "intakeRetrieved": True,
             "providerCalls": 0, "modelAccuracyMeasured": False, "judgmentPolicyExecuted": False,
@@ -91,13 +106,25 @@ def fake_audit(plan):
 
 def test_one_approved_review_can_cover_a_group_of_selected_event_ids():
     document = {"reviews": [{"eventIds": ["e1", "e2"], "anchorIds": ["s1", "s2"],
-                             "decision": "PASS", "scope": "묶음 문맥", "userReply": "두 항목 모두 PASS"}]}
+                             "decision": "PASS", "scope": "묶음 문맥", "userReply": "두 항목 모두 PASS",
+                             "sourceSha256": "a" * 64, "videoId": 7, "segmentIds": ["s1", "s2"]}]}
     link = {"path": "approved.json", "sha256": "a" * 64, "eventIds": ["e1", "e2"]}
-    validate_approval_document(link, document, "PASS", ["s1", "s2"])
+    validate_approval_document(link, document, "PASS", ["s1", "s2"], "a" * 64, 7)
     document["reviews"].append({"eventId": "e2", "anchorId": "s2", "decision": "PASS",
                                 "scope": "중복", "userReply": "PASS"})
     with pytest.raises(ValueError, match="UNIQUE_APPROVAL_REQUIRED"):
-        validate_approval_document(link, document, "PASS", ["s1", "s2"])
+        validate_approval_document(link, document, "PASS", ["s1", "s2"], "a" * 64, 7)
+
+
+@pytest.mark.parametrize("field,value", [("sourceSha256", "b" * 64), ("videoId", 8), ("segmentIds", ["s1"])])
+def test_approval_cannot_be_reused_for_another_source_video_or_selection(field, value):
+    document = {"reviews": [{"eventId": "e1", "anchorIds": ["s1"], "decision": "PASS", "scope": "문맥",
+                             "userReply": "PASS", "sourceSha256": "a" * 64, "videoId": 7,
+                             "segmentIds": ["s1", "s2"]}]}
+    document["reviews"][0][field] = value
+    link = {"path": "approved.json", "sha256": "a" * 64, "eventIds": ["e1"]}
+    with pytest.raises(ValueError, match="APPROVAL_(SOURCE_SCOPE_MISMATCH|SELECTION_NOT_FULLY_REVIEWED)"):
+        validate_approval_document(link, document, "PASS", ["s1", "s2"], "a" * 64, 7)
 
 
 def projected_spec(root, count=24):
@@ -107,6 +134,7 @@ def projected_spec(root, count=24):
         for i in range(count)]}))
     value['segments'] = [{'index': i, 'id': f'stt-index-{i}',
                           'role': 'EVALUATION' if i == 0 else 'SITUATION'} for i in range(count)]
+    bind_approval_to_selection(root, value, [entry['id'] for entry in value['segments']])
     value['contextProjection'] = {'kind': 'AUTHORED_CONTEXT_SUMMARY_NOT_QUOTE', 'entries': [
         {'sourceIds': [f'stt-index-{i}' for i in range(n, min(n + 4, count))],
          'text': f'합성 작성 요약 {n}'} for n in range(0, count, 4)]}
@@ -161,6 +189,7 @@ def test_long_pass_keeps_every_source_line(dataset, count, accepted):
         for i in range(count)]}))
     value['segments'] = [{'index': i, 'id': f'stt-index-{i}',
                           'role': 'EVALUATION' if i == 0 else 'SITUATION'} for i in range(count)]
+    bind_approval_to_selection(dataset, value, [entry['id'] for entry in value['segments']])
     lines, _ = tool.source_lines(dataset, value) if accepted else (None, None)
     if accepted:
         assert len(lines) == count
@@ -183,7 +212,8 @@ def test_preview_is_deterministic_no_write_and_shows_exact_changed_paths(dataset
 
 def test_apply_add_publishes_verified_runtime_and_private_receipt(dataset):
     value = spec(dataset); plan = tool.plan(dataset, value)
-    result = tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    result = tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+                              expected_impact_sha=tool.impact_report_sha256(fake_audit(plan)))
     assert result['applied'] and builder.verify(dataset)['examples'] == 3
     unit = json.loads((dataset / 'context-units/new-boundary.json').read_bytes())
     assert unit['humanVerified'] is False and unit['trainingUseAuthorized'] is False
@@ -197,7 +227,8 @@ def test_update_preserves_source_and_label_and_only_writes_authored_views(datase
     plan = tool.plan(dataset, value)
     assert plan['summary']['examplesBefore'] == plan['summary']['examplesAfter'] == 2
     assert plan['summary']['changedFiles'] == ['context-relations/seed.json', 'context-units/seed.json']
-    tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+                    expected_impact_sha=tool.impact_report_sha256(fake_audit(plan)))
     assert (dataset / 'context-sources/seed.json').read_bytes() == original
     assert builder.verify(dataset)['examples'] == 2
     receipt = json.loads((dataset / plan['receipt']).read_bytes())
@@ -207,7 +238,9 @@ def test_update_preserves_source_and_label_and_only_writes_authored_views(datase
 def test_hold_keeps_runtime_identical_and_never_audits(dataset):
     value = spec(dataset); value.update(action='HOLD', decision='UNCERTAIN', missingInformation=['원음 확인'])
     ref = save(dataset, 'research/hold-review.json', {'reviews': [{'eventId': 'h1', 'anchorId': 'stt-index-0',
-        'decision': 'UNCERTAIN', 'scope': '원음 불명확', 'userReply': '정보 부족'}]})
+        'decision': 'UNCERTAIN', 'scope': '원음 불명확', 'userReply': '정보 부족',
+        'sourceSha256': value['source']['sha256'], 'videoId': 1,
+        'segmentIds': ['stt-index-0', 'stt-index-1']}]})
     value['approval'] = {**ref, 'eventIds': ['h1']}
     before = (dataset / 'guidelines/runtime.json').read_bytes(); plan = tool.plan(dataset, value)
     assert not plan['summary']['runtimeChanged'] and plan['summary']['changedFiles'] == []
@@ -241,10 +274,21 @@ def test_invalid_intakes_never_change_dataset(dataset, change):
 
 def test_stale_preview_or_source_rejected_before_write(dataset):
     value = spec(dataset); plan = tool.plan(dataset, value); before = snapshot(dataset)
-    with pytest.raises(ValueError, match='PLAN_HASH'): tool.apply_plan(dataset, value, '0' * 64, fake_audit)
+    with pytest.raises(ValueError, match='PLAN_HASH'): tool.apply_plan(dataset, value, '0' * 64, fake_audit,
+                                                                         expected_impact_sha='1' * 64)
     assert snapshot(dataset) == before
     value['boundary'] = '다른 경계'
-    with pytest.raises(ValueError, match='PLAN_HASH'): tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    with pytest.raises(ValueError, match='PLAN_HASH'): tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+                                                                         expected_impact_sha='1' * 64)
+    assert snapshot(dataset) == before
+
+
+def test_add_update_requires_second_explicit_impact_report_confirmation(dataset):
+    value = spec(dataset); preview = tool.plan(dataset, value); before = snapshot(dataset)
+    with pytest.raises(ValueError, match="IMPACT_APPROVAL_HASH_REQUIRED"):
+        tool.apply_plan(dataset, value, preview["sha"], fake_audit)
+    with pytest.raises(ValueError, match="IMPACT_REPORT_HASH_MISMATCH"):
+        tool.apply_plan(dataset, value, preview["sha"], fake_audit, expected_impact_sha="0" * 64)
     assert snapshot(dataset) == before
 
 
@@ -259,7 +303,8 @@ def test_stale_update_or_identity_change_is_refused(dataset):
 def test_failed_audit_never_writes_canonical_data(dataset):
     value = spec(dataset); plan = tool.plan(dataset, value); before = snapshot(dataset)
     def fail(_): raise tool.PilotError('EXPECTED_REFERENCE_NOT_RETRIEVED')
-    with pytest.raises(ValueError): tool.apply_plan(dataset, value, plan['sha'], fail)
+    with pytest.raises(ValueError): tool.apply_plan(dataset, value, plan['sha'], fail,
+                                                    expected_impact_sha='1' * 64)
     assert snapshot(dataset) == before
 
 
@@ -267,7 +312,8 @@ def test_failed_publication_restores_canonical_files_and_runtime(dataset, monkey
     value = spec(dataset); plan = tool.plan(dataset, value); before = snapshot(dataset)
     def fail(_): raise RuntimeError('injected publish failure')
     monkeypatch.setattr(builder, 'publish', fail)
-    with pytest.raises(RuntimeError): tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    with pytest.raises(RuntimeError): tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+                                                      expected_impact_sha=tool.impact_report_sha256(fake_audit(plan)))
     assert snapshot(dataset) == before
     assert builder.verify(dataset)['examples'] == 2
 
@@ -276,7 +322,8 @@ def test_keyboard_interrupt_rolls_back_and_releases_lock(dataset, monkeypatch):
     value = spec(dataset); preview = tool.plan(dataset, value); before = snapshot(dataset)
     def cancel(_): raise KeyboardInterrupt()
     monkeypatch.setattr(builder, 'publish', cancel)
-    with pytest.raises(KeyboardInterrupt): tool.apply_plan(dataset, value, preview['sha'], fake_audit)
+    with pytest.raises(KeyboardInterrupt): tool.apply_plan(dataset, value, preview['sha'], fake_audit,
+                                                           expected_impact_sha=tool.impact_report_sha256(fake_audit(preview)))
     assert snapshot(dataset) == before
 
 
@@ -285,7 +332,8 @@ def test_partial_publication_restores_previous_runtime_pair(dataset, monkeypatch
     original = builder.publish
     def wrong_manifest(root): original(root); return {}
     monkeypatch.setattr(builder, 'publish', wrong_manifest)
-    with pytest.raises(ValueError, match='PUBLISHED_PLAN'): tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    with pytest.raises(ValueError, match='PUBLISHED_PLAN'): tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+                                                                            expected_impact_sha=tool.impact_report_sha256(fake_audit(plan)))
     assert tool.baseline(dataset) == before
     assert not (dataset / 'context-units/new-boundary.json').exists()
 
@@ -309,13 +357,15 @@ def test_rollback_does_not_overwrite_an_external_edit(dataset, monkeypatch):
     external = dataset / 'context-units/new-boundary.json'
     def fail(root): external.write_bytes(b'foreign editor'); raise RuntimeError('external mutation')
     monkeypatch.setattr(builder, 'publish', fail)
-    with pytest.raises(ValueError, match='ROLLBACK_CONFLICT'): tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    with pytest.raises(ValueError, match='ROLLBACK_CONFLICT'): tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+        expected_impact_sha=tool.impact_report_sha256(fake_audit(plan)))
     assert external.read_bytes() == b'foreign editor'
 
 
 def test_duplicate_add_is_not_silently_overwritten(dataset):
     value = spec(dataset); plan = tool.plan(dataset, value)
-    tool.apply_plan(dataset, value, plan['sha'], fake_audit)
+    tool.apply_plan(dataset, value, plan['sha'], fake_audit,
+                    expected_impact_sha=tool.impact_report_sha256(fake_audit(plan)))
     before = snapshot(dataset)
     with pytest.raises(ValueError): tool.plan(dataset, value)
     assert snapshot(dataset) == before
@@ -324,7 +374,9 @@ def test_duplicate_add_is_not_silently_overwritten(dataset):
 def test_review_requires_explicit_control_and_keeps_it_synthetic(dataset):
     value = spec(dataset); value['decision'] = 'REVIEW_REQUIRED'
     ref = save(dataset, 'research/review-positive.json', {'reviews': [{'eventId': 'r1', 'anchorId': 'stt-index-0',
-        'decision': 'REVIEW_REQUIRED', 'scope': '합성 검토 제공 문맥', 'userReply': '검토 대상'}]})
+        'decision': 'REVIEW_REQUIRED', 'scope': '합성 검토 제공 문맥', 'userReply': '검토 대상',
+        'sourceSha256': value['source']['sha256'], 'videoId': 1,
+        'segmentIds': ['stt-index-0', 'stt-index-1']}]})
     value['approval'] = {**ref, 'eventIds': ['r1']}
     before = snapshot(dataset)
     with pytest.raises(ValueError, match='CONTROL'): tool.plan(dataset, value)
@@ -354,14 +406,19 @@ def test_no_change_update_is_previewable_but_not_published(dataset):
     assert preview['summary']['changedFiles'] == [] and not preview['summary']['runtimeChanged']
     before = snapshot(dataset)
     with pytest.raises(ValueError, match='NO_CHANGE'):
-        tool.apply_plan(dataset, value, preview['sha'], lambda _: pytest.fail('no-change must not audit'))
+        tool.apply_plan(dataset, value, preview['sha'], lambda _: pytest.fail('no-change must not audit'),
+                        expected_impact_sha='1' * 64)
     assert snapshot(dataset) == before
 
 
 def test_invalid_audit_result_is_not_accepted(dataset):
     value = spec(dataset); preview = tool.plan(dataset, value); before = snapshot(dataset)
     with pytest.raises(ValueError, match='RETRIEVAL_REPORT_MISMATCH'):
-        tool.apply_plan(dataset, value, preview['sha'], lambda _: {'retrieved': True})
+        tool.apply_plan(dataset, value, preview['sha'], lambda _: {'retrieved': True},
+                        expected_impact_sha='1' * 64)
+    with pytest.raises(ValueError, match='RETRIEVAL_REPORT_MISMATCH'):
+        tool.apply_plan(dataset, value, preview['sha'], lambda _: None,
+                        expected_impact_sha='1' * 64)
     assert snapshot(dataset) == before
 
 
@@ -370,7 +427,7 @@ def test_invalid_audit_result_is_not_accepted(dataset):
 def test_production_selector_reports_before_after_impact_without_models(dataset):
     preview = tool.plan(dataset, spec(dataset))
     report = tool.audit_retrieval(preview)
-    assert report["schemaVersion"] == "casebook-impact-report-3"
+    assert report["schemaVersion"] == "casebook-impact-report-4"
     assert report["planSha256"] == preview["sha"]
     assert report["providerCalls"] == 0 and report["modelAccuracyMeasured"] is False
     assert report["judgmentPolicyExecuted"] is False and report["policyHashesPinned"] is True
@@ -383,6 +440,8 @@ def test_production_selector_reports_before_after_impact_without_models(dataset)
     assert report["casesWithoutAnyHoldoutGroup"] > 0
     assert all(case["sourceGroupIndependence"] == "UNKNOWN_NOT_EXCLUDED" for case in report["cases"])
     assert all("selectedMechanismsBefore" in case and "addedReferenceMechanisms" in case for case in report["cases"])
+    assert all("rankChanged" in case and "referenceContentChanged" in case
+               and "selectedReferenceFingerprintBefore" in case for case in report["cases"])
 
 
 def test_target_created_during_audit_is_not_overwritten(dataset):
@@ -392,7 +451,8 @@ def test_target_created_during_audit_is_not_overwritten(dataset):
         target.write_bytes(b'external source')
         return fake_audit(p)
     with pytest.raises(ValueError, match='TARGET_CHANGED_BEFORE_WRITE'):
-        tool.apply_plan(dataset, value, preview['sha'], concurrent_edit)
+        tool.apply_plan(dataset, value, preview['sha'], concurrent_edit,
+                        expected_impact_sha=tool.impact_report_sha256(fake_audit(preview)))
     assert target.read_bytes() == b'external source'
     assert not (dataset / 'context-units/new-boundary.json').exists()
 

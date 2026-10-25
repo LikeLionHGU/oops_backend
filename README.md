@@ -145,7 +145,7 @@ curl http://127.0.0.1:8080/api/v1/videos/VIDEO_ID/transcript
 
 ## 사전과 데이터
 
-검수 입력JSON 하나로 [사례 등록·보강 도구](docs/casebook/데이터셋-파일-관리.md#단일-검수-입력-도구--2026-10-24)를 사용할 수 있다. `python3 tools/casebook_intake.py 입력.json`은 쓰기 없는 계획이고,`--check-retrieval`은 무료 Java 검색 확인이다. 실제 적용은 검토한 planSha256을 지정한 `--apply`로만 가능하며 출처·승인·빌드·검색을 재검증한다. 정보 부족은 HOLD로 기록만 하고 사전에 넣지 않는다. 모델/API 호출·자동 학습은 없다.
+검수 입력JSON 하나로 [사례 등록·보강 도구](docs/casebook/데이터셋-파일-관리.md#단일-검수-입력-도구--2026-10-24)를 사용할 수 있다. `python3 tools/casebook_intake.py 입력.json`은 쓰기 없는 계획이고, `--check-impact`는 무료 Java 검색 영향 보고서와 확인용 해시를 만든다. ADD/UPDATE 적용에는 검토한 planSha256과 impactReportSha256 둘 다 필요하며, 적용 직전에 보고서를 재생성해 일치할 때만 저장한다. 정보 부족은 HOLD로 기록만 하고 사전에 넣지 않는다. 모델/API 호출·자동 학습은 없다.
 
 | 파일 | 역할 |
 |---|---|
