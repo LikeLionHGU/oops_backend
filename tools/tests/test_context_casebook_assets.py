@@ -57,6 +57,11 @@ class CasebookAssetTests(unittest.TestCase):
         self.assertEqual(report["summary"]["examples"], 3)
         self.assertEqual(report["summary"]["migration"]["LEGACY_RETAINED_NEEDS_CONTEXT_CURATION"], 2)
         self.assertEqual(report["summary"]["withContrasts"], 1)
+        self.assertEqual(report["summary"]["legacyItemsPendingCuration"], 2)
+        self.assertEqual(report["legacyTriage"]["classificationStatus"], "UNCLASSIFIED_REQUIRES_HUMAN_REVIEW")
+        self.assertFalse(report["legacyTriage"]["independentGold"])
+        self.assertTrue(all(item["curationClassification"] == "UNCLASSIFIED_REQUIRES_HUMAN_REVIEW"
+                            for item in report["legacyTriage"]["items"]))
         self.assertEqual(self.runtime, original)
         self.assertFalse(any(row["independentGold"] for row in report["rows"]))
         self.unit["normalContrasts"] = []

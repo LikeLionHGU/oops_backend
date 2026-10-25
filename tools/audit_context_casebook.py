@@ -1,6 +1,6 @@
 """Free inventory and freeze audit. No models, network, runtime edits or label promotion."""
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 import json
 from pathlib import Path
 
@@ -56,12 +56,42 @@ def inventory(runtime, units, incidents, root):
                    materialSynthetic=False, runtimeExampleCanonicalSha256=digest(canonical(example)))
         rows.append(row)
     require(len(rows) == len({r["id"] for r in rows}), "DUPLICATE_INVENTORY_EXAMPLE")
-    return {"schemaVersion": "context-quality-inventory-1", "providerCalls": 0,
+    legacy = [row for row in rows if row["migrationStatus"] == "LEGACY_RETAINED_NEEDS_CONTEXT_CURATION"]
+    triage_groups = defaultdict(list)
+    for row in legacy:
+        triage_groups[row["familyId"]].append(row["id"])
+    # Grouping is an administrative review aid, not verified media provenance.
+    triage = {
+        "schemaVersion": "legacy-curation-triage-1",
+        "classificationStatus": "UNCLASSIFIED_REQUIRES_HUMAN_REVIEW",
+        "nextStep": "VERIFY_SOURCE_AND_APPROVAL_THEN_CLASSIFY",
+        "runtimeChanged": False,
+        "independentGold": False,
+        "classificationOptions": ["DUPLICATE", "NEW_EXPRESSION", "NEW_BOUNDARY",
+                                  "POLICY_CONFLICT", "NEW_MECHANISM", "HOLD_INSUFFICIENT_SOURCE"],
+        "groupingBasis": "EXISTING_FAMILY_ID_FOR_WORK_ORDER_ONLY_NOT_VERIFIED_MEDIA_SOURCE",
+        "groups": [{"familyId": family, "itemIds": sorted(ids), "itemCount": len(ids),
+                    "curationClassification": "UNCLASSIFIED_REQUIRES_HUMAN_REVIEW",
+                    "priority": "SOURCE_AND_APPROVAL_REVIEW_REQUIRED",
+                    "verifiedSourceGroup": False, "independentEvaluationEligible": False}
+                   for family, ids in sorted(triage_groups.items(), key=lambda entry: (-len(entry[1]), entry[0]))],
+        "items": [{"id": row["id"], "familyId": row["familyId"],
+                   "curationClassification": "UNCLASSIFIED_REQUIRES_HUMAN_REVIEW",
+                   "priority": "SOURCE_AND_APPROVAL_REVIEW_REQUIRED",
+                   "missing": row["gaps"], "runtimeChanged": False,
+                   "independentGold": False}
+                  for row in sorted(legacy, key=lambda item: (item["familyId"], item["id"]))],
+    }
+    return {"schemaVersion": "context-quality-inventory-2", "providerCalls": 0,
             "independentAccuracyMeasured": False, "rows": rows,
+            "legacyTriage": triage,
             "summary": {"examples": len(rows), "migration": dict(Counter(r["migrationStatus"] for r in rows)),
                         "reviewBasis": dict(Counter(r["reviewBasis"] for r in rows)),
                         "withContrasts": sum(r["contrastCount"] > 0 for r in rows),
-                        "lexicalIndexPresent": sum(r["lexicalIndexPresent"] for r in rows)}}
+                        "lexicalIndexPresent": sum(r["lexicalIndexPresent"] for r in rows),
+                        "legacyItemsPendingCuration": len(legacy),
+                        "legacyFamilyGroups": len(triage_groups),
+                        "verifiedIndependentGoldItems": 0}}
 
 
 def protected_files(repo, root):
