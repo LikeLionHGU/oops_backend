@@ -99,13 +99,25 @@ def validate_transcript_origin(root, origin, segments):
     for name, rows in candidates:
         if not isinstance(rows, list):
             continue
-        by_id = {row.get("id", f"stt-index-{i}"): row for i, row in enumerate(rows)
-                 if isinstance(row, dict)}
-        if len(by_id) != sum(isinstance(row, dict) for row in rows):
+        by_id, position_by_id = {}, {}
+        invalid_rows = False
+        for i, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            row_id = row.get("id", f"stt-index-{i}")
+            if not isinstance(row_id, str) or row_id in by_id:
+                invalid_rows = True
+                break
+            by_id[row_id] = row
+            position_by_id[row_id] = i
+        if invalid_rows:
             continue
-        if all(segment["id"] in by_id and all(
+        selected_positions = [position_by_id.get(segment.get("id"), -1) for segment in segments]
+        if (all(i >= 0 for i in selected_positions)
+                and selected_positions == sorted(set(selected_positions))
+                and all(segment["id"] in by_id and all(
                 segment.get(key) == by_id[segment["id"]].get(key)
-                for key in ("text", "startMs", "endMs")) for segment in segments):
+                for key in ("text", "startMs", "endMs")) for segment in segments)):
             matches.append(name)
     require(len(matches) == 1, "UNIT_ORIGIN_TRANSCRIPT_MISMATCH")
 

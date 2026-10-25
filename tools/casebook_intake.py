@@ -243,9 +243,17 @@ def plan(root, spec):
                     and (not approval_changed or rebind_legacy_v2),
                     "UPDATE_CANNOT_CHANGE_SOURCE_LABEL_OR_IDENTITY")
             if rebind_legacy_v2:
+                source_path = old["source"]["path"]
                 require({"path", "sha256", "videoId", "format"} <= set(new_origin)
-                        and old["source"]["path"] == source_path,
+                        and source_path.startswith("context-sources/") and source_path.endswith(".json"),
                         "UPDATE_LEGACY_SOURCE_BINDING_MISMATCH")
+                for candidate_path in sorted((root / "context-units").glob("*.json")):
+                    relative = candidate_path.relative_to(root).as_posix()
+                    if relative == unit_path:
+                        continue
+                    candidate = parse(read_bytes(local(root, relative)))
+                    require(candidate.get("source", {}).get("path") != source_path,
+                            "SHARED_SOURCE_REBIND_NOT_SUPPORTED")
                 unit = copy.deepcopy(old)
                 unit["schemaVersion"] = "context-reference-unit-3"
                 unit["source"] = {"kind": "STORED_TRANSCRIPT_SNAPSHOT", "path": source_path,
@@ -366,7 +374,7 @@ def audit_retrieval(planned):
         require(planned["payload"]["implementationHashes"] == implementation_hashes(),
                 "IMPLEMENTATION_CHANGED_DURING_IMPACT_AUDIT")
         require(result.get("planSha256") == planned["sha"]
-                and result.get("schemaVersion") == "casebook-impact-report-5"
+                and result.get("schemaVersion") == "casebook-impact-report-6"
                 and result.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
                 and result.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
                 and result.get("evaluationFingerprint") == evaluation_fingerprint
@@ -414,7 +422,7 @@ def apply_plan(root, spec, expected_sha, audit_runner=None, expected_impact_sha=
         audit = (audit_runner or audit_retrieval)(planned) if spec["action"] != "HOLD" else None
         if spec["action"] != "HOLD":
             require(isinstance(audit, dict), "RETRIEVAL_REPORT_MISMATCH")
-            require(audit.get("schemaVersion") == "casebook-impact-report-5"
+            require(audit.get("schemaVersion") == "casebook-impact-report-6"
                     and audit.get("planSha256") == planned["sha"]
                     and audit.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
                     and audit.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]

@@ -104,6 +104,17 @@ class ContextUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UNIT_ORIGIN_TRANSCRIPT_MISMATCH"):
             self.compile(unit)
 
+    def test_v3_rejects_selected_segments_reordered_from_original(self):
+        unit = self.standalone()
+        source = json.loads((self.root / "source.json").read_bytes())
+        source["segments"].reverse()
+        raw = json.dumps(source).encode()
+        (self.root / "source.json").write_bytes(raw)
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        unit["utteranceIds"].reverse()
+        with self.assertRaisesRegex(ValueError, "UNIT_ORIGIN_TRANSCRIPT_MISMATCH"):
+            self.compile(unit)
+
     def test_v3_rejects_changed_original_transcript_hash(self):
         unit = self.standalone()
         (self.root / "origin.json").write_text('{"transcript": []}')
