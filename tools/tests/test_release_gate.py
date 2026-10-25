@@ -57,29 +57,60 @@ class ReleaseGateTest(unittest.TestCase):
             self.row("case-pass", "PASS", [], "0.012")])
 
     def row(self, cid, decision, refs, cost):
+        case = next(item for item in self.suite["cases"] if item["caseId"] == cid)
         return {"caseId": cid, "decision": decision, "status": "COMPLETED",
-            "evidenceStatus": "NOT_APPLICABLE", "duplicateFindings": 0,
+            "sourceSha256": case["sourceSha256"], "inputSha256": case["inputSha256"],
+            "evidenceStatus": "REVIEWED_VALID" if decision == "REVIEW_REQUIRED" else "NOT_APPLICABLE",
+            "duplicateFindings": 0,
             "selectedReferenceIds": refs, "payloadCodePoints": 200,
             "payloadBudgetCodePoints": 1000, "costUsd": cost, "costBasis": "PROVIDER_REPORTED"}
 
     def make_run(self, suffix, variant, rows):
-        payloads = {"application.yml": "settings-" + suffix, "runtime.json": "runtime-" + suffix}
-        artifacts = [{"path": path, "sha256": sha(content)} for path, content in payloads.items()]
+        payloads = {
+            "src/main.py": ("code", "code-" + suffix),
+            "model.json": ("model", "model-" + suffix),
+            "prompt.md": ("prompt", "prompt-" + suffix),
+            "policy.json": ("policy", "policy-" + suffix),
+            "runtime.json": ("runtime", "runtime-" + suffix),
+            "application.yml": ("settings", "settings-" + suffix),
+            "retrieval.json": ("retrieval", "retrieval-" + suffix),
+        }
+        artifacts = [{"path": path, "component": component, "sha256": sha(content)}
+                     for path, (component, content) in payloads.items()]
         artifacts = sorted(artifacts, key=lambda row: row["path"])
-        run = {"schemaVersion": "release-evaluation-run-1", "suiteId": "heldout-v1",
+        fingerprints = {
+            component: gate.canonical_sha(sorted(
+                ({"path": row["path"], "sha256": row["sha256"]} for row in artifacts
+                 if row["component"] == component), key=lambda row: row["path"]))
+            for component in gate.FINGERPRINT_COMPONENTS
+        }
+        run = {"schemaVersion": "release-evaluation-run-2", "suiteId": "heldout-v1",
             "suiteSha256": self.suite_sha, "criteriaSha256": self.criteria_sha,
             "artifactManifest": artifacts, "artifactBundleSha256": gate.canonical_sha(artifacts),
             "startedAt": "2026-01-03T00:00:00Z", "searchVariant": variant,
-            "fingerprints": {name: sha(name + ("-changed" if name == "retrieval" and suffix == "b" else ""))
-                for name in ("code", "model", "prompt", "policy", "runtime", "settings", "retrieval")},
+            "fingerprints": fingerprints,
             "cases": rows}
-        self.bundle_payloads[run["artifactBundleSha256"]] = payloads
+        self.bundle_payloads[run["artifactBundleSha256"]] = {path: content for path, (_, content) in payloads.items()}
         return run
+
+    def update_run_component(self, run, component, path, content):
+        old_bundle_sha = run["artifactBundleSha256"]
+        artifact = next(row for row in run["artifactManifest"] if row["path"] == path)
+        self.assertEqual(component, artifact["component"])
+        artifact["sha256"] = sha(content)
+        run["artifactBundleSha256"] = gate.canonical_sha(sorted(run["artifactManifest"], key=lambda row: row["path"]))
+        rows = [{"path": row["path"], "sha256": row["sha256"]} for row in run["artifactManifest"]
+                if row["component"] == component]
+        run["fingerprints"][component] = gate.canonical_sha(sorted(rows, key=lambda row: row["path"]))
+        payloads = self.bundle_payloads[old_bundle_sha].copy()
+        payloads[path] = content
+        self.bundle_payloads[run["artifactBundleSha256"]] = payloads
 
     def materialize_bundle(self, run, root):
         root.mkdir()
         for path, content in self.bundle_payloads[run["artifactBundleSha256"]].items():
             target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content)
 
     def compare(self, baseline=None, candidate=None, criteria=None, suite=None, approval=None):
@@ -182,6 +213,28 @@ class ReleaseGateTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "REFERENCE_RELEVANCE_NOT_REVIEWED"):
             self.compare(suite=suite)
 
+    def test_run_input_hash_must_match_the_frozen_suite_case(self):
+        candidate = copy.deepcopy(self.candidate)
+        candidate["cases"][0]["inputSha256"] = sha("different-input")
+        with self.assertRaisesRegex(ValueError, "RUN_CASE_INPUT_MISMATCH"):
+            self.compare(candidate=candidate)
+        candidate["cases"][0]["inputSha256"] = self.suite["cases"][0]["inputSha256"]
+        candidate["cases"][0]["sourceSha256"] = sha("different-source")
+        with self.assertRaisesRegex(ValueError, "RUN_CASE_INPUT_MISMATCH"):
+            self.compare(candidate=candidate)
+
+    def test_review_result_requires_explicit_evidence_review(self):
+        candidate = copy.deepcopy(self.candidate)
+        candidate["cases"][0]["evidenceStatus"] = "NOT_APPLICABLE"
+        with self.assertRaisesRegex(ValueError, "REVIEW_EVIDENCE_REQUIRED"):
+            self.compare(candidate=candidate)
+        candidate["cases"][0]["evidenceStatus"] = "NOT_REVIEWED"
+        with self.assertRaisesRegex(ValueError, "REVIEW_EVIDENCE_REQUIRED"):
+            self.compare(candidate=candidate)
+        candidate["cases"][0]["evidenceStatus"] = "REVIEWED_INVALID"
+        with self.assertRaisesRegex(ValueError, "REVIEW_EVIDENCE_REQUIRED"):
+            self.compare(candidate=candidate)
+
     def test_missing_cases_changed_suite_labels_and_label_leakage_are_rejected(self):
         candidate = copy.deepcopy(self.candidate)
         candidate["cases"].pop()
@@ -201,13 +254,37 @@ class ReleaseGateTest(unittest.TestCase):
         criteria["comparisonKind"] = "SEARCH_ABLATION"
         criteria["maximumCostRatio"] = "2"
         criteria_sha = gate.canonical_sha(criteria)
-        baseline, candidate = copy.deepcopy(self.baseline), copy.deepcopy(self.candidate)
+        baseline, candidate = copy.deepcopy(self.baseline), copy.deepcopy(self.baseline)
+        candidate["cases"] = copy.deepcopy(self.candidate["cases"])
+        candidate["searchVariant"] = "STRUCTURED"
+        payloads = self.bundle_payloads[self.baseline["artifactBundleSha256"]]
+        candidate["artifactManifest"] = copy.deepcopy(self.baseline["artifactManifest"])
+        candidate["artifactBundleSha256"] = self.baseline["artifactBundleSha256"]
+        candidate["fingerprints"] = copy.deepcopy(self.baseline["fingerprints"])
         baseline["criteriaSha256"] = candidate["criteriaSha256"] = criteria_sha
-        result = gate.compare(self.suite, baseline, candidate, criteria, self.suite_sha, criteria_sha)
+        self.update_run_component(candidate, "retrieval", "retrieval.json", "retrieval-structured")
+        with self.assertRaisesRegex(ValueError, "ABLATION_BUNDLES_REQUIRED"):
+            gate.compare(self.suite, baseline, candidate, criteria, self.suite_sha, criteria_sha)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_dir, candidate_dir = root / "base", root / "candidate"
+            self.materialize_bundle(baseline, base_dir)
+            self.materialize_bundle(candidate, candidate_dir)
+            result = gate.compare(self.suite, baseline, candidate, criteria, self.suite_sha, criteria_sha,
+                                  baseline_bundle_root=base_dir, candidate_bundle_root=candidate_dir)
         self.assertEqual("READY_FOR_HUMAN_REVIEW", result["decision"])
-        candidate["fingerprints"]["prompt"] = sha("prompt-changed")
+        self.update_run_component(candidate, "prompt", "prompt.md", "prompt-changed")
         with self.assertRaisesRegex(ValueError, "ABLATION_MUST_CHANGE_RETRIEVAL_ONLY"):
             gate.compare(self.suite, baseline, candidate, criteria, self.suite_sha, criteria_sha)
+
+    def test_artifact_change_cannot_hide_behind_a_copied_component_fingerprint(self):
+        candidate = copy.deepcopy(self.candidate)
+        runtime = next(row for row in candidate["artifactManifest"] if row["component"] == "runtime")
+        runtime["sha256"] = sha("unreported-runtime-change")
+        candidate["artifactBundleSha256"] = gate.canonical_sha(
+            sorted(candidate["artifactManifest"], key=lambda row: row["path"]))
+        with self.assertRaisesRegex(ValueError, "RUN_FINGERPRINT_ARTIFACT_MISMATCH"):
+            self.compare(candidate=candidate)
 
     def test_rollback_round_trip_only_changes_temporary_stage(self):
         with tempfile.TemporaryDirectory() as temp:

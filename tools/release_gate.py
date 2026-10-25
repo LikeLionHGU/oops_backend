@@ -26,6 +26,7 @@ QUALITY_METRICS = (
     "budgetViolations",
 )
 THRESHOLD_METRICS = QUALITY_METRICS + ("maxCostUsd",)
+FINGERPRINT_COMPONENTS = {"code", "model", "prompt", "policy", "runtime", "settings", "retrieval"}
 
 
 def raw_sha(path: Path) -> str:
@@ -125,7 +126,8 @@ def validate_suite(suite: dict, criteria: dict) -> dict:
     require(set(category_counts) == set(categories), "UNUSED_CATEGORY_THRESHOLD")
     require(all(category_counts[name] >= criteria["minimumCasesPerCategory"] for name in categories),
             "CATEGORY_CASE_COVERAGE_LOW")
-    return {"caseIds": ids, "sourceGroups": source_groups, "categoryCounts": category_counts,
+    return {"caseIds": ids, "casesById": {case["caseId"]: case for case in cases},
+            "sourceGroups": source_groups, "categoryCounts": category_counts,
             "suiteFrozenAt": suite_frozen_at, "criteriaLockedAt": criteria_locked_at}
 
 
@@ -133,38 +135,51 @@ def is_sha(value) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
 
-def validate_run(run: dict, suite: dict, suite_sha: str, criteria_sha: str, expected_ids: set[str]) -> dict:
-    require(run.get("schemaVersion") == "release-evaluation-run-1", "RUN_SCHEMA_INVALID")
+def validate_run(run: dict, suite: dict, suite_sha: str, criteria_sha: str,
+                 expected_cases: dict[str, dict]) -> dict:
+    require(run.get("schemaVersion") == "release-evaluation-run-2", "RUN_SCHEMA_INVALID")
     require(run.get("suiteId") == suite.get("suiteId") and run.get("suiteSha256") == suite_sha,
             "RUN_SUITE_MISMATCH")
     require(run.get("criteriaSha256") == criteria_sha, "RUN_CRITERIA_MISMATCH")
     require(is_sha(run.get("artifactBundleSha256")), "RUN_ARTIFACT_BUNDLE_HASH_INVALID")
     artifacts = run.get("artifactManifest")
     require(isinstance(artifacts, list) and artifacts, "RUN_ARTIFACT_MANIFEST_REQUIRED")
-    artifact_paths = set()
+    artifact_paths, artifacts_by_component = set(), defaultdict(list)
     for artifact in artifacts:
-        require(isinstance(artifact, dict) and isinstance(artifact.get("path"), str), "RUN_ARTIFACT_ENTRY_INVALID")
+        require(isinstance(artifact, dict) and set(artifact) == {"path", "sha256", "component"}
+                and isinstance(artifact.get("path"), str)
+                and artifact.get("component") in FINGERPRINT_COMPONENTS, "RUN_ARTIFACT_ENTRY_INVALID")
         path = str(_safe_relative(artifact["path"]))
         require(path not in artifact_paths and is_sha(artifact.get("sha256")), "RUN_ARTIFACT_ENTRY_INVALID")
         artifact_paths.add(path)
-    normalized_artifacts = sorted(({"path": str(_safe_relative(row["path"])), "sha256": row["sha256"]}
+        artifacts_by_component[artifact["component"]].append({"path": path, "sha256": artifact["sha256"]})
+    normalized_artifacts = sorted(({"path": str(_safe_relative(row["path"])), "sha256": row["sha256"],
+                                    "component": row["component"]}
                                    for row in artifacts), key=lambda row: row["path"])
     require(canonical_sha(normalized_artifacts) == run["artifactBundleSha256"], "RUN_ARTIFACT_BUNDLE_HASH_MISMATCH")
     fingerprints = run.get("fingerprints")
-    require(isinstance(fingerprints, dict) and set(fingerprints) ==
-            {"code", "model", "prompt", "policy", "runtime", "settings", "retrieval"}
+    require(isinstance(fingerprints, dict) and set(fingerprints) == FINGERPRINT_COMPONENTS
             and all(is_sha(v) for v in fingerprints.values()), "RUN_FINGERPRINTS_INVALID")
+    require(set(artifacts_by_component) == FINGERPRINT_COMPONENTS
+            and all(canonical_sha(sorted(rows, key=lambda row: row["path"])) == fingerprints[component]
+                    for component, rows in artifacts_by_component.items()), "RUN_FINGERPRINT_ARTIFACT_MISMATCH")
     rows = run.get("cases")
     require(isinstance(rows, list), "RUN_CASES_REQUIRED")
     by_id = {}
     for row in rows:
-        require(isinstance(row, dict) and row.get("caseId") in expected_ids, "RUN_CASE_UNKNOWN")
+        require(isinstance(row, dict) and row.get("caseId") in expected_cases, "RUN_CASE_UNKNOWN")
         require(row["caseId"] not in by_id, "RUN_CASE_DUPLICATE")
         require("expectedDecision" not in row and "reviewerNotes" not in row, "RUN_LABEL_LEAKAGE")
+        expected_case = expected_cases[row["caseId"]]
+        require(row.get("sourceSha256") == expected_case["sourceSha256"]
+                and row.get("inputSha256") == expected_case["inputSha256"], "RUN_CASE_INPUT_MISMATCH")
         require(row.get("decision") in DECISIONS, "RUN_DECISION_INVALID")
         require(row.get("status") in {"COMPLETED", "NOT_EVALUATED", "CONTRACT_FAILURE"}, "RUN_STATUS_INVALID")
         require(row.get("evidenceStatus") in {"REVIEWED_VALID", "REVIEWED_INVALID", "NOT_APPLICABLE", "NOT_REVIEWED"},
                 "EVIDENCE_STATUS_INVALID")
+        if row["decision"] == "REVIEW_REQUIRED":
+            require(row["status"] == "COMPLETED" and row["evidenceStatus"] == "REVIEWED_VALID",
+                    "REVIEW_EVIDENCE_REQUIRED")
         refs = row.get("selectedReferenceIds")
         require(isinstance(refs, list) and len(refs) == len(set(refs)) and all(isinstance(x, str) for x in refs),
                 "SELECTED_REFERENCES_INVALID")
@@ -176,7 +191,7 @@ def validate_run(run: dict, suite: dict, suite_sha: str, criteria_sha: str, expe
         row_cost = money(row.get("costUsd"))
         require(row.get("costBasis") in {"PROVIDER_REPORTED", "PREDECLARED_ESTIMATE"}, "COST_BASIS_INVALID")
         by_id[row["caseId"]] = {**row, "_cost": row_cost}
-    require(set(by_id) == expected_ids, "RUN_CASE_COVERAGE_MISMATCH")
+    require(set(by_id) == set(expected_cases), "RUN_CASE_COVERAGE_MISMATCH")
     timestamp(run.get("startedAt"), "RUN_TIME_INVALID")
     return by_id
 
@@ -211,8 +226,8 @@ def compare(suite: dict, baseline: dict, candidate: dict, criteria: dict,
             baseline_bundle_root: Path | None = None, candidate_bundle_root: Path | None = None,
             run_rollback_rehearsal: bool = False) -> dict:
     index = validate_suite(suite, criteria)
-    before = validate_run(baseline, suite, suite_sha, criteria_sha, index["caseIds"])
-    after = validate_run(candidate, suite, suite_sha, criteria_sha, index["caseIds"])
+    before = validate_run(baseline, suite, suite_sha, criteria_sha, index["casesById"])
+    after = validate_run(candidate, suite, suite_sha, criteria_sha, index["casesById"])
     baseline_started = timestamp(baseline.get("startedAt"), "RUN_TIME_INVALID")
     candidate_started = timestamp(candidate.get("startedAt"), "RUN_TIME_INVALID")
     require(index["criteriaLockedAt"] < baseline_started and index["criteriaLockedAt"] < candidate_started
@@ -223,10 +238,15 @@ def compare(suite: dict, baseline: dict, candidate: dict, criteria: dict,
     require(plan_kind in {"RELEASE_CANDIDATE", "SEARCH_ABLATION"}, "COMPARISON_KIND_INVALID")
     if plan_kind == "SEARCH_ABLATION":
         before_fp, after_fp = baseline["fingerprints"], candidate["fingerprints"]
+        before_components = {row["path"]: row["component"] for row in baseline["artifactManifest"]}
+        after_components = {row["path"]: row["component"] for row in candidate["artifactManifest"]}
+        require(before_components == after_components, "ABLATION_ARTIFACT_COMPONENTS_CHANGED")
         differing = [key for key in before_fp if before_fp[key] != after_fp[key]]
         require(differing == ["retrieval"], "ABLATION_MUST_CHANGE_RETRIEVAL_ONLY")
         require(baseline.get("searchVariant") in SEARCH_VARIANTS and candidate.get("searchVariant") in SEARCH_VARIANTS
                 and baseline["searchVariant"] != candidate["searchVariant"], "SEARCH_VARIANT_NOT_CHANGED")
+        require(baseline_bundle_root is not None and candidate_bundle_root is not None,
+                "ABLATION_BUNDLES_REQUIRED")
 
     categories = sorted(criteria["categoryThresholds"])
     metric_sets = {"baseline": {"overall": _metric_template()},
@@ -354,11 +374,13 @@ def _copy_manifest(source_root: Path, destination: Path, relpaths: list[str]):
 def verify_bundle(root: Path, artifacts: list[dict]) -> dict:
     require(root.is_dir() and not root.is_symlink(), "BUNDLE_ROOT_INVALID")
     require(isinstance(artifacts, list) and artifacts, "BUNDLE_MANIFEST_INVALID")
-    expected = {}
+    expected, manifest = {}, []
     for artifact in artifacts:
         path = str(_safe_relative(artifact["path"]))
-        require(path not in expected and is_sha(artifact.get("sha256")), "BUNDLE_MANIFEST_INVALID")
+        require(path not in expected and is_sha(artifact.get("sha256"))
+                and artifact.get("component") in FINGERPRINT_COMPONENTS, "BUNDLE_MANIFEST_INVALID")
         expected[path] = artifact["sha256"]
+        manifest.append({"path": path, "sha256": artifact["sha256"], "component": artifact["component"]})
     actual = {}
     for item in root.rglob("*"):
         require(not item.is_symlink(), "BUNDLE_SYMLINK_FORBIDDEN")
@@ -369,8 +391,8 @@ def verify_bundle(root: Path, artifacts: list[dict]) -> dict:
             require(item.is_dir(), "BUNDLE_ENTRY_TYPE_INVALID")
     require(set(actual) == set(expected), "BUNDLE_FILE_SET_MISMATCH")
     require(actual == expected, "BUNDLE_FILE_HASH_MISMATCH")
-    return {"status": "PASS", "artifactCount": len(actual), "artifactBundleSha256": canonical_sha(
-        sorted(({"path": path, "sha256": digest} for path, digest in actual.items()), key=lambda row: row["path"]))}
+    return {"status": "PASS", "artifactCount": len(actual),
+            "artifactBundleSha256": canonical_sha(sorted(manifest, key=lambda row: row["path"]))}
 
 
 def _clear_stage(stage: Path):
