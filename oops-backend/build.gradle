@@ -890,6 +890,18 @@ tasks.register('casebookReferenceIsolationPreflight', JavaExec) {
     }
 }
 
+// Six-slot, text-only cross-case probe for a draft casebook addition; not part of runtime analysis.
+tasks.register('crossCasebookDevelopmentProbeTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CrossCasebookDevelopmentProbeTrial'
+    doFirst {
+        def values = providers.gradleProperty('crossCasebookDevelopmentProbeArgs').orNull
+        if (!values) throw new GradleException('Set crossCasebookDevelopmentProbeArgs: prepare NEW_DIRECTORY OR run PLAN|PLAN_SHA|MANIFEST|MANIFEST_SHA|NEW_OUTPUT_DIRECTORY')
+        args values.split('\\|', -1).toList()
+    }
+}
+
 // Freshly approved, bounded D05 reference-isolation model comparison; never called by bootRun or test.
 tasks.register('casebookReferenceIsolationModelTrial', JavaExec) {
     dependsOn testClasses
