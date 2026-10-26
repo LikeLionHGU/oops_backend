@@ -878,6 +878,18 @@ tasks.register('casebookHoldoutCurrentPipelineTrial', JavaExec) {
     }
 }
 
+// Offline request-capture gate for the casebook-reference-isolation trial; never contacts a provider.
+tasks.register('casebookReferenceIsolationPreflight', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookReferenceIsolationPreflight'
+    doFirst {
+        def output = providers.gradleProperty('referenceIsolationOutput').orNull
+        if (!output) throw new GradleException('Set referenceIsolationOutput to a new private experiments directory')
+        args output
+    }
+}
+
 // Opt-in six-request reference comparison; never called by bootRun or test.
 tasks.register('developmentBoundaryReferenceTrial', JavaExec) {
     dependsOn testClasses
