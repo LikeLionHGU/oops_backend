@@ -92,6 +92,38 @@ public final class CrossCasebookDevelopmentProbeTrial {
         return sha((JSON.writeValueAsString(projected) + "\n").getBytes(StandardCharsets.UTF_8));
     }
 
+    static String checkedRuntimeSnapshot(Arm arm, byte[] bytes) throws Exception {
+        check(sha(bytes).equals(arm.sha256()), "Runtime changed after approval: " + arm.id());
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    static Map<String, String> snapshotRuntimeTexts(List<Arm> arms) throws Exception {
+        var snapshots = new LinkedHashMap<String, String>();
+        Path datasetRoot = DATASET.toRealPath();
+        for (Arm arm : arms) {
+            Path expected = switch (arm.id()) {
+                case "BASELINE_64" -> BASELINE.normalize();
+                case "CANDIDATE_65" -> CANDIDATE.normalize();
+                default -> throw new IllegalArgumentException("Unexpected runtime arm: " + arm.id());
+            };
+            Path declared = Path.of(arm.path()).normalize();
+            check(declared.equals(expected), "Runtime path differs from approved arm: " + arm.id());
+            Path actual = declared.toRealPath();
+            check(actual.startsWith(datasetRoot), "Runtime must remain inside the dataset root: " + arm.id());
+            check(!snapshots.containsKey(arm.id()), "Duplicate runtime arm: " + arm.id());
+            snapshots.put(arm.id(), checkedRuntimeSnapshot(arm, bounded(actual)));
+        }
+        check(snapshots.keySet().equals(Set.of("BASELINE_64", "CANDIDATE_65")),
+                "Exact approved runtime arms required");
+        return Collections.unmodifiableMap(snapshots);
+    }
+
+    static String runtimeTextForAnalysis(Map<String, String> snapshots, Arm arm) {
+        String snapshot = snapshots.get(arm.id());
+        check(snapshot != null, "Missing verified runtime snapshot: " + arm.id());
+        return snapshot;
+    }
+
     /** Re-selects the frozen source slices instead of trusting the materialized fixture's own hash. */
     static Map<String, String> validateInputBindings(byte[] selectorsBytes, byte[] inputsBytes) throws Exception {
         JsonNode selectors = JSON.readTree(selectorsBytes), inputs = JSON.readTree(inputsBytes);
@@ -104,9 +136,11 @@ public final class CrossCasebookDevelopmentProbeTrial {
             check(materializedById.put(item.path("sampleId").asText(), item) == null,
                     "Duplicate materialized sample id");
         var sourceHashes = new TreeMap<String, String>();
+        var selectedIds = new HashSet<String>();
         for (JsonNode item : selectors.path("items")) {
             String sampleId = item.path("sampleId").asText();
             check(CASE_IDS.contains(sampleId), "Unexpected selector sample id");
+            check(selectedIds.add(sampleId), "Duplicate selector sample id: " + sampleId);
             JsonNode materialized = materializedById.get(sampleId);
             check(materialized != null, "Selector has no matching materialized input");
 
@@ -154,6 +188,8 @@ public final class CrossCasebookDevelopmentProbeTrial {
         }
         check(materializedById.keySet().equals(new HashSet<>(CASE_IDS)),
                 "Materialized inputs must contain exactly the frozen sample ids");
+        check(selectedIds.equals(new HashSet<>(CASE_IDS)),
+                "Selectors must bind each frozen sample id exactly once");
         return Collections.unmodifiableMap(sourceHashes);
     }
 
@@ -247,12 +283,16 @@ public final class CrossCasebookDevelopmentProbeTrial {
     static JsonNode manifest(Plan plan) throws Exception {
         Plan current = prepare();
         assertSameFrozenPlan(plan, current);
+        return manifest(plan, snapshotRuntimeTexts(plan.arms()));
+    }
+
+    static JsonNode manifest(Plan plan, Map<String, String> runtimeSnapshots) throws Exception {
         var rows = JSON.createArrayNode();
         boolean candidateRetrievedD05ForSourceCase = false;
         for (CaseInput sample : plan.cases()) {
             var pair = new ArrayList<CasebookReferenceIsolationPreflight.Arm>();
             for (Arm arm : plan.arms()) {
-                String runtimeText = Files.readString(Path.of(arm.path()));
+                String runtimeText = runtimeTextForAnalysis(runtimeSnapshots, arm);
                 var captured = CasebookReferenceIsolationPreflight.capture(arm.id() + "_" + sample.id(), 3,
                         sample.review(), runtimeText);
                 check(captured.providerCalls() == 0 && !captured.calls().isEmpty()
@@ -422,7 +462,10 @@ public final class CrossCasebookDevelopmentProbeTrial {
         Path manifestPath = Path.of(args[3]).toRealPath(); byte[] manifestBytes = bounded(manifestPath);
         check(sha(manifestBytes).equals(args[4]), "Manifest SHA mismatch");
         Plan plan = JSON.readValue(planBytes, Plan.class); validate(plan);
-        check(JSON.readTree(manifestBytes).equals(manifest(plan)), "Input, runtime, implementation or retrieval drift");
+        Plan current = prepare(); assertSameFrozenPlan(plan, current);
+        Map<String, String> runtimeSnapshots = snapshotRuntimeTexts(plan.arms());
+        check(JSON.readTree(manifestBytes).equals(manifest(plan, runtimeSnapshots)),
+                "Input, runtime, implementation or retrieval drift");
         check(CONSENT.equals(System.getenv("CROSS_CASEBOOK_DEV_PROBE_CONSENT")), "Exact-plan consent token required");
         Path output = Path.of(args[5]).toAbsolutePath().normalize();
         check(!Files.exists(output) && output.getParent().toRealPath().startsWith(experimentRoot),
@@ -466,7 +509,7 @@ public final class CrossCasebookDevelopmentProbeTrial {
                 index++; guard.beginAnalysis(); client.calls.clear(); client.beginVideo(0L);
                 client.beginAnalyzer("cross-casebook-" + sample.id() + "-" + arm.id().toLowerCase(Locale.ROOT));
                 var library = new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(
-                        Files.readString(Path.of(arm.path()))), true, "classpath:frozen.json", 6000, 3, 3000, "", true);
+                        runtimeTextForAnalysis(runtimeSnapshots, arm)), true, "classpath:frozen.json", 6000, 3, 3000, "", true);
                 library.load();
                 var context = new AnalysisContext(Video.builder().filename("private-cross-casebook-probe").build(),
                         ContentGenre.GENERAL, List.of(), List.of(), sample.review());
