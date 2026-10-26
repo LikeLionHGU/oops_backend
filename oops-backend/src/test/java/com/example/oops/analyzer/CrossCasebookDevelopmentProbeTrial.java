@@ -65,9 +65,96 @@ public final class CrossCasebookDevelopmentProbeTrial {
         var hashes = new TreeMap<>(SocialDefectCurrentModelTrial.implementation());
         for (String file : List.of(
                 "src/test/java/com/example/oops/analyzer/CrossCasebookDevelopmentProbeTrial.java",
-                "src/test/java/com/example/oops/analyzer/CrossCasebookDevelopmentProbeTrialTest.java"))
+                "src/test/java/com/example/oops/analyzer/CrossCasebookDevelopmentProbeTrialTest.java",
+                "src/test/java/com/example/oops/analyzer/CasebookReferenceIsolationPreflight.java",
+                "src/test/java/com/example/oops/analyzer/MechanismRoutingTrial.java",
+                "src/test/java/com/example/oops/analyzer/CasebookHoldoutCurrentPipelineTrial.java",
+                "src/test/java/com/example/oops/analyzer/DefaultVerificationTrial.java"))
             hashes.put(file, sha(Files.readAllBytes(Path.of(file))));
         return hashes;
+    }
+
+    static JsonNode projectSegments(Iterable<JsonNode> segments) {
+        var projected = JSON.createArrayNode();
+        for (JsonNode segment : segments) {
+            check(segment.path("startMs").isIntegralNumber() && segment.path("endMs").isIntegralNumber()
+                            && segment.path("text").isTextual(), "Transcript segment shape must be integral/text");
+            var row = projected.addObject();
+            row.put("startMs", segment.path("startMs").asLong());
+            row.put("endMs", segment.path("endMs").asLong());
+            row.put("text", segment.path("text").asText());
+        }
+        return projected;
+    }
+
+    static String canonicalSelectionSha(JsonNode projected) throws Exception {
+        check(projected.isArray(), "Projected selector content must be an array");
+        return sha((JSON.writeValueAsString(projected) + "\n").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Re-selects the frozen source slices instead of trusting the materialized fixture's own hash. */
+    static Map<String, String> validateInputBindings(byte[] selectorsBytes, byte[] inputsBytes) throws Exception {
+        JsonNode selectors = JSON.readTree(selectorsBytes), inputs = JSON.readTree(inputsBytes);
+        Path datasetRoot = DATASET.toRealPath();
+        check(selectors.path("items").size() == CASE_IDS.size()
+                        && inputs.path("items").size() == CASE_IDS.size(),
+                "Exact selector/materialized item count required");
+        var materializedById = new HashMap<String, JsonNode>();
+        for (JsonNode item : inputs.path("items"))
+            check(materializedById.put(item.path("sampleId").asText(), item) == null,
+                    "Duplicate materialized sample id");
+        var sourceHashes = new TreeMap<String, String>();
+        for (JsonNode item : selectors.path("items")) {
+            String sampleId = item.path("sampleId").asText();
+            check(CASE_IDS.contains(sampleId), "Unexpected selector sample id");
+            JsonNode materialized = materializedById.get(sampleId);
+            check(materialized != null, "Selector has no matching materialized input");
+
+            Path sourcePath = datasetRoot.resolve(item.at("/source/path").asText()).normalize().toRealPath();
+            check(sourcePath.startsWith(datasetRoot), "Transcript source must remain inside the dataset root");
+            byte[] sourceBytes = bounded(sourcePath);
+            String sourceSha = sha(sourceBytes);
+            check(sourceSha.equals(item.at("/source/sha256").asText()), "Transcript source hash drift: " + sampleId);
+            sourceHashes.put("transcript:" + sampleId, sourceSha);
+
+            JsonNode selector = item.path("selector");
+            JsonNode rows = JSON.readTree(sourceBytes).at(selector.path("jsonPointer").asText());
+            check(rows.isArray(), "Selector JSON pointer must resolve to an array: " + sampleId);
+            var selected = new ArrayList<JsonNode>();
+            switch (selector.path("mode").asText()) {
+                case "array-slice" -> {
+                    int start = selector.path("startIndexInclusive").asInt(-1);
+                    int end = selector.path("endIndexExclusive").asInt(-1);
+                    check(start >= 0 && end >= start && end <= rows.size(), "Invalid frozen array slice: " + sampleId);
+                    for (int i = start; i < end; i++) selected.add(rows.get(i));
+                }
+                case "array-filter-by-startMs" -> {
+                    long lower = selector.path("startMsInclusive").asLong(Long.MIN_VALUE);
+                    long upper = selector.path("startMsExclusive").asLong(Long.MIN_VALUE);
+                    check(lower < upper, "Invalid frozen time range: " + sampleId);
+                    rows.forEach(row -> {
+                        if (row.path("startMs").isIntegralNumber()) {
+                            long startMs = row.path("startMs").asLong();
+                            if (lower <= startMs && startMs < upper) selected.add(row);
+                        }
+                    });
+                }
+                default -> throw new IllegalArgumentException("Unsupported frozen selector mode: " + sampleId);
+            }
+            JsonNode selectedProjection = projectSegments(selected);
+            JsonNode materializedProjection = projectSegments(materialized.path("segments"));
+            check(selectedProjection.size() == selector.path("expectedSegmentCount").asInt(-1)
+                            && selectedProjection.size() == materializedProjection.size(),
+                    "Selected segment count differs from frozen input: " + sampleId);
+            String selectedSha = canonicalSelectionSha(selectedProjection);
+            check(selectedSha.equals(item.path("selectedContentSha256").asText())
+                            && selectedSha.equals(canonicalSelectionSha(materializedProjection)),
+                    "Materialized text/time does not match the approved source selector: " + sampleId);
+            check(selectedProjection.equals(materializedProjection), "Source-order selection drift: " + sampleId);
+        }
+        check(materializedById.keySet().equals(new HashSet<>(CASE_IDS)),
+                "Materialized inputs must contain exactly the frozen sample ids");
+        return Collections.unmodifiableMap(sourceHashes);
     }
 
     static List<CaseInput> loadCases(byte[] inputsBytes) throws Exception {
@@ -125,6 +212,7 @@ public final class CrossCasebookDevelopmentProbeTrial {
         sourceHashes.put("selectors", sha(selectors)); sourceHashes.put("materializedInputs", sha(inputs));
         sourceHashes.put("baselineRuntime", sha(baseline)); sourceHashes.put("candidateRuntime", sha(candidate));
         sourceHashes.put("pairedD05Preflight", sha(paired));
+        sourceHashes.putAll(validateInputBindings(selectors, inputs));
         double reserve = SocialDefectCurrentModelTrial.reservation(MAX_HTTP_TOTAL, MAX_BODY_BYTES);
         var plan = new Plan("cross-casebook-development-probe-trial-1",
                 "THREE_FIXED_TEXT_ONLY_DEVELOPMENT_INPUTS_PAIRED_BASELINE64_VS_D05_CANDIDATE65; NOT_GENERALIZATION_PROOF",
@@ -151,7 +239,14 @@ public final class CrossCasebookDevelopmentProbeTrial {
                 "Exact two-arm, three-case comparison required");
     }
 
+    static void assertSameFrozenPlan(Plan frozen, Plan current) {
+        check(JSON.valueToTree(frozen).equals(JSON.valueToTree(current)),
+                "Frozen implementation, transcript source, selector, input, runtime, or policy drift");
+    }
+
     static JsonNode manifest(Plan plan) throws Exception {
+        Plan current = prepare();
+        assertSameFrozenPlan(plan, current);
         var rows = JSON.createArrayNode();
         boolean candidateRetrievedD05ForSourceCase = false;
         for (CaseInput sample : plan.cases()) {
