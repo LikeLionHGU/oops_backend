@@ -835,6 +835,18 @@ tasks.register('currentStoredTextPipelineTrial', JavaExec) {
     }
 }
 
+// One-use, text-only known-case smoke; never called by bootRun or test.
+tasks.register('socialDefectCurrentModelTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SocialDefectCurrentModelTrial'
+    doFirst {
+        def values = providers.gradleProperty('socialDefectTrialArgs').orNull
+        if (!values) throw new GradleException('Explicit socialDefectTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
 // Opt-in six-request reference comparison; never called by bootRun or test.
 tasks.register('developmentBoundaryReferenceTrial', JavaExec) {
     dependsOn testClasses
