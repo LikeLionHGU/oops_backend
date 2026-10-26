@@ -4,6 +4,9 @@ import com.example.oops.client.OpenAiClient;
 import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.TimelineEventType;
 import com.example.oops.domain.Video;
+import com.example.oops.dto.TimelineEventDto;
+import com.example.oops.fusion.FindingFusionService;
+import com.example.oops.domain.CandidateType;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -108,7 +111,7 @@ class SocialDefectBoundaryRetrievalAuditTest {
             Path experiments = root.resolve("experiments").toAbsolutePath().normalize();
             assertThat(destination.startsWith(experiments)).isTrue();
             Files.createDirectories(destination.getParent());
-            var report = Map.of("schemaVersion", "social-defect-boundary-pipeline-audit-2",
+            var report = Map.of("schemaVersion", "social-defect-boundary-pipeline-audit-3",
                     "providerCalls", 0, "modelResponses", "DETERMINISTIC_TEST_FIXTURES",
                     "candidatePipelineExecuted", true, "liveModelJudgmentExecuted", false, "runtimeChanged", false,
                     "sourceGroupIndependence", "NOT_ESTABLISHED", "results", results);
@@ -120,35 +123,55 @@ class SocialDefectBoundaryRetrievalAuditTest {
                                                       List<ReviewInput.Segment> raw, boolean review,
                                                       String quote, String anchorId) {
         OpenAiClient client = mock(OpenAiClient.class);
-        List<String> reviewedIds = raw.stream().map(ReviewInput.Segment::id).toList();
         var proposal = new CandidateReviewEngine.Proposal(anchorId, "TARGET_TREATMENT",
                 "친구 관계가 적다는 상황을 개인의 결함으로 연결하는지 확인합니다.",
                 List.of(new CandidateReviewEngine.Quote(anchorId, quote)));
+        String secondAnchor = "stt-index-459";
+        String secondQuote = "너 문제가 있는 거야. 너한테";
         when(client.completeAsJson(anyString(), anyString(), eq(CandidateReviewEngine.Discovery.class)))
-                .thenReturn(java.util.Optional.of(new CandidateReviewEngine.Discovery(reviewedIds,
-                        List.of(proposal), List.of(), false)));
-        var evidence = review
-                ? List.of(new TextReviewEngine.LlmEvidence(anchorId, quote, "PRIMARY"),
-                        new TextReviewEngine.LlmEvidence(anchorId, "당신", "TARGET"),
-                        new TextReviewEngine.LlmEvidence("stt-index-454", raw.get(0).text(), "CONTEXT"))
-                : List.of(new TextReviewEngine.LlmEvidence(anchorId, quote, "PRIMARY"));
-        var decision = review
-                ? new TextReviewEngine.LlmDecision(anchorId, "REVIEW_REQUIRED", quote,
-                        "친구가 없다는 상황을 왕따와 개인 문제에 연결해 상대를 낮추는 표현입니다.",
-                        "BELITTLEMENT", "당신", .6, null, null, List.of(), evidence,
-                        "PERSON", "EXPLICIT", "‘당신’이 발언에서 직접 지칭된 사람입니다.",
-                        "친한 사이의 농담일 수 있지만, 현재 입력에는 개인 문제로 단정하는 표현이 남습니다.", "당신")
-                : new TextReviewEngine.LlmDecision(anchorId, "PASS", quote,
-                        "관계의 빈도와 개인 선호를 설명하는 내용이며 상대의 결함으로 연결하지 않습니다.",
-                        null, null, null, null, null, List.of(), evidence,
-                        null, null, null, null, null);
+                .thenAnswer(invocation -> {
+                    JsonNode request = ReviewGuidelineLibrary.JSON.readTree(invocation.getArgument(1, String.class));
+                    List<String> primaryIds = new ArrayList<>();
+                    request.path("primaryIds").forEach(id -> primaryIds.add(id.asText()));
+                    List<CandidateReviewEngine.Proposal> proposals = new ArrayList<>();
+                    if (primaryIds.contains(anchorId)) proposals.add(proposal);
+                    if (review && primaryIds.contains(secondAnchor)) proposals.add(new CandidateReviewEngine.Proposal(
+                            secondAnchor, "TARGET_TREATMENT",
+                            "같은 대화에서 같은 상대의 관계 부족을 개인 문제로 반복 연결하는지 확인합니다.",
+                            List.of(new CandidateReviewEngine.Quote(secondAnchor, secondQuote))));
+                    return java.util.Optional.of(new CandidateReviewEngine.Discovery(
+                            primaryIds, proposals, List.of(), false));
+                });
         when(client.completeAsJson(anyString(), anyString(), eq(CandidateReviewEngine.VerificationResult.class)))
-                .thenReturn(java.util.Optional.of(new CandidateReviewEngine.VerificationResult(List.of(
-                        new CandidateReviewEngine.Verification("candidate-1", decision)))));
+                .thenAnswer(invocation -> {
+                    JsonNode request = ReviewGuidelineLibrary.JSON.readTree(invocation.getArgument(1, String.class));
+                    List<CandidateReviewEngine.Verification> verifications = new ArrayList<>();
+                    for (JsonNode candidate : request.path("candidates")) {
+                        String candidateId = candidate.path("candidateId").asText();
+                        String candidateAnchor = candidate.path("anchorId").asText();
+                        if (review) {
+                            boolean second = secondAnchor.equals(candidateAnchor);
+                            verifications.add(new CandidateReviewEngine.Verification(candidateId,
+                                    reviewDecision(candidateAnchor, second ? secondQuote : quote,
+                                            second ? "너" : "당신", raw, second)));
+                        } else {
+                            verifications.add(new CandidateReviewEngine.Verification(candidateId,
+                                    new TextReviewEngine.LlmDecision(candidateAnchor, "PASS", quote,
+                                            "관계의 빈도와 개인 선호를 설명하는 내용이며 상대의 결함으로 연결하지 않습니다.",
+                                            null, null, null, null, null, List.of(),
+                                            List.of(new TextReviewEngine.LlmEvidence(candidateAnchor, quote, "PRIMARY")),
+                                            null, null, null, null, null)));
+                        }
+                    }
+                    return java.util.Optional.of(new CandidateReviewEngine.VerificationResult(verifications));
+                });
 
         var context = new AnalysisContext(Video.builder().filename("private-evaluation-input").build(),
                 ContentGenre.GENERAL, List.of(), List.of(), new ReviewInput(raw));
-        var result = CandidateReviewEngine.run(client, context, 24, null, null, library);
+        var services = new CandidateReviewEngine.RunServices(null, null, library, null, null);
+        var options = new CandidateReviewEngine.RunOptions(24, 0, false,
+                new CandidateReviewEngine.VerificationFeatures(false, false, false), false);
+        var result = CandidateReviewEngine.run(client, context, services, options);
 
         ArgumentCaptor<String> discoverySystem = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> discoveryInput = ArgumentCaptor.forClass(String.class);
@@ -156,28 +179,71 @@ class SocialDefectBoundaryRetrievalAuditTest {
         ArgumentCaptor<String> verificationSystem = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> verificationInput = ArgumentCaptor.forClass(String.class);
         verify(client, atLeastOnce()).completeAsJson(verificationSystem.capture(), verificationInput.capture(), eq(CandidateReviewEngine.VerificationResult.class));
-        List<String> requests = new ArrayList<>(discoverySystem.getAllValues());
-        requests.addAll(discoveryInput.getAllValues());
-        requests.addAll(verificationSystem.getAllValues());
-        requests.addAll(verificationInput.getAllValues());
+        List<String> discoveryRequests = new ArrayList<>(discoverySystem.getAllValues());
+        discoveryRequests.addAll(discoveryInput.getAllValues());
+        List<String> verificationRequests = new ArrayList<>(verificationSystem.getAllValues());
+        verificationRequests.addAll(verificationInput.getAllValues());
         String referenceMarker = "친구 없음→왕따→네 문제라는 원문 연결";
-        if (review) assertThat(requests).anyMatch(request -> request.contains(referenceMarker));
-        assertThat(result.status()).isEqualTo(com.example.oops.domain.AnalyzerStatus.SUCCESS);
-        assertThat(result.findings()).hasSize(review ? 1 : 0);
         if (review) {
-            var finding = result.findings().get(0);
-            assertThat(finding.getStartMs()).isEqualTo(2_828_000L);
-            assertThat(finding.getReason()).contains("왕따");
+            assertThat(discoveryRequests).anyMatch(request -> request.contains(referenceMarker));
+            assertThat(verificationRequests).anyMatch(request -> request.contains(referenceMarker));
+        } else {
+            assertThat(discoveryRequests).noneMatch(request -> request.contains(referenceMarker));
+            assertThat(verificationRequests).noneMatch(request -> request.contains(referenceMarker));
+        }
+        assertThat(result.status()).as("candidate pipeline diagnostics: %s", result.diagnostics().candidatePipeline())
+                .isEqualTo(com.example.oops.domain.AnalyzerStatus.SUCCESS);
+        assertThat(result.findings()).hasSize(review ? 2 : 0);
+        var fused = new FindingFusionService().fuse(result.findings());
+        List<TimelineEventDto> cards = fused.stream()
+                .map(finding -> TimelineEventDto.from(finding, null, null, null)).toList();
+        assertThat(cards).hasSize(review ? 1 : 0);
+        if (review) {
+            var card = cards.get(0);
+            assertThat(card.type()).isEqualTo(TimelineEventType.SPEECH);
+            assertThat(card.candidateType()).isEqualTo(CandidateType.SPEECH_REVIEW);
+            assertThat(card.startMs()).isEqualTo(2_828_000L);
+            assertThat(card.endMs()).isEqualTo(2_840_000L);
+            assertThat(card.text()).contains("문제가 있는 거야");
+            assertThat(card.reason()).contains("왕따");
+            assertThat(card.relatedEvidence()).extracting(com.example.oops.domain.FindingSupport.Quote::segmentId)
+                    .contains("stt-index-458", "stt-index-459");
         }
         return Map.ofEntries(Map.entry("caseId", caseId),
                 Map.entry("pipelineRevision", result.diagnostics().candidatePipeline().revision()),
                 Map.entry("mockDiscoveryCalls", discoveryInput.getAllValues().size()),
                 Map.entry("mockVerificationCalls", verificationInput.getAllValues().size()),
-                Map.entry("selectedReferenceInRequests", requests.stream().anyMatch(request -> request.contains(referenceMarker))),
+                Map.entry("selectedReferenceInDiscovery", discoveryRequests.stream().anyMatch(request -> request.contains(referenceMarker))),
+                Map.entry("selectedReferenceInVerification", verificationRequests.stream().anyMatch(request -> request.contains(referenceMarker))),
                 Map.entry("providerCalls", 0), Map.entry("responseMode", "DETERMINISTIC_TEST_FIXTURE"),
                 Map.entry("retrievedReferenceCarriesHumanReviewRationale", review),
-                Map.entry("formalGoldLabelFieldAttached", false), Map.entry("finalFindingCount", result.findings().size()),
+                Map.entry("evidenceLimit", 0), Map.entry("reviewFindingCount", result.findings().size()),
+                Map.entry("fusedFindingCount", fused.size()), Map.entry("finalCardCount", cards.size()),
+                Map.entry("finalCards", cards.stream().map(card -> Map.of(
+                        "type", card.type().name(), "candidateType", card.candidateType().name(),
+                        "startMs", card.startMs(), "endMs", card.endMs(), "text", card.text(),
+                        "relatedEvidenceSegmentIds", card.relatedEvidence().stream()
+                                .map(com.example.oops.domain.FindingSupport.Quote::segmentId).distinct().toList())).toList()),
                 Map.entry("status", result.status().name()), Map.entry("semanticModelQualityMeasured", false));
+    }
+
+    private static TextReviewEngine.LlmDecision reviewDecision(String anchorId, String quote, String targetMention,
+                                                                 List<ReviewInput.Segment> raw, boolean linkedAnchor) {
+        var evidence = new ArrayList<TextReviewEngine.LlmEvidence>();
+        evidence.add(new TextReviewEngine.LlmEvidence(anchorId, quote, "PRIMARY"));
+        evidence.add(new TextReviewEngine.LlmEvidence(anchorId, targetMention, "TARGET"));
+        evidence.add(new TextReviewEngine.LlmEvidence("stt-index-454", segment(raw, "stt-index-454").text(), "CONTEXT"));
+        evidence.add(new TextReviewEngine.LlmEvidence("stt-index-457", segment(raw, "stt-index-457").text(), "CONTEXT"));
+        if (linkedAnchor) evidence.add(new TextReviewEngine.LlmEvidence("stt-index-458", segment(raw, "stt-index-458").text(), "CONTEXT"));
+        return new TextReviewEngine.LlmDecision(anchorId, "REVIEW_REQUIRED", quote,
+                "친구가 없다는 상황을 왕따와 개인 문제에 연결해 같은 상대를 낮추는 표현입니다.",
+                "BELITTLEMENT", "대화 상대", .6, null, null, List.of(), evidence,
+                "PERSON", "CONTEXTUAL", "‘당신’과 ‘너’가 앞뒤 발언에서 같은 대화 상대를 가리킵니다.",
+                "친한 사이의 농담일 수 있지만, 현재 입력에는 개인 문제로 단정하는 표현이 남습니다.", targetMention);
+    }
+
+    private static ReviewInput.Segment segment(List<ReviewInput.Segment> raw, String id) {
+        return raw.stream().filter(item -> item.id().equals(id)).findFirst().orElseThrow();
     }
 
     private static ReviewInput.Segment toSegment(JsonNode segment) {
