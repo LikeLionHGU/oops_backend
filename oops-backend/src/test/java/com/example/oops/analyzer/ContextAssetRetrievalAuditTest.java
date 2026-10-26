@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Actual selector only, not candidate discovery or model judgment. No network calls. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ContextAssetRetrievalAuditTest {
     @Test void auditFrozenDevelopmentQueriesAgainstActiveAndContextOnlyPreview() throws Exception {
         Path root = Path.of("../datasets/controversy");

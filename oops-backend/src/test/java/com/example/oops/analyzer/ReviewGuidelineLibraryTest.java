@@ -14,6 +14,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ReviewGuidelineLibraryTest {
     @Test void v7ExampleMayNarrowButNeverExpandOrEmptyItsMechanismChannels() throws Exception {
         var archive = new ContextRelationRetrievalTest().archive();

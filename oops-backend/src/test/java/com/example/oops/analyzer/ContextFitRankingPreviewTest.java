@@ -8,6 +8,7 @@ import static com.example.oops.domain.TimelineEventType.SPEECH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ContextFitRankingPreviewTest {
     static ReviewGuidelineLibrary.ContextExample example(String id, String search) {
         return new ReviewGuidelineLibrary.ContextExample(id,"synthetic",List.of("sexual-objectification"),List.of("SPEECH"),

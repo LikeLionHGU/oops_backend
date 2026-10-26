@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Exact JSON-content request replay of this run, not a new model evaluation. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class CurrentStoredPipelineReplayTest {
     static void sameSystem(String expected,String actual) {
         String marker="contextReference=";int a=expected.indexOf(marker),b=actual.indexOf(marker);

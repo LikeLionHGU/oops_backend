@@ -17,6 +17,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 /** Optional private-data wiring test; no provider calls or model accuracy claims. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class LocalDevelopmentBoundaryRetrievalTest {
     @Test void approvedMtPreferenceBoundaryRetrievesWithoutChangingStoredTranscriptOrForcingPass() throws Exception {
         var sourcePath = ROOT.resolve("context-sources/mimiminu-mt-preference-20261023.json");

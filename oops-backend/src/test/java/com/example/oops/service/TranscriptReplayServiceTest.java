@@ -16,6 +16,7 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(properties="spring.datasource.url=jdbc:h2:mem:transcript-replay-test;MODE=MySQL;DB_CLOSE_DELAY=-1")
 @ActiveProfiles("test")
 @Transactional
+@org.junit.jupiter.api.Tag("dataset-backed")
 class TranscriptReplayServiceTest {
     @Autowired TranscriptReplayService replays;
     @Autowired ScriptImportService scriptImports;

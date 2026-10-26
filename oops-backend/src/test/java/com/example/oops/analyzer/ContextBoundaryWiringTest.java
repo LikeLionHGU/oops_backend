@@ -8,6 +8,7 @@ import static com.example.oops.domain.TimelineEventType.SPEECH;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ContextBoundaryWiringTest {
     @Test void productionSelectionSupplementsFrozenMissingBoundariesAndReportsTheChange() throws Exception {
         var root=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified");

@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Private source-linked retrieval probes, not model accuracy or independent evaluation. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class PodcastBoundaryRetrievalTest {
     private String sha(byte[] raw) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(raw));

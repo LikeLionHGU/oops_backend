@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Local casebook retrieval check, never a model decision or an independent accuracy test. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ArchitectureNormalBoundaryTest {
     @Test void approvedObservedNormalCasesAreRetrievedWithoutRewritingSttOrChangingBudgets() throws Exception {
         var root = Path.of("../datasets/controversy");

@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Legacy and current planner replay. No provider, generated interpretation or decision labels. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class TranscriptFragmentationAuditTest {
     private static final Path ROOT = Path.of("../datasets/controversy");
     private ReviewInput input(Path file) throws Exception {

@@ -40,7 +40,26 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'dataset-backed'
+    }
+}
+
+// Private ignored datasets remain local; opt into their audits separately when available.
+tasks.register('datasetTest', Test) {
+    group = 'verification'
+    description = 'Runs tests tagged dataset-backed; requires the private ../datasets/controversy tree.'
+    dependsOn testClasses
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'dataset-backed'
+    }
+    doFirst {
+        if (!file('../datasets/controversy').isDirectory()) {
+            throw new GradleException('datasetTest requires the private ../datasets/controversy directory')
+        }
+    }
 }
 
 // Explicit opt-in text-only model trial; never part of test/bootRun.

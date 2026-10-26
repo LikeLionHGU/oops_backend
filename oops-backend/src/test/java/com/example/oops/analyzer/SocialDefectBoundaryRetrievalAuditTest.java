@@ -31,6 +31,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Development-only retrieval probe for one approved REVIEW case and its user-approved synthetic PASS contrast. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class SocialDefectBoundaryRetrievalAuditTest {
     private static final String UNIT_ID = "podcast-dev#podcast-social-defect";
     private static final String POSITIVE_CASE_ID = "social-defect-boundary#approved-review-124";

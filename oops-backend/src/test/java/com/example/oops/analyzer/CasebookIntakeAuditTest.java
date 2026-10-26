@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class CasebookIntakeAuditTest {
     @TempDir Path temp;
     private String sha(byte[] raw) throws Exception {

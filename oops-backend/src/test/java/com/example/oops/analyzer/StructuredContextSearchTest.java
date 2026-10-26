@@ -7,6 +7,7 @@ import static com.example.oops.domain.TimelineEventType.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.*;
 import static org.assertj.core.api.Assertions.*;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class StructuredContextSearchTest {
     private final StructuredContextSearch search = StructuredContextSearch.load();
     private ReviewInput.Segment line(String id, long start, String text) {

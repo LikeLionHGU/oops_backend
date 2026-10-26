@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.*;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class SocialDefectCurrentModelTrialTest {
     static final String PLAN = "../datasets/controversy/experiments/social-defect-current-model-plan-20261026-v1/plan.json";
     static final String PLAN_SHA = "e6ec4e09cbdbc0abbc124e05faf1d3f11c458d4853b846fe2b05482595c6ac22";

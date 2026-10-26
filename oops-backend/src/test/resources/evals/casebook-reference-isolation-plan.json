@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "casebook-reference-isolation-plan-1",
+  "status": "DESIGN_ONLY_FRESH_APPROVAL_REQUIRED_FOR_MODEL_CALLS",
+  "target": {
+    "caseId": "D05-taekwondo-belt-generalization",
+    "sourceVideoId": "104",
+    "priorResult": "NO_CANDIDATE_IN_2_OF_2_RUNS",
+    "priorRuntimeSha256": "6280ad8b45ccffc1a8029514ff41f8003d2834a2bf4f724386cb2f020643efaf"
+  },
+  "frozenArtifacts": {
+    "baselinePlanSha256": "01ff343ddfccd8afd0771302a8f0d83d19d0d86e71d242b6227810b5ddd0569c",
+    "baselineManifestSha256": "92346ab1f6649a48edff05cccfa67df883102bb3b63ada9d37a596f47a4c4ff6",
+    "baselineResultsSha256": "65c2e4a720252d6e8babc6e6e4dc7f36f0a6817b8b048d9dc9bd0fd68b4515ac",
+    "reviewPacketSha256": "95744e0a6e187e6cbdd96c4ffd412d2995f0307c7cd9108b8b1e186cc4205ad0",
+    "storedTranscriptSha256": "6a2c6c53003ff491cc23e2f3d540ad768157046bdfaeaa6369bbdf4a1461d89a",
+    "runtimeGuidelinesSha256": "6280ad8b45ccffc1a8029514ff41f8003d2834a2bf4f724386cb2f020643efaf",
+    "manifestImplementationSha256": "4f58df1c50cf6bf59ae00d7bc3277b5592761bea7e031b88c1cfe9c95eb2f226",
+    "candidateReviewEngineSha256": "2b239c0945d0bfb4118ebd3af6f9622647b9e63308c42f0022654203980198cf",
+    "reviewGuidelineLibrarySha256": "367cb7fb4719aa130bc701cd724f1fa349030ed4a452e4abd8747508aa9aac6d",
+    "speechReviewAnalyzerSha256": "5f6765f7e959e2d5ec5be63a6cc132b412ba50c95b0a6e9beccfef04881d76a7",
+    "trialRunnerSha256": "622ebf482d50f197717e51c78e1284ab58238218fc51409f857976d40f5763a0"
+  },
+  "question": "Does the retrieved example suppress discovery, or is the miss present without selected examples too?",
+  "fixedFactors": [
+    "Exact user-reviewed stored transcript segment IDs and text",
+    "CandidateReviewEngine implementation and shared system prompt hash",
+    "GPT-6 Luna with reasoning none",
+    "Global review guidelines and their runtime bytes",
+    "Genre, reading-window construction, output schema, budgets, and verification features",
+    "No video, audio, OCR, frame, or image input"
+  ],
+  "conditions": [
+    {
+      "id": "CURRENT_SELECTED_REFERENCE",
+      "guidelineExamplesMaxCases": 3,
+      "expectedSelection": ["podcast-dev#podcast-boast-response"],
+      "description": "Keep all guideline/pattern rows and reproduce the prior selected example; verify the preflight selection trace before any model call."
+    },
+    {
+      "id": "GLOBAL_GUIDELINES_WITHOUT_EXAMPLES",
+      "guidelineExamplesMaxCases": 0,
+      "expectedSelection": [],
+      "description": "Keep the same global guideline/pattern rows and prompt contract; maxExamples=0 omits selected example contexts from the model payload. Verify the request payload hash before any model call."
+    }
+  ],
+  "protocol": {
+    "pairedRepeatsPerCondition": 5,
+    "conditionOrder": [
+      "CURRENT_SELECTED_REFERENCE", "GLOBAL_GUIDELINES_WITHOUT_EXAMPLES",
+      "GLOBAL_GUIDELINES_WITHOUT_EXAMPLES", "CURRENT_SELECTED_REFERENCE",
+      "GLOBAL_GUIDELINES_WITHOUT_EXAMPLES", "CURRENT_SELECTED_REFERENCE",
+      "CURRENT_SELECTED_REFERENCE", "GLOBAL_GUIDELINES_WITHOUT_EXAMPLES",
+      "CURRENT_SELECTED_REFERENCE", "GLOBAL_GUIDELINES_WITHOUT_EXAMPLES"
+    ],
+    "spacingBetweenAnalysesMs": 15000,
+    "stopOn": [
+      "Any hash drift in source, runtime guidelines, prompt implementation, or model configuration",
+      "Any API/schema/budget failure or output payload containing expected labels"
+    ],
+    "freshApprovalRequired": true,
+    "priorBudgetReusable": false,
+    "hardCostCapMustBeSetBeforeRun": true
+  },
+  "outcomes": [
+    "REVIEW_REQUIRED",
+    "PASS_AFTER_VERIFICATION",
+    "NO_CANDIDATE",
+    "UNCERTAIN",
+    "INCOMPLETE",
+    "PIPELINE_FAILED",
+    "UNCLASSIFIED"
+  ],
+  "interpretation": {
+    "currentMissAndNoExamplesMiss": "No evidence that the selected example caused the miss; investigate discovery criteria next.",
+    "currentMissButNoExamplesFinds": "Evidence that the selected example may be interfering; not proof of causality from this small trial.",
+    "inconsistentWithinCondition": "Treat as unstable; do not promote the case or change shared prompts based on this run.",
+    "currentFindsAndNoExamplesMiss": "The selected example may help this excerpt; do not generalize from D05 alone."
+  },
+  "promotionGate": {
+    "doNotAddD05ToRuntimeBefore": [
+      "A normal contrast for criticism of rank/promotion standards is reviewed and recorded",
+      "The case entry separates criticism of a system from demeaning practitioners as a group",
+      "The reference-isolation result and D02/D04 regression controls are reviewed"
+    ],
+    "noSharedPromptEditInThisExperiment": true,
+    "noTrainingUseAuthorized": true
+  }
+}

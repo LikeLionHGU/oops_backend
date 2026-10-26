@@ -98,3 +98,7 @@ WebSocket은 `/ws` → `/topic/videos/{videoId}/progress`다. `GET /health`에�
 원본은 기본 설정에서 24시간 뒤 정리 대상이 될 수 있다. `source-retention-hours`·프로필 설정과 실제 파일 존재를 확인한다. 기존 완료 리포트는 모델·사전 교체로 자동 갱신되지 않는다. 완료 영상은 재업로드하거나 로컬 저장 전사 재사용 API로 새 ID에 분석한다. 후자는 음성·화면을 다시 검수하지 않는다.
 
 최신 우선순위는 [개선 계획](../docs/guides/AI-분석-개선-계획.md), 서버 확장 과제는 [아키텍처](../docs/guides/서버-아키텍처.md)에 정리한다.
+
+## 테스트 분리
+
+`./gradlew test`는 저장소에 포함되지 않는 개인 `datasets/`에 의존하지 않는 기본 테스트를 실행한다. 개인 사례·전사 파일을 확인하는 테스트는 `dataset-backed` 태그로 분리했으며, 로컬 데이터가 준비된 환경에서만 `./gradlew datasetTest`로 실행한다. 별도 유료 모델 시험은 `test`나 `datasetTest`에서 호출되지 않는다. D05 사전 참고 분리 비교는 [실험 설계](src/test/resources/evals/casebook-reference-isolation-plan.json)를 확인하고, 실행 전 새 비용·전송 승인을 받아야 한다.

@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ConversationWindowContractTest {
     @Test void storedMovieExcerptKeepsItsEndingInEveryAdvertisedAnchorWindow() throws Exception {
         var file = java.nio.file.Path.of("../datasets/controversy/experiments/podcast-five-live-20261025/request-childhood-movie-fight.json");

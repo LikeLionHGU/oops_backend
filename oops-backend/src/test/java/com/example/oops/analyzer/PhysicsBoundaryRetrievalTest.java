@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Private development assets are optional; retrieval success is not judgment accuracy. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class PhysicsBoundaryRetrievalTest {
     @Test void approvedBoundariesPreserveSourceAndRetrieveWithinExistingBudgets() throws Exception {
         var root = Path.of("../datasets/controversy");

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class CurrentContextReferenceTrialTest {
     @Test void privatePreparationIsDeterministicAndContainsNoAnswerFields() throws Exception {
         var root=Path.of("../datasets/controversy");

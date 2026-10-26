@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Fixed existing approved development material, not new human labels or holdout. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ContextFitAdoptionGateTest {
     private static final Path ROOT=Path.of("../datasets/controversy");
     record Gate(int incrementalRecovery, int lostReferences, int irrelevantAdditions, int budgetViolations) {

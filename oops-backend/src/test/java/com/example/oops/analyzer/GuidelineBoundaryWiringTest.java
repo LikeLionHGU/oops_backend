@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /** Optional private-archive wiring regression. Mock outputs are probes, NOT model judgments. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class GuidelineBoundaryWiringTest {
     private static final Path ROOT = Path.of("../datasets/controversy");
     private static final String EXAMPLE = "pisik-yeongyang#s3-life-choice";

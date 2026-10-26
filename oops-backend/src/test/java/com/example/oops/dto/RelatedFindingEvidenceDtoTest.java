@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class RelatedFindingEvidenceDtoTest {
     private FindingSupport.Quote q(String id, long at, String role) {
         return new FindingSupport.Quote(id, TimelineEventType.SPEECH, at, at + 500, "합성 원문 " + id, role);

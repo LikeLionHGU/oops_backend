@@ -167,7 +167,142 @@ public final class CasebookHoldoutCurrentPipelineTrial {
         manifest.put("providerCalls", 0);
         manifest.put("labelLeakCheck", "Expected decisions remain local and are excluded from CandidateReviewEngine input.");
         manifest.put("mediaEgress", false);
+        manifest.set("executionConfiguration", JSON.valueToTree(executionConfiguration()));
         return manifest;
+    }
+
+    static Map<String, Object> executionConfiguration() {
+        var config = new LinkedHashMap<String, Object>();
+        config.put("executionPath", "CandidateReviewEngine.run");
+        config.put("inputMode", "TEXT_ONLY_STORED_TRANSCRIPT_EXCERPTS");
+        config.put("genre", "GENERAL");
+        config.put("model", "gpt-6-luna");
+        config.put("reasoningEffort", "none");
+        config.put("endpoint", ENDPOINT);
+        config.put("responseFormat", "json_object");
+        config.put("maxOutputTokens", OUTPUT_TOKENS);
+        config.put("requestTimeoutSeconds", 60);
+        config.put("candidateDiscoveryEnabled", true);
+        config.put("candidateReviewMaxCandidates", 24);
+        config.put("candidateReviewEvidenceLimit", 0);
+        config.put("sourceRelationsEnabled", false);
+        config.put("ruleCandidateUnionEnabled", false);
+        config.put("verificationFeatures", Map.of("finalBasis", false, "situationFirst", false,
+                "sourceUnderstanding", false));
+        config.put("reviewGuidelinesEnabled", true);
+        config.put("guidelinesPath", RUNTIME_RELATIVE);
+        config.put("guidelineCodePointBudget", 6000);
+        config.put("guidelineExampleMaxCases", 3);
+        config.put("guidelineExampleCodePointBudget", 3000);
+        config.put("structuredContextSearchEnabled", true);
+        config.put("reviewCaseLibraryEnabled", false);
+        config.put("mechanismRoutingEnabled", false);
+        config.put("visualReviewerEnabled", false);
+        config.put("fullScreenOcrEnabled", false);
+        config.put("requestTraceEnabled", false);
+        config.put("maxHttpAttemptsTotal", MAX_HTTP_TOTAL);
+        config.put("maxHttpAttemptsPerAnalysis", MAX_HTTP_PER_ANALYSIS);
+        config.put("maxRequestBodyBytes", MAX_BODY_BYTES);
+        config.put("spacingBetweenAnalysesMs", ANALYSIS_SPACING_MS);
+        config.put("mediaEgress", false);
+        return Collections.unmodifiableMap(config);
+    }
+
+    enum PipelineOutcome {
+        REVIEW_REQUIRED, REVIEW_REQUIRED_PARTIAL, PASS_AFTER_VERIFICATION,
+        NO_CANDIDATE, UNCERTAIN, INCOMPLETE, PIPELINE_FAILED, UNCLASSIFIED
+    }
+
+    static PipelineOutcome classifyOutcome(boolean successful, int findingCount, int unassessedCount,
+                                           boolean truncated, int proposedCount, int uncertainCount,
+                                           int verificationFailureCount, List<String> candidateStates) {
+        if (!successful) return PipelineOutcome.PIPELINE_FAILED;
+        if (findingCount > 0) {
+            return unassessedCount > 0 || truncated || verificationFailureCount > 0
+                    ? PipelineOutcome.REVIEW_REQUIRED_PARTIAL : PipelineOutcome.REVIEW_REQUIRED;
+        }
+        if (uncertainCount > 0 || candidateStates.contains("UNCERTAIN")) return PipelineOutcome.UNCERTAIN;
+        if (unassessedCount > 0 || truncated || verificationFailureCount > 0) return PipelineOutcome.INCOMPLETE;
+        if (proposedCount == 0) return PipelineOutcome.NO_CANDIDATE;
+        if (candidateStates.size() == proposedCount && candidateStates.stream().allMatch("PASS"::equals))
+            return PipelineOutcome.PASS_AFTER_VERIFICATION;
+        return PipelineOutcome.UNCLASSIFIED;
+    }
+
+    static String compareExpected(String expected, PipelineOutcome outcome) {
+        if ("REVIEW_REQUIRED".equals(expected)) {
+            return switch (outcome) {
+                case REVIEW_REQUIRED -> "MATCH";
+                case REVIEW_REQUIRED_PARTIAL -> "PARTIAL_MATCH";
+                case NO_CANDIDATE -> "MISSED_EXPECTED_REVIEW";
+                case PASS_AFTER_VERIFICATION -> "CONTRADICTED_EXPECTED_REVIEW";
+                default -> "INCONCLUSIVE";
+            };
+        }
+        if ("PASS".equals(expected)) {
+            return switch (outcome) {
+                case PASS_AFTER_VERIFICATION -> "MATCH";
+                case REVIEW_REQUIRED -> "FALSE_REVIEW";
+                case REVIEW_REQUIRED_PARTIAL -> "FALSE_REVIEW_PARTIAL";
+                case NO_CANDIDATE -> "NO_CANDIDATE_NO_WARNING_NOT_VERIFIED";
+                default -> "INCONCLUSIVE";
+            };
+        }
+        return "NO_APPROVED_EXPECTATION";
+    }
+
+    static Map<String, Object> auditRecordedResults(tools.jackson.databind.JsonNode recorded,
+                                                   tools.jackson.databind.JsonNode manifest) {
+        check(recorded.path("state").asText().equals("COMPLETE"), "Only complete recorded trial can be audited");
+        check(recorded.path("mediaSent").asBoolean(true) == false, "Expected text-only trial record");
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var row : recorded.path("results")) rows.add(auditRow(row));
+        check(rows.size() == 6, "Expected all six frozen analyses");
+        var result = new LinkedHashMap<String, Object>();
+        result.put("schemaVersion", "casebook-current-pipeline-holdout-audit-1");
+        result.put("state", "AUDITED_OFFLINE_NO_PROVIDER_CALLS");
+        result.put("sourcePlanSha256", recorded.path("planSha256").asText());
+        result.put("sourceManifestSha256", recorded.path("manifestSha256").asText());
+        result.put("implementationSha256", manifest.path("implementationSha256").asText());
+        result.put("httpAttempts", recorded.path("httpAttempts").asInt());
+        result.put("usageEstimatedUsd", recorded.path("usageEstimatedUsd").asDouble());
+        result.put("actualBillingConfirmed", recorded.path("actualBillingConfirmed").asBoolean(false));
+        result.put("mediaSent", false);
+        result.put("executionConfiguration", executionConfiguration());
+        result.put("configurationEvidence", "Reconstructed from the frozen trial implementation whose hash is recorded in the verified manifest; the original result omitted this field.");
+        result.put("rows", rows);
+        var totals = new TreeMap<String, Map<String, Integer>>();
+        for (var row : rows) {
+            String caseId = String.valueOf(row.get("caseId"));
+            String outcome = String.valueOf(row.get("pipelineOutcome"));
+            totals.computeIfAbsent(caseId, ignored -> new TreeMap<>()).merge(outcome, 1, Integer::sum);
+        }
+        result.put("outcomeCountsByCase", totals);
+        return result;
+    }
+
+    static Map<String, Object> auditRow(tools.jackson.databind.JsonNode row) {
+        var diagnostics = row.path("diagnostics");
+        var pipeline = diagnostics.path("candidatePipeline");
+        var candidateStates = new ArrayList<String>();
+        for (var candidate : pipeline.path("candidates")) candidateStates.add(candidate.path("state").asText());
+        var outcome = classifyOutcome(row.path("status").asText().equals("SUCCESS"),
+                row.path("findings").size(), row.path("unassessedSegmentIds").size(),
+                diagnostics.path("truncated").asBoolean(false) || pipeline.path("truncated").asBoolean(false),
+                pipeline.path("proposed").asInt(0),
+                pipeline.path("uncertain").asInt(0), pipeline.path("verificationFailed").asInt(0), candidateStates);
+        var summary = new LinkedHashMap<String, Object>();
+        summary.put("caseId", row.path("caseId").asText());
+        summary.put("repeat", row.path("repeat").asInt());
+        summary.put("pipelineOutcome", outcome.name());
+        summary.put("expectedComparisonLocalOnly", compareExpected(
+                row.path("expectedDecisionLocalOnly").asText(), outcome));
+        summary.put("findingCount", row.path("findings").size());
+        summary.put("candidateCount", pipeline.path("proposed").asInt(0));
+        summary.put("verificationCalls", pipeline.path("verificationCalls").asInt(0));
+        var examples = row.at("/diagnostics/candidatePipeline/contextSelections/0/exampleIds");
+        summary.put("selectedExamples", examples.isArray() ? examples : JSON.createArrayNode());
+        return summary;
     }
 
     static void save(Path output, List<Map<String, Object>> rows,
@@ -180,14 +315,32 @@ public final class CasebookHoldoutCurrentPipelineTrial {
         result.put("results", rows); result.put("httpAttempts", guard.totalAttempts);
         result.put("reservedEstimatedUsd", guard.reservedUsd); result.put("usageEstimatedUsd", usageUsd);
         result.put("actualBillingConfirmed", false); result.put("approvedCapUsd", CAP_USD); result.put("mediaSent", false);
+        result.put("executionConfiguration", executionConfiguration());
         Files.writeString(output.resolve("results.json"), JSON.writeValueAsString(result));
     }
 
     public static void main(String[] args) throws Exception {
         check((args.length == 2 && args[0].equals("prepare"))
-                        || (args.length == 6 && args[0].equals("run")),
-                "prepare NEW_PLAN_DIR | run PLAN_PATH PLAN_SHA MANIFEST_PATH MANIFEST_SHA NEW_OUTPUT_DIR required");
+                        || (args.length == 6 && args[0].equals("run"))
+                        || (args.length == 4 && args[0].equals("audit")),
+                "prepare NEW_PLAN_DIR | run PLAN_PATH PLAN_SHA MANIFEST_PATH MANIFEST_SHA NEW_OUTPUT_DIR | audit RESULTS_PATH PLAN_PATH MANIFEST_PATH required");
         Path experiments = Path.of("../datasets/controversy/experiments").toRealPath();
+        if (args[0].equals("audit")) {
+            Path resultPath = Path.of(args[1]).toRealPath();
+            Path planPath = Path.of(args[2]).toRealPath();
+            Path manifestPath = Path.of(args[3]).toRealPath();
+            check(resultPath.startsWith(experiments) && planPath.startsWith(experiments)
+                    && manifestPath.startsWith(experiments), "Private frozen experiment files required");
+            var recorded = JSON.readTree(bounded(resultPath));
+            var manifest = JSON.readTree(bounded(manifestPath));
+            check(sha(bounded(planPath)).equals(recorded.path("planSha256").asText()), "Recorded plan hash mismatch");
+            check(sha(bounded(manifestPath)).equals(recorded.path("manifestSha256").asText()), "Recorded manifest hash mismatch");
+            Path summaryPath = resultPath.resolveSibling("review-summary.json");
+            check(!Files.exists(summaryPath), "Refuse to overwrite an existing audit summary");
+            Files.write(summaryPath, JSON.writeValueAsBytes(auditRecordedResults(recorded, manifest)), StandardOpenOption.CREATE_NEW);
+            System.out.println("CASEBOOK_HOLDOUT_AUDIT_WRITTEN " + summaryPath);
+            return;
+        }
         if (args[0].equals("prepare")) {
             Path output = Path.of(args[1]).toAbsolutePath().normalize();
             check(!Files.exists(output) && output.getParent().toRealPath().startsWith(experiments), "New private plan directory required");
@@ -273,6 +426,16 @@ public final class CasebookHoldoutCurrentPipelineTrial {
                             new CandidateReviewEngine.RunOptions(24, 0, false,
                                     new CandidateReviewEngine.VerificationFeatures(false, false, false), false));
                     var usage = client.videoUsage(); cost += usage.costUsd();
+                    var diagnostics = result.diagnostics();
+                    var pipeline = diagnostics == null ? null : diagnostics.candidatePipeline();
+                    var candidateStates = pipeline == null ? List.<String>of()
+                            : pipeline.candidates().stream().map(CandidateReviewDiagnostics.Trace::state).toList();
+                    var outcome = classifyOutcome("SUCCESS".equals(String.valueOf(result.status())),
+                            result.findings().size(), result.unassessedSegmentIds().size(),
+                            (diagnostics != null && diagnostics.truncated()) || (pipeline != null && pipeline.truncated()),
+                            pipeline == null ? 0 : pipeline.proposed(),
+                            pipeline == null ? 0 : pipeline.uncertain(),
+                            pipeline == null ? 0 : pipeline.verificationFailed(), candidateStates);
                     var row = new LinkedHashMap<String, Object>();
                     row.put("caseId", c.caseId()); row.put("expectedDecisionLocalOnly", c.expectedDecisionLocalOnly());
                     row.put("repeat", repeat); row.put("elapsedMs", (System.nanoTime() - started) / 1_000_000);
@@ -280,6 +443,8 @@ public final class CasebookHoldoutCurrentPipelineTrial {
                     row.put("evaluations", result.evaluations()); row.put("unassessedSegmentIds", result.unassessedSegmentIds());
                     row.put("calls", List.copyOf(client.calls)); row.put("usage", usage);
                     row.put("findings", result.findings().stream().map(SocialDefectCurrentModelTrial::finding).toList());
+                    row.put("pipelineOutcome", outcome);
+                    row.put("expectedComparisonLocalOnly", compareExpected(c.expectedDecisionLocalOnly(), outcome));
                     rows.add(row);
                     boolean ok = "SUCCESS".equals(String.valueOf(result.status()))
                             && !guard.exhausted && cost <= CAP_USD && client.failureCount() == 0

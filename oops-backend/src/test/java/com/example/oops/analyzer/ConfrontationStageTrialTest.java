@@ -8,6 +8,7 @@ import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ConfrontationStageTrialTest {
     private byte[] request() {
         var client=new com.example.oops.client.OpenAiClient(RestClient.create(),ConfrontationStageTrial.props("offline"),true);

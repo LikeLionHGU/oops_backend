@@ -7,6 +7,7 @@ import java.util.*;
 import static com.example.oops.analyzer.TextBoundaryTrial.JSON;
 import static org.assertj.core.api.Assertions.*;
 
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ReferenceOnlyTrialTest {
     @Test void referencePairsKeepEveryInputFieldAndRejectOneArmMutation() {
         var f=new ReviewGuidelineLibraryTest();
