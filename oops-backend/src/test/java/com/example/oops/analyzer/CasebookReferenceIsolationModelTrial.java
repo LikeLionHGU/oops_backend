@@ -30,7 +30,7 @@ public final class CasebookReferenceIsolationModelTrial {
     static final String CONSENT = "CASEBOOK_REFERENCE_ISOLATION_D05_20261026_USD070_TEXT_APPROVED";
     static final String ENDPOINT = "https://api.openai.com/v1/chat/completions";
     static final String DESIGN_RESOURCE = "/evals/casebook-reference-isolation-plan.json";
-    static final String PREFLIGHT_RELATIVE = "../datasets/controversy/experiments/casebook-reference-isolation-video104-preflight-20261026-v2/preflight.json";
+    static final String PREFLIGHT_RELATIVE = "../datasets/controversy/experiments/casebook-reference-isolation-video104-preflight-20261026-v4/preflight.json";
     static final int REPEATS = 5;
     static final int MAX_HTTP_TOTAL = 40;
     static final int MAX_HTTP_PER_ANALYSIS = 4;
@@ -51,7 +51,8 @@ public final class CasebookReferenceIsolationModelTrial {
                 int repeatsPerCondition, List<String> conditionOrder, List<Condition> conditions,
                 Map<String, DiscoveryFingerprint> expectedDiscoveryFingerprints,
                 int maxHttpAttemptsTotal, int maxHttpAttemptsPerAnalysis, int maxRequestBodyBytes,
-                int maxOutputTokens, int spacingBetweenAnalysesMs, double hardCapUsd,
+                int maxOutputTokens, int spacingBetweenAnalysesMs, boolean outboundRequestGuardDryRunPassed,
+                double hardCapUsd,
                 double worstCaseReservedEstimateUsd) {}
 
     private record CallTrace(String type, String userInputSha256, String systemPromptSha256,
@@ -103,14 +104,16 @@ public final class CasebookReferenceIsolationModelTrial {
                 totalAttempts++;
                 attemptsThisAnalysis++;
                 reservedUsd += next;
-                Files.writeString(output.resolve("reservation.json"), JSON.writeValueAsString(Map.of(
-                        "httpAttempts", totalAttempts, "maxHttpAttempts", MAX_HTTP_TOTAL,
-                        "perAnalysisMaxHttpAttempts", MAX_HTTP_PER_ANALYSIS,
-                        "reservedEstimatedUsd", reservedUsd, "hardCapUsd", CAP_USD,
-                        "inputPer1mUsd", INPUT_RATE, "outputPer1mUsd", OUTPUT_RATE,
-                        "maxOutputTokensPerAttempt", MAX_OUTPUT_TOKENS,
-                        "actualBillingConfirmed", false)), StandardOpenOption.CREATE,
-                        StandardOpenOption.TRUNCATE_EXISTING);
+                if (output != null) {
+                    Files.writeString(output.resolve("reservation.json"), JSON.writeValueAsString(Map.of(
+                            "httpAttempts", totalAttempts, "maxHttpAttempts", MAX_HTTP_TOTAL,
+                            "perAnalysisMaxHttpAttempts", MAX_HTTP_PER_ANALYSIS,
+                            "reservedEstimatedUsd", reservedUsd, "hardCapUsd", CAP_USD,
+                            "inputPer1mUsd", INPUT_RATE, "outputPer1mUsd", OUTPUT_RATE,
+                            "maxOutputTokensPerAttempt", MAX_OUTPUT_TOKENS,
+                            "actualBillingConfirmed", false)), StandardOpenOption.CREATE,
+                            StandardOpenOption.TRUNCATE_EXISTING);
+                }
                 return bounded;
             } catch (Exception e) {
                 violation = true;
@@ -126,6 +129,7 @@ public final class CasebookReferenceIsolationModelTrial {
         private final List<CallTrace> callTraces = new ArrayList<>();
         private boolean discoveryFingerprintMatched;
         private boolean discoveryFingerprintFailed;
+        private String discoveryFingerprintFailureCode;
         private int discoveryCalls;
 
         TrialClient(RestClient rest, OpenAiProperties properties, String condition,
@@ -136,20 +140,30 @@ public final class CasebookReferenceIsolationModelTrial {
         }
 
         @Override public <T> Optional<T> completeAsJson(String system, String input, Class<T> type) {
-            String inputSha = shaUnchecked(input.getBytes(StandardCharsets.UTF_8));
-            String systemSha = shaUnchecked(system.getBytes(StandardCharsets.UTF_8));
+            String inputSha = canonicalInputShaUnchecked(input);
+            String systemSha = canonicalSystemShaUnchecked(system);
             if (type == CandidateReviewEngine.Discovery.class && discoveryCalls++ == 0) {
-                if (!expectedDiscovery.userInputSha256().equals(inputSha)
-                        || !expectedDiscovery.systemPromptSha256().equals(systemSha)) {
+                boolean inputMatches = expectedDiscovery.userInputSha256().equals(inputSha);
+                boolean systemMatches = expectedDiscovery.systemPromptSha256().equals(systemSha);
+                if (!inputMatches || !systemMatches) {
                     discoveryFingerprintFailed = true;
+                    discoveryFingerprintFailureCode = !inputMatches ? "OFFLINE_INPUT_SHA_MISMATCH" : "OFFLINE_SYSTEM_SHA_MISMATCH";
+                    callTraces.add(new CallTrace(type.getSimpleName(), inputSha, systemSha, false,
+                            discoveryFingerprintFailureCode));
                     throw new IllegalStateException("Discovery request differs from offline preflight for " + condition);
                 }
                 discoveryFingerprintMatched = true;
             }
-            Optional<T> response = super.completeAsJson(system, input, type);
-            callTraces.add(new CallTrace(type.getSimpleName(), inputSha, systemSha,
-                    response.isPresent(), failureCode().orElse(null)));
-            return response;
+            try {
+                Optional<T> response = super.completeAsJson(system, input, type);
+                callTraces.add(new CallTrace(type.getSimpleName(), inputSha, systemSha,
+                        response.isPresent(), failureCode().orElse(null)));
+                return response;
+            } catch (RuntimeException e) {
+                callTraces.add(new CallTrace(type.getSimpleName(), inputSha, systemSha, false,
+                        "CLIENT_EXCEPTION_" + e.getClass().getSimpleName()));
+                throw e;
+            }
         }
     }
 
@@ -211,6 +225,31 @@ public final class CasebookReferenceIsolationModelTrial {
                         f.userInputSha256().matches("[0-9a-f]{64}") && f.systemPromptSha256().matches("[0-9a-f]{64}")),
                 "Both exact discovery requests must be frozen");
 
+        String runtimeText = new String(runtimeBytes, StandardCharsets.UTF_8);
+        for (Condition condition : conditions) {
+            var captured = CasebookReferenceIsolationPreflight.capture(condition.id(), condition.maxExamples(),
+                    d05.review(), runtimeText);
+            check(captured.providerCalls() == 0 && captured.calls().size() == 1
+                            && captured.selectedIds().equals(condition.expectedSelection()),
+                    "Final local engine capture differs from expected selection for " + condition.id());
+            var call = captured.calls().get(0);
+            var fingerprint = fingerprints.get(condition.id());
+            boolean sameType = call.type().equals(CandidateReviewEngine.Discovery.class.getSimpleName());
+            boolean sameInput = CasebookReferenceIsolationPreflight.canonicalInputSha(call.input()).equals(fingerprint.userInputSha256());
+            boolean sameSystem = CasebookReferenceIsolationPreflight.canonicalSystemSha(call.system()).equals(fingerprint.systemPromptSha256());
+            check(sameType && sameInput && sameSystem,
+                    "Final local discovery request differs from offline preflight for " + condition.id()
+                            + " type=" + sameType + " inputHash=" + sameInput + " systemHash=" + sameSystem
+                            + " actualInputSha=" + CasebookReferenceIsolationPreflight.canonicalInputSha(call.input())
+                            + " expectedInputSha=" + fingerprint.userInputSha256()
+                            + " actualSystemSha=" + CasebookReferenceIsolationPreflight.canonicalSystemSha(call.system())
+                            + " expectedSystemSha=" + fingerprint.systemPromptSha256());
+            var dryGuard = new Guard(null);
+            dryGuard.accept(JSON.writeValueAsBytes(call.providerBody()), ENDPOINT);
+            check(!dryGuard.violation && dryGuard.totalAttempts == 1,
+                    "Outbound request guard dry-run failed for " + condition.id());
+        }
+
         var order = new ArrayList<String>();
         for (var node : design.at("/protocol/conditionOrder")) order.add(node.asText());
         check(order.size() == 10, "Exactly ten analyses required");
@@ -228,7 +267,7 @@ public final class CasebookReferenceIsolationModelTrial {
                 sha(transcriptBytes), sha(runtimeBytes), sha(CasebookHoldoutCurrentPipelineTrial.bounded(Path.of(PREFLIGHT_RELATIVE))),
                 sha(JSON.writeValueAsBytes(implementation)), implementation, MODEL, "none", REPEATS,
                 List.copyOf(order), conditions, Collections.unmodifiableMap(fingerprints), MAX_HTTP_TOTAL,
-                MAX_HTTP_PER_ANALYSIS, MAX_BODY_BYTES, MAX_OUTPUT_TOKENS, SPACING_MS, CAP_USD,
+                MAX_HTTP_PER_ANALYSIS, MAX_BODY_BYTES, MAX_OUTPUT_TOKENS, SPACING_MS, true, CAP_USD,
                 reservation(MAX_HTTP_TOTAL, MAX_BODY_BYTES));
         validate(plan);
         return plan;
@@ -242,7 +281,8 @@ public final class CasebookReferenceIsolationModelTrial {
                         && plan.repeatsPerCondition() == 5 && plan.conditionOrder().size() == 10
                         && plan.maxHttpAttemptsTotal() == 40 && plan.maxHttpAttemptsPerAnalysis() == 4
                         && plan.maxRequestBodyBytes() == 120_000 && plan.maxOutputTokens() == 8_000
-                        && plan.spacingBetweenAnalysesMs() == 15_000 && plan.hardCapUsd() == .70
+                        && plan.spacingBetweenAnalysesMs() == 15_000 && plan.outboundRequestGuardDryRunPassed()
+                        && plan.hardCapUsd() == .70
                         && plan.worstCaseReservedEstimateUsd() <= plan.hardCapUsd(),
                 "Frozen bounded trial configuration required");
         check(plan.conditions().equals(List.of(
@@ -292,6 +332,7 @@ public final class CasebookReferenceIsolationModelTrial {
         result.put("maxRequestBodyBytes", plan.maxRequestBodyBytes());
         result.put("maxOutputTokens", plan.maxOutputTokens());
         result.put("spacingBetweenAnalysesMs", plan.spacingBetweenAnalysesMs());
+        result.put("outboundRequestGuardDryRunPassed", plan.outboundRequestGuardDryRunPassed());
         result.put("hardCapUsd", plan.hardCapUsd());
         result.put("worstCaseReservedEstimateUsd", plan.worstCaseReservedEstimateUsd());
         result.put("providerCalls", 0);
@@ -531,6 +572,8 @@ public final class CasebookReferenceIsolationModelTrial {
         result.put("results", rows);
         result.put("httpAttempts", guard.totalAttempts);
         result.put("reservedEstimatedUsd", guard.reservedUsd);
+        result.put("requestGuardViolation", guard.violation);
+        result.put("requestGuardViolationCode", guard.violationCode);
         result.put("usageEstimatedUsd", usageUsd);
         result.put("actualBillingConfirmed", false);
         result.put("hardCapUsd", CAP_USD);
@@ -549,8 +592,13 @@ public final class CasebookReferenceIsolationModelTrial {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
-    private static String shaUnchecked(byte[] bytes) {
-        try { return sha(bytes); }
-        catch (Exception e) { throw new IllegalStateException("SHA-256 unavailable", e); }
+    private static String canonicalInputShaUnchecked(String input) {
+        try { return CasebookReferenceIsolationPreflight.canonicalInputSha(input); }
+        catch (Exception e) { throw new IllegalStateException("Unable to fingerprint discovery input", e); }
+    }
+
+    private static String canonicalSystemShaUnchecked(String system) {
+        try { return CasebookReferenceIsolationPreflight.canonicalSystemSha(system); }
+        catch (Exception e) { throw new IllegalStateException("Unable to fingerprint discovery system prompt", e); }
     }
 }

@@ -56,7 +56,7 @@ class CasebookReferenceIsolationModelTrialTest {
                 List.of(new CasebookReferenceIsolationModelTrial.Condition("CURRENT_SELECTED_REFERENCE", 3,
                                 List.of("podcast-dev#podcast-boast-response")),
                         new CasebookReferenceIsolationModelTrial.Condition("GLOBAL_GUIDELINES_WITHOUT_EXAMPLES", 0, List.of())),
-                Map.of(), 40, 4, 120_000, 8_000, 15_000, .70, .644096);
+                Map.of(), 40, 4, 120_000, 8_000, 15_000, true, .70, .644096);
         CasebookReferenceIsolationModelTrial.validate(plan);
         var wrongModel = new CasebookReferenceIsolationModelTrial.Plan(
                 plan.schemaVersion(), plan.scope(), plan.sourceCaseId(), plan.expectedDecisionLocalOnly(),
@@ -64,7 +64,8 @@ class CasebookReferenceIsolationModelTrialTest {
                 plan.offlinePreflightSha256(), plan.implementationSha256(), plan.implementation(), "other-model",
                 plan.reasoningEffort(), plan.repeatsPerCondition(), plan.conditionOrder(), plan.conditions(),
                 plan.expectedDiscoveryFingerprints(), plan.maxHttpAttemptsTotal(), plan.maxHttpAttemptsPerAnalysis(),
-                plan.maxRequestBodyBytes(), plan.maxOutputTokens(), plan.spacingBetweenAnalysesMs(), plan.hardCapUsd(),
+                plan.maxRequestBodyBytes(), plan.maxOutputTokens(), plan.spacingBetweenAnalysesMs(),
+                plan.outboundRequestGuardDryRunPassed(), plan.hardCapUsd(),
                 plan.worstCaseReservedEstimateUsd());
         assertThatThrownBy(() -> CasebookReferenceIsolationModelTrial.validate(wrongModel))
                 .isInstanceOf(IllegalArgumentException.class);

@@ -33,12 +33,12 @@ public final class CasebookReferenceIsolationPreflight {
 
     private CasebookReferenceIsolationPreflight() {}
 
-    private record CapturedCall(String type, String system, String input, JsonNode providerBody) {}
-    private record Arm(String id, int maxExamples, List<String> selectedIds, List<CapturedCall> calls,
+    static record CapturedCall(String type, String system, String input, JsonNode providerBody) {}
+    static record Arm(String id, int maxExamples, List<String> selectedIds, List<CapturedCall> calls,
                        int providerCalls,
                        TextReviewEngine.Result syntheticResult) {}
 
-    private static final class CaptureClient extends OpenAiClient {
+    static final class CaptureClient extends OpenAiClient {
         private final List<CapturedCall> calls = new ArrayList<>();
         private int providerCalls;
 
@@ -96,8 +96,8 @@ public final class CasebookReferenceIsolationPreflight {
         String runtimeText = new String(runtimeBytes, StandardCharsets.UTF_8);
         String implementationSha = implementationSha();
 
-        Arm selected = capture("CURRENT_SELECTED_REFERENCE", 3, d05, runtimeText);
-        Arm noExamples = capture("GLOBAL_GUIDELINES_WITHOUT_EXAMPLES", 0, d05, runtimeText);
+        Arm selected = capture("CURRENT_SELECTED_REFERENCE", 3, d05.review(), runtimeText);
+        Arm noExamples = capture("GLOBAL_GUIDELINES_WITHOUT_EXAMPLES", 0, d05.review(), runtimeText);
         var comparisons = compare(selected, noExamples, expectedExample);
 
         var report = JSON.createObjectNode();
@@ -109,6 +109,7 @@ public final class CasebookReferenceIsolationPreflight {
         report.put("syntheticResponseUse", "REQUEST_CAPTURE_ONLY_NOT_AN_ANALYSIS_OR_DETECTION_RESULT");
         report.put("mediaEgress", false);
         report.put("expectedDecisionIncludedInModelInput", false);
+        report.put("fingerprintNormalization", "CANONICAL_JSON_OBJECT_KEYS; NON_JSON_SYSTEM_PREFIX_BYTE_EXACT");
         report.put("sourceReviewSha256", sha(reviewBytes));
         report.put("storedTranscriptSha256", sha(transcriptBytes));
         report.put("runtimeGuidelinesSha256", sha(runtimeBytes));
@@ -127,8 +128,7 @@ public final class CasebookReferenceIsolationPreflight {
                 "Offline isolation gate failed; no paid comparison should be run");
     }
 
-    private static Arm capture(String id, int maxExamples, CasebookHoldoutCurrentPipelineTrial.CaseInput c,
-                               String runtimeText) {
+    static Arm capture(String id, int maxExamples, ReviewInput review, String runtimeText) {
         ResourceLoader loader = new DefaultResourceLoader() {
             @Override public Resource getResource(String location) {
                 check(location.equals("classpath:frozen.json"), "Only the frozen local runtime is allowed");
@@ -143,7 +143,7 @@ public final class CasebookReferenceIsolationPreflight {
 
         var client = new CaptureClient();
         var context = new AnalysisContext(Video.builder().filename("private-d05-reference-preflight").build(),
-                ContentGenre.GENERAL, List.of(), List.of(), c.review());
+                ContentGenre.GENERAL, List.of(), List.of(), review);
         var result = CandidateReviewEngine.run(client, context,
                 new CandidateReviewEngine.RunServices(null, null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false,
@@ -223,8 +223,8 @@ public final class CasebookReferenceIsolationPreflight {
             String prefix = call.system().substring(0, marker);
             var row = new LinkedHashMap<String, Object>();
             row.put("type", call.type());
-            row.put("userInputSha256", sha(call.input().getBytes(StandardCharsets.UTF_8)));
-            row.put("systemPromptSha256", sha(call.system().getBytes(StandardCharsets.UTF_8)));
+            row.put("userInputSha256", canonicalInputSha(call.input()));
+            row.put("systemPromptSha256", canonicalSystemSha(call.system()));
             row.put("sharedSystemPromptPrefixSha256", sha(prefix.getBytes(StandardCharsets.UTF_8)));
             row.put("globalGuidelinesSha256", sha(JSON.writeValueAsBytes(payload.path("reviewGuidelines"))));
             row.put("selectedContextPayloadSha256", sha(JSON.writeValueAsBytes(payload.path("referenceContexts"))));
@@ -256,6 +256,37 @@ public final class CasebookReferenceIsolationPreflight {
         var hashes = new TreeMap<String, String>();
         for (String file : files) hashes.put(file, sha(Files.readAllBytes(Path.of(file))));
         return sha(JSON.writeValueAsBytes(hashes));
+    }
+
+    static String canonicalInputSha(String input) throws Exception {
+        return sha(JSON.writeValueAsBytes(canonical(JSON.readTree(input))));
+    }
+
+    static String canonicalSystemSha(String system) throws Exception {
+        String marker = "\ncontextReference=";
+        int position = system.lastIndexOf(marker);
+        check(position >= 0, "Context-reference suffix required for canonical prompt fingerprint");
+        String prefix = system.substring(0, position);
+        JsonNode payload = JSON.readTree(system.substring(position + marker.length()));
+        String canonicalPayload = JSON.writeValueAsString(canonical(payload));
+        return sha((prefix + marker + canonicalPayload).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static JsonNode canonical(JsonNode node) {
+        if (node.isObject()) {
+            var result = JSON.createObjectNode();
+            var names = new ArrayList<String>();
+            node.properties().forEach(entry -> names.add(entry.getKey()));
+            Collections.sort(names);
+            for (String name : names) result.set(name, canonical(node.get(name)));
+            return result;
+        }
+        if (node.isArray()) {
+            var result = JSON.createArrayNode();
+            node.forEach(value -> result.add(canonical(value)));
+            return result;
+        }
+        return node.deepCopy();
     }
 
     private static String sha(byte[] bytes) throws Exception {
