@@ -267,9 +267,37 @@ public final class CasebookReferenceIsolationPreflight {
         int position = system.lastIndexOf(marker);
         check(position >= 0, "Context-reference suffix required for canonical prompt fingerprint");
         String prefix = system.substring(0, position);
-        JsonNode payload = JSON.readTree(system.substring(position + marker.length()));
+        String suffix = system.substring(position + marker.length());
+        int jsonStart = 0;
+        while (jsonStart < suffix.length() && Character.isWhitespace(suffix.charAt(jsonStart))) jsonStart++;
+        int jsonEnd = jsonObjectEnd(suffix, jsonStart);
+        String leadingWhitespace = suffix.substring(0, jsonStart);
+        String trailingPrompt = suffix.substring(jsonEnd);
+        JsonNode payload = JSON.readTree(suffix.substring(jsonStart, jsonEnd));
         String canonicalPayload = JSON.writeValueAsString(canonical(payload));
-        return sha((prefix + marker + canonicalPayload).getBytes(StandardCharsets.UTF_8));
+        return sha((prefix + marker + leadingWhitespace + canonicalPayload + trailingPrompt)
+                .getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static int jsonObjectEnd(String text, int start) {
+        check(start < text.length() && text.charAt(start) == '{',
+                "Context-reference suffix must start with a JSON object");
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < text.length(); i++) {
+            char current = text.charAt(i);
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (current == '\\') escaped = true;
+                else if (current == '"') inString = false;
+                continue;
+            }
+            if (current == '"') inString = true;
+            else if (current == '{') depth++;
+            else if (current == '}' && --depth == 0) return i + 1;
+        }
+        throw new IllegalArgumentException("Unterminated context-reference JSON object");
     }
 
     private static JsonNode canonical(JsonNode node) {

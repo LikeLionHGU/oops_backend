@@ -26,6 +26,14 @@ class CasebookReferenceIsolationPreflightTest {
         String reversedArray = "{\"genre\":\"GENERAL\",\"segments\":[{\"id\":\"s2\",\"text\":\"other\"},{\"id\":\"s1\",\"text\":\"same\"}]}";
         assertThat(CasebookReferenceIsolationPreflight.canonicalInputSha(inputA))
                 .isNotEqualTo(CasebookReferenceIsolationPreflight.canonicalInputSha(reversedArray));
+
+        String repairA = "fixed prompt\ncontextReference={\"referenceContexts\":[],\"reviewGuidelines\":{\"b\":2,\"a\":1}}\nrepair-only instruction";
+        String repairB = "fixed prompt\ncontextReference={\"reviewGuidelines\":{\"a\":1,\"b\":2},\"referenceContexts\":[]}\nrepair-only instruction";
+        assertThat(CasebookReferenceIsolationPreflight.canonicalSystemSha(repairA))
+                .isEqualTo(CasebookReferenceIsolationPreflight.canonicalSystemSha(repairB));
+        assertThat(CasebookReferenceIsolationPreflight.canonicalSystemSha(repairA))
+                .isNotEqualTo(CasebookReferenceIsolationPreflight.canonicalSystemSha(
+                        repairA.replace("repair-only instruction", "different repair instruction")));
     }
 
     @Test void preflightUsesOnlyTheFrozenSelectedReferenceAndNoExampleArms() throws Exception {

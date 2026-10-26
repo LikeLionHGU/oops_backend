@@ -30,7 +30,7 @@ public final class CasebookReferenceIsolationModelTrial {
     static final String CONSENT = "CASEBOOK_REFERENCE_ISOLATION_D05_20261026_USD070_TEXT_APPROVED";
     static final String ENDPOINT = "https://api.openai.com/v1/chat/completions";
     static final String DESIGN_RESOURCE = "/evals/casebook-reference-isolation-plan.json";
-    static final String PREFLIGHT_RELATIVE = "../datasets/controversy/experiments/casebook-reference-isolation-video104-preflight-20261026-v4/preflight.json";
+    static final String PREFLIGHT_RELATIVE = "../datasets/controversy/experiments/casebook-reference-isolation-video104-preflight-20261026-v5/preflight.json";
     static final int REPEATS = 5;
     static final int MAX_HTTP_TOTAL = 40;
     static final int MAX_HTTP_PER_ANALYSIS = 4;
@@ -172,6 +172,21 @@ public final class CasebookReferenceIsolationModelTrial {
     static double reservation(int attempts, int bodyBytes) {
         return attempts * ((bodyBytes + 1024) * INPUT_RATE / 1_000_000d
                 + MAX_OUTPUT_TOKENS * OUTPUT_RATE / 1_000_000d);
+    }
+
+    static boolean isComparable(TextReviewEngine.Result result, String pipelineOutcome) {
+        if (result == null || result.status() != AnalyzerStatus.SUCCESS
+                || result.diagnostics() == null || result.diagnostics().truncated()
+                || result.diagnostics().status() != AnalyzerStatus.SUCCESS
+                || result.diagnostics().candidatePipeline() == null
+                || !result.unassessedSegmentIds().isEmpty() || !result.conflictingSegmentIds().isEmpty()) return false;
+        CandidateReviewDiagnostics diagnostics = result.diagnostics().candidatePipeline();
+        if (diagnostics.truncated() || diagnostics.invalidProposals() > 0 || diagnostics.verificationFailed() > 0
+                || diagnostics.budgetSkipped() > 0 || diagnostics.limitedBatches() > 0
+                || diagnostics.truncatedBatches() > 0 || diagnostics.repairCalls() > 0
+                || diagnostics.discoveryRepairCalls() > 0) return false;
+        return Set.of("REVIEW_REQUIRED", "PASS_AFTER_VERIFICATION", "NO_CANDIDATE", "UNCERTAIN")
+                .contains(pipelineOutcome);
     }
 
     static Plan prepare() throws Exception {
@@ -448,9 +463,11 @@ public final class CasebookReferenceIsolationModelTrial {
                 var row = row(condition, repeat, source.expectedDecisionLocalOnly(), result, client, usage,
                         (System.nanoTime() - started) / 1_000_000);
                 rows.add(row);
+                boolean comparable = isComparable(result, String.valueOf(row.get("pipelineOutcome")));
                 boolean okay = !guard.violation && !client.discoveryFingerprintFailed
                         && client.discoveryFingerprintMatched && client.failureCount() == 0
                         && client.callTraces.stream().allMatch(CallTrace::responsePresent)
+                        && comparable
                         && client.callTraces.size() <= MAX_HTTP_PER_ANALYSIS
                         && guard.attemptsThisAnalysis <= MAX_HTTP_PER_ANALYSIS
                         && guard.reservedUsd <= CAP_USD && usageUsd <= CAP_USD;
