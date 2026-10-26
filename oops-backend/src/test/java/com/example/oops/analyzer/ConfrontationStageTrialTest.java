@@ -8,7 +8,6 @@ import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class ConfrontationStageTrialTest {
     private byte[] request() {
         var client=new com.example.oops.client.OpenAiClient(RestClient.create(),ConfrontationStageTrial.props("offline"),true);
@@ -74,6 +73,7 @@ class ConfrontationStageTrialTest {
         ConfrontationStageTrial.validate(valid);
         assertThat(ConfrontationStageTrial.seed(valid).candidates().get(0).evidence().get(0).quote()).isEqualTo("현재 원문");
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void privateFrozenPreparationBuildsRequestsOrRejectsAnOutdatedRuntimePin() throws Exception {
         var source=Path.of("../datasets/controversy/experiments/confrontation-stage-plan-20261025/plan.json");
         assumeTrue(Files.exists(source));
@@ -93,6 +93,7 @@ class ConfrontationStageTrialTest {
             assertThatThrownBy(() -> ConfrontationStageTrial.prepare(source)).hasMessageContaining("Runtime drift");
         }
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void executablePlanRejectsWrongApprovalHashBeforeAnyCredentialOrNetworkUse() throws Exception {
         var frozen=Path.of("../datasets/controversy/experiments/confrontation-stage-executable-20261025/plan.json");
         assumeTrue(Files.exists(frozen));

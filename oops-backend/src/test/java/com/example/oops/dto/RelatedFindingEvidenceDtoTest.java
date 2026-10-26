@@ -8,7 +8,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class RelatedFindingEvidenceDtoTest {
     private FindingSupport.Quote q(String id, long at, String role) {
         return new FindingSupport.Quote(id, TimelineEventType.SPEECH, at, at + 500, "합성 원문 " + id, role);
@@ -104,6 +103,7 @@ class RelatedFindingEvidenceDtoTest {
         assertThat(RelatedFindingEvidenceDto.from(List.of(a, b, c)))
                 .extracting(l -> l.leftEventId() + "-" + l.rightEventId()).containsExactly("1-2", "2-3");
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void saved126EvidenceProducesTwoAdvisoryPairsNotMergedCards() throws Exception {
         var file = Path.of("../datasets/controversy/experiments/podcast-replay-124-57casebook-20261024/report-126.json");
         assumeTrue(Files.exists(file));

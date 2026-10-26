@@ -8,7 +8,6 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class CasebookIntakeAuditTest {
     @TempDir Path temp;
     private String sha(byte[] raw) throws Exception {
@@ -38,6 +37,7 @@ class CasebookIntakeAuditTest {
         var file = temp.resolve("big.json"); Files.write(file, new byte[1_048_577]);
         assertThatThrownBy(() -> CasebookIntakeAudit.audit(file, file)).isInstanceOf(IllegalArgumentException.class);
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void realLocalBoundaryAuditUsesProductionSelectorWithoutRawOutputOrProvider() throws Exception {
         var root = Path.of("../datasets/controversy");
         var unitPath = root.resolve("context-units/podcast-introduction-banter.json");

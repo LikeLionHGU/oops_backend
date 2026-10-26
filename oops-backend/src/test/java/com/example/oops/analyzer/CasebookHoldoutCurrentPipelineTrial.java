@@ -213,14 +213,18 @@ public final class CasebookHoldoutCurrentPipelineTrial {
         NO_CANDIDATE, UNCERTAIN, INCOMPLETE, PIPELINE_FAILED, UNCLASSIFIED
     }
 
-    static PipelineOutcome classifyOutcome(boolean successful, int findingCount, int unassessedCount,
+    static PipelineOutcome classifyOutcome(AnalyzerStatus status, int findingCount, int unassessedCount,
                                            boolean truncated, int proposedCount, int uncertainCount,
                                            int verificationFailureCount, List<String> candidateStates) {
-        if (!successful) return PipelineOutcome.PIPELINE_FAILED;
+        if (status == null) return PipelineOutcome.INCOMPLETE;
+        if (status == AnalyzerStatus.FAILED) return PipelineOutcome.PIPELINE_FAILED;
+        if (status != AnalyzerStatus.SUCCESS && status != AnalyzerStatus.PARTIAL)
+            return PipelineOutcome.INCOMPLETE;
         if (findingCount > 0) {
-            return unassessedCount > 0 || truncated || verificationFailureCount > 0
+            return status == AnalyzerStatus.PARTIAL || unassessedCount > 0 || truncated || verificationFailureCount > 0
                     ? PipelineOutcome.REVIEW_REQUIRED_PARTIAL : PipelineOutcome.REVIEW_REQUIRED;
         }
+        if (status == AnalyzerStatus.PARTIAL) return PipelineOutcome.INCOMPLETE;
         if (uncertainCount > 0 || candidateStates.contains("UNCERTAIN")) return PipelineOutcome.UNCERTAIN;
         if (unassessedCount > 0 || truncated || verificationFailureCount > 0) return PipelineOutcome.INCOMPLETE;
         if (proposedCount == 0) return PipelineOutcome.NO_CANDIDATE;
@@ -268,8 +272,11 @@ public final class CasebookHoldoutCurrentPipelineTrial {
         result.put("usageEstimatedUsd", recorded.path("usageEstimatedUsd").asDouble());
         result.put("actualBillingConfirmed", recorded.path("actualBillingConfirmed").asBoolean(false));
         result.put("mediaSent", false);
-        result.put("executionConfiguration", executionConfiguration());
-        result.put("configurationEvidence", "Reconstructed from the frozen trial implementation whose hash is recorded in the verified manifest; the original result omitted this field.");
+        var savedConfiguration = recorded.path("executionConfiguration");
+        result.put("executionConfiguration", savedConfiguration.isObject() ? savedConfiguration : null);
+        result.put("configurationEvidence", savedConfiguration.isObject()
+                ? "READ_FROM_FROZEN_RESULTS"
+                : "NOT_RECORDED_IN_ORIGINAL_RESULTS; NO_CURRENT_CONFIGURATION_SUBSTITUTED");
         result.put("rows", rows);
         var totals = new TreeMap<String, Map<String, Integer>>();
         for (var row : rows) {
@@ -286,7 +293,10 @@ public final class CasebookHoldoutCurrentPipelineTrial {
         var pipeline = diagnostics.path("candidatePipeline");
         var candidateStates = new ArrayList<String>();
         for (var candidate : pipeline.path("candidates")) candidateStates.add(candidate.path("state").asText());
-        var outcome = classifyOutcome(row.path("status").asText().equals("SUCCESS"),
+        AnalyzerStatus status;
+        try { status = AnalyzerStatus.valueOf(row.path("status").asText()); }
+        catch (IllegalArgumentException ex) { status = null; }
+        var outcome = classifyOutcome(status,
                 row.path("findings").size(), row.path("unassessedSegmentIds").size(),
                 diagnostics.path("truncated").asBoolean(false) || pipeline.path("truncated").asBoolean(false),
                 pipeline.path("proposed").asInt(0),
@@ -322,8 +332,8 @@ public final class CasebookHoldoutCurrentPipelineTrial {
     public static void main(String[] args) throws Exception {
         check((args.length == 2 && args[0].equals("prepare"))
                         || (args.length == 6 && args[0].equals("run"))
-                        || (args.length == 4 && args[0].equals("audit")),
-                "prepare NEW_PLAN_DIR | run PLAN_PATH PLAN_SHA MANIFEST_PATH MANIFEST_SHA NEW_OUTPUT_DIR | audit RESULTS_PATH PLAN_PATH MANIFEST_PATH required");
+                        || ((args.length == 4 || args.length == 5) && args[0].equals("audit")),
+                "prepare NEW_PLAN_DIR | run PLAN_PATH PLAN_SHA MANIFEST_PATH MANIFEST_SHA NEW_OUTPUT_DIR | audit RESULTS_PATH PLAN_PATH MANIFEST_PATH [NEW_SUMMARY_PATH] required");
         Path experiments = Path.of("../datasets/controversy/experiments").toRealPath();
         if (args[0].equals("audit")) {
             Path resultPath = Path.of(args[1]).toRealPath();
@@ -335,7 +345,12 @@ public final class CasebookHoldoutCurrentPipelineTrial {
             var manifest = JSON.readTree(bounded(manifestPath));
             check(sha(bounded(planPath)).equals(recorded.path("planSha256").asText()), "Recorded plan hash mismatch");
             check(sha(bounded(manifestPath)).equals(recorded.path("manifestSha256").asText()), "Recorded manifest hash mismatch");
-            Path summaryPath = resultPath.resolveSibling("review-summary.json");
+            Path requestedSummary = args.length == 5 ? Path.of(args[4]).toAbsolutePath().normalize()
+                    : resultPath.resolveSibling("review-summary.json");
+            check(requestedSummary.getFileName() != null, "Summary filename required");
+            Path summaryDirectory = requestedSummary.getParent().toRealPath();
+            check(summaryDirectory.startsWith(experiments), "Summary must remain under private experiment directory");
+            Path summaryPath = summaryDirectory.resolve(requestedSummary.getFileName());
             check(!Files.exists(summaryPath), "Refuse to overwrite an existing audit summary");
             Files.write(summaryPath, JSON.writeValueAsBytes(auditRecordedResults(recorded, manifest)), StandardOpenOption.CREATE_NEW);
             System.out.println("CASEBOOK_HOLDOUT_AUDIT_WRITTEN " + summaryPath);
@@ -430,7 +445,7 @@ public final class CasebookHoldoutCurrentPipelineTrial {
                     var pipeline = diagnostics == null ? null : diagnostics.candidatePipeline();
                     var candidateStates = pipeline == null ? List.<String>of()
                             : pipeline.candidates().stream().map(CandidateReviewDiagnostics.Trace::state).toList();
-                    var outcome = classifyOutcome("SUCCESS".equals(String.valueOf(result.status())),
+                    var outcome = classifyOutcome(result.status(),
                             result.findings().size(), result.unassessedSegmentIds().size(),
                             (diagnostics != null && diagnostics.truncated()) || (pipeline != null && pipeline.truncated()),
                             pipeline == null ? 0 : pipeline.proposed(),

@@ -10,11 +10,11 @@ import org.springframework.web.client.RestClient;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.*;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class SocialDefectCurrentModelTrialTest {
     static final String PLAN = "../datasets/controversy/experiments/social-defect-current-model-plan-20261026-v1/plan.json";
     static final String PLAN_SHA = "e6ec4e09cbdbc0abbc124e05faf1d3f11c458d4853b846fe2b05482595c6ac22";
 
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void frozenPlanLoadsExactApprovedPositiveAndNormalInputsOffline() throws Exception {
         var cases = SocialDefectCurrentModelTrial.loadCases(Path.of(PLAN));
         assertThat(cases).hasSize(2);
@@ -30,6 +30,7 @@ class SocialDefectCurrentModelTrialTest {
         });
     }
 
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void preflightLocksRuntimeRetrievalInputsAndNoProviderCalls() throws Exception {
         var manifest = SocialDefectCurrentModelTrial.preflight(Path.of(PLAN), PLAN_SHA);
         assertThat(manifest.path("providerCalls").asInt()).isZero();

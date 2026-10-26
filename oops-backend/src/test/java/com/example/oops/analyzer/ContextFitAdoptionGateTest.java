@@ -9,7 +9,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Fixed existing approved development material, not new human labels or holdout. */
-@org.junit.jupiter.api.Tag("dataset-backed")
 class ContextFitAdoptionGateTest {
     private static final Path ROOT=Path.of("../datasets/controversy");
     record Gate(int incrementalRecovery, int lostReferences, int irrelevantAdditions, int budgetViolations) {
@@ -23,6 +22,7 @@ class ContextFitAdoptionGateTest {
         assertThat(new Gate(1,0,1,0).adopt()).isFalse();
         assertThat(new Gate(1,0,0,1).adopt()).isFalse();
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void freezeCrossTopicGateOnActiveAssetsAndApprovedStoredSources() throws Exception {
         Path runtime=ROOT.resolve("guidelines/runtime.json");
         assumeTrue(Files.exists(runtime));

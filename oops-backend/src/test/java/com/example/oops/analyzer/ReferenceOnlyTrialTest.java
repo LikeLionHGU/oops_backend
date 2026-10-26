@@ -7,7 +7,6 @@ import java.util.*;
 import static com.example.oops.analyzer.TextBoundaryTrial.JSON;
 import static org.assertj.core.api.Assertions.*;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class ReferenceOnlyTrialTest {
     @Test void referencePairsKeepEveryInputFieldAndRejectOneArmMutation() {
         var f=new ReviewGuidelineLibraryTest();
@@ -27,6 +26,7 @@ class ReferenceOnlyTrialTest {
         ((ObjectNode)work.get(1).input().get("candidates").get(0)).put("hypothesisNotEvidence","바뀐 가설");
         assertThatThrownBy(()->ReferenceOnlyTrial.validatePairs(work)).isInstanceOf(IllegalArgumentException.class);
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void privatePlanReproducesSavedSystemsAndPreservesDGroupsWhenAvailable() throws Exception {
         Path root=Path.of("../datasets/controversy");
         Path source=root.resolve("experiments/text-boundary-37-20261014/results.json");

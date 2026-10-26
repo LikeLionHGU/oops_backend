@@ -14,7 +14,6 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
-@org.junit.jupiter.api.Tag("dataset-backed")
 class ReviewGuidelineLibraryTest {
     @Test void v7ExampleMayNarrowButNeverExpandOrEmptyItsMechanismChannels() throws Exception {
         var archive = new ContextRelationRetrievalTest().archive();
@@ -42,6 +41,7 @@ class ReviewGuidelineLibraryTest {
         assertThat(library(json.replace("family-1", "family#s1").getBytes(StandardCharsets.UTF_8), 6000)
                 .trace(SPEECH).state()).isEqualTo("INVALID_ARCHIVE");
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void localCompiledArchiveLoadsWithinProductionBudgetWhenPresent() throws Exception {
         var path = java.nio.file.Path.of("../datasets/controversy/guidelines/runtime.json");
         org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(path));

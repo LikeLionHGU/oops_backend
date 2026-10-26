@@ -8,7 +8,6 @@ import static com.example.oops.domain.TimelineEventType.SPEECH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class ContextFitRankingPreviewTest {
     static ReviewGuidelineLibrary.ContextExample example(String id, String search) {
         return new ReviewGuidelineLibrary.ContextExample(id,"synthetic",List.of("sexual-objectification"),List.of("SPEECH"),
@@ -76,6 +75,7 @@ class ContextFitRankingPreviewTest {
         assertThat(ContextFitRankingPreview.select(pool,List.of(),raw("뜻을 설명합니다"),1,rows->true)
                 .selected()).containsExactly(boundary);
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void compareSameFrozenPoolWithOriginalBudgetWithoutProviderCalls() throws Exception {
         Path root=Path.of("../datasets/controversy"), preview=root.resolve("experiments/speech-act-mechanism-20261023-verified");
         assumeTrue(Files.exists(preview.resolve("preview-runtime.json")));
@@ -112,6 +112,7 @@ class ContextFitRankingPreviewTest {
         }
     }
     static int exampleSize(List<ReviewGuidelineLibrary.ContextExample> items) { return size(items.stream().map(e->new ReviewGuidelineLibrary.SelectedExample(e.mechanismIds(),e.context())).toList()); }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void diagnoseFrozenQueriesAndCompareTopicFocusedSearchMetadata(
             @org.junit.jupiter.api.io.TempDir Path temporary) throws Exception {
         var root=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified");
@@ -176,6 +177,7 @@ class ContextFitRankingPreviewTest {
             }
         }
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void auditOtherTopicsWithRealRetrievalAssetsWithoutAssigningVerdicts() throws Exception {
         var path=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified/preview-runtime.json");
         assumeTrue(Files.exists(path));

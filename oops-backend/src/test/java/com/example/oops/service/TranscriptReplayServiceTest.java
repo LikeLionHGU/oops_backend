@@ -16,7 +16,6 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(properties="spring.datasource.url=jdbc:h2:mem:transcript-replay-test;MODE=MySQL;DB_CLOSE_DELAY=-1")
 @ActiveProfiles("test")
 @Transactional
-@org.junit.jupiter.api.Tag("dataset-backed")
 class TranscriptReplayServiceTest {
     @Autowired TranscriptReplayService replays;
     @Autowired ScriptImportService scriptImports;
@@ -29,6 +28,7 @@ class TranscriptReplayServiceTest {
     @MockitoBean AnalysisDispatchService dispatch;
     @MockitoBean com.example.oops.client.AnalysisServerClient worker;
 
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void fullPrivatePodcastScriptPersistsAndExtractsWithoutRemoteStt() throws Exception {
         var file = java.nio.file.Path.of("../datasets/controversy/experiments/podcast-Duvb0IftlbI-20261024/import-request.json");
         org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(file));

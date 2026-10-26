@@ -7,7 +7,6 @@ import static com.example.oops.domain.TimelineEventType.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.*;
 import static org.assertj.core.api.Assertions.*;
 
-@org.junit.jupiter.api.Tag("dataset-backed")
 class StructuredContextSearchTest {
     private final StructuredContextSearch search = StructuredContextSearch.load();
     private ReviewInput.Segment line(String id, long start, String text) {
@@ -81,6 +80,7 @@ class StructuredContextSearchTest {
         var l = library(JSON.writeValueAsString(a), true, 3, 3000, "");
         assertThat(l.select(SPEECH, raw("공공시설이 없는 생활조건"), "q").trace().structuredSearch()).isNull();
     }
+    @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void privateV7SelectionUsesProductionBudgetsAndCanRollBackExactly() throws Exception {
         Path runtime = Path.of("../datasets/controversy/guidelines/runtime.json");
         org.junit.jupiter.api.Assumptions.assumeTrue(Files.exists(runtime));
