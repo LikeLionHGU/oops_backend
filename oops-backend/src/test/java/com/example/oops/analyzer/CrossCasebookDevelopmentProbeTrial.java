@@ -118,9 +118,11 @@ public final class CrossCasebookDevelopmentProbeTrial {
         return Collections.unmodifiableMap(snapshots);
     }
 
-    static String runtimeTextForAnalysis(Map<String, String> snapshots, Arm arm) {
+    static String runtimeTextForAnalysis(Map<String, String> snapshots, Arm arm) throws Exception {
         String snapshot = snapshots.get(arm.id());
         check(snapshot != null, "Missing verified runtime snapshot: " + arm.id());
+        check(sha(snapshot.getBytes(StandardCharsets.UTF_8)).equals(arm.sha256()),
+                "Runtime snapshot hash mismatch: " + arm.id());
         return snapshot;
     }
 

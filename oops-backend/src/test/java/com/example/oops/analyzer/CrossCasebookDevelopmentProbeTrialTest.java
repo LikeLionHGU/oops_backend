@@ -75,6 +75,10 @@ class CrossCasebookDevelopmentProbeTrialTest {
 
             assertThat(CrossCasebookDevelopmentProbeTrial.runtimeTextForAnalysis(snapshots, arm))
                     .isEqualTo(new String(approvedBytes, java.nio.charset.StandardCharsets.UTF_8));
+            assertThatThrownBy(() -> CrossCasebookDevelopmentProbeTrial.runtimeTextForAnalysis(
+                    java.util.Map.of(arm.id(), new String(changedBytes, java.nio.charset.StandardCharsets.UTF_8)), arm))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Runtime snapshot hash mismatch");
             assertThatThrownBy(() -> CrossCasebookDevelopmentProbeTrial.checkedRuntimeSnapshot(
                     arm, java.nio.file.Files.readAllBytes(runtimeFile)))
                     .isInstanceOf(IllegalArgumentException.class)
