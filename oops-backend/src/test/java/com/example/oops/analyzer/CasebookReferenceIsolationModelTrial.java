@@ -189,6 +189,21 @@ public final class CasebookReferenceIsolationModelTrial {
                 .contains(pipelineOutcome);
     }
 
+    @FunctionalInterface
+    interface AnalysisStep {
+        boolean run(int index, String conditionId) throws Exception;
+    }
+
+    /** Runs in order and stops immediately after the first non-comparable analysis. */
+    static int runUntilFailure(List<String> conditionOrder, AnalysisStep step) throws Exception {
+        int attempted = 0;
+        for (int index = 0; index < conditionOrder.size(); index++) {
+            attempted++;
+            if (!step.run(index, conditionOrder.get(index))) return attempted;
+        }
+        return attempted;
+    }
+
     static Plan prepare() throws Exception {
         JsonNode design;
         try (var stream = CasebookReferenceIsolationModelTrial.class.getResourceAsStream(DESIGN_RESOURCE)) {
@@ -434,13 +449,11 @@ public final class CasebookReferenceIsolationModelTrial {
         if (props.hasProject()) builder.defaultHeader("OpenAI-Project", props.project());
         RestClient rest = builder.build();
         var rows = new ArrayList<Map<String, Object>>();
-        double usageUsd = 0;
-        String state = "RUNNING";
-        save(output, rows, guard, usageUsd, state, plan, args[2], args[4]);
+        double[] usageUsd = {0};
+        save(output, rows, guard, usageUsd[0], "RUNNING", plan, args[2], args[4]);
         var repeatCounts = new HashMap<String, Integer>();
         try {
-            for (int index = 0; index < plan.conditionOrder().size(); index++) {
-                String conditionId = plan.conditionOrder().get(index);
+            int attempted = runUntilFailure(plan.conditionOrder(), (index, conditionId) -> {
                 Condition condition = plan.conditions().stream().filter(c -> c.id().equals(conditionId)).findFirst().orElseThrow();
                 int repeat = repeatCounts.merge(conditionId, 1, Integer::sum);
                 guard.beginAnalysis();
@@ -459,7 +472,7 @@ public final class CasebookReferenceIsolationModelTrial {
                         new CandidateReviewEngine.RunOptions(24, 0, false,
                                 new CandidateReviewEngine.VerificationFeatures(false, false, false), false));
                 var usage = client.videoUsage();
-                usageUsd += usage.costUsd();
+                usageUsd[0] += usage.costUsd();
                 var row = row(condition, repeat, source.expectedDecisionLocalOnly(), result, client, usage,
                         (System.nanoTime() - started) / 1_000_000);
                 rows.add(row);
@@ -470,23 +483,25 @@ public final class CasebookReferenceIsolationModelTrial {
                         && comparable
                         && client.callTraces.size() <= MAX_HTTP_PER_ANALYSIS
                         && guard.attemptsThisAnalysis <= MAX_HTTP_PER_ANALYSIS
-                        && guard.reservedUsd <= CAP_USD && usageUsd <= CAP_USD;
-                save(output, rows, guard, usageUsd, okay ? "RUNNING" : "STOPPED", plan, args[2], args[4]);
+                        && guard.reservedUsd <= CAP_USD && usageUsd[0] <= CAP_USD;
+                save(output, rows, guard, usageUsd[0], okay ? "RUNNING" : "STOPPED", plan, args[2], args[4]);
                 client.endVideo();
                 System.out.println("REFERENCE_ISOLATION_MODEL " + (index + 1) + "/10 " + conditionId
                         + " repeat=" + repeat + " outcome=" + row.get("pipelineOutcome")
                         + " calls=" + guard.attemptsThisAnalysis + " reservedUsd=" + String.format(Locale.ROOT, "%.6f", guard.reservedUsd));
-                check(okay, "Provider/schema/fingerprint/budget failure; stop without retry");
+                if (!okay) return false;
                 if (index + 1 < plan.conditionOrder().size()) Thread.sleep(SPACING_MS);
-            }
+                return true;
+            });
+            check(attempted == plan.conditionOrder().size(), "Provider/schema/fingerprint/budget failure; stop without retry");
             check(rows.size() == 10 && guard.totalAttempts <= MAX_HTTP_TOTAL, "Incomplete paired trial");
-            save(output, rows, guard, usageUsd, "COMPLETE", plan, args[2], args[4]);
+            save(output, rows, guard, usageUsd[0], "COMPLETE", plan, args[2], args[4]);
             writeSummary(output, rows, plan, guard);
             System.out.println("REFERENCE_ISOLATION_MODEL_COMPLETE analyses=10 http=" + guard.totalAttempts
-                    + " reservedUsd=" + guard.reservedUsd + " usageEstimatedUsd=" + usageUsd
+                    + " reservedUsd=" + guard.reservedUsd + " usageEstimatedUsd=" + usageUsd[0]
                     + " actualBillingConfirmed=false");
         } catch (Exception e) {
-            save(output, rows, guard, usageUsd, "STOPPED", plan, args[2], args[4]);
+            save(output, rows, guard, usageUsd[0], "STOPPED", plan, args[2], args[4]);
             throw e;
         }
     }

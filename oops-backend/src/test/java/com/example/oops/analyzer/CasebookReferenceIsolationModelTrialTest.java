@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -26,37 +27,53 @@ class CasebookReferenceIsolationModelTrialTest {
     @Test void incompleteOrContractDamagedAnalysesCannotContinueAsComparableRuns() {
         var validEmpty = result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, false, List.of(), List.of());
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(validEmpty, "NO_CANDIDATE")).isTrue();
+        assertThat(CasebookReferenceIsolationModelTrial.isComparable(validEmpty, "UNCERTAIN")).isTrue();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(validEmpty, "INCOMPLETE")).isFalse();
+        assertThat(CasebookReferenceIsolationModelTrial.isComparable(null, "NO_CANDIDATE")).isFalse();
+        assertThat(CasebookReferenceIsolationModelTrial.isComparable(
+                new TextReviewEngine.Result(List.of(), List.of(), AnalyzerStatus.SUCCESS, null, List.of(), List.of()),
+                "NO_CANDIDATE")).isFalse();
+        assertThat(CasebookReferenceIsolationModelTrial.isComparable(
+                new TextReviewEngine.Result(List.of(), List.of(), AnalyzerStatus.SUCCESS, null, List.of(), List.of(),
+                        new ReviewDiagnostics("test", AnalyzerStatus.PARTIAL, 1, false, Map.of(), List.of(), null,
+                                validEmpty.diagnostics().candidatePipeline())), "NO_CANDIDATE")).isFalse();
+        assertThat(CasebookReferenceIsolationModelTrial.isComparable(
+                new TextReviewEngine.Result(List.of(), List.of(), AnalyzerStatus.SUCCESS, null, List.of(), List.of(),
+                        new ReviewDiagnostics("test", AnalyzerStatus.SUCCESS, 1, false, Map.of(), List.of(), null,
+                                (CandidateReviewDiagnostics) null)), "NO_CANDIDATE")).isFalse();
 
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
                 result(AnalyzerStatus.PARTIAL, 0, 0, 0, 0, 0, 0, false, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 1, 0, 0, 0, 0, 0, false, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 1, 0, 0, 0, 0, 0, false, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 1, 0, 0, 0, 0, false, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 1, 0, 0, 0, 0, false, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 1, 0, 0, 0, false, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 1, 0, 0, 0, false, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 1, 0, 0, false, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 1, 0, 0, false, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, true, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, true, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, false, List.of("stt-index-1"), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, false, List.of("stt-index-1"), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, false, List.of(), List.of("stt-index-1")), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, false, List.of(), List.of("stt-index-1")), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 1, 0, false, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 1, 0, false, List.of(), List.of()), "NO_CANDIDATE"))
                 .isFalse();
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(
-                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 1, false, List.of(), List.of()), "INCOMPLETE"))
+                result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 1, false, List.of(), List.of()), "NO_CANDIDATE"))
+                .isFalse();
+        assertThat(CasebookReferenceIsolationModelTrial.isComparable(
+                withDiscoveryRepairCall(), "NO_CANDIDATE"))
                 .isFalse();
         var truncatedOverall = new TextReviewEngine.Result(List.of(), List.of(), AnalyzerStatus.SUCCESS, null,
                 List.of(), List.of(), new ReviewDiagnostics("test", AnalyzerStatus.SUCCESS, 1, true,
@@ -64,6 +81,23 @@ class CasebookReferenceIsolationModelTrialTest {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, false, List.of(), List.of(), List.of(), null,
                 List.of(), 0, List.of(), 0, List.of())));
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(truncatedOverall, "NO_CANDIDATE")).isFalse();
+    }
+
+    @Test void sequentialTrialStopsBeforeCallingTheNextAnalysisAfterFirstFailure() throws Exception {
+        var calls = new ArrayList<String>();
+        var savedStates = new ArrayList<String>();
+
+        int attempted = CasebookReferenceIsolationModelTrial.runUntilFailure(
+                List.of("first", "second", "third"), (index, conditionId) -> {
+                    calls.add(conditionId);
+                    boolean comparable = index != 0;
+                    savedStates.add(comparable ? "RUNNING" : "STOPPED");
+                    return comparable;
+                });
+
+        assertThat(attempted).isEqualTo(1);
+        assertThat(calls).containsExactly("first");
+        assertThat(savedStates).containsExactly("STOPPED");
     }
 
     @Test void outboundGuardAddsEightThousandTokenCeilingAndRejectsLabelsAndMedia() throws Exception {
@@ -131,5 +165,21 @@ class CasebookReferenceIsolationModelTrialTest {
                 List.of(), repairCalls, List.of(), 0, List.of());
         var diagnostics = new ReviewDiagnostics("test", status, 1, false, Map.of(), List.of(), null, candidatePipeline);
         return new TextReviewEngine.Result(List.of(), List.of(), status, null, unassessed, conflicts, diagnostics);
+    }
+
+    private static TextReviewEngine.Result withDiscoveryRepairCall() {
+        var result = result(AnalyzerStatus.SUCCESS, 0, 0, 0, 0, 0, 0, false, List.of(), List.of());
+        CandidateReviewDiagnostics current = result.diagnostics().candidatePipeline();
+        var withDiscoveryRepair = new CandidateReviewDiagnostics(current.revision(), current.discoveryCalls(),
+                current.verificationCalls(), current.exploredSegments(), current.proposed(), current.duplicates(),
+                current.invalidProposals(), current.rejected(), current.uncertain(), current.verificationFailed(),
+                current.budgetSkipped(), current.limitedBatches(), current.truncatedBatches(),
+                current.expandedCandidates(), current.verificationLimitedCandidates(), current.truncated(),
+                current.candidates(), current.visualCandidates(), current.caseRetrieval(), current.guidelineReference(),
+                current.contextSelections(), current.repairCalls(), current.repairs(), 1, current.evidenceCounts(),
+                current.mechanismRouting(), current.decisionConflicts());
+        var diagnostics = result.diagnostics().withCandidatePipeline(withDiscoveryRepair);
+        return new TextReviewEngine.Result(result.findings(), result.evaluations(), result.status(), result.notice(),
+                result.unassessedSegmentIds(), result.conflictingSegmentIds(), diagnostics);
     }
 }
