@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "legacy-correction-research-review-1",
+  "decision": "RESEARCH_DRAFT_REVIEWED",
+  "scope": "RESEARCH_ONLY_NO_RUNTIME_NO_MODEL_NO_TRAINING",
+  "proposalPath": "research/replace-with-reviewed-proposal.json",
+  "proposalSha256": "replace-with-exact-proposal-sha256",
+  "incidentId": "replace-with-incident-id",
+  "reviewedBy": "replace-with-human-reviewer",
+  "reviewedOn": "YYYY-MM-DD",
+  "rationale": "Describe the reviewed boundary and its limitations; this is not a rights clearance.",
+  "evidence": [{
+    "path": "research/replace-with-reviewed-reference.json",
+    "sha256": "replace-with-exact-reference-sha256",
+    "role": "RESEARCH_REFERENCE_NOT_RIGHTS_CLEARANCE"
+  }]
+}

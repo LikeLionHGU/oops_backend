@@ -19,8 +19,10 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 import shutil
 import re
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +34,7 @@ from build_review_guidelines import compile_guidelines
 from build_review_guidelines import write_private
 from review_dataset_catalog import inside
 import incidents_migration as mig
+from source_use_policy import LOCK_PATH, reviewed_incident_inputs, validate_incident_sources
 
 DEFAULT_ROOT = ROOT / "datasets/controversy"
 POLICY = "definitions/runtime-selection.json"
@@ -58,6 +61,7 @@ def context_inputs(root):
 
 
 def load_incidents(root: Path):
+    validate_incident_sources(root)
     directory = root / "incidents"
     require(directory.is_dir(), "INCIDENTS_DIR_REQUIRED")
     files = sorted(directory.glob("*.json"))
@@ -116,6 +120,16 @@ def input_hashes(root):
         for path in units:
             unit = parse(read_bytes(path))
             source = unit["source"]
+            source_provenance = unit.get("sourceProvenance")
+            if source_provenance is not None:
+                inputs.add(source_provenance["path"])
+                provenance = parse(read_bytes(inside(root, source_provenance["path"])))
+                artifact = provenance.get("artifact")
+                if isinstance(artifact, dict) and isinstance(artifact.get("path"), str):
+                    inputs.add(artifact["path"])
+                evidence = provenance.get("permissionEvidence")
+                if isinstance(evidence, dict) and isinstance(evidence.get("path"), str):
+                    inputs.add(evidence["path"])
             inputs.update(c["approvalSource"]["path"] for c in unit["normalContrasts"] if "approvalSource" in c)
             inputs.add(source["path"])
             if source["kind"] == "STORED_TRANSCRIPT_SNAPSHOT":
@@ -139,6 +153,7 @@ def input_hashes(root):
         for s in incident["statements"]:
             for document in s["legacyDictionaryCard"].get("documents", []):
                 inputs.add(document["snapshot"])
+    inputs.update(reviewed_incident_inputs(root))
     return {name: hashlib.sha256(read_bytes(inside(root, name))).hexdigest()
             for name in sorted(inputs)}
 
@@ -157,6 +172,9 @@ def prepare(root):
     manifest = {"schemaVersion": "incident-build-manifest-1", "version": runtime["version"],
                 "runtimeSchema": runtime["schemaVersion"],
                 "inputHashes": hashes, "runtimeSha256": hashlib.sha256(raw).hexdigest(),
+                "incidentSourcePolicySha256": validate_incident_sources(root),
+                "sourceUsePolicySha256": hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest()
+                    if runtime["schemaVersion"] == "review-guidelines-7" else None,
                 "sourceBundleSha256": runtime["sourceBundleSha256"],
                 "contextDictionarySha256": runtime["contextDictionarySha256"],
                 "incidents": len(load_incidents(root)), "examples": len(runtime["examples"]),
@@ -174,28 +192,93 @@ def verify(root):
     return expected
 
 
+def _assert_policy_snapshot(root, manifest):
+    require(validate_incident_sources(root) == manifest.get("incidentSourcePolicySha256"),
+            "INCIDENT_SOURCE_POLICY_CHANGED_DURING_BUILD")
+    expected_context_lock = (hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest()
+                              if manifest.get("runtimeSchema") == "review-guidelines-7" else None)
+    require(expected_context_lock == manifest.get("sourceUsePolicySha256"),
+            "CONTEXT_SOURCE_POLICY_CHANGED_DURING_BUILD")
+
+
+def _read_optional(path):
+    path = Path(path)
+    require(not path.is_symlink(), "OUTPUT_SYMLINK_REFUSED")
+    return path.read_bytes() if path.exists() else None
+
+
+def _write_private_bytes(path, raw):
+    path = Path(path)
+    require(not path.is_symlink(), "OUTPUT_SYMLINK_REFUSED")
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".publish-rollback-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _restore_published_outputs(previous, candidate):
+    conflicts = []
+    for path, original in previous.items():
+        path = Path(path)
+        try:
+            current = _read_optional(path)
+            if current == original:
+                continue
+            if current != candidate[path]:
+                conflicts.append(str(path))
+                continue
+            if original is None:
+                path.unlink()
+            else:
+                _write_private_bytes(path, original)
+        except Exception:
+            conflicts.append(str(path))
+    require(not conflicts, "PUBLISH_ROLLBACK_EXTERNAL_EDIT:" + ",".join(conflicts))
+
+
 def publish(root, allow_schema_downgrade=False):
     runtime, manifest = prepare(root)
     output = root / "guidelines/runtime.json"
+    manifest_path = root / "guidelines/build-manifest.json"
+    require(manifest["inputHashes"] == input_hashes(root), "INPUT_CHANGED_BEFORE_PUBLISH")
+    _assert_policy_snapshot(root, manifest)
+    previous = {output: _read_optional(output), manifest_path: _read_optional(manifest_path)}
     if output.exists():
-        previous = read_bytes(output)
-        require(not (parse(previous).get("schemaVersion") == "review-guidelines-7"
+        previous_runtime = previous[output]
+        require(not (parse(previous_runtime).get("schemaVersion") == "review-guidelines-7"
                      and runtime["schemaVersion"] == "review-guidelines-4") or allow_schema_downgrade,
                 "EXPLICIT_SCHEMA_DOWNGRADE_REQUIRED")
-        sha = hashlib.sha256(previous).hexdigest()
+        sha = hashlib.sha256(previous_runtime).hexdigest()
         history = root / "legacy/runtime-history" / (sha + ".json")
         if history.exists():
-            require(read_bytes(history) == previous, "HISTORY_HASH_MISMATCH")
+            require(read_bytes(history) == previous_runtime, "HISTORY_HASH_MISMATCH")
         else:
             history.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             shutil.copyfile(output, history)
             history.chmod(0o600)
-            require(read_bytes(history) == previous, "HISTORY_COPY_MISMATCH")
+            require(read_bytes(history) == previous_runtime, "HISTORY_COPY_MISMATCH")
     require(manifest["inputHashes"] == input_hashes(root), "INPUT_CHANGED_BEFORE_PUBLISH")
-    write_private(output, runtime)
-    # A crash between the two replacements is detected by verify; rerun --write to repair.
-    write_private(root / "guidelines/build-manifest.json", manifest)
-    verify(root)
+    _assert_policy_snapshot(root, manifest)
+    require(_read_optional(output) == previous[output]
+            and _read_optional(manifest_path) == previous[manifest_path], "PUBLISH_OUTPUT_CHANGED_BEFORE_WRITE")
+    candidate = {
+        output: (json.dumps(runtime, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+        manifest_path: (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    }
+    try:
+        write_private(output, runtime)
+        write_private(manifest_path, manifest)
+        verify(root)
+    except BaseException:
+        _restore_published_outputs(previous, candidate)
+        raise
     return manifest
 
 

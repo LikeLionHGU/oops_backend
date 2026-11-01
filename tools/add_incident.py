@@ -4,11 +4,10 @@
 최소 스펙(JSON)에서 완전한 incident-2 를 조립해 incidents/{id}.json 하나로 기록한다.
 기사만으로(reactions 0, collectionId null) 사건이 성립한다(결함 B 제거, 5단계).
 
-중요 규칙(사용자 지정): 사례를 임의로 추가하지 않는다. **먼저 후보를 사용자에게 보여주고**
-확인받은 뒤 추가한다. 공통 메커니즘은 definitions/build.json에서 읽는다. 그래서 이 도구는:
-  - 기본값 = DRY-RUN. 조립될 사건을 '미리보기'로 출력만 하고 디스크를 바꾸지 않는다.
-  - --apply 를 명시해야만 파일을 쓴다. 쓴 뒤 build_incident_dataset --verify 로 runtime 동치를
-    자동 확인하고, 실패하면 방금 쓴 파일을 삭제(원자적 롤백).
+중요 규칙: 후보 사건 초안만 격리 경로에 만들 수 있다. 런타임 입력에 넣는 작업은
+incident_intake.py의 별도 승인·해시 미리보기·영향 빌드 경로만 사용한다.
+이 도구는 기본적으로 DRY-RUN이며, --candidate-output은 research/pending-incidents/ 아래에
+새 초안 파일만 기록한다. 기존 파일 덮어쓰기와 직접 --apply는 지원하지 않는다.
 
 입력 스펙(최소):
   {
@@ -31,17 +30,35 @@ reactions·댓글은 받지 않는다(기사-only). 필요하면 승인 후 별�
 실제 incidents/*.json 은 /datasets/ 아래 Git 제외 로컬 생성물이다.
 """
 import argparse
+import hashlib
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT))
 from review_context_pilot import require
 import incidents_migration as mig
-import build_incident_dataset as build
 
 DEFAULT_ROOT = ROOT / "datasets/controversy"
+
+
+def _article_snapshot(root, relative):
+    require(isinstance(relative, str) and relative.startswith("research/source-snapshots/")
+            and "\\" not in relative and "\0" not in relative,
+            "PRIVATE_SOURCE_SNAPSHOT_PATH_REQUIRED")
+    parts = PurePosixPath(relative)
+    require(not parts.is_absolute() and ".." not in parts.parts and parts.as_posix() == relative,
+            "UNSAFE_SOURCE_SNAPSHOT_PATH")
+    root = Path(root).resolve()
+    path = root
+    for part in parts.parts:
+        path = path / part
+        require(not path.is_symlink(), "SOURCE_SNAPSHOT_SYMLINK_REFUSED")
+    resolved = path.resolve()
+    require(resolved != root and resolved.is_relative_to(root) and resolved.is_file(), "SNAPSHOT_NOT_FOUND")
+    return resolved
 
 
 def complete_card(case_id, incident_id, known_point, article, boundaries=None, source_id=None):
@@ -114,12 +131,8 @@ def assemble(spec, root: Path):
         if article is not None:
             for k in ("publisher", "url", "publishedDate", "snapshot", "sha256"):
                 require(isinstance(article.get(k), str) and article[k], "ARTICLE_FIELD_REQUIRED:" + k)
-            require(article["snapshot"].startswith("research/source-snapshots/"),
-                    "PRIVATE_SOURCE_SNAPSHOT_PATH_REQUIRED")
             # 발췌 본문을 읽어 실제 코드포인트 범위를 계산한다(0/0 금지, 해시 검증).
-            import hashlib
-            snap_path = (root / article["snapshot"])
-            require(snap_path.exists(), "SNAPSHOT_NOT_FOUND")
+            snap_path = _article_snapshot(root, article["snapshot"])
             raw = snap_path.read_bytes()
             require(hashlib.sha256(raw).hexdigest() == article["sha256"], "SNAPSHOT_HASH_MISMATCH")
             body = raw.decode("utf-8")
@@ -160,9 +173,13 @@ def main():
     p.add_argument("spec", type=Path, help="사건 최소 스펙 JSON 파일")
     p.add_argument("--dataset-root", type=Path, default=DEFAULT_ROOT)
     p.add_argument("--apply", action="store_true",
-                   help="실제로 incidents/{id}.json 을 쓴다(기본은 DRY-RUN 미리보기). 쓴 뒤 자동 verify+롤백.")
+                   help="폐기 예정 경로. 검수된 intake를 우회할 수 없어 항상 거부한다.")
+    p.add_argument("--candidate-output", type=str,
+                   help="선택: 새 연구 초안 JSON을 research/pending-incidents/ 아래에만 생성")
     args = p.parse_args()
     try:
+        if args.apply:
+            p.error("REVIEWED_INTAKE_REQUIRED: use tools/incident_intake.py")
         spec = json.loads(args.spec.read_text(encoding="utf-8"))
         incident = assemble(spec, args.dataset_root)
         preview = {"incidentId": incident["incidentId"],
@@ -173,26 +190,31 @@ def main():
                                   for s in incident["statements"]],
                    "reactions": 0, "collectionId": None}
 
-        if not args.apply:
-            print(json.dumps({"mode": "DRY_RUN", "wouldWrite": incident["incidentId"] + ".json",
-                              "preview": preview,
-                              "note": "검토용 미리보기입니다. 승인하면 --apply 로 실제 기록합니다. 디스크 변경 없음."},
-                             ensure_ascii=False, indent=2))
-            return
-
-        path = args.dataset_root / "incidents" / (incident["incidentId"] + ".json")
-        path.parent.mkdir(exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(incident, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(path)
-        # 자동 동치 재검증. 실패 시 방금 쓴 파일만 롤백(원자적).
-        try:
-            build.generate(args.dataset_root)  # 전 체인 compile 이 통과하는지
-        except Exception as error:  # noqa: BLE001
-            path.unlink(missing_ok=True)
-            p.exit(2, f"ROLLED_BACK (빌드 실패): {type(error).__name__}: {error}\n")
-        print(json.dumps({"mode": "APPLIED", "wrote": str(path), "preview": preview,
-                          "note": "기록 완료. incidents/ 는 Git 제외 로컬 데이터. runtime 반영은 build_incident_dataset --write."},
+        candidate_info = None
+        if args.candidate_output:
+            rel = args.candidate_output
+            require(rel.startswith("research/pending-incidents/") and rel.endswith(".json")
+                    and ".." not in Path(rel).parts and "\\" not in rel,
+                    "CANDIDATE_OUTPUT_MUST_BE_QUARANTINED")
+            require(Path(rel).name == incident["incidentId"] + ".json", "CANDIDATE_OUTPUT_ID_MISMATCH")
+            root = args.dataset_root.resolve()
+            path = root / rel
+            cursor = root
+            for part in Path(rel).parts:
+                cursor = cursor / part
+                require(not cursor.is_symlink(), "SYMLINK_REFUSED")
+            require(path.resolve().is_relative_to(root) and not path.exists(), "CANDIDATE_OUTPUT_EXISTS_OR_OUTSIDE_ROOT")
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            raw = (json.dumps(incident, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            candidate_info = {"path": rel, "sha256": hashlib.sha256(raw).hexdigest()}
+        print(json.dumps({"mode": "DRAFT_PREVIEW", "preview": preview,
+                          "candidate": candidate_info,
+                          "note": "사람 검수 전에는 빌드 입력이 아닙니다. 런타임 추가는 incident_intake.py 승인 절차만 사용합니다."},
                          ensure_ascii=False, indent=2))
     except Exception as error:  # noqa: BLE001 — CLI 경계
         p.exit(2, f"{type(error).__name__}: {error}\n")

@@ -8,6 +8,7 @@
 import sys
 import unittest
 import json
+import hashlib
 import tempfile
 import shutil
 from contextlib import contextmanager
@@ -41,6 +42,10 @@ def isolated_inputs():
             (root/'incidents'/f'{i["familyId"]}.json').write_text(json.dumps(incident,ensure_ascii=False))
         source=DATASET_ROOT/'research/source-snapshots'
         if source.exists():shutil.copytree(source,root/'research/source-snapshots')
+        entries={p.stem:hashlib.sha256(p.read_bytes()).hexdigest()
+                 for p in sorted((root/'incidents').glob('*.json'))}
+        (root/'definitions/incident-source-lock.json').write_text(json.dumps(
+            {"schemaVersion":"incident-source-lock-1","entries":entries},sort_keys=True))
         yield root
 
 

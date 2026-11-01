@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "incident-review-approval-1",
+  "incidentId": "replace-with-incident-id",
+  "incidentSha256": "replace-with-sha256-of-the-reviewed-candidate-file",
+  "decision": "APPROVE_REFERENCE",
+  "scope": "기사에서 보고된 발언-쟁점 연결을 내부 검색 참고 사례로만 검토. 원영상·원음과 독립 사실은 확인하지 않음.",
+  "reviewedBy": "reviewer identifier",
+  "reviewedOn": "2026-10-27",
+  "statementReviews": [
+    {
+      "statementId": "replace-with-statement-id",
+      "decision": "REVIEW_REQUIRED",
+      "rationale": "어떤 맥락 연결을 사람 검토 대상으로 삼는지와 불확실한 점을 적는다.",
+      "sourceDocumentIds": ["replace-with-source-document-id"]
+    }
+  ],
+  "sourceUseReview": {
+    "decision": "ALLOW_DECLARED_INTERNAL_USE",
+    "basis": "OTHER_REVIEWED",
+    "authorizedUses": ["MODEL_INPUT", "RUNTIME_RETRIEVAL"],
+    "rationale": "검토자가 확인한 제한된 내부 사용 근거를 기록한다. 이 입력은 법률 판단이나 권리 보증이 아니다."
+  },
+  "sourceArtifacts": [
+    {"path": "research/source-snapshots/replace.txt", "sha256": "replace-with-source-snapshot-sha256"}
+  ]
+}

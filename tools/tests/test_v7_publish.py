@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from test_incident_publish import setup
+from test_incident_publish import setup, update_test_source_lock
 import test_build_context_units as units_fixture
 import build_incident_dataset as build
 import build_context_units as units_tool
@@ -28,7 +28,11 @@ def configured(root):
     try:
         unit = copy.deepcopy(fixture.unit)
         unit.update(id=incident["incidentId"] + "#unit", parentCaseId="synthetic-card", familyId=incident["incidentId"])
+        fixture.authorize_source_use(unit)
         (root / "source.json").write_bytes((fixture.root / "source.json").read_bytes())
+        for relative in ("rights/source.json", "rights/review.json"):
+            target = root / relative; target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((fixture.root / relative).read_bytes())
         profile = fixture.profile()
         profile["unitId"] = unit["id"]
         write(root, "context-units/unit.json", unit)
@@ -118,12 +122,79 @@ def test_new_incident_is_retained_without_reverting_to_v4(tmp_path):
     s["legacyCard"].update(id="second-card", familyId="second-incident", reactions=[])
     s["legacyCard"]["controversy"].update(reasonHypotheses=[], reasonSupportReactionIds=[])
     write(tmp_path, "incidents/second-incident.json", new)
+    with pytest.raises(ValueError, match="INCIDENT_SOURCE_REVIEW_REQUIRED"):
+        build.publish(tmp_path)
+    update_test_source_lock(tmp_path)  # explicit synthetic review/pin for this builder test
     second = build.publish(tmp_path)
     assert second["runtimeSchema"] == "review-guidelines-7"
     assert second["examples"] == first["examples"] + 1
     added = [e for e in build.generate(tmp_path)[0]["examples"] if e["id"] == "second-card"][0]
     assert added["routingKeys"] == [] and "relationProfile" not in added
     assert build.verify(tmp_path) == second
+
+
+def test_policy_change_during_publish_restores_runtime_and_manifest(tmp_path, monkeypatch):
+    configured(tmp_path)
+    build.publish(tmp_path)
+    runtime_path = tmp_path / "guidelines/runtime.json"
+    manifest_path = tmp_path / "guidelines/build-manifest.json"
+    previous_runtime = runtime_path.read_bytes()
+    previous_manifest = manifest_path.read_bytes()
+    relation_path = tmp_path / "context-relations/unit.json"
+    relation = json.loads(relation_path.read_text())
+    relation["linkage"] = "새 검색 관계 설명"
+    write(tmp_path, "context-relations/unit.json", relation)
+
+    original_write = build.write_private
+    changed = False
+
+    def mutate_policy_after_runtime_write(path, value):
+        nonlocal changed
+        original_write(path, value)
+        if Path(path) == runtime_path and not changed:
+            lock_path = tmp_path / "definitions/incident-source-lock.json"
+            lock = json.loads(lock_path.read_text())
+            lock["testMutation"] = True
+            write(tmp_path, "definitions/incident-source-lock.json", lock)
+            changed = True
+
+    monkeypatch.setattr(build, "write_private", mutate_policy_after_runtime_write)
+    with pytest.raises(ValueError, match="BUILD_MANIFEST_MISMATCH"):
+        build.publish(tmp_path)
+
+    assert changed
+    assert runtime_path.read_bytes() == previous_runtime
+    assert manifest_path.read_bytes() == previous_manifest
+
+
+def test_policy_change_after_prepare_is_rejected_before_any_write(tmp_path, monkeypatch):
+    configured(tmp_path)
+    build.publish(tmp_path)
+    runtime_path = tmp_path / "guidelines/runtime.json"
+    manifest_path = tmp_path / "guidelines/build-manifest.json"
+    previous_runtime = runtime_path.read_bytes()
+    previous_manifest = manifest_path.read_bytes()
+    relation_path = tmp_path / "context-relations/unit.json"
+    relation = json.loads(relation_path.read_text())
+    relation["linkage"] = "게시 전 정책 변경 검사"
+    write(tmp_path, "context-relations/unit.json", relation)
+
+    original_prepare = build.prepare
+
+    def mutate_policy_after_prepare(root):
+        result = original_prepare(root)
+        lock_path = tmp_path / "definitions/incident-source-lock.json"
+        lock = json.loads(lock_path.read_text())
+        lock["testMutation"] = True
+        write(tmp_path, "definitions/incident-source-lock.json", lock)
+        return result
+
+    monkeypatch.setattr(build, "prepare", mutate_policy_after_prepare)
+    with pytest.raises(ValueError, match="INCIDENT_SOURCE_POLICY_CHANGED_DURING_BUILD"):
+        build.publish(tmp_path)
+
+    assert runtime_path.read_bytes() == previous_runtime
+    assert manifest_path.read_bytes() == previous_manifest
 
 
 def test_preview_works_after_promotion_without_reading_v7_as_its_base(tmp_path, monkeypatch):

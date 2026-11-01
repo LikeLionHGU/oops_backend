@@ -38,6 +38,22 @@ def bind_approval_to_selection(root, value, segment_ids):
     value['approval'].update(path=relative, sha256=tool.digest(raw))
 
 
+def bind_source_use(root, value):
+    source_id = "synthetic-video-source"
+    stem = Path(value['source']['path']).stem
+    artifact = {"path": value['source']['path'], "sha256": value['source']['sha256']}
+    uses = ["MODEL_INPUT", "RETRIEVAL_INDEXING", "RUNTIME_RETRIEVAL"]
+    evidence = save(root, f'research/rights-review-{stem}.json', {"schemaVersion": "source-use-review-2",
+        "sourceId": source_id, "decision": "ALLOW", "intendedUses": uses, "artifact": artifact,
+        "basis": "OWNED_OR_CREATED", "reviewedBy": "synthetic test reviewer", "reviewedOn": "2026-10-27"})
+    metadata = save(root, f'research/source-provenance-{stem}.json', {"schemaVersion": "source-provenance-metadata-2",
+        "sourceId": source_id, "rightsReviewStatus": "CLEARED_FOR_DECLARED_USES",
+        "sourceExcerptsQuarantined": False, "authorizedUses": uses, "blockedUses": [],
+        "artifact": artifact,
+        "permissionEvidence": evidence})
+    value['sourceProvenance'] = {**metadata, "sourceId": source_id, "intendedUse": "RUNTIME_RETRIEVAL"}
+
+
 @pytest.fixture
 def dataset(tmp_path):
     setup(tmp_path)
@@ -55,13 +71,25 @@ def dataset(tmp_path):
         "segments": [{"id": "stt-index-0", "text": "합성 평가 표현", "startMs": 0, "endMs": 1000},
                      {"id": "stt-index-1", "text": "합성 후속 상황", "startMs": 1000, "endMs": 2000}]}
     ref = save(tmp_path, 'context-sources/seed.json', source)
-    unit = {"schemaVersion": "context-reference-unit-2", "id": "dev#seed", "familyId": "development-seed",
+    rights_source_id = "synthetic-video-source"
+    artifact = {"path": origin["path"], "sha256": origin["sha256"]}
+    uses = ["MODEL_INPUT", "RETRIEVAL_INDEXING", "RUNTIME_RETRIEVAL"]
+    evidence = save(tmp_path, 'research/rights-review.json', {"schemaVersion": "source-use-review-2",
+        "sourceId": rights_source_id, "decision": "ALLOW", "intendedUses": uses, "artifact": artifact,
+        "basis": "OWNED_OR_CREATED", "reviewedBy": "synthetic test reviewer", "reviewedOn": "2026-10-27"})
+    rights = save(tmp_path, 'research/source-provenance.json', {"schemaVersion": "source-provenance-metadata-2",
+        "sourceId": rights_source_id, "rightsReviewStatus": "CLEARED_FOR_DECLARED_USES",
+        "sourceExcerptsQuarantined": False, "authorizedUses": uses, "blockedUses": [],
+        "artifact": artifact,
+        "permissionEvidence": evidence})
+    unit = {"schemaVersion": "context-reference-unit-3", "id": "dev#seed", "familyId": "development-seed",
         "status": "DRAFT", "humanVerified": False, "trainingUseAuthorized": False,
         "referencePurpose": "DEVELOPMENT_BOUNDARY_NOT_PUBLIC_CONTROVERSY", "developmentDecision": "PASS",
         "mechanismIds": ["mechanism"], "routingKeys": ["reaction-target-boundary"],
         "source": {"kind": "STORED_TRANSCRIPT_SNAPSHOT", **ref}, "utteranceIds": ["stt-index-0", "stt-index-1"],
         "roles": {"situationIds": ["stt-index-1"], "evaluationIds": ["stt-index-0"]},
         "retrievalText": "합성 평가 표현 후속 상황", "interpretation": "합성 정상 해석", "boundary": "합성 적용 경계", "normalContrasts": []}
+    unit["sourceProvenance"] = {**rights, "sourceId": rights_source_id, "intendedUse": "RUNTIME_RETRIEVAL"}
     save(tmp_path, 'context-units/seed.json', unit)
     save(tmp_path, 'context-relations/seed.json', {"schemaVersion": "context-relation-profile-1", "unitId": unit['id'],
         "status": "DRAFT", "humanVerified": False, "trainingUseAuthorized": False,
@@ -80,6 +108,7 @@ def spec(root, action='ADD'):
         "source": {"path": "research/source.json", "sha256": tool.digest((root / 'research/source.json').read_bytes()),
                    "format": "RESULT_TRANSCRIPT", "kind": "USER_SUPPLIED_SCRIPT_NOT_AUDIO_VERIFIED", "videoId": 1},
         "approval": {"path": "research/reviews.json", "sha256": tool.digest((root / 'research/reviews.json').read_bytes()), "eventIds": ["e1"]},
+        "sourceProvenance": {**json.loads((root / 'context-units/seed.json').read_bytes())["sourceProvenance"]},
         "segments": [{"index": 0, "id": "stt-index-0", "role": "EVALUATION"},
                      {"index": 1, "id": "stt-index-1", "role": "SITUATION"}],
         "mechanismIds": ["mechanism"], "routingKeys": ["reaction-target-boundary"],
@@ -89,6 +118,13 @@ def spec(root, action='ADD'):
     if action == 'UPDATE':
         value.update(slug='seed', id='dev#seed', familyId='development-seed', relatedUnitIds=[],
                      expectedUnitSha256=tool.digest((root / 'context-units/seed.json').read_bytes()))
+    existing_link = json.loads((root / 'context-units/seed.json').read_bytes()).get('sourceProvenance')
+    existing_meta = json.loads((root / existing_link['path']).read_bytes()) if existing_link else {}
+    existing_artifact = existing_meta.get('artifact', {})
+    if value['source']['path'] != existing_artifact.get('path') or value['source']['sha256'] != existing_artifact.get('sha256'):
+        bind_source_use(root, value)
+    else:
+        value['sourceProvenance'] = existing_link
     return value
 
 
@@ -132,6 +168,7 @@ def projected_spec(root, count=24):
     value['source'].update(save(root, 'research/projected.json', {'transcript': [
         {'text': f'합성 원문 {i}', 'startMs': i * 1000, 'endMs': (i + 1) * 1000}
         for i in range(count)]}))
+    bind_source_use(root, value)
     value['segments'] = [{'index': i, 'id': f'stt-index-{i}',
                           'role': 'EVALUATION' if i == 0 else 'SITUATION'} for i in range(count)]
     bind_approval_to_selection(root, value, [entry['id'] for entry in value['segments']])
@@ -187,6 +224,7 @@ def test_long_pass_keeps_every_source_line(dataset, count, accepted):
     value['source'].update(save(dataset, 'research/long.json', {'transcript': [
         {'text': f'합성 문맥 {i}', 'startMs': i * 1000, 'endMs': (i + 1) * 1000}
         for i in range(count)]}))
+    bind_source_use(dataset, value)
     value['segments'] = [{'index': i, 'id': f'stt-index-{i}',
                           'role': 'EVALUATION' if i == 0 else 'SITUATION'} for i in range(count)]
     bind_approval_to_selection(dataset, value, [entry['id'] for entry in value['segments']])
@@ -208,6 +246,13 @@ def test_preview_is_deterministic_no_write_and_shows_exact_changed_paths(dataset
     assert first['summary']['changedFiles'] == ['context-relations/new-boundary.json', 'context-sources/new-boundary.json', 'context-units/new-boundary.json']
     assert first['summary']['relatedUnitIds'] == ['dev#seed']
     assert first['summary']['networkCalls'] == 0
+
+
+def test_new_intake_requires_explicit_source_use_review_link(dataset):
+    value = spec(dataset)
+    value.pop('sourceProvenance')
+    with pytest.raises(tool.PilotError, match='SOURCE_USE_REVIEW_LINK_REQUIRED'):
+        tool.plan(dataset, value)
 
 
 def test_apply_add_publishes_verified_runtime_and_private_receipt(dataset):
@@ -235,7 +280,7 @@ def test_update_preserves_source_and_label_and_only_writes_authored_views(datase
     assert json.loads(receipt['previousFiles']['context-units/seed.json'])['interpretation'] == '합성 정상 해석'
 
 
-def test_legacy_v2_update_can_rebind_source_approval_without_changing_label_or_segments(dataset):
+def test_transcript_snapshot_without_approval_record_cannot_enter_runtime(dataset):
     source_path = dataset / 'context-sources/seed-legacy-20261025.json'
     (dataset / 'context-sources/seed.json').rename(source_path)
     source = json.loads(source_path.read_bytes())
@@ -244,36 +289,11 @@ def test_legacy_v2_update_can_rebind_source_approval_without_changing_label_or_s
     source_ref = {'path': 'context-sources/seed-legacy-20261025.json', 'sha256': tool.digest(source_path.read_bytes())}
     unit_path = dataset / 'context-units/seed.json'
     unit = json.loads(unit_path.read_bytes())
+    unit['schemaVersion'] = 'context-reference-unit-2'
     unit['source'].update(source_ref)
     unit_path.write_bytes(tool.encoded(unit))
-    relation_path = dataset / 'context-relations/seed.json'
-    relation = json.loads(relation_path.read_bytes())
-    relation['sourceSha256'] = source_ref['sha256']
-    relation_path.write_bytes(tool.encoded(relation))
-    review_path = dataset / 'research/reviews.json'
-    review_doc = json.loads(review_path.read_bytes())
-    for field in ('sourceSha256', 'videoId', 'segmentIds'):
-        review_doc['reviews'][0].pop(field)
-    review_path.write_bytes(tool.encoded(review_doc))
-    builder.publish(dataset)
-
-    value = spec(dataset, 'UPDATE')
-    bind_approval_to_selection(dataset, value, ['stt-index-0', 'stt-index-1'])
-    preview = tool.plan(dataset, value)
-    assert preview['summary']['changedFiles'] == [
-        'context-relations/seed.json', 'context-sources/seed-legacy-20261025.json', 'context-units/seed.json']
-    assert preview['payload']['files']['context-units/seed.json']['schemaVersion'] == 'context-reference-unit-3'
-    assert preview['payload']['files']['context-sources/seed-legacy-20261025.json']['segments'] == source['segments']
-    result = tool.apply_plan(dataset, value, preview['sha'], fake_audit,
-                              expected_impact_sha=tool.impact_report_sha256(fake_audit(preview)))
-    manifest = builder.verify(dataset)
-    assert result['applied'] and manifest['examples'] == 2
-    assert 'research/source.json' in manifest['inputHashes']
-    upgraded = json.loads(unit_path.read_bytes())
-    upgraded_source = json.loads(source_path.read_bytes())
-    assert upgraded['developmentDecision'] == 'PASS'
-    assert upgraded_source['developmentReview']['approvalRecord']['path'].startswith('research/approval-')
-    assert upgraded['source']['sha256'] == tool.digest(source_path.read_bytes())
+    with pytest.raises(Exception, match='SOURCE_USE_TRANSCRIPT_SCHEMA_REQUIRED'):
+        builder.publish(dataset)
 
 
 def test_hold_keeps_runtime_identical_and_never_audits(dataset):

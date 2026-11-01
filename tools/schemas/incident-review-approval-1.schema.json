@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oops.example/schemas/incident-review-approval-1.schema.json",
+  "title": "Incident intake human review record",
+  "description": "Hash-bound local review attestation. It is not proof of reviewer identity, source authenticity, legal rights, or independent truth.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "incidentId", "incidentSha256", "decision", "scope", "reviewedBy", "reviewedOn", "statementReviews", "sourceUseReview", "sourceArtifacts"],
+  "properties": {
+    "schemaVersion": {"const": "incident-review-approval-1"},
+    "incidentId": {"type": "string", "minLength": 1, "maxLength": 100},
+    "incidentSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decision": {"const": "APPROVE_REFERENCE"},
+    "scope": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "reviewedBy": {"type": "string", "minLength": 1, "maxLength": 100},
+    "reviewedOn": {"type": "string", "format": "date"},
+    "statementReviews": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["statementId", "decision", "rationale", "sourceDocumentIds"],
+        "properties": {
+          "statementId": {"type": "string", "minLength": 1, "maxLength": 100},
+          "decision": {"enum": ["PASS", "REVIEW_REQUIRED"]},
+          "rationale": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "sourceDocumentIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 120}}
+        }
+      }
+    },
+    "sourceUseReview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["decision", "basis", "authorizedUses", "rationale"],
+      "properties": {
+        "decision": {"const": "ALLOW_DECLARED_INTERNAL_USE"},
+        "basis": {"enum": ["OWNED_OR_CREATED", "LICENSED", "EXPLICIT_PERMISSION", "PUBLIC_DOMAIN", "OTHER_REVIEWED"]},
+        "authorizedUses": {"const": ["MODEL_INPUT", "RUNTIME_RETRIEVAL"]},
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    },
+    "sourceArtifacts": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

@@ -18,11 +18,12 @@ import tempfile
 from pathlib import Path, PurePosixPath
 
 import build_incident_dataset as builder
+from source_use_policy import incident_lock_path
 from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text, PilotError
 from casebook_provenance import validate_approval_document
 
-REVISION = "casebook-intake-tool-4"
+REVISION = "casebook-intake-tool-5"
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 IDENTITY = re.compile(r"[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?\Z")
 
@@ -42,8 +43,9 @@ def impact_report_sha256(report):
 
 def implementation_hashes():
     repo = Path(__file__).resolve().parents[1]
-    names = ["tools/" + name + ".py" for name in ("casebook_intake", "casebook_provenance", "build_incident_dataset", "build_context_units",
+    names = ["tools/" + name + ".py" for name in ("casebook_intake", "casebook_provenance", "build_incident_dataset", "build_context_units", "source_use_policy",
              "build_context_dictionary", "build_review_guidelines", "incidents_migration", "review_context_pilot")]
+    names += ["tools/context_unit_source_lock.json"]
     names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
               ("ReviewGuidelineLibrary", "ContextExampleSelector", "ContextRelationRetrieval", "ContextBoundarySupplement",
                "ContextReferenceBalance", "StructuredContextSearch", "ReviewJudgmentPolicy", "CandidateReviewPrompts",
@@ -88,7 +90,7 @@ def reference(root, ref):
     return parse(raw)
 
 
-def provenance_refs(spec):
+def provenance_refs(spec, root):
     refs = [{k: spec[name][k] for k in ("path", "sha256")} for name in ("source", "approval")]
     controls = spec.get("normalContrasts", [])
     require(isinstance(controls, list), "EXPLICIT_CONTROLS_REQUIRED")
@@ -99,6 +101,18 @@ def provenance_refs(spec):
         if "approvalSource" in control:
             exact(control["approvalSource"], ("path", "sha256", "caseId"))
             refs.append({k: control["approvalSource"][k] for k in ("path", "sha256")})
+    source_use = spec.get("sourceProvenance")
+    if source_use is not None:
+        exact(source_use, ("path", "sha256", "sourceId", "intendedUse"))
+        require(text(source_use["sourceId"], 100) and source_use["intendedUse"] == "RUNTIME_RETRIEVAL",
+                "SOURCE_USE_REVIEW_LINK_REQUIRED")
+        # Hash/link integrity is checked here; the common runtime builder performs
+        # the authoritative use-scope, artifact-binding and evidence-policy checks.
+        refs.append({"path": source_use["path"], "sha256": source_use["sha256"]})
+        metadata = reference(root, {"path": source_use["path"], "sha256": source_use["sha256"]})
+        evidence = metadata.get("permissionEvidence")
+        exact(evidence, ("path", "sha256"))
+        refs.append(evidence)
     return refs
 
 
@@ -174,7 +188,7 @@ def plan(root, spec):
     exact(spec, ("schemaVersion", "action", "slug", "id", "familyId", "sourceGroupId", "decision", "source",
                  "approval", "segments", "interpretation", "boundary"),
           ("mechanismIds", "routingKeys", "retrievalText", "relation", "normalContrasts", "relatedUnitIds",
-           "expectedUnitSha256", "missingInformation", "contextProjection"))
+           "expectedUnitSha256", "missingInformation", "contextProjection", "sourceProvenance"))
     require(spec["schemaVersion"] == "casebook-intake-1" and spec["action"] in {"ADD", "UPDATE", "HOLD"}, "INTAKE_ACTION_REQUIRED")
     require(isinstance(spec["slug"], str) and SLUG.fullmatch(spec["slug"]), "SAFE_SLUG_REQUIRED")
     require(all(isinstance(spec[k], str) and IDENTITY.fullmatch(spec[k]) for k in ("id", "familyId", "sourceGroupId"))
@@ -188,7 +202,9 @@ def plan(root, spec):
     lines, roles = source_lines(root, spec)
     ids = [s["id"] for s in lines]
     approved = approval(root, spec, ids)
-    refs = provenance_refs(spec)
+    if spec["action"] == "ADD":
+        require("sourceProvenance" in spec, "SOURCE_USE_REVIEW_LINK_REQUIRED")
+    refs = provenance_refs(spec, root)
     for ref in refs: reference(root, ref)
     files = {}
     slug = spec["slug"]; unit_path = f"context-units/{slug}.json"; relation_path = f"context-relations/{slug}.json"
@@ -217,6 +233,8 @@ def plan(root, spec):
                 "source": {"kind": "STORED_TRANSCRIPT_SNAPSHOT", "path": source_path, "sha256": digest(encoded(source))},
                 "utteranceIds": ids, "roles": roles, "retrievalText": spec["retrievalText"],
                 "interpretation": spec["interpretation"], "boundary": spec["boundary"], "normalContrasts": spec.get("normalContrasts", [])}
+        if spec.get("sourceProvenance") is not None:
+            unit["sourceProvenance"] = copy.deepcopy(spec["sourceProvenance"])
         if "contextProjection" in spec:
             unit["contextProjection"] = copy.deepcopy(spec["contextProjection"])
         if spec["action"] == "UPDATE":
@@ -243,6 +261,7 @@ def plan(root, spec):
                     and (not approval_changed or rebind_legacy_v2),
                     "UPDATE_CANNOT_CHANGE_SOURCE_LABEL_OR_IDENTITY")
             if rebind_legacy_v2:
+                require(spec.get("sourceProvenance") is not None, "SOURCE_USE_REVIEW_LINK_REQUIRED")
                 source_path = old["source"]["path"]
                 require({"path", "sha256", "videoId", "format"} <= set(new_origin)
                         and source_path.startswith("context-sources/") and source_path.endswith(".json"),
@@ -258,11 +277,14 @@ def plan(root, spec):
                 unit["schemaVersion"] = "context-reference-unit-3"
                 unit["source"] = {"kind": "STORED_TRANSCRIPT_SNAPSHOT", "path": source_path,
                                   "sha256": digest(encoded(source))}
+                unit["sourceProvenance"] = copy.deepcopy(spec["sourceProvenance"])
                 files[source_path] = source
             else:
                 # Ordinary view edits do not rewrite the original approval/source snapshot.
                 source = old_source
                 unit = copy.deepcopy(old)
+                if spec.get("sourceProvenance") is not None:
+                    unit["sourceProvenance"] = copy.deepcopy(spec["sourceProvenance"])
             for key in ("retrievalText", "interpretation", "boundary"): unit[key] = spec[key]
             if "normalContrasts" in spec: unit["normalContrasts"] = spec["normalContrasts"]
             source_path = old["source"]["path"]
@@ -288,6 +310,10 @@ def plan(root, spec):
     # Preview in an isolated minimal canonical snapshot, not a copy of all experiments.
     with tempfile.TemporaryDirectory(prefix="oops-casebook-preview-") as folder:
         stage = Path(folder)
+        incident_lock = incident_lock_path(root)
+        staged_lock = stage / "definitions/incident-source-lock.json"
+        staged_lock.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(incident_lock, staged_lock)
         for name in set(before["inputs"]) | {r["path"] for r in refs}:
             dst = stage / name; dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(local(root, name), dst)
@@ -464,7 +490,7 @@ def apply_plan(root, spec, expected_sha, audit_runner=None, expected_impact_sha=
         try:
             require(planned["payload"]["baseline"] == baseline(root), "DATASET_CHANGED_BEFORE_WRITE")
             require(planned["payload"]["implementationHashes"] == implementation_hashes(), "TOOL_CHANGED_BEFORE_WRITE")
-            for ref in provenance_refs(spec): reference(root, ref)
+            for ref in provenance_refs(spec, root): reference(root, ref)
             for name, value in files.items(): write_private(local(root, name), value)
             if spec["action"] != "HOLD":
                 published = builder.publish(root)

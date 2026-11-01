@@ -6,9 +6,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build_context_units import compile_preview
+import source_use_policy
+
+REQUIRED_USES = ["MODEL_INPUT", "RETRIEVAL_INDEXING", "RUNTIME_RETRIEVAL"]
 
 
 class ContextUnitTests(unittest.TestCase):
@@ -37,7 +41,36 @@ class ContextUnitTests(unittest.TestCase):
         self.catalog = {"schemaVersion": "context-routing-keys-1", "keys": [{"id": "graphic-body-metaphor"}]}
 
     def compile(self, unit=None):
-        return compile_preview(self.base, [unit or self.unit], self.catalog, self.root)
+        selected = copy.deepcopy(unit or self.unit)
+        self.authorize_source_use(selected)
+        return compile_preview(self.base, [selected], self.catalog, self.root)
+
+    def authorize_source_use(self, unit):
+        source = unit["source"]
+        source_doc = json.loads((self.root / source["path"]).read_bytes())
+        artifact = source_doc.get("origin", source) if source_doc.get("schemaVersion") == "context-transcript-source-1" else source
+        self.root.joinpath("rights").mkdir(exist_ok=True)
+        source_id = "synthetic-source"
+        evidence = {"schemaVersion": "source-use-review-2", "sourceId": source_id,
+                    "decision": "ALLOW", "intendedUses": REQUIRED_USES,
+                    "artifact": artifact,
+                    "basis": "OWNED_OR_CREATED", "reviewedBy": "synthetic test reviewer",
+                    "reviewedOn": "2026-10-27"}
+        evidence_raw = json.dumps(evidence, sort_keys=True).encode()
+        evidence_path = "rights/review.json"
+        (self.root / evidence_path).write_bytes(evidence_raw)
+        metadata = {"schemaVersion": "source-provenance-metadata-2", "sourceId": source_id,
+                    "rightsReviewStatus": "CLEARED_FOR_DECLARED_USES", "sourceExcerptsQuarantined": False,
+                    "authorizedUses": REQUIRED_USES, "blockedUses": [],
+                    "artifact": {"path": artifact["path"], "sha256": artifact["sha256"]},
+                    "permissionEvidence": {"path": evidence_path,
+                                            "sha256": hashlib.sha256(evidence_raw).hexdigest()}}
+        metadata_raw = json.dumps(metadata, sort_keys=True).encode()
+        metadata_path = "rights/source.json"
+        (self.root / metadata_path).write_bytes(metadata_raw)
+        unit["sourceProvenance"] = {"path": metadata_path,
+                                    "sha256": hashlib.sha256(metadata_raw).hexdigest(),
+                                    "sourceId": source_id, "intendedUse": "RUNTIME_RETRIEVAL"}
 
     def standalone(self, decision="PASS"):
         origin_doc = {"transcript": [
@@ -118,7 +151,7 @@ class ContextUnitTests(unittest.TestCase):
     def test_v3_rejects_changed_original_transcript_hash(self):
         unit = self.standalone()
         (self.root / "origin.json").write_text('{"transcript": []}')
-        with self.assertRaisesRegex(ValueError, "UNIT_ORIGIN_HASH_MISMATCH"):
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_ORIGIN_HASH_MISMATCH"):
             self.compile(unit)
 
     def test_standalone_normal_boundary_does_not_invent_or_replace_an_incident(self):
@@ -142,7 +175,7 @@ class ContextUnitTests(unittest.TestCase):
         raw = json.dumps(source).encode()
         (self.root / "source.json").write_bytes(raw)
         unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
-        with self.assertRaisesRegex(ValueError, "UNIT_DEVELOPMENT_APPROVAL_REQUIRED"):
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_TRANSCRIPT_SCHEMA_REQUIRED"):
             self.compile(unit)
 
     def ocr_unit(self):
@@ -263,6 +296,110 @@ class ContextUnitTests(unittest.TestCase):
         (self.root / "source.json").write_text("{}")
         with self.assertRaises(ValueError): self.compile()
 
+    def test_nonlegacy_source_requires_explicit_hash_bound_runtime_clearance(self):
+        unit = copy.deepcopy(self.unit)
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_REVIEW_LINK_REQUIRED"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+        self.authorize_source_use(unit)
+        out, manifest = compile_preview(self.base, [unit], self.catalog, self.root)
+        self.assertEqual(manifest["sourceLinks"][0]["sourceUse"]["status"], "EXPLICIT_REVIEW_CLEARANCE")
+        self.assertTrue(manifest["sourceLinks"][0]["sourceUse"]["rightsCleared"])
+        evidence_path = self.root / "rights/review.json"
+        evidence_path.write_text("{}")
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_EVIDENCE_HASH_MISMATCH"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_restricted_source_cannot_be_unblocked_by_an_allow_list(self):
+        unit = copy.deepcopy(self.unit)
+        self.authorize_source_use(unit)
+        metadata_path = self.root / "rights/source.json"
+        metadata = json.loads(metadata_path.read_bytes())
+        metadata.update(rightsReviewStatus="BLOCKED_PENDING_PERMISSION", blockedUses=["RUNTIME_RETRIEVAL"])
+        metadata_raw = json.dumps(metadata, sort_keys=True).encode()
+        metadata_path.write_bytes(metadata_raw)
+        unit["sourceProvenance"]["sha256"] = hashlib.sha256(metadata_raw).hexdigest()
+        metadata["authorizedUses"] = ["RUNTIME_RETRIEVAL"]
+        metadata_raw = json.dumps(metadata, sort_keys=True).encode()
+        metadata_path.write_bytes(metadata_raw)
+        unit["sourceProvenance"]["sha256"] = hashlib.sha256(metadata_raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_NOT_CLEARED"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_downstream_denials_override_runtime_retrieval_permission(self):
+        for denied in ("MODEL_INPUT", "RETRIEVAL_INDEXING"):
+            unit = copy.deepcopy(self.unit)
+            self.authorize_source_use(unit)
+            metadata_path = self.root / "rights/source.json"
+            metadata = json.loads(metadata_path.read_bytes())
+            metadata["blockedUses"] = [denied]
+            metadata_raw = json.dumps(metadata, sort_keys=True).encode()
+            metadata_path.write_bytes(metadata_raw)
+            unit["sourceProvenance"]["sha256"] = hashlib.sha256(metadata_raw).hexdigest()
+            with self.subTest(denied=denied), self.assertRaisesRegex(ValueError, "SOURCE_USE_SCOPE_NOT_AUTHORIZED"):
+                compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_runtime_retrieval_requires_all_downstream_purposes_explicitly_allowed(self):
+        unit = copy.deepcopy(self.unit)
+        self.authorize_source_use(unit)
+        metadata_path = self.root / "rights/source.json"
+        metadata = json.loads(metadata_path.read_bytes())
+        metadata["authorizedUses"] = ["RUNTIME_RETRIEVAL"]
+        metadata_raw = json.dumps(metadata, sort_keys=True).encode()
+        metadata_path.write_bytes(metadata_raw)
+        unit["sourceProvenance"]["sha256"] = hashlib.sha256(metadata_raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_SCOPE_NOT_AUTHORIZED"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_changed_asset_cannot_reuse_old_review_evidence(self):
+        unit = copy.deepcopy(self.unit)
+        self.authorize_source_use(unit)
+        source_path = self.root / "source.json"
+        source_path.write_text(json.dumps({"tasks": [{"spec": {"id": "source"}, "input": json.dumps({"raw": [
+            {"id": "s1", "text": "다른 발언", "startMs": 0, "endMs": 1000},
+            {"id": "s2", "text": "후속 상황", "startMs": 1000, "endMs": 2000}]})}]}))
+        raw = source_path.read_bytes()
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        metadata_path = self.root / "rights/source.json"
+        metadata = json.loads(metadata_path.read_bytes())
+        metadata["artifact"] = {"path": "source.json", "sha256": hashlib.sha256(raw).hexdigest()}
+        metadata_raw = json.dumps(metadata, sort_keys=True).encode()
+        metadata_path.write_bytes(metadata_raw)
+        unit["sourceProvenance"]["sha256"] = hashlib.sha256(metadata_raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_REVIEW_EVIDENCE_INVALID"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_new_transcript_source_cannot_downgrade_to_v2(self):
+        unit = self.standalone()
+        self.authorize_source_use(unit)
+        unit["schemaVersion"] = "context-reference-unit-2"
+        with self.assertRaisesRegex(ValueError, "SOURCE_USE_TRANSCRIPT_SCHEMA_REQUIRED"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_frozen_legacy_schema_version_is_part_of_the_lock(self):
+        unit = self.standalone()
+        lock_path = self.root / "legacy-lock.json"
+        lock = {"schemaVersion": "context-unit-source-lock-2",
+                "unitSchemaVersions": {unit["id"]: "context-reference-unit-3"},
+                "entries": {unit["id"]: unit["source"]}}
+        lock_path.write_text(json.dumps(lock))
+        with patch.object(source_use_policy, "LOCK_PATH", lock_path):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+            unit["schemaVersion"] = "context-reference-unit-2"
+            with self.assertRaisesRegex(ValueError, "SOURCE_USE_LEGACY_SCHEMA_MISMATCH"):
+                compile_preview(self.base, [unit], self.catalog, self.root)
+
+    def test_new_transcript_source_rejects_foreign_segment_even_if_snapshot_hash_is_updated(self):
+        unit = self.standalone()
+        source_path = self.root / "source.json"
+        source = json.loads(source_path.read_bytes())
+        source["segments"][0]["text"] = "승인된 원본에 없는 합성 문장"
+        source_path.write_text(json.dumps(source))
+        raw = source_path.read_bytes()
+        unit["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        self.authorize_source_use(unit)
+        with self.assertRaisesRegex(ValueError, "UNIT_ORIGIN_TRANSCRIPT_MISMATCH"):
+            compile_preview(self.base, [unit], self.catalog, self.root)
+
     def test_approved_observed_pass_does_not_require_invented_synthetic_dialogue(self):
         unit = self.standalone("PASS")
         unit["normalContrasts"] = []
@@ -312,18 +449,21 @@ class ContextUnitTests(unittest.TestCase):
         _, manifest = self.compile()
         self.assertIsNone(manifest["sourceLinks"][0]["utterances"][0]["startMs"])
 
-    def profile(self):
-        return {"schemaVersion": "context-relation-profile-1", "unitId": self.unit["id"],
+    def profile(self, unit=None):
+        unit = unit or self.unit
+        return {"schemaVersion": "context-relation-profile-1", "unitId": unit["id"],
                 "status": "DRAFT", "humanVerified": False, "trainingUseAuthorized": False,
-                "sourceSha256": self.unit["source"]["sha256"], "utteranceIds": self.unit["utteranceIds"][:],
+                "sourceSha256": unit["source"]["sha256"], "utteranceIds": unit["utteranceIds"][:],
                 "situation": "작성한 상황 검색 설명", "target": "", "evaluation": "작성한 평가 검색 설명",
                 "linkage": "작성한 연결 검색 설명"}
 
     def test_opt_in_profiles_change_only_search_metadata_not_quotes_or_approval(self):
         before = copy.deepcopy((self.base, self.unit))
         old, _ = self.compile()
-        profile = self.profile()
-        new, _ = compile_preview(self.base, [self.unit], self.catalog, self.root, [profile])
+        test_unit = copy.deepcopy(self.unit)
+        self.authorize_source_use(test_unit)
+        profile = self.profile(test_unit)
+        new, _ = compile_preview(self.base, [test_unit], self.catalog, self.root, [profile])
         self.assertEqual(old["schemaVersion"], "review-guidelines-6")
         self.assertEqual(new["schemaVersion"], "review-guidelines-7")
         self.assertEqual((self.base, self.unit), before)
@@ -331,7 +471,7 @@ class ContextUnitTests(unittest.TestCase):
         self.assertNotIn("relationProfile", new["examples"][1])
         self.assertEqual(new["examples"][0]["relationProfile"]["target"], "")
         profile["evaluation"] = "다른 검색용 설명"
-        changed, _ = compile_preview(self.base, [self.unit], self.catalog, self.root, [profile])
+        changed, _ = compile_preview(self.base, [test_unit], self.catalog, self.root, [profile])
         self.assertNotEqual(new["sourceBundleSha256"], changed["sourceBundleSha256"])
         self.assertEqual(new["examples"][0]["context"], changed["examples"][0]["context"])
 
@@ -341,9 +481,14 @@ class ContextUnitTests(unittest.TestCase):
                        {"trainingUseAuthorized": True}, {"evaluation": ""}, {"target": " "},
                        {"linkage": "x" * 351}):
             with self.subTest(change=change), self.assertRaises(ValueError):
-                compile_preview(self.base, [self.unit], self.catalog, self.root, [{**self.profile(), **change}])
+                unit = copy.deepcopy(self.unit)
+                self.authorize_source_use(unit)
+                compile_preview(self.base, [unit], self.catalog, self.root, [{**self.profile(unit), **change}])
         with self.assertRaises(ValueError):
-            compile_preview(self.base, [self.unit], self.catalog, self.root, [self.profile(), self.profile()])
+            unit = copy.deepcopy(self.unit)
+            self.authorize_source_use(unit)
+            profile = self.profile(unit)
+            compile_preview(self.base, [unit], self.catalog, self.root, [profile, profile])
 
 
 if __name__ == "__main__": unittest.main()

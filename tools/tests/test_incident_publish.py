@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -10,6 +11,17 @@ from incident_build_definition import extract
 from incidents_migration import to_incident
 from build_incident_dataset import publish, verify
 from archive_legacy_dictionary import archive, FILES
+
+
+def update_test_source_lock(root):
+    """Explicitly pin the synthetic fixture state used by this test invocation."""
+    entries = {p.stem: hashlib.sha256(p.read_bytes()).hexdigest()
+               for p in sorted((root / "incidents").glob("*.json"))}
+    path = root / "definitions/incident-source-lock.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schemaVersion": "incident-source-lock-1", "entries": entries},
+                               sort_keys=True), encoding="utf-8")
+    return path
 
 
 def setup(root):
@@ -24,6 +36,7 @@ def setup(root):
     incident = to_incident(family, cards['incidents'][0], rules, dictionary, catalog)
     for name, value in [('definitions/build.json', definition), (f'incidents/{family}.json', incident)]:
         p = root / name; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(value))
+    update_test_source_lock(root)
     return incident
 
 
@@ -38,6 +51,9 @@ def test_new_case_stale_input_detection_and_rebuild(tmp_path):
     s['legacyCard'].update(id='second-card', familyId='second-incident', reactions=[])
     s['legacyCard']['controversy'].update(reasonHypotheses=[], reasonSupportReactionIds=[])
     (tmp_path / 'incidents/second-incident.json').write_text(json.dumps(new))
+    with pytest.raises(Exception, match='INCIDENT_SOURCE_REVIEW_REQUIRED'):
+        verify(tmp_path)
+    update_test_source_lock(tmp_path)  # test fixture models an explicitly reviewed lock update
     with pytest.raises(Exception, match='RUNTIME_NOT_EQUIVALENT'):
         verify(tmp_path)
     second = publish(tmp_path)
@@ -70,6 +86,7 @@ def test_manifest_tamper_and_invalid_input_leave_runtime_intact(tmp_path):
         archive(tmp_path)
     incident['statements'][0]['mechanismIds'] = ['unknown']
     (tmp_path / 'incidents' / (incident['incidentId'] + '.json')).write_text(json.dumps(incident))
+    update_test_source_lock(tmp_path)
     with pytest.raises(Exception, match='UNKNOWN_MECHANISM'):
         publish(tmp_path)
     assert output.read_bytes() == previous
@@ -81,6 +98,7 @@ def test_invalid_java_case_id_never_publishes(tmp_path):
     s = incident['statements'][0]
     s['id'] = s['legacyCard']['id'] = 'incident##s1'
     (tmp_path / 'incidents' / (incident['incidentId'] + '.json')).write_text(json.dumps(incident))
+    update_test_source_lock(tmp_path)
     with pytest.raises(Exception, match='JAVA_SOURCE_ID_CONTRACT'):
         publish(tmp_path)
     assert (tmp_path / 'guidelines/runtime.json').read_bytes() == previous

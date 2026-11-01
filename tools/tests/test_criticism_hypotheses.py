@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from test_incident_publish import setup
+from test_incident_publish import setup, update_test_source_lock
 from criticism_hypotheses import validate
 from build_incident_dataset import generate, publish, verify
 from incidents_migration import from_incident, to_incident, reassemble
@@ -22,6 +22,7 @@ def test_incident_hypothesis_reaches_runtime_without_comments_or_approval(tmp_pa
     inc = setup(tmp_path); baseline, _ = generate(tmp_path)
     inc['statements'][0]['criticismHypotheses'] = [hypothesis()]
     p = tmp_path / 'incidents' / (inc['incidentId'] + '.json'); p.write_text(json.dumps(inc))
+    update_test_source_lock(tmp_path)
     runtime, dictionary = generate(tmp_path)
     h = dictionary['entries'][0]['interpretationMaterial']['criticismHypotheses'][0]
     assert h['status'] == 'DRAFT' and h['sourceRefs'] == []

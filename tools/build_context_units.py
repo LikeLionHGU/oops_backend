@@ -19,6 +19,7 @@ from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text
 from review_dataset_catalog import inside
 from casebook_provenance import validate_approval_document
+from source_use_policy import validate_context_unit_sources
 
 ROOT = Path(__file__).resolve().parents[1] / "datasets/controversy"
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}(?:#[A-Za-z0-9_-]{1,64})?\Z")
@@ -228,6 +229,7 @@ def compile_preview(base, units, catalog, root, profiles=None):
     source = {e["id"]: e for e in base["examples"]}
     rules = {r["id"]: r for r in base["guidelines"]}
     out = copy.deepcopy(base)
+    source_use, source_lock_sha = validate_context_unit_sources(root, units)
     relations = relation_profiles(profiles, units)
     replaced, seen, examples, links = set(), set(), [], []
     for u in units:
@@ -323,7 +325,8 @@ def compile_preview(base, units, catalog, root, profiles=None):
         examples.append(example)
         if uid in relations:
             example["relationProfile"] = copy.deepcopy(relations[uid])
-        links.append({"unitId": uid, "parentCaseId": parent, "source": copy.deepcopy(u["source"]), "utterances": lines})
+        links.append({"unitId": uid, "parentCaseId": parent, "source": copy.deepcopy(u["source"]),
+                      "sourceUse": source_use[uid], "utterances": lines})
         if not standalone:
             replaced.add(parent)
     # Uncurated examples remain visible, never silently relabeled as curated units.
@@ -351,7 +354,9 @@ def compile_preview(base, units, catalog, root, profiles=None):
     for r in out["guidelines"]:
         r["sourceCaseIds"] = [e["id"] for e in examples if r["id"] in e["mechanismIds"]]
     provenance = {"baseRuntimeSha256": digest(json.dumps(base, sort_keys=True, ensure_ascii=False).encode()),
-                  "units": units, "routingCatalog": catalog}
+                  "units": units, "routingCatalog": catalog,
+                  "sourceUsePolicy": {"version": "context-unit-source-use-1",
+                                      "legacyLockSha256": source_lock_sha}}
     if profiles is not None:
         provenance["authoredRelationProfiles"] = profiles
     sha = digest(json.dumps(provenance, sort_keys=True, ensure_ascii=False).encode())
@@ -360,7 +365,11 @@ def compile_preview(base, units, catalog, root, profiles=None):
     return out, {"schemaVersion": "context-unit-preview-manifest-1", "activeRuntimeChanged": False,
                  "sourceInputSha256": sha, "unitCount": len(units), "replacedExamples": sorted(replaced),
                  "runtimeCanonicalSha256": digest(json.dumps(out, sort_keys=True, ensure_ascii=False).encode()),
-                 "retainedLegacyCount": len(examples) - len(units), "examples": len(examples), "sourceLinks": links}
+                 "retainedLegacyCount": len(examples) - len(units), "examples": len(examples),
+                 "sourceUsePolicy": {"version": "context-unit-source-use-1", "legacyLockSha256": source_lock_sha,
+                                     "legacyFrozenSources": sum(v["status"] == "LEGACY_FROZEN_BASELINE" for v in source_use.values()),
+                                     "explicitlyClearedSources": sum(v["status"] == "EXPLICIT_REVIEW_CLEARANCE" for v in source_use.values())},
+                 "sourceLinks": links}
 
 
 def main():
