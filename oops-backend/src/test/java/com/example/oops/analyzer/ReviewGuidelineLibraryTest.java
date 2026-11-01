@@ -15,6 +15,27 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
 class ReviewGuidelineLibraryTest {
+    @Test void structuredCatalogFailureKeepsOtherwiseValidArchive() {
+        var archive = new ContextRelationRetrievalTest().archive();
+        var resources = mock(ResourceLoader.class);
+        when(resources.getResource("classpath:test.json")).thenReturn(new ByteArrayResource(JSON.writeValueAsBytes(archive)));
+        try (var catalog = mockStatic(StructuredContextSearch.class)) {
+            catalog.when(StructuredContextSearch::load).thenThrow(new IllegalStateException("synthetic catalog failure"));
+            var library = new ReviewGuidelineLibrary(resources, true, "classpath:test.json", 6000, 3, 3000, "", true, true);
+            library.load();
+            assertThat(library.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
+            assertThat(library.prompt(SPEECH)).isNotEmpty();
+            var raw = new ContextExampleSelectionTest().query("검색용으로 고정한 별도 문구");
+            var fallback = library.select(SPEECH, raw, "fallback");
+            assertThat(fallback.trace().exampleIds()).isNotEmpty();
+            assertThat(fallback.prompt()).contains("referenceContexts");
+            var resources2 = mock(ResourceLoader.class);
+            when(resources2.getResource("classpath:test.json")).thenReturn(new ByteArrayResource(JSON.writeValueAsBytes(archive)));
+            var disabled = new ReviewGuidelineLibrary(resources2, true, "classpath:test.json", 6000, 3, 3000, "", false, true);
+            disabled.load();
+            assertThat(fallback.trace().exampleIds()).isEqualTo(disabled.select(SPEECH, raw, "disabled").trace().exampleIds());
+        }
+    }
     @Test void v7ExampleMayNarrowButNeverExpandOrEmptyItsMechanismChannels() throws Exception {
         var archive = new ContextRelationRetrievalTest().archive();
         var tree = JSON.readTree(JSON.writeValueAsString(archive));

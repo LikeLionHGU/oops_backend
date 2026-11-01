@@ -190,7 +190,13 @@ public class ReviewGuidelineLibrary {
             }
             if (expired()) state = "EXPIRED";
             if (splitArchive() && !expired()) {
-                if (structuredSearchEnabled && relationArchive()) structuredSearch = StructuredContextSearch.load();
+                if (structuredSearchEnabled && relationArchive()) {
+                    try { structuredSearch = StructuredContextSearch.load(); }
+                    catch (Exception ex) {
+                        structuredSearch = null;
+                        log.warn("[context-dictionary] structured search unavailable; using lexical retrieval: {}", ex.getClass().getSimpleName());
+                    }
+                }
                 selector = new ContextExampleSelector(archive.examples(), archive.guidelines(), structuredSearch);
             }
         } catch (Exception ex) { archive = null; state = "UNAVAILABLE_OR_INVALID"; }
@@ -201,7 +207,7 @@ public class ReviewGuidelineLibrary {
                     archive == null || archive.examples() == null ? 0 : archive.examples().size(), structuredSearch != null);
         }
     }
-    private static boolean valid(Archive a) {
+    static boolean valid(Archive a) {
         if (a == null || !Set.of("review-guidelines-1", "review-guidelines-2", "review-guidelines-3", "review-guidelines-4", "review-guidelines-5", "review-guidelines-6", "review-guidelines-7").contains(a.schemaVersion() == null ? "" : a.schemaVersion()) || !text(a.version(), 64)
                 || !"WORKING_REFERENCE_NOT_VALIDATED".equals(a.status()) || !Boolean.FALSE.equals(a.humanValidated())
                 || !"REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED".equals(a.usage())

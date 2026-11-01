@@ -84,4 +84,6 @@ final class StructuredContextSearch {
         return new Trace(revision, catalogSha256, List.copyOf(queryProfiles), Collections.unmodifiableMap(matches),
                 selected.stream().map(ReviewGuidelineLibrary.ContextExample::id).filter(matches::containsKey).toList());
     }
+
+    String catalogSha256() { return catalogSha256; }
 }
