@@ -151,6 +151,73 @@ if (@($events).Count -eq 0) {
     }
 }
 
+# ---------------------------------------------------------- 7. 내부 기록
+# 사용자 화면에는 안 나오는 것: 후보 탐색 → 독립 점검 → 상세 검토 각 단계에서 무엇이 어떻게 갈렸는지.
+# 스크립트가 oops-backend 폴더에서 돈다는 가정으로 uploads\context-traces 를 직접 읽는다.
+Section "7. 맥락 확인 내부 기록 (화면에는 안 나옴)"
+$traceDir = Join-Path (Get-Location) "uploads\context-traces\$VideoId"
+$traceFile = Get-ChildItem $traceDir -Filter *.json -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+if (-not $traceFile) {
+    Warn "내부 기록 파일이 없습니다: $traceDir  (oops-backend 폴더에서 실행했는지 확인)"
+} else {
+    $doc = [System.IO.File]::ReadAllText($traceFile.FullName, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $trace = @($doc.trace) | Where-Object { $null -ne $_ }
+    $disc = @($trace | Where-Object { $_.stage -eq "DISCOVERY" -and $_.outcome -eq "CANDIDATE" })
+    # 문맥을 한 번 확대하면 같은 후보의 점검 기록이 두 줄 생긴다. 마지막 것이 최종 판단이다.
+    $gate = @($trace | Where-Object { $_.stage -eq "GATE" } | Group-Object candidateId | ForEach-Object { $_.Group | Select-Object -Last 1 })
+    $rev  = @($trace | Where-Object { $_.stage -eq "REVIEW" })
+    $pass = @($gate | Where-Object { $_.outcome -eq "PROCEED" })
+    Write-Host ("  기준 {0} · AI 호출 {1}회(실패 {2})" -f $doc.criteriaVersion, $doc.modelCalls, $doc.failedCalls) -ForegroundColor DarkGray
+    Write-Host ("  후보 탐색 {0}건 → 독립 점검 통과 {1}건 (제외 {2} · 중단 {3}) → 상세 검토 결과 {4}건" -f `
+        $disc.Count, $pass.Count, @($gate | Where-Object { $_.outcome -eq "EXCLUDE" }).Count,
+        @($gate | Where-Object { $_.outcome -eq "STOP" }).Count, @($rev | Where-Object { $_.outcome -eq "REVIEW" }).Count)
+
+    # 구간 ID → 대본 줄. stt-index-N 은 대본 N번째 줄(0부터)이다.
+    function Line-Of($segId) {
+        if ($segId -match '^stt-index-(\d+)$') {
+            $i = [int]$Matches[1]
+            if ($i -lt $transcript.Count) { return "{0}  {1}" -f (Fmt-Time $transcript[$i].startMs), $transcript[$i].text }
+        }
+        return $segId
+    }
+
+    foreach ($x in @($trace | Where-Object { $_.stage -eq "DISCOVERY" -and $_.outcome -ne "CANDIDATE" -and $_.outcome -ne "SKIPPED_BUDGET" })) {
+        Warn ("후보 탐색 {0}: {1} {2}" -f $x.outcome, $x.note, (@($x.missingInformation) -join ","))
+    }
+
+    if ($pass.Count -eq 0) {
+        Write-Host "  독립 점검을 통과한 후보가 없습니다." -ForegroundColor DarkGray
+    }
+    foreach ($g in $pass) {
+        $r = $rev | Where-Object { $_.candidateId -eq $g.candidateId } | Select-Object -Last 1
+        Write-Host ""
+        Write-Host ("  [{0}] {1}" -f $g.candidateId, $g.criterionId) -ForegroundColor White
+        foreach ($sid in @($g.coreSegmentIds)) { Write-Host ("      대본: {0}" -f (Line-Of $sid)) -ForegroundColor Gray }
+        $d = $disc | Where-Object { $_.candidateId -eq $g.candidateId } | Select-Object -First 1
+        if ($d) { Write-Host ("      탐색: {0}" -f $d.reason) -ForegroundColor DarkGray }
+        Write-Host ("      점검: 통과 — {0}" -f $g.reason)
+        if (@($g.allowedJudgments).Count) { Write-Host ("      허용: {0}" -f (@($g.allowedJudgments) -join " / ")) -ForegroundColor DarkCyan }
+        if (@($g.stoppedJudgments).Count) { Write-Host ("      중단: {0}" -f (@($g.stoppedJudgments) -join ", ")) -ForegroundColor DarkYellow }
+        if ($g.expanded) { Write-Host "      (문맥 확대 후 판단)" -ForegroundColor DarkGray }
+        if ($r) {
+            $c = if ($r.outcome -eq "REVIEW") { "Red" } else { "Yellow" }
+            $label = if ($r.outcome -eq "REVIEW") { "결과로 표시" } else { "제외" }
+            Write-Host ("      상세: {0} — {1}" -f $label, $r.reason) -ForegroundColor $c
+        } else {
+            Write-Host "      상세: 기록 없음 (호출 실패 또는 무효 출력)" -ForegroundColor Yellow
+        }
+    }
+    $other = @($gate | Where-Object { $_.outcome -ne "PROCEED" })
+    if ($other.Count) {
+        Write-Host ""
+        Write-Host "  독립 점검에서 멈춘 후보:" -ForegroundColor DarkGray
+        foreach ($g in $other) {
+            Write-Host ("    [{0}] {1} {2} — {3} | {4}" -f $g.candidateId, $g.criterionId, $g.outcome, $g.reason,
+                ((@($g.coreSegmentIds) | ForEach-Object { Line-Of $_ }) -join " / ")) -ForegroundColor DarkGray
+        }
+    }
+}
+
 Section "끝"
 Write-Host "  전체 JSON  : curl.exe $Backend/api/v1/videos/$VideoId/report"
 Write-Host "  결과 재확인: .\scripts\smoke-test.ps1 -VideoId $VideoId"
