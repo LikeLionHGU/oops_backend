@@ -191,9 +191,9 @@ public class AnalysisPipeline {
             for (ContentAnalyzer analyzer : active) {
                 checkStillActive(jobId);
                 if (!analyzer.supports(context)) {
-                    String why = openAiClient.isEnabled()
+                    String why = analyzer.unsupportedReason(context).orElse(openAiClient.isEnabled()
                             ? "이 영상에는 해당하지 않아 건너뛰었습니다."
-                            : "AI 키가 없어 이 단계를 수행하지 못했습니다.";
+                            : "AI 키가 없어 이 단계를 수행하지 못했습니다.");
                     log.info("[pipeline] {} 스킵 (조건 불충족)", analyzer.key());
                     record(coverage, video, CoverageStep.of(analyzer.key()), AnalyzerStatus.SKIPPED, why);
                     continue;

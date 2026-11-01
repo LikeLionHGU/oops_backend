@@ -69,50 +69,38 @@ public class RestClientConfig {
                 .build();
     }
 
-    /**
-     * 구글 뉴스 RSS 용. 인증이 없는 공개 피드라 키가 필요 없다.
-     * 기본 User-Agent 로는 응답이 막히는 경우가 있어 브라우저 형태로 보낸다.
-     */
+    /** Perplexity Search API 용. (redesign-v3 사실대조 1차 검색) */
     @Bean
-    public RestClient googleNewsRestClient() {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
-
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-        factory.setReadTimeout(Duration.ofSeconds(15));
-
+    public RestClient perplexityRestClient(SearchApiProperties properties) {
+        String key = properties.perplexityOrEmpty().apiKey();
         return RestClient.builder()
-                .baseUrl("https://news.google.com")
-                .requestFactory(factory)
-                .defaultHeader("User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        + "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
-                .defaultHeader("Accept-Language", "ko-KR,ko;q=0.9")
+                .baseUrl("https://api.perplexity.ai")
+                .requestFactory(searchRequestFactory())
+                .defaultHeader("Authorization", "Bearer " + (key == null ? "" : key))
+                .defaultHeader("Content-Type", "application/json")
                 .build();
     }
 
-    /** 네이버 검색 API 용. 인증 헤더를 기본값으로 붙여둔다. */
+    /** Serper(구글 검색) 용. (redesign-v3 사실대조 보조 검색) */
     @Bean
-    public RestClient naverRestClient(NaverProperties properties) {
+    public RestClient serperRestClient(SearchApiProperties properties) {
+        String key = properties.serperOrEmpty().apiKey();
+        return RestClient.builder()
+                .baseUrl("https://google.serper.dev")
+                .requestFactory(searchRequestFactory())
+                .defaultHeader("X-API-KEY", key == null ? "" : key)
+                .defaultHeader("Content-Type", "application/json")
+                .build();
+    }
+
+    private JdkClientHttpRequestFactory searchRequestFactory() {
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
-
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-        factory.setReadTimeout(Duration.ofSeconds(15));
-
-        return RestClient.builder()
-                .baseUrl("https://openapi.naver.com")
-                .requestFactory(factory)
-                .defaultHeader("X-Naver-Client-Id",
-                        properties.clientId() == null ? "" : properties.clientId())
-                .defaultHeader("X-Naver-Client-Secret",
-                        properties.clientSecret() == null ? "" : properties.clientSecret())
-                .build();
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return factory;
     }
 
     /**

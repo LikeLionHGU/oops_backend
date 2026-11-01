@@ -1,4 +1,4 @@
-package com.example.oops.news;
+package com.example.oops.factcheck;
 
 import com.example.oops.domain.ReferenceSourceType;
 import org.springframework.stereotype.Component;
@@ -15,10 +15,8 @@ import java.util.Locale;
  * 그러면 정작 중요한 검증이 못 돈다.
  *
  * **한계를 분명히 해둔다:**
- * 지금 검색은 뉴스 RSS 뿐이라 인터뷰 전문이나 공식 홈페이지가 거의 안 나온다.
- * 그래서 실제로는 대부분 DIRECT_QUOTE_SOURCE 아니면 REPUTABLE_MEDIA 로 갈린다.
- * 당사자 자료를 제대로 찾으려면 일반 웹 검색이 필요하다.
- * 그건 새 API 키와 비용이 붙는 일이라 지금 범위 밖이다.
+ * redesign-v3 부터 웹 검색(Perplexity·Serper) 결과를 받는다. 그래도 규칙 기반이라
+ * 확신이 없으면 낮은 쪽(REPUTABLE_MEDIA)으로 둔다.
  *
  * 그래도 이 정도만으로 "당사자 말을 인용한 기사" 를 위로 올릴 수 있다.
  * 뮤직메카 인터뷰에서 확인된 실제 작업 방식이 그거였다.
@@ -52,13 +50,13 @@ public class SourceClassifier {
      * 확신이 없으면 아래쪽(REPUTABLE_MEDIA)으로 둔다.
      * 잘못 올려서 "당사자 자료" 라고 표시하는 게 더 나쁘다.
      */
-    public ReferenceSourceType classify(NewsSearchClient.NewsItem item) {
+    public ReferenceSourceType classify(Search.Item item) {
         if (item == null) {
             return ReferenceSourceType.SECONDARY_SOURCE;
         }
         String title = lower(item.title());
-        String snippet = lower(item.description());
-        String host = lower(hostOf(item.link()));
+        String snippet = lower(item.snippet());
+        String host = lower(hostOf(item.url()));
         String publisher = lower(item.publisher());
 
         if (OFFICIAL_HOSTS.stream().anyMatch(host::endsWith)

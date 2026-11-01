@@ -26,6 +26,11 @@ public interface ContentAnalyzer {
 
     List<RiskFinding> analyze(AnalysisContext context);
 
+    /** supports() 가 false 일 때 사용자에게 알릴 이유. 없으면 파이프라인 기본 문구를 쓴다. */
+    default Optional<String> unsupportedReason(AnalysisContext context) {
+        return Optional.empty();
+    }
+
     /** Consume an optional notice when an analyzer intentionally processed only part of its input. */
     default Optional<String> consumeCoverageNotice(AnalysisContext context) {
         return Optional.empty();

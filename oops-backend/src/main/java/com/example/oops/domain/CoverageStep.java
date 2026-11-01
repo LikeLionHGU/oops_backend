@@ -14,7 +14,7 @@ public enum CoverageStep {
     OCR("화면 글자 인식"),
     SPEECH_REVIEW("발언 검토"),
     SCREEN_TEXT_REVIEW("화면 글자 검토"),
-    FACT_ENTITY("이름·수치 확인"),
+    FACT_ENTITY("사실대조"),
     CONTEXT_REFERENCE("맥락 참고"),
     VISUAL("화면 자료 확인");
 
@@ -39,7 +39,7 @@ public enum CoverageStep {
         return switch (analyzerKey) {
             case "subtitle", "speech-review", "context-lexicon", "context-review" -> SPEECH_REVIEW;
             case "screen-text", "screen-text-review" -> SCREEN_TEXT_REVIEW;
-            case "entity-check" -> FACT_ENTITY;
+            case "entity-check", "fact-check" -> FACT_ENTITY;
             case "context-check" -> CONTEXT_REFERENCE;
             default -> null;
         };
