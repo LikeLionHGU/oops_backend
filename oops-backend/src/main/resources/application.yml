@@ -132,6 +132,34 @@ oops:
     client-id: ${NAVER_CLIENT_ID:}
     client-secret: ${NAVER_CLIENT_SECRET:}
 
+  # ── redesign-v3 맥락 확인 (docs/redesign-v3.md) ──────────────────────────
+  # 기준 데이터를 어디서 읽을지. json(기본, 저장소 안 파일) | neo4j(서버 DB)
+  # neo4j 는 같은 서버의 Neo4j HTTP Query API(127.0.0.1:7474)로 읽는다. infra/neo4j(neo4j-data-setup) 참고.
+  criteria:
+    source: ${OOPS_CRITERIA_SOURCE:json}
+    ruleset-location: classpath:criteria/ruleset-oops-all-0.4-draft.json
+    stop-judgments-location: classpath:criteria/stop-judgments-draft.json
+    neo4j:
+      http-uri: ${NEO4J_HTTP_URI:http://127.0.0.1:7474}
+      database: ${NEO4J_DATABASE:neo4j}
+      username: ${NEO4J_USER:neo4j}
+      password: ${NEO4J_PASSWORD:} # 서버 infra/neo4j/.env 의 OOPS_DB_PASSWORD 값
+      ruleset-id: ruleset:oops:all:0.4-draft
+      review-gate-version: independent-review/1.0
+
+  # 줄 단위 + 시간 상·하한 문맥. 숫자는 출발점이다. 평가 세트로 조정한다.
+  context:
+    discovery-lines: 20       # 후보 탐색 대상 한 묶음 최대 줄 수
+    discovery-max-ms: 60000   # 후보 탐색 대상 한 묶음 최대 길이
+    context-lines: 5          # 기본 문맥 앞뒤 각 줄 수
+    context-min-ms: 15000     # 기본 문맥 앞뒤 각 최소 길이
+    context-max-ms: 30000     # 기본 문맥 앞뒤 각 최대 길이
+    expanded-lines: 10        # 1회 확대 앞뒤 각 줄 수
+    expanded-max-ms: 60000    # 1회 확대 앞뒤 각 최대 길이
+    silence-gap-ms: 5000      # 이보다 긴 공백 너머는 붙이지 않는다
+    batch-size: 5             # 독립 점검·상세 검토에서 같은 기준 후보를 묶는 수
+    max-candidates: 80        # 영상당 독립 점검 후보 상한. 넘으면 PARTIAL
+
   analysis:
     # Full-screen OCR is opt-in; candidate visual review is independent.
     full-screen-ocr-enabled: ${FULL_SCREEN_OCR_ENABLED:false}
