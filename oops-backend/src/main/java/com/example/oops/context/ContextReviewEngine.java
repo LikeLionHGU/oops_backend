@@ -25,6 +25,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import static com.example.oops.context.ContextModelOutput.list;
 
@@ -42,8 +48,9 @@ import static com.example.oops.context.ContextModelOutput.list;
  *
  * 호출 실패는 "정보 부족"과 다르게 FAILED 로 센다. 호출하는 쪽이 PARTIAL·FAILED 로 알린다.
  *
- * 순서대로 호출한다. OpenAiClient 의 사용량·실패 집계가 스레드 단위(ThreadLocal)라서,
- * 병렬로 바꾸려면 그 집계를 실행 단위 객체로 옮기는 작업이 먼저 필요하다(docs 5절).
+ * 병렬 실행: 단계 안의 호출(탐색 묶음끼리, 기준 묶음끼리)은 executor 로 동시에 보내고,
+ * 결과는 입력 순서대로 합친다(후보 번호·기록 순서가 실행마다 같도록). 단계 사이는 순서대로다.
+ * 서버 전체 동시 요청 상한은 OpenAiClient 가 지킨다.
  */
 public final class ContextReviewEngine {
 
@@ -80,11 +87,38 @@ public final class ContextReviewEngine {
     private final ContextProperties p;
     private final LineContextBuilder contexts;
     private final Model model;
+    private final Executor executor;
 
+    /** 순서대로 실행 (테스트용) */
     public ContextReviewEngine(ContextProperties properties, Model model) {
+        this(properties, model, Runnable::run);
+    }
+
+    public ContextReviewEngine(ContextProperties properties, Model model, Executor executor) {
         this.p = properties;
         this.contexts = new LineContextBuilder(properties);
         this.model = model;
+        this.executor = executor;
+    }
+
+    /** 항목마다 fn 을 동시에 돌리고 입력 순서대로 결과를 돌려준다. 취소·예외는 그대로 던진다. */
+    private <T, R> List<R> parallel(List<T> items, Function<T, R> fn) {
+        List<CompletableFuture<R>> futures = items.stream()
+                .map(item -> CompletableFuture.supplyAsync(() -> fn.apply(item), executor)).toList();
+        List<R> out = new ArrayList<>();
+        RuntimeException first = null;
+        for (var f : futures) {
+            try {
+                out.add(f.join());
+            } catch (CompletionException | CancellationException e) {
+                Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
+                if (first == null || cause instanceof CancellationException) {
+                    first = cause instanceof RuntimeException re ? re : new IllegalStateException(cause);
+                }
+            }
+        }
+        if (first != null) throw first;
+        return out;
     }
 
     private static final class Candidate {
@@ -110,7 +144,8 @@ public final class ContextReviewEngine {
         final Runnable checkActive;
         final List<TraceEntry> trace = new ArrayList<>();
         final List<Accepted> accepted = new ArrayList<>();
-        int calls, failed, skipped, invalid;
+        final AtomicInteger calls = new AtomicInteger(), failed = new AtomicInteger(), invalid = new AtomicInteger();
+        int skipped;
 
         Run(List<ContextLine> lines, CriteriaSnapshot criteria, Runnable checkActive) {
             this.lines = lines;
@@ -120,14 +155,19 @@ public final class ContextReviewEngine {
 
         <T> Optional<T> call(ContextPrompts.Prompt prompt, Class<T> type) {
             checkActive.run();
-            calls++;
+            calls.incrementAndGet();
             Optional<T> out = model.call(prompt.system(), prompt.user(), type);
-            if (out.isEmpty()) failed++;
+            if (out == null) out = Optional.empty();
+            if (out.isEmpty()) failed.incrementAndGet();
             return out;
         }
 
         void trace(String stage, Candidate c, String outcome, String reason, List<String> missing, String note) {
-            trace.add(new TraceEntry(stage, c == null ? null : c.id, c == null ? null : c.criterion.id(),
+            trace(trace, stage, c, outcome, reason, missing, note);
+        }
+
+        void trace(List<TraceEntry> into, String stage, Candidate c, String outcome, String reason, List<String> missing, String note) {
+            into.add(new TraceEntry(stage, c == null ? null : c.id, c == null ? null : c.criterion.id(),
                     c == null ? null : c.criterion.gate().id(), c == null ? List.of() : c.coreIds, outcome, reason,
                     c == null ? List.of() : c.allowed,
                     c == null ? List.of() : c.stopped.stream().map(StopJudgment::code).toList(),
@@ -150,22 +190,35 @@ public final class ContextReviewEngine {
 
         List<Candidate> proceed = new ArrayList<>();
         List<Candidate> expand = new ArrayList<>();
-        for (var batch : batchesByCriterion(candidates)) {
-            for (Candidate c : batch) c.window = contexts.aroundIds(run.lines, c.coreIds, false).orElseThrow();
-            gate(run, batch, false, proceed, expand);
+        for (Candidate c : candidates) c.window = contexts.aroundIds(run.lines, c.coreIds, false).orElseThrow();
+        for (GateOutcome o : parallel(batchesByCriterion(candidates), b -> gate(run, b, false))) {
+            run.trace.addAll(o.trace);
+            proceed.addAll(o.proceed);
+            expand.addAll(o.expand);
         }
-        for (var batch : batchesByCriterion(expand)) {
-            for (Candidate c : batch) c.window = contexts.aroundIds(run.lines, c.coreIds, true).orElseThrow();
-            gate(run, batch, true, proceed, null);
+        for (Candidate c : expand) c.window = contexts.aroundIds(run.lines, c.coreIds, true).orElseThrow();
+        for (GateOutcome o : parallel(batchesByCriterion(expand), b -> gate(run, b, true))) {
+            run.trace.addAll(o.trace);
+            proceed.addAll(o.proceed);
         }
-        for (var batch : batchesByCriterion(proceed)) review(run, batch);
+        for (ReviewOutcome o : parallel(batchesByCriterion(proceed), b -> review(run, b))) {
+            run.trace.addAll(o.trace);
+            run.accepted.addAll(o.accepted);
+        }
         return result(run);
     }
 
     private Result result(Run run) {
-        return new Result(run.criteria.versionLabel(), List.copyOf(run.accepted), List.copyOf(run.trace), run.calls,
-                run.failed, run.skipped, run.invalid);
+        return new Result(run.criteria.versionLabel(), List.copyOf(run.accepted), List.copyOf(run.trace), run.calls.get(),
+                run.failed.get(), run.skipped, run.invalid.get());
     }
+
+    private record GateOutcome(List<TraceEntry> trace, List<Candidate> proceed, List<Candidate> expand) {}
+
+    private record ReviewOutcome(List<TraceEntry> trace, List<Accepted> accepted) {}
+
+    private record DiscoveryOutcome(List<TraceEntry> trace, List<DiscoveryCandidate> valid,
+                                    Map<DiscoveryCandidate, CriterionBundle> criteria) {}
 
     // ── 1. 후보 탐색 ──────────────────────────────────────────────────
 
@@ -173,31 +226,12 @@ public final class ContextReviewEngine {
         Map<String, Candidate> byKey = new LinkedHashMap<>();
         Map<String, CriterionBundle> criteria = run.criteria.byId();
         int seq = 0;
-        for (ContextWindow window : contexts.discoveryWindows(run.lines)) {
-            var out = run.call(ContextPrompts.discovery(run.criteria, window), Discovery.class);
-            String range = window.core().get(0).id() + "~" + window.core().get(window.core().size() - 1).id();
-            if (out.isEmpty()) {
-                run.trace("DISCOVERY", null, "FAILED", null, null, "후보 탐색 호출 실패: " + range);
-                continue;
-            }
-            Set<String> checked = new HashSet<>(list(out.get().checkedCriterionIds()));
-            if (!checked.containsAll(criteria.keySet())) {
-                Set<String> missing = new TreeSet<>(criteria.keySet());
-                missing.removeAll(checked);
-                run.trace("DISCOVERY", null, "UNCHECKED_CRITERIA", null, List.copyOf(missing), range);
-            }
-            Set<String> coreIds = window.coreIds();
-            for (DiscoveryCandidate d : list(out.get().candidates())) {
-                CriterionBundle criterion = d.criterionId() == null ? null : criteria.get(d.criterionId());
-                List<String> ids = list(d.coreSegmentIds());
-                if (criterion == null || ids.isEmpty() || !coreIds.containsAll(ids) || blank(d.reason())) {
-                    run.invalid++;
-                    run.trace.add(new TraceEntry("DISCOVERY", null, d.criterionId(), null, ids, "INVALID", d.reason(),
-                            List.of(), List.of(), List.of(), false,
-                            criterion == null ? "없는 기준 ID" : "핵심 구간이 검토 대상 밖이거나 비어 있음"));
-                    continue;
-                }
-                List<String> ordered = run.lines.stream().map(ContextLine::id).filter(new HashSet<>(ids)::contains).toList();
+        for (DiscoveryOutcome o : parallel(contexts.discoveryWindows(run.lines), w -> discoverWindow(run, w, criteria))) {
+            run.trace.addAll(o.trace);
+            for (DiscoveryCandidate d : o.valid) {
+                CriterionBundle criterion = o.criteria.get(d);
+                Set<String> idSet = new HashSet<>(list(d.coreSegmentIds()));
+                List<String> ordered = run.lines.stream().map(ContextLine::id).filter(idSet::contains).toList();
                 String key = criterion.id() + "|" + String.join(",", ordered);
                 if (!byKey.containsKey(key)) {
                     byKey.put(key, new Candidate("c" + (++seq), criterion, ordered, d.reason().strip()));
@@ -208,16 +242,52 @@ public final class ContextReviewEngine {
         return new ArrayList<>(byKey.values());
     }
 
+    private DiscoveryOutcome discoverWindow(Run run, ContextWindow window, Map<String, CriterionBundle> criteria) {
+        List<TraceEntry> trace = new ArrayList<>();
+        List<DiscoveryCandidate> valid = new ArrayList<>();
+        Map<DiscoveryCandidate, CriterionBundle> owners = new java.util.IdentityHashMap<>();
+        var out = run.call(ContextPrompts.discovery(run.criteria, window), Discovery.class);
+        String range = window.core().get(0).id() + "~" + window.core().get(window.core().size() - 1).id();
+        if (out.isEmpty()) {
+            run.trace(trace, "DISCOVERY", null, "FAILED", null, null, "후보 탐색 호출 실패: " + range);
+            return new DiscoveryOutcome(trace, valid, owners);
+        }
+        Set<String> checked = new HashSet<>(list(out.get().checkedCriterionIds()));
+        if (!checked.containsAll(criteria.keySet())) {
+            Set<String> missing = new TreeSet<>(criteria.keySet());
+            missing.removeAll(checked);
+            run.trace(trace, "DISCOVERY", null, "UNCHECKED_CRITERIA", null, List.copyOf(missing), range);
+        }
+        Set<String> coreIds = window.coreIds();
+        for (DiscoveryCandidate d : list(out.get().candidates())) {
+            CriterionBundle criterion = d.criterionId() == null ? null : criteria.get(d.criterionId());
+            List<String> ids = list(d.coreSegmentIds());
+            if (criterion == null || ids.isEmpty() || !coreIds.containsAll(ids) || blank(d.reason())) {
+                run.invalid.incrementAndGet();
+                trace.add(new TraceEntry("DISCOVERY", null, d.criterionId(), null, ids, "INVALID", d.reason(),
+                        List.of(), List.of(), List.of(), false,
+                        criterion == null ? "없는 기준 ID" : "핵심 구간이 검토 대상 밖이거나 비어 있음"));
+                continue;
+            }
+            valid.add(d);
+            owners.put(d, criterion);
+        }
+        return new DiscoveryOutcome(trace, valid, owners);
+    }
+
     // ── 2. 독립 점검 ──────────────────────────────────────────────────
 
-    private void gate(Run run, List<Candidate> batch, boolean expanded, List<Candidate> proceed, List<Candidate> expand) {
+    private GateOutcome gate(Run run, List<Candidate> batch, boolean expanded) {
+        List<TraceEntry> trace = new ArrayList<>();
+        List<Candidate> proceed = new ArrayList<>();
+        List<Candidate> expand = expanded ? null : new ArrayList<>();
         String stage = expanded ? "GATE_EXPANDED" : "GATE";
         CriterionBundle criterion = batch.get(0).criterion;
         var items = batch.stream().map(c -> new Item(c.id, c.window, List.of(), List.of())).toList();
         var out = run.call(ContextPrompts.gate(criterion, items), Gate.class);
         if (out.isEmpty()) {
-            batch.forEach(c -> run.trace(stage, c, "FAILED", null, null, "독립 점검 호출 실패"));
-            return;
+            batch.forEach(c -> run.trace(trace, stage, c, "FAILED", null, null, "독립 점검 호출 실패"));
+            return new GateOutcome(trace, proceed, List.of());
         }
         Map<String, GateResult> byId = new HashMap<>();
         for (GateResult r : list(out.get().results())) if (r.candidateId() != null) byId.putIfAbsent(r.candidateId(), r);
@@ -225,16 +295,16 @@ public final class ContextReviewEngine {
         for (Candidate c : batch) {
             GateResult r = byId.get(c.id);
             if (r == null) {
-                run.invalid++;
-                run.trace(stage, c, "INVALID", null, null, "결과 누락");
+                run.invalid.incrementAndGet();
+                run.trace(trace, stage, c, "INVALID", null, null, "결과 누락");
                 continue;
             }
             List<String> missing = list(r.missingInformation()).stream().map(MissingInformation::what)
                     .filter(w -> !blank(w)).toList();
             Optional<String> problem = gateProblem(c, r);
             if (problem.isPresent()) {
-                run.invalid++;
-                run.trace(stage, c, "INVALID", r.reason(), missing, problem.get());
+                run.invalid.incrementAndGet();
+                run.trace(trace, stage, c, "INVALID", r.reason(), missing, problem.get());
                 continue;
             }
             Status status = Status.valueOf(r.status().strip());
@@ -242,18 +312,19 @@ public final class ContextReviewEngine {
                 c.allowed = list(r.allowedJudgments()).stream().filter(s -> !blank(s)).map(String::strip).toList();
                 c.stopped = list(r.stoppedJudgments()).stream().map(String::strip).distinct()
                         .map(code -> c.criterion.judgment(code).orElseThrow()).toList();
-                run.trace(stage, c, "PROCEED", r.reason(), missing, null);
+                run.trace(trace, stage, c, "PROCEED", r.reason(), missing, null);
                 proceed.add(c);
             } else if (status == Status.STOP && expand != null && Boolean.TRUE.equals(r.needsExpansion())
                     && list(r.missingInformation()).stream().anyMatch(m -> Boolean.TRUE.equals(m.availableInTranscript()))) {
-                run.trace(stage, c, "EXPAND", r.reason(), missing, "대본에서 나올 수 있는 정보가 부족해 1회 확대");
+                run.trace(trace, stage, c, "EXPAND", r.reason(), missing, "대본에서 나올 수 있는 정보가 부족해 1회 확대");
                 expand.add(c);
             } else {
-                run.trace(stage, c, status.name(), r.reason(), missing,
+                run.trace(trace, stage, c, status.name(), r.reason(), missing,
                         status == Status.STOP && Boolean.TRUE.equals(r.needsExpansion())
                                 ? (expanded ? "확대 후에도 부족" : "대본 밖 정보라 확대하지 않음") : null);
             }
         }
+        return new GateOutcome(trace, proceed, expand == null ? List.of() : expand);
     }
 
     private Optional<String> gateProblem(Candidate c, GateResult r) {
@@ -279,13 +350,15 @@ public final class ContextReviewEngine {
 
     // ── 3. 상세 검토 ──────────────────────────────────────────────────
 
-    private void review(Run run, List<Candidate> batch) {
+    private ReviewOutcome review(Run run, List<Candidate> batch) {
+        List<TraceEntry> trace = new ArrayList<>();
+        List<Accepted> accepted = new ArrayList<>();
         CriterionBundle criterion = batch.get(0).criterion;
         var items = batch.stream().map(c -> new Item(c.id, c.window, c.allowed, c.stopped)).toList();
         var out = run.call(ContextPrompts.review(criterion, items), Review.class);
         if (out.isEmpty()) {
-            batch.forEach(c -> run.trace("REVIEW", c, "FAILED", null, null, "상세 검토 호출 실패"));
-            return;
+            batch.forEach(c -> run.trace(trace, "REVIEW", c, "FAILED", null, null, "상세 검토 호출 실패"));
+            return new ReviewOutcome(trace, accepted);
         }
         Map<String, ReviewResult> byId = new HashMap<>();
         for (ReviewResult r : list(out.get().reviews())) if (r.candidateId() != null) byId.putIfAbsent(r.candidateId(), r);
@@ -295,16 +368,16 @@ public final class ContextReviewEngine {
         for (Candidate c : batch) {
             ReviewResult r = byId.get(c.id);
             if (r == null) {
-                run.invalid++;
-                run.trace("REVIEW", c, "INVALID", null, null, "결과 누락");
+                run.invalid.incrementAndGet();
+                run.trace(trace, "REVIEW", c, "INVALID", null, null, "결과 누락");
                 continue;
             }
             List<String> infoMissing = list(r.additionalReviews()).stream()
                     .filter(a -> "INFO_MISSING".equals(a.effect())).map(a -> a.additionalId() + ": " + a.finding()).toList();
             Optional<String> problem = reviewProblem(c, r);
             if (problem.isPresent()) {
-                run.invalid++;
-                run.trace("REVIEW", c, "INVALID", r.reason(), infoMissing, problem.get());
+                run.invalid.incrementAndGet();
+                run.trace(trace, "REVIEW", c, "INVALID", r.reason(), infoMissing, problem.get());
                 continue;
             }
             Set<String> covered = new HashSet<>();
@@ -314,7 +387,7 @@ public final class ContextReviewEngine {
             String note = uncovered.isEmpty() ? null : "추가 기준 응답 누락: " + uncovered;
 
             if (Decision.valueOf(r.decision().strip()) == Decision.EXCLUDE) {
-                run.trace("REVIEW", c, "EXCLUDE", r.reason(), infoMissing, note);
+                run.trace(trace, "REVIEW", c, "EXCLUDE", r.reason(), infoMissing, note);
                 continue;
             }
             List<AcceptedEvidence> evidence = list(r.evidence()).stream().map(e -> {
@@ -324,11 +397,12 @@ public final class ContextReviewEngine {
                         line.endMs() == null ? 0 : line.endMs(), e.quote().strip(), role);
             }).toList();
             List<ContextLine> core = c.window.core();
-            run.accepted.add(new Accepted(c.id, criterion, core, r.reason().strip(),
+            accepted.add(new Accepted(c.id, criterion, core, r.reason().strip(),
                     blank(r.interpretationLimit()) ? null : r.interpretationLimit().strip(), evidence,
                     c.allowed, c.stopped.stream().map(StopJudgment::code).toList(), c.window.expanded()));
-            run.trace("REVIEW", c, "REVIEW", r.reason(), infoMissing, note);
+            run.trace(trace, "REVIEW", c, "REVIEW", r.reason(), infoMissing, note);
         }
+        return new ReviewOutcome(trace, accepted);
     }
 
     private Optional<String> reviewProblem(Candidate c, ReviewResult r) {

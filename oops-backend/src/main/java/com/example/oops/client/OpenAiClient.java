@@ -93,6 +93,18 @@ public class OpenAiClient {
     }
 
     /**
+     * 서버 전체에서 동시에 나가는 OpenAI 요청 수 상한. (redesign-v3 병렬 호출)
+     * 여러 영상·여러 병렬 작업이 같은 계정 한도를 나눠 쓰므로 한곳에서 막는다.
+     */
+    private volatile java.util.concurrent.Semaphore inFlight = new java.util.concurrent.Semaphore(6, true);
+
+    @org.springframework.beans.factory.annotation.Value("${oops.openai.max-concurrent:6}")
+    void setMaxConcurrent(int maxConcurrent) {
+        if (maxConcurrent < 1) throw new IllegalArgumentException("oops.openai.max-concurrent must be >= 1");
+        this.inFlight = new java.util.concurrent.Semaphore(maxConcurrent, true);
+    }
+
+    /**
      * 어느 계정으로 호출하는지 시작할 때 한 번 남긴다.
      *
      * 크레딧을 특정 조직에서 받았는데 개인 계정 키로 호출하면
@@ -133,11 +145,9 @@ public class OpenAiClient {
      *
      * 분석은 스레드마다 하나씩 도므로 스레드별로 들고 있으면 충분하다.
      */
-    private static final ThreadLocal<int[]> failureCount = ThreadLocal.withInitial(() -> new int[1]);
     enum FailureCode { MODEL_REFUSAL, INCOMPLETE_RESPONSE, JSON_PARSE_FAILED, EMPTY_RESPONSE,
         RATE_LIMITED, HTTP_FAILED, CONNECTION_FAILED }
     private record FailureState(FailureCode code, String message) {}
-    private static final ThreadLocal<FailureState> failureState = new ThreadLocal<>();
 
     /**
      * 지금 어느 영상의 어느 분석기를 돌리고 있는지.
@@ -146,19 +156,44 @@ public class OpenAiClient {
      * 호출처가 9곳이라 하나만 빠뜨려도 그 분석기의 토큰이 조용히 누락되기 때문이다.
      * 파이프라인이 분석기를 돌리기 직전에 한 번만 세팅한다.
      */
-    private static final ThreadLocal<long[]> currentVideoId = ThreadLocal.withInitial(() -> new long[]{0});
-    private static final ThreadLocal<String> currentAnalyzer = ThreadLocal.withInitial(() -> "-");
+    /**
+     * 영상 한 편의 호출 집계(사용량·실패·지금 분석기). redesign-v3 에서 병렬 호출을 위해
+     * 스레드마다 따로 들던 값을 이 객체 하나로 모았다. 파이프라인 스레드가 만들고,
+     * 같은 영상의 병렬 작업 스레드는 {@link #withScope} 로 같은 객체를 함께 쓴다.
+     */
+    public static final class CallScope {
+        private final long videoId;
+        private volatile String analyzer = "-";
+        private final java.util.concurrent.atomic.AtomicLongArray usage = new java.util.concurrent.atomic.AtomicLongArray(4); // calls, prompt, cached, completion
+        private final java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicReference<FailureState> lastFailure = new java.util.concurrent.atomic.AtomicReference<>();
 
-    /** 영상 한 편에 쓴 토큰 누적치 */
-    private static final ThreadLocal<long[]> usageTotals =
-            ThreadLocal.withInitial(() -> new long[4]);   // calls, prompt, cached, completion
+        CallScope(long videoId) {
+            this.videoId = videoId;
+        }
+    }
+
+    private static final ThreadLocal<CallScope> scope = ThreadLocal.withInitial(() -> new CallScope(0));
+
+    /** 지금 스레드의 집계 객체. 병렬 작업에 넘길 때 쓴다. */
+    public CallScope currentScope() {
+        return scope.get();
+    }
+
+    /** 다른 스레드에서 같은 영상의 집계 객체로 작업을 돌린다. 끝나면 원래 상태로 되돌린다. */
+    public <T> T withScope(CallScope target, java.util.function.Supplier<T> work) {
+        CallScope previous = scope.get();
+        scope.set(target);
+        try {
+            return work.get();
+        } finally {
+            scope.set(previous);
+        }
+    }
 
     /** 영상 분석을 시작할 때 한 번 호출한다. 이전 분석의 잔여 상태를 정리한다. */
     public void beginVideo(Long videoId) {
-        currentVideoId.get()[0] = videoId == null ? 0 : videoId;
-        usageTotals.set(new long[4]);
-        resetFailureTracking();
-        currentAnalyzer.set("-");
+        scope.set(new CallScope(videoId == null ? 0 : videoId));
     }
 
     /**
@@ -167,28 +202,24 @@ public class OpenAiClient {
      * 정리하지 않으면 다음 영상 분석이 이전 영상의 failureCount/reason 을 물려받는다.
      */
     public void endVideo() {
-        failureCount.remove();
-        failureState.remove();
-        currentVideoId.remove();
-        currentAnalyzer.remove();
-        usageTotals.remove();
+        scope.remove();
     }
 
     /** 분석기 하나를 돌리기 전에 호출한다. */
     public void beginAnalyzer(String analyzerKey) {
-        currentAnalyzer.set(analyzerKey == null ? "-" : analyzerKey);
+        scope.get().analyzer = analyzerKey == null ? "-" : analyzerKey;
         resetFailureTracking();
     }
 
     public void resetFailureTracking() {
-        failureCount.get()[0] = 0;
-        failureState.remove();
+        scope.get().failures.set(0);
+        scope.get().lastFailure.set(null);
     }
 
     /** 이 영상에 지금까지 쓴 양. 파이프라인이 마지막에 한 줄로 정리한다. */
     public TokenUsage videoUsage() {
-        long[] u = usageTotals.get();
-        return new TokenUsage(u[0], u[1], u[2], u[3], properties.modelOrDefault(),
+        var u = scope.get().usage;
+        return new TokenUsage(u.get(0), u.get(1), u.get(2), u.get(3), properties.modelOrDefault(),
                 properties.pricing());
     }
 
@@ -223,21 +254,21 @@ public class OpenAiClient {
     }
 
     public int failureCount() {
-        return failureCount.get()[0];
+        return scope.get().failures.get();
     }
 
     public Optional<String> failureReason() {
-        return Optional.ofNullable(failureState.get()).map(FailureState::message);
+        return Optional.ofNullable(scope.get().lastFailure.get()).map(FailureState::message);
     }
 
     /** Safe diagnostic code only; never expose provider response bodies or credentials. */
     public Optional<String> failureCode() {
-        return Optional.ofNullable(failureState.get()).map(f -> f.code().name());
+        return Optional.ofNullable(scope.get().lastFailure.get()).map(f -> f.code().name());
     }
 
     private <T> Optional<T> fail(FailureCode code, String reason) {
-        failureCount.get()[0]++;
-        failureState.set(new FailureState(code, reason));
+        scope.get().failures.incrementAndGet();
+        scope.get().lastFailure.set(new FailureState(code, reason));
         return Optional.empty();
     }
 
@@ -255,15 +286,15 @@ public class OpenAiClient {
      * Its failure must not mark an otherwise successful mandatory review as failed. */
     public <T> Optional<T> completeRoutingAsJson(String systemPrompt, String userPrompt, Class<T> type) {
         if (!isEnabled() || Thread.currentThread().isInterrupted()) return Optional.empty();
-        int priorCount = failureCount.get()[0];
-        FailureState priorFailure = failureState.get();
+        int priorCount = scope.get().failures.get();
+        FailureState priorFailure = scope.get().lastFailure.get();
         try {
             var body = requestBody(systemPrompt, userPrompt);
             body.put("max_completion_tokens", 1024);
             return executeJson(body, type, 1);
         } finally {
-            failureCount.get()[0] = priorCount;
-            if (priorFailure == null) failureState.remove(); else failureState.set(priorFailure);
+            scope.get().failures.set(priorCount);
+            scope.get().lastFailure.set(priorFailure);
         }
     }
 
@@ -298,6 +329,22 @@ public class OpenAiClient {
     }
 
     private <T> Optional<T> executeJson(Map<String, Object> body, Class<T> type, int attempts) {
+        // 서버 전체 동시 요청 상한. 재시도 대기 중에도 자리를 쥐고 있어 한도 초과 시 자연히 속도가 줄어든다.
+        var permits = inFlight;
+        try {
+            permits.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+        try {
+            return executeJsonHoldingPermit(body, type, attempts);
+        } finally {
+            permits.release();
+        }
+    }
+
+    private <T> Optional<T> executeJsonHoldingPermit(Map<String, Object> body, Class<T> type, int attempts) {
 
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if (Thread.currentThread().isInterrupted()) return Optional.empty();
@@ -432,15 +479,15 @@ public class OpenAiClient {
         long cached = usage.prompt_tokens_details() == null
                 ? 0 : usage.prompt_tokens_details().cached_tokens();
 
-        long[] total = usageTotals.get();
-        total[0]++;
-        total[1] += usage.prompt_tokens();
-        total[2] += cached;
-        total[3] += usage.completion_tokens();
+        var total = scope.get().usage;
+        total.incrementAndGet(0);
+        total.addAndGet(1, usage.prompt_tokens());
+        total.addAndGet(2, cached);
+        total.addAndGet(3, usage.completion_tokens());
 
         log.info("[openai-usage] videoId={} analyzer={} model={} input={} cached={} output={} total={}",
-                currentVideoId.get()[0],
-                currentAnalyzer.get(),
+                scope.get().videoId,
+                scope.get().analyzer,
                 response.model(),
                 usage.prompt_tokens(),
                 cached,
@@ -483,11 +530,10 @@ public class OpenAiClient {
 
     /** 요청이 한꺼번에 몰리지 않게 최소 간격을 둔다. */
     private void throttle() {
-        long gap = System.currentTimeMillis() - lastCallAt.get();
-        if (gap < MIN_INTERVAL_MS) {
-            sleep(MIN_INTERVAL_MS - gap);
-        }
-        lastCallAt.set(System.currentTimeMillis());
+        // 여러 스레드가 동시에 와도 시작 시각이 MIN_INTERVAL_MS 씩 벌어지도록 자리를 예약한다.
+        long now = System.currentTimeMillis();
+        long slot = lastCallAt.updateAndGet(prev -> Math.max(now, prev + MIN_INTERVAL_MS));
+        if (slot > now) sleep(slot - now);
     }
 
     /**

@@ -29,17 +29,20 @@ public record ContextProperties(
         /** 독립 점검·상세 검토에서 같은 기준 후보를 한 번에 보내는 수 */
         @DefaultValue("5") int batchSize,
         /** 영상 하나에서 독립 점검까지 보낼 후보 상한. 넘으면 PARTIAL 로 알린다 */
-        @DefaultValue("80") int maxCandidates) {
+        @DefaultValue("80") int maxCandidates,
+        /** 영상 하나 안에서 동시에 보내는 AI 호출 수. 서버 전체 상한은 oops.openai.max-concurrent */
+        @DefaultValue("4") int parallelism) {
 
     public ContextProperties {
         if (discoveryLines < 1 || contextLines < 0 || expandedLines < contextLines
                 || discoveryMaxMs < 1 || contextMinMs < 0 || contextMaxMs < contextMinMs
-                || expandedMaxMs < contextMaxMs || silenceGapMs < 0 || batchSize < 1 || maxCandidates < 1) {
+                || expandedMaxMs < contextMaxMs || silenceGapMs < 0 || batchSize < 1 || maxCandidates < 1
+                || parallelism < 1 || parallelism > 32) {
             throw new IllegalArgumentException("oops.context 설정값이 올바르지 않습니다.");
         }
     }
 
     public static ContextProperties defaults() {
-        return new ContextProperties(20, 60_000, 5, 15_000, 30_000, 10, 60_000, 5_000, 5, 80);
+        return new ContextProperties(20, 60_000, 5, 15_000, 30_000, 10, 60_000, 5_000, 5, 80, 4);
     }
 }

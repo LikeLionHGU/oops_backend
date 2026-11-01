@@ -52,6 +52,31 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
     private final StorageService storage;
 
     private final ThreadLocal<String> notice = new ThreadLocal<>();
+    private volatile java.util.concurrent.ExecutorService pool;
+
+    /** 맥락 확인 AI 호출용 작업 스레드. 영상 여러 개가 함께 써도 서버 전체 상한은 OpenAiClient 가 지킨다. */
+    private java.util.concurrent.ExecutorService pool() {
+        var p = pool;
+        if (p == null) {
+            synchronized (this) {
+                if (pool == null) {
+                    var count = new java.util.concurrent.atomic.AtomicInteger();
+                    pool = java.util.concurrent.Executors.newFixedThreadPool(properties.parallelism() * 2, r -> {
+                        Thread t = new Thread(r, "context-review-" + count.incrementAndGet());
+                        t.setDaemon(true);
+                        return t;
+                    });
+                }
+                p = pool;
+            }
+        }
+        return p;
+    }
+
+    @jakarta.annotation.PreDestroy
+    void shutdown() {
+        if (pool != null) pool.shutdownNow();
+    }
 
     @Override
     public String key() {
@@ -76,7 +101,24 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
                 .filter(s -> s.type() == TimelineEventType.SPEECH)
                 .map(s -> new ContextLine(s.id(), s.startMs(), s.endMs(), s.text()))
                 .toList();
-        var engine = new ContextReviewEngine(properties, openAiClient::completeAsJson);
+        var scope = openAiClient.currentScope();   // 이 영상의 사용량·실패 집계를 작업 스레드와 공유
+        ContextReviewEngine.Model model = new ContextReviewEngine.Model() {
+            @Override
+            public <T> Optional<T> call(String system, String user, Class<T> type) {
+                return openAiClient.withScope(scope, () -> openAiClient.completeAsJson(system, user, type));
+            }
+        };
+        // 영상 하나가 동시에 쓰는 작업 수를 parallelism 으로 묶는다.
+        var limit = new java.util.concurrent.Semaphore(properties.parallelism());
+        java.util.concurrent.Executor executor = task -> pool().execute(() -> {
+            limit.acquireUninterruptibly();
+            try {
+                task.run();
+            } finally {
+                limit.release();
+            }
+        });
+        var engine = new ContextReviewEngine(properties, model, executor);
         var result = engine.run(lines, criteria, context::checkActive);
 
         writeTrace(context, lines.size(), result);

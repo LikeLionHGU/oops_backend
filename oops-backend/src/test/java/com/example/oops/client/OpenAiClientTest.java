@@ -26,6 +26,38 @@ class OpenAiClientTest {
         } finally { client.endVideo(); }
         assertThat(client.failureCode()).isEmpty();
     }
+    @Test void parallelWorkersShareTheVideoScopeForUsageAndFailures() throws Exception {
+        var builder = RestClient.builder().baseUrl("https://example.invalid");
+        var server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
+        server.expect(org.springframework.test.web.client.ExpectedCount.times(2), requestTo("https://example.invalid/chat/completions"))
+                .andRespond(withSuccess(mockResponse(), MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://example.invalid/chat/completions"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.BAD_REQUEST));
+        var client = new OpenAiClient(builder.build(), properties(null, null));
+        client.beginVideo(9L);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(3);
+        try {
+            var scope = client.currentScope();
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 3; i++) {
+                futures.add(pool.submit(() -> client.withScope(scope, () -> client.completeAsJson("JSON", "x", Answer.class))));
+            }
+            for (var f : futures) f.get();
+            // 작업 스레드의 사용량·실패가 파이프라인 스레드의 집계에 모인다
+            assertThat(client.videoUsage().calls()).isEqualTo(2);
+            assertThat(client.failureCount()).isOne();
+            assertThat(client.failureCode()).contains("HTTP_FAILED");
+        } finally {
+            pool.shutdownNow();
+            client.endVideo();
+        }
+        // 다른 스레드는 자기 집계를 갖는다
+        var other = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            assertThat(other.submit(client::failureCount).get()).isZero();
+        } finally { other.shutdownNow(); }
+        server.verify();
+    }
     @Test void optionalRoutingIsSingleAttemptAndDoesNotPoisonMandatoryFailureTracking() {
         var builder = RestClient.builder().baseUrl("https://example.invalid");
         var server = MockRestServiceServer.bindTo(builder).build();

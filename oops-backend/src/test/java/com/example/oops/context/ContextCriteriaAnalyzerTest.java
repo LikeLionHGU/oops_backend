@@ -51,6 +51,12 @@ class ContextCriteriaAnalyzerTest {
         return new AnalysisContext(video, ContentGenre.TALK_PODCAST, transcript, List.of());
     }
 
+    @SuppressWarnings("unchecked")
+    static void passThroughScope(OpenAiClient client) {
+        when(client.withScope(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> ((java.util.function.Supplier<Object>) inv.getArgument(1)).get());
+    }
+
     StorageService storage() {
         return new StorageService(new OopsProperties(new OopsProperties.Storage(temp.toString(), 0, 0), null, null));
     }
@@ -58,6 +64,7 @@ class ContextCriteriaAnalyzerTest {
     @Test void acceptedReviewBecomesACriterionCardAndTraceIsWritten() throws Exception {
         var client = mock(OpenAiClient.class);
         when(client.isEnabled()).thenReturn(true);
+        passThroughScope(client);
         when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(
                 new Discovery(List.of(), List.of(new DiscoveryCandidate("G02-C01", List.of("stt-102"), "연애 여부 질문")))));
         when(client.completeAsJson(anyString(), anyString(), eq(Gate.class))).thenReturn(Optional.of(
@@ -95,6 +102,7 @@ class ContextCriteriaAnalyzerTest {
     @Test void criteriaLoadFailureFailsTheAnalyzerInsteadOfReturningNoFindings() {
         var client = mock(OpenAiClient.class);
         when(client.isEnabled()).thenReturn(true);
+        passThroughScope(client);
         CriteriaSource broken = () -> { throw new CriteriaLoadException("Neo4j 연결 실패"); };
         var analyzer = new ContextCriteriaAnalyzer(broken, client, ContextProperties.defaults(), storage());
         assertThatThrownBy(() -> analyzer.analyze(context())).isInstanceOf(CriteriaLoadException.class);
@@ -103,6 +111,7 @@ class ContextCriteriaAnalyzerTest {
     @Test void failedModelCallsProduceACoverageNotice() {
         var client = mock(OpenAiClient.class);
         when(client.isEnabled()).thenReturn(true);
+        passThroughScope(client);
         when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.empty());
         var analyzer = new ContextCriteriaAnalyzer(JsonCriteriaSourceTest.real(), client, ContextProperties.defaults(), storage());
         var ctx = context();

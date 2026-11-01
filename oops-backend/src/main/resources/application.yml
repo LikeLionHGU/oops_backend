@@ -102,6 +102,8 @@ oops:
     organization: ${OPENAI_ORG_ID:}
     project: ${OPENAI_PROJECT_ID:}
     model: ${OPENAI_MODEL:gpt-6-luna}
+    # 서버 전체에서 동시에 보내는 요청 수 상한 (redesign-v3 병렬 호출). 계정 한도(RPM·TPM)에 맞춰 조정한다.
+    max-concurrent: ${OPENAI_MAX_CONCURRENT:6}
     # 기존 비추론 경로와 비교하기 위한 기본값. low 등으로 변경하면 temperature는 전송하지 않는다.
     reasoning-effort: ${OPENAI_REASONING_EFFORT:none}
     # Luna 호환·정상 대조 확인 후 탐색 DTO만 기본 ON. 다른 모델/제공자는 재확인하고 필요하면 false.
@@ -159,6 +161,7 @@ oops:
     silence-gap-ms: 5000      # 이보다 긴 공백 너머는 붙이지 않는다
     batch-size: 5             # 독립 점검·상세 검토에서 같은 기준 후보를 묶는 수
     max-candidates: 80        # 영상당 독립 점검 후보 상한. 넘으면 PARTIAL
+    parallelism: 4            # 영상 하나 안에서 동시에 보내는 AI 호출 수 (서버 전체 상한은 oops.openai.max-concurrent)
 
   analysis:
     # Full-screen OCR is opt-in; candidate visual review is independent.
