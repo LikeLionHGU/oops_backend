@@ -273,6 +273,7 @@ public class StorageService {
     public void deleteVideoFiles(Long videoId) {
         deleteDirectory(resolve("videos/%d".formatted(videoId)));
         deleteDirectory(frameDir(videoId));
+        deleteDirectory(resolve("context-traces/%d".formatted(videoId)));   // 사용자가 영상을 지우면 내부 기록도 지운다
     }
 
     /** 원본 영상만 지우고 OCR 프레임과 분석 결과는 남긴다. */

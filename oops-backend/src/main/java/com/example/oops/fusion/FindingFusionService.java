@@ -206,6 +206,9 @@ public class FindingFusionService {
 
         boolean accepts(RiskFinding candidate) {
             if (members.isEmpty()) return true;
+            // redesign-v3: 서로 다른 맥락 기준의 결과는 합치지 않는다. 표시 방식은 테스트 후 정한다.
+            if (members.stream().anyMatch(m -> !java.util.Objects.equals(m.getCriterionId(), candidate.getCriterionId())))
+                return false;
             // Exact legacy repeated text retains adjacent deduplication; never target-name-only merging.
             if (candidate.validatedSupports().isEmpty() && members.stream().allMatch(m -> m.validatedSupports().isEmpty())) {
                 long gap = Math.max(candidate.getStartMs() - maxEndMs(), minStartMs() - candidate.getEndMs());

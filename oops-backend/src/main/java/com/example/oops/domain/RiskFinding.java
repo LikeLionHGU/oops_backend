@@ -116,6 +116,24 @@ public class RiskFinding extends BaseTimeEntity {
     @Column(columnDefinition = "text")
     private String validatedSupportJson;
 
+    /** redesign-v3 맥락 기준 ID (예: G02-C01). 다른 분석기 결과는 null */
+    @Column(length = 32)
+    private String criterionId;
+
+    /** 판단에 쓴 기준 제목. 기준 문구가 바뀌어도 그때 쓴 제목을 남긴다 */
+    @Column(length = 200)
+    private String criterionTitle;
+
+    /** 판단에 쓴 기준 버전 (ruleset|version|review-gate|stop-judgments) */
+    @Column(length = 200)
+    private String criteriaVersion;
+
+    public void recordCriterion(String criterionId, String criterionTitle, String criteriaVersion) {
+        this.criterionId = criterionId;
+        this.criterionTitle = criterionTitle;
+        this.criteriaVersion = criteriaVersion;
+    }
+
     public List<FindingSupport> validatedSupports() {
         if (validatedSupportJson == null) return List.of();
         try {

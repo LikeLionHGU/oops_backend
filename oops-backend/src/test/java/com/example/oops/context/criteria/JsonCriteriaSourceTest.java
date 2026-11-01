@@ -14,13 +14,13 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class JsonCriteriaSourceTest {
+public class JsonCriteriaSourceTest {
 
     static final JsonMapper JSON = JsonMapper.builder().build();
-    static final String RULESET = "criteria/ruleset-oops-all-0.4-draft.json";
-    static final String STOPS = "criteria/stop-judgments-draft.json";
+    public static final String RULESET = "criteria/ruleset-oops-all-0.4-draft.json";
+    public static final String STOPS = "criteria/stop-judgments-draft.json";
 
-    static JsonCriteriaSource real() {
+    public static JsonCriteriaSource real() {
         return new JsonCriteriaSource(new ClassPathResource(RULESET), new ClassPathResource(STOPS));
     }
 

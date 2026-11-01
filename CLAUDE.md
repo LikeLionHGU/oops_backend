@@ -6,7 +6,10 @@
 ## 구조
 - `oops-backend/` — Spring Boot 4 (Java 17). 업로드, 작업 관리, 분석 엔진, 결과 저장.
 - `oops-analysis/` — FastAPI. ffmpeg + Groq whisper-large-v3 전사.
-- `oops-backend/src/main/resources/criteria/` — 21개 판단 기준 JSON(지금 사용), 중단 판단 코드 초안, 옛 프롬프트(참고용).
+- `oops-backend/src/main/resources/criteria/` — 21개 판단 기준 JSON(기본), 중단 판단 코드 초안, 옛 프롬프트(참고용).
+- `oops-backend/src/main/java/com/example/oops/context/` — 새 맥락 확인(분석기 키 `context-review`).
+  `criteria/`(CriteriaSource: JSON·Neo4j), `LineContextBuilder`(문맥), `ContextPrompts`, `ContextReviewEngine`(3단계·검증), `ContextCriteriaAnalyzer`.
+- Neo4j 서버 배포 자료는 `neo4j-data-setup` 브랜치 `infra/neo4j`. `oops.criteria.source=neo4j`로 전환.
 
 ## 핵심 원칙
 - 입력은 편집 전 원본 영상뿐 (≤120분, ≤4GB). 스크립트 입력·유튜브 링크·SRT·OCR 없음.

@@ -200,11 +200,9 @@ oops:
     # 장르와 무관한 게시 전 검수다. 알려진 문제도 원문 근거가 있으면 검토한다.
     # 후보 탐색과 원문 검증이 중심이다. 전체 영상의 외부 검색은 기본에서 실행하지 않는다.
     enabled-analyzers:
-      - subtitle # 개인정보 노출 후보 안전망. 욕설·은어 등장은 별도 STT 표현 트랙.
-      - speech-review # 발언 중 확인할 지점 (낯선 맥락, 대상 평가)
-      - context-lexicon # 낯선 맥락 표현 사전 + 앞뒤 확인  ← P0 핵심
-      - screen-text # 화면 개인정보 노출 후보 (LLM 불필요)
-      - screen-text-review # 화면 자막 중 확인할 지점
+      # redesign-v3: 맥락 확인은 21개 기준 3단계(context-review) 하나로 한다.
+      # 옛 분석기(subtitle, speech-review, context-lexicon, screen-text*)는 걷어낼 예정이라 끈다.
+      - context-review
 
       # entity-check / context-check : 외부 사실·최근 배경 검색은 선택 기능.
       # 기존 검색 경로를 시험할 때만 external-review 프로필을 추가한다.

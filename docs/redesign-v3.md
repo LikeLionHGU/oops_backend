@@ -1,6 +1,6 @@
 # OoPs 재설계 v3 — 개발 기준 문서
 
-최종 갱신: 2026-11-01 · 브랜치 `redesign-v3` (출발점 `minwook` 47a6263)
+최종 갱신: 2026-11-01 (2차) · 브랜치 `redesign-v3` (출발점 `minwook` 47a6263)
 
 이 문서는 「OoPs 백엔드 개편 전달서(2026-10-29)」를 바탕으로 팀이 추가로 정한 내용을 합친 **개발 기준**이다.
 전달서와 다르게 정한 부분은 아래 「전달서와 달라진 결정」에 모아 두었다. 둘이 어긋나면 이 문서를 따른다.
@@ -187,15 +187,17 @@
 
 - 파일: `oops-backend/src/main/resources/criteria/ruleset-oops-all-0.4-draft.json`
   (`oops_ai_criteria_full.html`의 source-data. 공통 21 / 독립 점검 21·63필드 / 추가 68)
-- 서버 Neo4j는 다른 개발자가 구축 중. 준비되면 **기준을 읽는 구현 하나만** 바꾼다.
-- 코드는 JSON 구조를 직접 알지 않고 `CriteriaSource` 인터페이스만 쓴다.
-  - `List<CommonCriterion> commonCriteria()`
-  - `ReviewGate reviewGate(String criterionId)` — 정확히 1개, 아니면 오류
-  - `List<AdditionalCriterion> additionalCriteria(String criterionId)`
-  - `String rulesetVersion()`, `String reviewGateVersion()`
-- 분석 시작 때 이번 실행에 쓸 기준을 한 번에 읽어 메모리에 고정한다. 도중에 DB가 바뀌어도 그 실행은 영향받지 않는다.
-- ID 형식은 Neo4j와 같게 쓴다: `G02-C01`, `G02-A01`, `review-gate:G02-C01@ALL-v0.4-draft:1.0`, `independent-review/1.0`. **Neo4j 담당자에게 확인 필요.**
-- 로드 실패·누락·중복·버전 불일치는 분석 실패로 처리한다.
+- 코드는 `CriteriaSource.load()` 하나로 기준 스냅숏(`CriteriaSnapshot`)을 받는다. 분석 시작 때 한 번 읽어 그 실행에 고정한다.
+- 구현 두 개 (`oops.criteria.source`로 선택):
+  - `json`(기본): `JsonCriteriaSource` — 위 JSON 파일
+  - `neo4j`: `Neo4jCriteriaSource` — 서버 Neo4j HTTP Query API(`POST {http-uri}/db/{database}/query/v2`).
+    `neo4j-data-setup` 브랜치 `infra/neo4j/queries`의 02(공통)·03(추가)·09(독립 점검)와 같은 경로로 읽는다.
+    Bolt 드라이버는 추가하지 않았다(포트 7474·7687 모두 서버 127.0.0.1에만 열려 있고 JAR도 같은 서버에서 돈다).
+- `neo4j-data-setup`의 seed(`neo4j_graph.json`, `review_gate_rules.json`)와 JSON 파일을 비교한 결과 **본문·ID 차이 0건**.
+- 서버 설정: `OOPS_CRITERIA_SOURCE=neo4j`, `NEO4J_PASSWORD`=서버 `infra/neo4j/.env`의 `OOPS_DB_PASSWORD`
+  (선택: `NEO4J_HTTP_URI` 기본 `http://127.0.0.1:7474`, `NEO4J_DATABASE` 기본 `neo4j`, `NEO4J_USER` 기본 `neo4j`)
+- 중단 판단 코드는 아직 Neo4j에 없으므로 두 구현 모두 `criteria/stop-judgments-draft.json`을 함께 읽는다.
+- 로드 실패·누락·중복·버전 불일치·조회 오류는 `CriteriaLoadException` → 분석기 FAILED. 빈 결과로 넘기지 않는다.
 
 ---
 
@@ -232,15 +234,26 @@
 ## 11. 구현 순서
 
 1. ~~브랜치·문서·기준 JSON·중단 판단 코드 초안~~ / ~~업로드 한도~~ / ~~원본 24시간 삭제~~ / ~~스크립트 입력 제거~~
-2. `CriteriaSource` + JSON 구현 + 로드 검사 테스트
-3. 문맥 구성기(2절) + 테스트 (경계, 침묵, 긴 줄, 시간 없는 입력, 1회 확대)
-4. 프롬프트 3종 + 공통 지시문
-5. 3단계 엔진 + 서버 분기·검증 + 내부 기록
-6. 사례집·OCR·옛 분석기 걷어내기
+2. ~~`CriteriaSource` + JSON 구현 + 로드 검사 테스트~~
+3. ~~문맥 구성기(2절) + 테스트~~ — `context/LineContextBuilder`
+4. ~~프롬프트 3종 + 공통 지시문~~ — `context/ContextPrompts` (실제 모델로 품질 확인은 평가 세트에서)
+5. ~~3단계 엔진 + 서버 분기·검증 + 내부 기록~~ — `context/ContextReviewEngine`, 분석기 `context-review`
+   (`ContextCriteriaAnalyzer`, 기본 활성). 내부 기록은 `{storage}/context-traces/{videoId}/*.json`
+10. ~~Neo4j 구현~~ — `Neo4jCriteriaSource` (앞당겨 완료. 서버 연결 확인만 남음)
+6. 사례집·OCR·옛 분석기 걷어내기 ← **다음**
 7. 사실대조 (Perplexity·Serper 이식, 충분성 평가, 병렬 실행)
-8. 실행 단위 저장(재분석 이력 보존), 결과 카드 응답
-9. main 8월 수정 반영, 통합 시험(전달서 9절 목록)
-10. Neo4j 구현으로 교체 (서버 DB 준비 후)
+8. 실행 단위 저장(재분석 이력 보존, 내부 기록을 DB로), 결과 카드 응답 정리
+9. main 8월 수정 반영, 통합 시험(전달서 9절 목록), 평가 세트로 프롬프트·숫자 조정
+
+### 현재 구현 메모
+- 카드: `RiskCategory.CONTEXT_CRITERION` + `RiskFinding.criterionId/criterionTitle/criteriaVersion`(새 컬럼).
+  응답 `TimelineEventDto`에 `criterionId` 추가, 제목은 기준 제목, `riskTypes`는 기준 ID.
+- 서로 다른 기준의 카드는 병합하지 않는다(`FindingFusionService`). 표시 방식은 테스트 후 결정.
+- AI 호출은 아직 **순서대로** 한다. `OpenAiClient`의 사용량·실패 집계가 스레드 단위(ThreadLocal)라
+  병렬화하려면 그 집계를 실행 단위 객체로 옮겨야 한다(7·8단계와 함께).
+- 상세 검토 검증: `usedJudgments`에 중단·단정 금지 코드가 있거나, 이유(reason)에 중단된 판단의 이름(label)이
+  그대로 들어가면 무효. 의미까지 완전히 잡지는 못하므로 평가 세트에 이 경우를 넣는다.
+- 1회 확대 조건: 독립 점검이 STOP + `needsExpansion` + 부족한 정보 중 하나라도 `availableInTranscript=true`일 때만.
 
 ---
 

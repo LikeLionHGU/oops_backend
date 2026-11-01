@@ -62,7 +62,9 @@ public record TimelineEventDto(
         /** Merged analysis findings, not utterance repetitions. */
         int supportCount,
         /** Validated quote roles/times; empty on historical reports. */
-        List<FindingSupport.Quote> relatedEvidence
+        List<FindingSupport.Quote> relatedEvidence,
+        /** redesign-v3 맥락 기준 ID (예: G02-C01). 다른 분석기 결과는 null */
+        String criterionId
 ) {
     public static TimelineEventDto from(RiskFinding f, ReviewActionType action,
                                         String before, String after) {
@@ -84,14 +86,15 @@ public record TimelineEventDto(
                 caption ? null : f.getText(),
                 caption ? null : before,
                 caption ? null : after,
-                caption ? null : List.of(f.getCategory().name()),
+                caption ? null : List.of(f.getCriterionId() != null ? f.getCriterionId() : f.getCategory().name()),
                 caption ? f.getSpeechText() : null,
                 caption ? f.getCaptionText() : null,
                 ReviewPerspective.from(f.getCategory()),
                 f.getMergedCount(),
                 f.validatedSupports().stream().flatMap(s -> s.quotes().stream()).distinct()
                         .sorted(java.util.Comparator.comparingLong(FindingSupport.Quote::startMs)
-                                .thenComparing(FindingSupport.Quote::segmentId).thenComparing(FindingSupport.Quote::role)).toList()
+                                .thenComparing(FindingSupport.Quote::segmentId).thenComparing(FindingSupport.Quote::role)).toList(),
+                f.getCriterionId()
         );
     }
 
@@ -102,6 +105,9 @@ public record TimelineEventDto(
      * 무엇에 대한 지적인지(target)를 붙여야 훑어볼 수 있다.
      */
     private static String buildTitle(RiskFinding f) {
+        if (f.getCriterionId() != null && f.getCriterionTitle() != null) {
+            return f.getCriterionTitle();
+        }
         String label = f.getCategory().getLabel();
         String target = f.getTarget();
         if (target == null || target.isBlank()) {

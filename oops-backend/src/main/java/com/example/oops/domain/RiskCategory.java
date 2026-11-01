@@ -36,7 +36,10 @@ public enum RiskCategory {
 
     // 추후
     GESTURE("부적절한 제스처"),
-    COMMENT_BACKLASH("댓글 여론 악화");
+    COMMENT_BACKLASH("댓글 여론 악화"),
+
+    // redesign-v3: 21개 맥락 기준 검토 결과. 어떤 기준인지는 RiskFinding.criterionId 에 있다.
+    CONTEXT_CRITERION("맥락 기준 검토");
 
     private final String label;
 

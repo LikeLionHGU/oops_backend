@@ -24,8 +24,9 @@ class AnalysisPipelineSelectionTest {
 
     @Test void defaultConfigurationDoesNotSelectExternalSearchEvenWithBeansPresent() {
         var keys = configured("application.yml");
-        assertThat(keys).containsExactly("subtitle", "speech-review", "context-lexicon", "screen-text", "screen-text-review");
-        var allKeys = configured("application-external-review.yml");
+        assertThat(keys).containsExactly("context-review");
+        var allKeys = java.util.stream.Stream.concat(keys.stream(),
+                configured("application-external-review.yml").stream()).distinct().toList();
         var analyzers = allKeys.stream().map(key -> {
             var analyzer = mock(ContentAnalyzer.class);
             when(analyzer.key()).thenReturn(key);
