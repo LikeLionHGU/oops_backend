@@ -819,6 +819,21 @@ tasks.register('casebookImpactAudit', JavaExec) {
     }
 }
 
+// Offline incident-addition impact replay through the same production selector.
+tasks.register('incidentSelectorImpactAudit', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.IncidentSelectorImpactAudit'
+    doFirst {
+        def request = providers.gradleProperty('incidentImpactRequest').orNull
+        def baseline = providers.gradleProperty('incidentImpactBaseline').orNull
+        def candidate = providers.gradleProperty('incidentImpactCandidate').orNull
+        if (!request || !baseline || !candidate)
+            throw new GradleException('Set incidentImpactRequest, incidentImpactBaseline and incidentImpactCandidate local paths')
+        args request, baseline, candidate
+    }
+}
+
 // Opt-in stage diagnosis. Preparation is offline; run requires fresh plan-specific consent.
 tasks.register('confrontationStageTrial', JavaExec) {
     dependsOn testClasses
@@ -827,6 +842,72 @@ tasks.register('confrontationStageTrial', JavaExec) {
     doFirst {
         def values = providers.gradleProperty('stageTrialArgs').orNull
         if (!values) throw new GradleException('Explicit prepare/run stageTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('constraintBaselineTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ConstraintBaselineTrial'
+    doFirst {
+        def values = providers.gradleProperty('constraintTrialArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run constraintTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('syntheticReferenceComparison', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SyntheticReferenceComparison'
+    doFirst {
+        def values = providers.gradleProperty('syntheticReferenceArgs').orNull
+        if (!values) throw new GradleException('Explicit syntheticReferenceArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('syntheticAutoReferenceTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SyntheticAutoReferenceTrial'
+    doFirst {
+        def values = providers.gradleProperty('syntheticAutoArgs').orNull
+        if (!values) throw new GradleException('Explicit syntheticAutoArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('reportedContextModelComparison', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReportedContextModelComparison'
+    doFirst {
+        def values = providers.gradleProperty('reportedContextArgs').orNull
+        if (!values) throw new GradleException('Explicit reportedContextArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('fixedBoundaryBaselineTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.FixedBoundaryBaselineTrial'
+    doFirst {
+        def values = providers.gradleProperty('fixedBoundaryArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run fixedBoundaryArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('syntheticReferenceRegression', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SyntheticReferenceRegression'
+    doFirst {
+        def values = providers.gradleProperty('syntheticRegressionArgs').orNull
+        if (!values) throw new GradleException('Explicit syntheticRegressionArgs required')
         args values.split('\\|', -1).toList()
     }
 }
@@ -887,6 +968,18 @@ tasks.register('casebookReferenceIsolationPreflight', JavaExec) {
         def output = providers.gradleProperty('referenceIsolationOutput').orNull
         if (!output) throw new GradleException('Set referenceIsolationOutput to a new private experiments directory')
         args output
+    }
+}
+
+// Bounded paired text-only model trial for the approved D05 casebook addition.
+tasks.register('casebookAssetAdditionModelTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.D05CasebookAdditionModelTrial'
+    doFirst {
+        def values = providers.gradleProperty('casebookAssetAdditionArgs').orNull
+        if (!values) throw new GradleException('Set casebookAssetAdditionArgs: prepare NEW_DIRECTORY OR run PLAN|PLAN_SHA|MANIFEST|MANIFEST_SHA|NEW_OUTPUT_DIRECTORY')
+        args values.split('\\|', -1).toList()
     }
 }
 
