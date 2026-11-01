@@ -9,6 +9,8 @@
 - `oops-backend/src/main/resources/criteria/` — 21개 판단 기준 JSON(기본), 중단 판단 코드 초안, 옛 프롬프트(참고용).
 - `oops-backend/src/main/java/com/example/oops/context/` — 새 맥락 확인(분석기 키 `context-review`).
   `criteria/`(CriteriaSource: JSON·Neo4j), `LineContextBuilder`(문맥), `ContextPrompts`, `ContextReviewEngine`(3단계·검증), `ContextCriteriaAnalyzer`.
+- `oops-backend/src/main/java/com/example/oops/factcheck/` — 사실대조(분석기 키 `fact-check`). Perplexity 1차, Serper 보조 1회, 반박만 카드.
+- 결과는 실행 단위로 저장한다(`run_id`, `video.current_run_id`, `analysis_run`, `analysis_trace`). 재분석해도 이전 결과를 지우지 않는다.
 - Neo4j 서버 배포 자료는 `neo4j-data-setup` 브랜치 `infra/neo4j`. `oops.criteria.source=neo4j`로 전환.
 
 ## 핵심 원칙
@@ -24,7 +26,8 @@
 
 ## 하지 말 것
 - `criteria/legacy-prompts-reference.json`의 프롬프트를 그대로 복사해 쓰기 (새 정책과 어긋남).
-- 사례집(`ReviewCaseLibrary`, `ReviewGuidelineLibrary`) 위에 새 기능 얹기 — 걷어낼 대상이다.
+- 옛 분석기·사례집·OCR·사전을 되살리기 (main 에서 넘어오는 수정도 이 부분은 반영하지 않는다).
+- 결과 조회에 `findByVideoId` 류를 새로 쓰기 — 현재 실행만 읽는 `findCurrent…` 를 쓴다.
 - API 키를 커밋하기 (`application-secret.yml`, `oops-analysis/.env`는 git 제외).
 
 ## 빌드

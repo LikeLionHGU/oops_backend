@@ -163,8 +163,13 @@
 - 내부 구분: 검색 실패 / 관련 결과 없음 / 근거 부족 / 자료 충돌. 판단 불가면 결과에서 제외.
 - 네이버 뉴스·구글 뉴스 RSS 제거. 같은 URL·같은 원출처 중복 정리.
 - 최종 설명에 쓴 자료 ID·인용을 검증. 근거를 못 고르면 상위 결과를 자동 첨부하지 않는다.
-- 가져올 것: `upgrade-v2`의 `news/PerplexitySearch`, `SerperSearch`, `WebSearchClient`, `SourceClassifier`, `config/SearchApiProperties`, 검색 기록 저장.
-  `minwook`의 `EntityCheckAnalyzer` 인용 검증·`INSUFFICIENT_EVIDENCE` 처리.
+- 구현(7단계 완료): 패키지 `factcheck/`, 분석기 키 `fact-check`.
+  - `FactCheckEngine`: 맥락 확인과 같은 줄 단위 창(20줄/60초 + 앞뒤 문맥)으로 주장 추출 → Perplexity 검색 →
+    GPT 대조(`SUPPORTED`·`REFUTED`·`CONFLICT`·`INSUFFICIENT`) → 보완 사실이 분명하고 검색어가 1차와 다를 때만 Serper 1회 →
+    마지막 대조는 `supplement` 금지. Perplexity 장애·꺼짐이면 Serper 를 그 1회로 대신 쓴다.
+  - 카드는 `REFUTED` 만 (`RiskCategory.FACT_ERROR`). 판단에 실제로 쓴 자료(인용 검증 통과)만 출처로 붙인다.
+  - 내부 결과 코드: `NOT_SPECIFIC`(검색 안 함), `SEARCH_FAILED`, `NO_RESULTS`(대조 생략), `INVALID`(인용 위조), `FAILED`, `SKIPPED_BUDGET`(주장 상한 초과 → PARTIAL).
+  - 설정 `oops.fact-check`: `max-claims`(12), `results-per-search`(5), `parallelism`(4). 검색 키 `oops.search.*`. 키가 없으면 SKIPPED + 안내.
 
 ---
 
@@ -178,8 +183,15 @@
 | 기준 본문 | JSON → Neo4j | 버전별 보존, 덮어쓰지 않음 |
 
 - 원본이 지워진 뒤에는 STT를 다시 돌릴 수 없다. 재분석은 저장된 전사로만 한다(`TranscriptReplayService`).
-- 재분석 시 결과·검수 기록을 지우는 현재 동작(`AnalysisResultWriter`)은 **실행 단위 저장**으로 바꿔 이전 결과를 보존한다.
-- 결과마다 기준 ID·본문 버전·독립 점검 규칙 버전을 함께 저장한다.
+- **실행 단위 저장(8단계 완료).** 재분석해도 카드·참고 자료·전사·수행 기록·검수 기록을 지우지 않는다.
+  - 결과 행(`risk_finding`, `transcript_segment`, `analysis_coverage`)에 `run_id`(= 분석 작업 ID)를 붙이고,
+    커밋 순간 `video.current_run_id` 를 새 실행으로 바꾼다. 모든 조회·검수·지표는 현재 실행만 읽는다.
+    `run_id` 가 없는 옛 행은 `current_run_id` 가 null 인 동안 그대로 읽힌다(이전 데이터 호환).
+  - `analysis_run`: 실행별 기준 버전·모델·점수·요약·전사 재사용 여부. `analysis_trace`: 분석기별 내부 기록(JSON).
+    파일 기록(`context-traces/`, `fact-traces/`)은 저장되지 않은 실행(실패·취소)을 보기 위해 함께 남긴다.
+  - 이전 실행 카드에는 새 검수 결정을 붙이지 않는다(`EVENT_NOT_FOUND`).
+  - 카드에는 기준 ID·제목·기준 버전을 함께 저장한다.
+- 원본을 지우면 `video.source_purged_at` 이 찍히고 응답의 재생 주소가 빠진다(main 반영).
 
 ---
 
@@ -240,17 +252,21 @@
 5. ~~3단계 엔진 + 서버 분기·검증 + 내부 기록~~ — `context/ContextReviewEngine`, 분석기 `context-review`
    (`ContextCriteriaAnalyzer`, 기본 활성). 내부 기록은 `{storage}/context-traces/{videoId}/*.json`
 10. ~~Neo4j 구현~~ — `Neo4jCriteriaSource` (앞당겨 완료. 서버 연결 확인만 남음)
-6. 사례집·OCR·옛 분석기 걷어내기 ← **다음**
-7. 사실대조 (Perplexity·Serper 이식, 충분성 평가, 병렬 실행)
-8. 실행 단위 저장(재분석 이력 보존, 내부 기록을 DB로), 결과 카드 응답 정리
-9. main 8월 수정 반영, 통합 시험(전달서 9절 목록), 평가 세트로 프롬프트·숫자 조정
+6. ~~사례집·OCR·옛 분석기 걷어내기~~ — 분석기는 `context-review`, `fact-check` 두 개만 남음
+7. ~~사실대조~~ — 6절
+8. ~~실행 단위 저장(재분석 이력 보존, 내부 기록을 DB로)~~ — 7절
+9. ~~main 8월 수정 반영~~ (merge 커밋) / 통합 시험·평가 세트로 프롬프트·숫자 조정 ← **다음 (실제 키·영상 필요)**
++  ~~AI 호출 병렬화~~ — 영상 안 두 분석기 동시 실행, 각 엔진 단계 안에서도 병렬, 서버 전체 동시 호출 상한
 
 ### 현재 구현 메모
 - 카드: `RiskCategory.CONTEXT_CRITERION` + `RiskFinding.criterionId/criterionTitle/criteriaVersion`(새 컬럼).
-  응답 `TimelineEventDto`에 `criterionId` 추가, 제목은 기준 제목, `riskTypes`는 기준 ID.
+  응답 `TimelineEventDto`에 `criterionId` 추가, 제목은 기준 제목. `severity`·`riskTypes` 는 main(P0)을 따라 응답에서 뺐다.
 - 서로 다른 기준의 카드는 병합하지 않는다(`FindingFusionService`). 표시 방식은 테스트 후 결정.
-- AI 호출은 아직 **순서대로** 한다. `OpenAiClient`의 사용량·실패 집계가 스레드 단위(ThreadLocal)라
-  병렬화하려면 그 집계를 실행 단위 객체로 옮겨야 한다(7·8단계와 함께).
+- **AI 호출 병렬.** `OpenAiClient.CallScope` 가 영상 단위로 사용량을 모으고, 분석기마다 하위 집계(`child`)로 실패를 따로 센다.
+  - 영상 안: `context-review` 와 `fact-check` 가 동시에 돈다. 각 엔진도 단계 안에서 병렬(`oops.context.parallelism`, `oops.fact-check.parallelism`, 기본 4)이며 결과는 입력 순서로 합쳐 ID·기록이 매번 같다.
+  - 서버 전체: 동시 호출 상한 `oops.openai.max-concurrent`(기본 6) + 호출 간격.
+    간격은 `requests-per-minute`(기본 10)로 시작해 첫 응답의 한도 헤더(분당 요청·분당 토큰)로 자동 조정되고, 429 를 맞으면 두 배로 늘린다(main 이식).
+    429 로그에 RPM·RPD·TPM·잔액 부족 중 무엇인지 적는다.
 - 상세 검토 검증: `usedJudgments`에 중단·단정 금지 코드가 있거나, 이유(reason)에 중단된 판단의 이름(label)이
   그대로 들어가면 무효. 의미까지 완전히 잡지는 못하므로 평가 세트에 이 경우를 넣는다.
 - 1회 확대 조건: 독립 점검이 STOP + `needsExpansion` + 부족한 정보 중 하나라도 `availableInTranscript=true`일 때만.
