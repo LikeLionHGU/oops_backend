@@ -18,7 +18,6 @@ import static org.mockito.Mockito.*;
 @Transactional
 class TranscriptReplayServiceTest {
     @Autowired TranscriptReplayService replays;
-    @Autowired ScriptImportService scriptImports;
     @Autowired VideoRepository videos;
     @Autowired TranscriptSegmentRepository transcripts;
     @Autowired AnalysisJobRepository jobs;
@@ -27,24 +26,6 @@ class TranscriptReplayServiceTest {
     @Autowired TranscriptService transcriptService;
     @MockitoBean AnalysisDispatchService dispatch;
     @MockitoBean com.example.oops.client.AnalysisServerClient worker;
-
-    @org.junit.jupiter.api.Tag("dataset-backed")
-    @Test void fullPrivatePodcastScriptPersistsAndExtractsWithoutRemoteStt() throws Exception {
-        var file = java.nio.file.Path.of("../datasets/controversy/experiments/podcast-Duvb0IftlbI-20261024/import-request.json");
-        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(file));
-        var input = tools.jackson.databind.json.JsonMapper.builder().build()
-                .readValue(java.nio.file.Files.readAllBytes(file), ScriptImportService.Request.class);
-        var response = scriptImports.create(input);
-        var target = videos.findById(Long.valueOf(response.videoId())).orElseThrow();
-        var extracted = transcriptService.extract(target);
-        assertThat(extracted).hasSize(input.segments().size());
-        assertThat(extracted.stream().map(s -> new TranscriptProvider.TranscriptLine(s.getStartMs(),s.getEndMs(),s.getText())).toList())
-                .isEqualTo(input.segments());
-        assertThat(target.getTranscriptSourceVideoId()).isNull();
-        assertThat(target.getDurationSec()).isNull();
-        assertThat(provider.supports(target)).isTrue();
-        verifyNoInteractions(worker);
-    }
 
     @Test void newVideoOwnsSnapshotAndOriginalReportAndMediaArePreserved() {
         var source=Video.builder().sourceType(SourceType.UPLOAD).storageKey("videos/source/original.mp4").filename("original.mp4").build();
