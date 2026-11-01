@@ -27,7 +27,7 @@ public class SourceRetentionService {
     public boolean purgeIfExpired(Long videoId, LocalDateTime threshold) {
         var video = videos.findByIdForUpdate(videoId).orElse(null);
         if (video == null || video.getCreatedAt() == null || !video.getCreatedAt().isBefore(threshold)
-                || !TERMINAL.contains(video.getStatus())) {
+                || !TERMINAL.contains(video.getStatus()) || video.isSourcePurged()) {
             return false;
         }
         if (jobs.existsByVideoIdAndStatusIn(videoId, List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING))) {
@@ -37,6 +37,8 @@ public class SourceRetentionService {
         storage.deleteSourceFile(videoId);
         // redesign-v3: 분석 기록은 텍스트(DB)만 남긴다. 화면 캡처 이미지도 원본과 함께 지운다.
         storage.deleteFrames(videoId);
+        // 화면에는 "보관 기간이 지나 원본은 삭제되었습니다"가 보이고 streamUrl 은 null 이 된다.
+        video.markSourcePurged(LocalDateTime.now());
         return true;
     }
 }

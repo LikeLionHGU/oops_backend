@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 
 import com.example.oops.common.Ids;
+import com.example.oops.common.YouTubeUrls;
 
 import java.util.HashMap;
 import java.util.List;
@@ -140,8 +141,14 @@ public class AnalysisService {
                 video.getFilename(),
                 Ids.utc(job.getFinishedAt()),
                 video.durationMs(),
+                video.getSourceType(),
                 video.isStreamable()
                         ? "/api/v1/videos/%d/stream".formatted(video.getId()) : null,
+                video.getSourceUrl(),
+                // 유튜브 영상은 서버에 파일이 없어 video 태그로 재생할 수 없다.
+                // sourceUrl 을 그대로 넣으면 검은 화면이 되므로 삽입용 주소를 따로 준다.
+                YouTubeUrls.embedUrl(video.getSourceUrl()),
+                YouTubeUrls.videoId(video.getSourceUrl()),
                 video.reviewStatusOrDefault(),
                 job.getStatus(),
                 RiskSummary.of(findings),
@@ -209,9 +216,20 @@ public class AnalysisService {
      * 왜 못 했는지는 warnings 가 설명한다.
      */
     private CoverageDto toCoverage(List<AnalysisCoverage> coverage) {
+        // 화면 글자를 봤는지는 **어느 분석기가 봤든** true 다.
+        //
+        // 화면 글자 표현 검토(screen-text-review)를 껐기 때문에
+        // SCREEN_TEXT_REVIEW 만 보면 항상 false 가 된다.
+        // 그런데 이름·수치 확인(entity-check)이 화면 글자를 읽고 있으므로
+        // 실제로는 본 것이다. 여기서 false 를 주면 사용자는
+        // "화면은 아예 안 봤구나" 로 읽는다. 그건 사실이 아니다.
+        boolean screenTextRead = analyzed(coverage, CoverageStep.OCR)
+                && (analyzed(coverage, CoverageStep.SCREEN_TEXT_REVIEW)
+                    || analyzed(coverage, CoverageStep.FACT_ENTITY));
+
         return new CoverageDto(
                 analyzed(coverage, CoverageStep.STT) && analyzed(coverage, CoverageStep.SPEECH_REVIEW),
-                analyzed(coverage, CoverageStep.OCR) && analyzed(coverage, CoverageStep.SCREEN_TEXT_REVIEW),
+                screenTextRead,
                 analyzed(coverage, CoverageStep.VISUAL));
     }
 

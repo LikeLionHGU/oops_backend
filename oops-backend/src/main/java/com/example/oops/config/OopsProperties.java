@@ -47,7 +47,7 @@ public record OopsProperties(Storage storage, Analysis analysis, RateLimit rateL
 
         /** 원본만 지울 보관 시간. 0 이하면 원본을 자동 삭제하지 않는다. */
         public int sourceRetentionHoursOrDefault() {
-            return sourceRetentionHours == null ? 0 : sourceRetentionHours;
+            return sourceRetentionHours == null ? 23 : sourceRetentionHours;   // 매시 정각 정리라 23시간이면 늦어도 24시간 안에 지워진다
         }
     }
 

@@ -58,13 +58,41 @@ public class AnalysisServerClient {
         this.storageService = storageService;
     }
 
+    /**
+     * 분석 서버가 살아 있는가. (main f538465 이후 3b5e6d5 반영)
+     * 바쁜 것과 죽은 것은 다르다. 연결 자체가 안 될 때만 false 이고, 붙었는데 답이 늦으면 살아 있다고 본다.
+     * 앞 영상의 전사가 도는 중이라고 다음 업로드를 거절하면 안 되기 때문이다.
+     */
     public boolean isHealthy() {
+        long started = System.currentTimeMillis();
         try {
             healthRestClient.get().uri("/health").retrieve().toBodilessEntity();
             return true;
         } catch (RestClientException e) {
-            return false;
+            long elapsed = System.currentTimeMillis() - started;
+            if (isConnectFailure(e)) {
+                log.warn("[analysis-server] 연결되지 않습니다 ({}ms) — {}", elapsed, rootMessage(e));
+                return false;
+            }
+            log.warn("[analysis-server] 응답이 늦습니다 ({}ms). 바쁜 것으로 보고 계속합니다 — {}", elapsed, rootMessage(e));
+            return true;
         }
+    }
+
+    /** 연결이 아예 안 된 것인지(= 서버가 없음), 붙었는데 느린 것인지 가른다. */
+    private static boolean isConnectFailure(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.net.ConnectException || t instanceof java.net.UnknownHostException
+                    || t instanceof java.nio.channels.UnresolvedAddressException
+                    || t instanceof java.net.http.HttpConnectTimeoutException) return true;
+        }
+        return false;
+    }
+
+    private static String rootMessage(Throwable e) {
+        Throwable t = e;
+        while (t.getCause() != null) t = t.getCause();
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
     }
 
     /**

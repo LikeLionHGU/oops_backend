@@ -41,6 +41,9 @@ oops:
     retention-days: 0
     source-retention-hours: 0
   use-dummy-transcript: true
+  openai:
+    # 실제 호출은 없다. 속도 제한 대기로 테스트가 느려지지 않게 한다.
+    requests-per-minute: 60000
 
 logging:
   level:

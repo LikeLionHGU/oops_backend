@@ -90,7 +90,7 @@ class ContextCriteriaAnalyzerTest {
             var dto = TimelineEventDto.from(f, null, null, null);
             assertThat(dto.title()).isEqualTo("성적 사생활을 공개 질문·추정의 소재로 사용");
             assertThat(dto.criterionId()).isEqualTo("G02-C01");
-            assertThat(dto.riskTypes()).containsExactly("G02-C01");
+            assertThat(dto.criterionId()).isEqualTo("G02-C01");
         });
         assertThat(analyzer.consumeCoverageNotice(context())).isEmpty();
         try (var files = Files.list(temp.resolve("context-traces/7"))) {

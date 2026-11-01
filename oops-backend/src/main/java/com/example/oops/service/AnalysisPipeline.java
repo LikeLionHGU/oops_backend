@@ -156,7 +156,11 @@ public class AnalysisPipeline {
             progressService.update(jobId, AnalysisStage.STT, 15);
             long mark = System.currentTimeMillis();
             Map<CoverageStep, AnalysisCoverage> coverage = new LinkedHashMap<>();
-            List<TranscriptSegment> transcript = transcriptService.extract(video);
+            List<TranscriptSegment> transcript;
+            // 오래 걸리는 단계 동안 진행률을 조금씩 올린다(멈춘 것처럼 보이지 않게, WebSocket 이 조용해지지 않게).
+            try (var ticker = new ProgressTicker(jobId, AnalysisStage.STT, 15, 40)) {
+                transcript = transcriptService.extract(video);
+            }
             checkStillActive(jobId);
             elapsed.put("STT", System.currentTimeMillis() - mark);
 
@@ -211,6 +215,8 @@ public class AnalysisPipeline {
                 runs.add(java.util.concurrent.CompletableFuture.supplyAsync(
                         () -> openAiClient.withScope(scope, () -> runAnalyzer(analyzer, context, scope)), analyzerPool()));
             }
+            var analyzerTicker = new ProgressTicker(jobId, AnalysisStage.TEXT_RISK, 45, 82);
+            try {
             for (var future : runs) {
                 AnalyzerRun run;
                 try {
@@ -230,6 +236,10 @@ public class AnalysisPipeline {
                     if (criteriaVersion == null) criteriaVersion = run.trace().criteriaVersion();
                 }
                 record(coverage, video, CoverageStep.of(run.key()), run.status(), run.message());
+            }
+
+            } finally {
+                analyzerTicker.close();
             }
 
             // 켜지지 않은 단계도 보고 대상이다. 아무 말이 없으면 돌았다고 오해한다.
@@ -283,6 +293,62 @@ public class AnalysisPipeline {
     private void checkStillActive(Long jobId) {
         if (progressService.isStopped(jobId)) {
             throw new AnalysisStoppedException();
+        }
+    }
+
+    /**
+     * 오래 걸리는 단계가 도는 동안 진행률을 조금씩 올려 준다.
+     *
+     * 화면 글자 인식은 한 번 부르면 몇 분씩 돌아온다.
+     * 그동안 아무 메시지도 안 나가면 두 가지 문제가 생긴다.
+     *
+     *   1. 화면이 멈춘 것처럼 보여 사용자가 취소를 누른다
+     *   2. WebSocket 이 조용해져서 앞단 프록시가 연결을 끊는다
+     *
+     * 2번은 하트비트로도 막지만, 진행률이 멈춰 있는 건 그것과 별개다.
+     *
+     * 실제 진척도를 알 수는 없다. 파이썬이 한 번에 다 하고 돌려주기 때문이다.
+     * 그래서 **끝 지점에 다가가되 닿지는 않게** 올린다.
+     * 남은 거리의 일부만 줄이는 방식이라 100%가 되어 멈춰 있는 일은 없다.
+     * 진짜 완료는 다음 단계가 찍는다.
+     */
+    private final class ProgressTicker implements AutoCloseable {
+
+        private static final long INTERVAL_MS = 5_000;
+
+        private final Thread thread;
+        private volatile boolean running = true;
+
+        ProgressTicker(Long jobId, AnalysisStage stage, int from, int to) {
+            this.thread = new Thread(() -> {
+                double current = from;
+                while (running) {
+                    try {
+                        Thread.sleep(INTERVAL_MS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    if (!running) return;
+
+                    // 남은 거리의 12% 씩 좁힌다. 끝에 가까울수록 느려진다.
+                    current += (to - current) * 0.12;
+                    try {
+                        progressService.update(jobId, stage, (int) current);
+                    } catch (Exception e) {
+                        // 진행률 갱신 실패로 분석을 멈출 이유는 없다
+                        log.debug("[pipeline] 진행률 갱신 실패: {}", e.getMessage());
+                    }
+                }
+            }, "progress-ticker");
+            this.thread.setDaemon(true);
+            this.thread.start();
+        }
+
+        @Override
+        public void close() {
+            running = false;
+            thread.interrupt();
         }
     }
 

@@ -11,11 +11,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 영상 하나와 거기 딸린 모든 것을 지운다.
+ * 영상에 딸린 것을 지운다. 두 가지 방식이 있다.
  *
+ *   원본만        SourceRetentionService.purgeIfExpired(). 리포트·대본·후보·참고자료·검수 이력은 남는다.
+ *                  업로드 24시간 안에 자동으로 돈다(StorageCleanupScheduler).
+ *   delete()       전부. 사용자가 이 영상을 목록에서 없앨 때만 쓴다.
+ *
+ * 둘을 나눈 이유는 하나로 두면 잘못된 선택을 강요하기 때문이다.
+ * 원본을 오래 들고 있는 건 부담이지만, 검수 결과는 나중에 다시 볼 수 있어야 한다.
+ * 예전에는 정리 스케줄러가 delete() 를 불러서 결과까지 같이 날렸다.
+ *
+
  * JPA 의 cascade 를 쓰지 않고 순서를 직접 관리한다.
  * 테이블끼리 참조 관계가 있어서 순서를 틀리면 외래키 제약에 걸린다.
  * risk_finding 과 screen_text 는 video_frame 을 참조하므로

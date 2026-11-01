@@ -42,19 +42,34 @@ public class OpenAiClient {
      */
     private static final long MAX_WAIT_MS = 30_000;
 
+    /** 한도 대비 여유분. 경계에서 걸리지 않도록 90% 만 쓴다. (main 757d842·bb4c3cc·cb8ad6d 이식) */
+    private static final double HEADROOM = 0.9;
+
+    /** "1m30s", "6ms", "2.5s" 같은 헤더 값을 밀리초로 읽는다. */
+    private static final Pattern DURATION_PART = Pattern.compile("([0-9.]+)(ms|s|m|h)");
+
     /**
-     * 요청 사이 최소 간격.
-     * 분석기 5개가 각자 여러 번 호출하므로 한꺼번에 몰리면 한도에 걸린다.
-     * 계정 등급이 낮으면 분당 허용량이 매우 적다.
+     * 요청 사이 최소 간격. 시작은 설정값(requests-per-minute)으로, 응답 헤더로 계정 한도를 알면
+     * 분당 요청·분당 토큰 중 느린 쪽에 맞춰 실행 중에 조정된다. 429 를 맞으면 두 배로 늘린다.
+     * 동시 호출 수 상한(max-concurrent)과 별개로 서버 전체 속도를 정한다.
      */
-    private static final long MIN_INTERVAL_MS = 250;
+    private static final AtomicLong minIntervalMs = new AtomicLong(6_000);
+
+    /** 헤더에서 읽은 계정 한도(분당 요청·분당 토큰). 모르면 0 */
+    private static final AtomicLong knownRpm = new AtomicLong(0);
+    private static final AtomicLong knownTpm = new AtomicLong(0);
+
+    /** 호출 하나가 쓰는 평균 토큰(입력+출력). 분당 토큰 한도를 간격으로 바꾸는 데 쓴다. */
+    private static final AtomicLong avgTokensPerCall = new AtomicLong(3_000);
+    private static final AtomicLong measuredCalls = new AtomicLong(0);
+    private static final AtomicLong measuredTokens = new AtomicLong(0);
 
     /** "try again in 6s" 같은 안내에서 대기 시간을 뽑아낸다. */
     private static final Pattern RETRY_HINT =
             Pattern.compile("try again in ([0-9.]+)(ms|s)", Pattern.CASE_INSENSITIVE);
 
-    /** 여러 분석 스레드가 공유한다. 마지막 호출 시각. */
-    private static final AtomicLong lastCallAt = new AtomicLong(0);
+    /** 여러 분석 스레드가 공유한다. 다음 요청을 보낼 수 있는 가장 이른 시각(순번 예약). */
+    private static final AtomicLong nextSlotAt = new AtomicLong(0);
 
     /** 계정의 실제 한도를 한 번만 찍는다. 매 호출마다 찍으면 로그가 지저분해진다. */
     private static final java.util.concurrent.atomic.AtomicBoolean limitLogged =
@@ -86,6 +101,8 @@ public class OpenAiClient {
         this.restClient = restClient;
         this.properties = properties;
         this.structuredDiscoveryOutput = structuredDiscoveryOutput;
+        // 헤더로 실제 한도를 알기 전까지 쓸 초기 속도. 낮게 시작해야 첫 몇 초에 벌칙 대기에 들어가지 않는다.
+        applyRpm(properties.requestsPerMinuteOrDefault(), "설정값");
     }
 
     public boolean isEnabled() {
@@ -388,6 +405,7 @@ public class OpenAiClient {
                         .toEntity(ChatCompletionResponse.class);
 
                 logRateLimitOnce(entity.getHeaders());
+                applyRateLimitHeaders(entity.getHeaders());
                 ChatCompletionResponse response = entity.getBody();
                 recordUsage(response);
 
@@ -419,7 +437,17 @@ public class OpenAiClient {
                 // 여기서 그냥 포기하면 분석기가 빈손으로 돌아가고,
                 // 사용자에게는 '논란 없음' 으로 보인다. 실제로는 물어보지도 못한 것이다.
                 if (status == 429) {
+                    String errorBody = e.getResponseBodyAsString();
+                    // 잔액·결제 문제도 429 로 온다. 기다려도 풀리지 않으므로 바로 실패로 적는다.
+                    if (errorBody != null && errorBody.contains("insufficient_quota")) {
+                        log.error("[openai] 속도 문제가 아니라 잔액 또는 결제 문제입니다. "
+                                + "https://platform.openai.com/settings/organization/billing 확인. 응답: {}", abbreviate(errorBody));
+                        return fail(FailureCode.HTTP_FAILED, "AI 계정의 잔액이 부족해 이 단계를 수행하지 못했습니다.");
+                    }
                     long waitMs = waitMillis(e, attempt);
+                    // 한 번 맞았으면 지금 속도가 한도보다 빠르다. 앞으로의 속도도 늦춘다.
+                    slowDown();
+                    applyRateLimitHeaders(e.getResponseHeaders());
 
                     // 수십 분을 기다리라는 것은 일일 한도를 다 썼다는 뜻이다.
                     // 기다려봐야 의미가 없으므로 바로 포기한다.
@@ -427,20 +455,21 @@ public class OpenAiClient {
                         log.error("[openai] 일일 요청 한도를 소진한 것으로 보입니다. "
                                 + "다시 시도하려면 약 {}분을 기다려야 합니다. "
                                 + "분석 결과가 비어 있을 수 있습니다. "
-                                + "https://platform.openai.com/settings/organization/limits 확인",
-                                waitMs / 60000);
+                                + "https://platform.openai.com/settings/organization/limits 확인{}",
+                                waitMs / 60000, limitDiagnosis(errorBody));
+                        log.error("[openai] 응답 원문 — {} · 한도 헤더 — {}", abbreviate(errorBody), limitHeaders(e.getResponseHeaders()));
                         return fail(FailureCode.RATE_LIMITED, "AI 요청 한도를 모두 써서 이 단계를 수행하지 못했습니다.");
                     }
 
                     if (attempt < attempts) {
-                        log.warn("[openai] 요청 한도 초과. {}초 후 재시도 ({}/{})",
-                                waitMs / 1000, attempt, MAX_ATTEMPTS);
+                        log.warn("[openai] 요청 한도 초과. {}초 후 재시도 ({}/{}) · 간격을 {}ms 로 늘렸습니다",
+                                waitMs / 1000, attempt, MAX_ATTEMPTS, minIntervalMs.get());
                         sleep(waitMs);
                         continue;
                     }
 
-                    log.error("[openai] 요청 한도 초과로 포기했습니다. "
-                            + "분석 결과가 비어 있을 수 있습니다.");
+                    log.error("[openai] 요청 한도 초과로 포기했습니다.{} 응답 원문 — {}",
+                            limitDiagnosis(errorBody), abbreviate(errorBody));
                     return fail(FailureCode.RATE_LIMITED, "AI 요청 한도 초과로 이 단계를 수행하지 못했습니다.");
                 }
 
@@ -511,6 +540,15 @@ public class OpenAiClient {
 
         scope.get().addUsage(usage.prompt_tokens(), cached, usage.completion_tokens());
 
+        // 호출당 평균 토큰이 추정치와 많이 다르면 간격을 다시 잡는다. 토큰 한도가 먼저 마르는 경우가 흔하다.
+        long calls = measuredCalls.incrementAndGet();
+        long tokens = measuredTokens.addAndGet(usage.prompt_tokens() + usage.completion_tokens());
+        long avg = Math.max(500, tokens / calls);
+        long before = avgTokensPerCall.getAndSet(avg);
+        if (knownRpm.get() > 0 && Math.abs(avg - before) > before * 0.3) {
+            applyRpm((int) knownRpm.get(), "토큰 재측정");
+        }
+
         log.info("[openai-usage] videoId={} analyzer={} model={} input={} cached={} output={} total={}",
                 scope.get().videoId,
                 scope.get().analyzer,
@@ -554,12 +592,204 @@ public class OpenAiClient {
         }
     }
 
-    /** 요청이 한꺼번에 몰리지 않게 최소 간격을 둔다. */
+    /**
+     * 응답 헤더를 보고 보내는 속도를 계정 한도에 맞춘다. 남은 요청·토큰이 바닥이면 창이 열릴 때까지 쉰다.
+     */
+    private void applyRateLimitHeaders(org.springframework.http.HttpHeaders headers) {
+        if (headers == null) {
+            return;
+        }
+
+        Long tokenLimit = parseLong(headers.getFirst("x-ratelimit-limit-tokens"));
+        if (tokenLimit != null && tokenLimit > 0) {
+            knownTpm.set(tokenLimit);
+        }
+
+        Long limit = parseLong(headers.getFirst("x-ratelimit-limit-requests"));
+        if (limit != null && limit > 0 && knownRpm.get() != limit) {
+            applyRpm(limit.intValue(), "계정 한도");
+            log.info("[openai] 계정 한도 — 분당 요청 {}건 / 분당 토큰 {} (모델 {})",
+                    limit, tokenLimit == null ? "?" : tokenLimit, properties.modelOrDefault());
+        }
+
+        // 남은 토큰이 바닥이면 창이 열릴 때까지 쉰다.
+        // 요청 수는 남아 있는데 토큰이 먼저 마르는 경우가 실제로 더 흔하다.
+        Long remainingTokens = parseLong(headers.getFirst("x-ratelimit-remaining-tokens"));
+        if (remainingTokens != null && remainingTokens < avgTokensPerCall.get() * 2) {
+            long resetMs = parseDurationMs(headers.getFirst("x-ratelimit-reset-tokens"));
+            if (resetMs > 0 && resetMs <= MAX_WAIT_MS) {
+                log.info("[openai] 분당 토큰이 거의 다 찼습니다(남은 {}). {}초 쉬어갑니다.",
+                        remainingTokens, Math.max(1, resetMs / 1000));
+                reserveAfter(resetMs + 500);
+            }
+        }
+
+        // 남은 횟수가 바닥이면 창이 새로 열릴 때까지 쉰다.
+        // 여기서 한 박자 쉬는 게 429 를 맞고 28분 기다리는 것보다 훨씬 낫다.
+        Long remaining = parseLong(headers.getFirst("x-ratelimit-remaining-requests"));
+        if (remaining != null && remaining <= 1) {
+            long resetMs = parseDurationMs(headers.getFirst("x-ratelimit-reset-requests"));
+            if (resetMs > 0 && resetMs <= MAX_WAIT_MS) {
+                log.info("[openai] 분당 허용량을 거의 다 썼습니다(남은 {}건). {}초 쉬어갑니다.",
+                        remaining, Math.max(1, resetMs / 1000));
+                reserveAfter(resetMs + 500);
+            }
+        }
+    }
+
+    /**
+     * 429 응답에서 어떤 한도(RPM·RPD·TPM)에 걸렸는지 읽어 사람이 읽을 문장으로 만든다.
+     */
+    static String limitDiagnosis(String body) {
+        if (body == null || body.isBlank()) {
+            return " (응답 본문이 없어 어떤 한도인지 알 수 없습니다.)";
+        }
+        String lower = body.toLowerCase(java.util.Locale.ROOT);
+
+        if (lower.contains("per day") || lower.contains("rpd")) {
+            return " **오늘 쓸 수 있는 요청 수(RPD)를 다 썼습니다.** "
+                    + "간격을 늘려도 해결되지 않습니다. 한도가 초기화될 때까지 기다리거나 "
+                    + "계정 등급을 올려야 합니다. "
+                    + "https://platform.openai.com/settings/organization/limits";
+        }
+        if (lower.contains("tokens per min") || lower.contains("tpm")) {
+            return " **분당 토큰 한도(TPM)** 입니다. 요청 횟수가 아니라 프롬프트 크기 문제입니다. "
+                    + "맥락 확인 창 크기(oops.context.discovery-max-lines)나 동시 호출 수(oops.openai.max-concurrent)를 줄여야 합니다.";
+        }
+        if (lower.contains("per min") || lower.contains("rpm")) {
+            return " **분당 요청 한도(RPM)** 입니다. oops.openai.requests-per-minute 를 낮추세요. "
+                    + "현재 간격 " + minIntervalMs.get() + "ms"
+                    + (knownRpm.get() > 0 ? " · 계정 한도 분당 " + knownRpm.get() + "건" : "");
+        }
+        return " (메시지에 한도 종류가 없습니다. 아래 원문을 확인하세요.)";
+    }
+
+    /**
+     * 한도 관련 헤더를 한 줄로 모은다.
+     *
+     * remaining 이 남아 있는데 429 가 왔다면 분당 한도 문제가 아니다.
+     * 그 한 줄이 원인을 가른다.
+     */
+    private String limitHeaders(org.springframework.http.HttpHeaders headers) {
+        if (headers == null) {
+            return "(없음)";
+        }
+        return "요청 %s/%s (초기화 %s) · 토큰 %s/%s (초기화 %s)".formatted(
+                headers.getFirst("x-ratelimit-remaining-requests"),
+                headers.getFirst("x-ratelimit-limit-requests"),
+                headers.getFirst("x-ratelimit-reset-requests"),
+                headers.getFirst("x-ratelimit-remaining-tokens"),
+                headers.getFirst("x-ratelimit-limit-tokens"),
+                headers.getFirst("x-ratelimit-reset-tokens"));
+    }
+
+    /**
+     * 분당 요청 수를 간격으로 바꿔 적용한다.
+     *
+     * **요청 수만 보면 안 된다. 분당 토큰이 먼저 걸린다.**
+     *
+     * 계정 한도가 분당 1만 건이라고 해도 분당 토큰이 20만이면,
+     * 호출 하나가 3천 토큰을 쓰는 우리 경우 실제 상한은 분당 66건이다.
+     * 요청 수만 보고 간격을 7ms 로 잡으면 분당 8500건 속도가 되어
+     * 토큰 쪽에서 곧바로 막힌다. 그러면 "분당 1만 건인데 왜 걸리지" 가 된다.
+     *
+     * 그래서 둘 다 계산해서 **느린 쪽**을 쓴다.
+     */
+    private void applyRpm(int rpm, String source) {
+        knownRpm.set(rpm);
+
+        long byRequests = (long) Math.ceil(60_000.0 / (Math.max(1, rpm) * HEADROOM));
+
+        long tpm = knownTpm.get();
+        long perCall = Math.max(1, avgTokensPerCall.get());
+        long byTokens = tpm <= 0 ? 0
+                : (long) Math.ceil(60_000.0 / (Math.max(1, tpm / (double) perCall) * HEADROOM));
+
+        long interval = Math.max(byRequests, byTokens);
+        minIntervalMs.set(interval);
+
+        if (byTokens > byRequests) {
+            log.info("[openai] 호출 속도 — 분당 {}건 ({}) 이지만 분당 토큰 {} 이 먼저 걸려 "
+                            + "간격 {}ms (약 분당 {}건)",
+                    rpm, source, tpm, interval, 60_000 / Math.max(1, interval));
+        } else {
+            log.info("[openai] 호출 속도 — 분당 {}건 ({}) → 요청 간격 {}ms", rpm, source, interval);
+        }
+    }
+
+    /**
+     * 429 를 맞았으면 앞으로의 속도를 절반으로 줄인다.
+     *
+     * 재시도만 하고 속도를 그대로 두면 같은 벽에 다시 부딪힌다.
+     * 한 번 겪은 것에서 배워야 다음 분석기가 살아남는다.
+     */
+    private void slowDown() {
+        long doubled = Math.min(minIntervalMs.get() * 2, 30_000);
+        minIntervalMs.set(doubled);
+    }
+
+    /**
+     * 다음 차례를 받아 그때까지 기다린다. 순번을 미리 잡아 여러 스레드가 동시에 나가지 않게 한다.
+     */
     private void throttle() {
-        // 여러 스레드가 동시에 와도 시작 시각이 MIN_INTERVAL_MS 씩 벌어지도록 자리를 예약한다.
-        long now = System.currentTimeMillis();
-        long slot = lastCallAt.updateAndGet(prev -> Math.max(now, prev + MIN_INTERVAL_MS));
-        if (slot > now) sleep(slot - now);
+        long interval = minIntervalMs.get();
+        while (true) {
+            long booked = nextSlotAt.get();
+            long now = System.currentTimeMillis();
+            long mySlot = Math.max(now, booked);
+
+            if (nextSlotAt.compareAndSet(booked, mySlot + interval)) {
+                long wait = mySlot - now;
+                if (wait > 0) {
+                    // 실제로 쉬고 있는지 확인할 수 있어야 한다.
+                    // 간격을 설정해 놓고 안 지켜지는 경우가 있었는데,
+                    // 로그가 없으면 "간격은 늘렸는데 왜 또 걸리지" 로 한참 헤맨다.
+                    log.debug("[openai] 다음 호출까지 {}ms 대기 (간격 {}ms)", wait, interval);
+                    sleep(wait);
+                }
+                return;
+            }
+            // 다른 스레드가 먼저 잡았다. 다시 읽고 재시도한다.
+        }
+    }
+
+    /** 지금부터 이만큼 뒤로 다음 차례를 미룬다. */
+    private void reserveAfter(long delayMs) {
+        long target = System.currentTimeMillis() + delayMs;
+        nextSlotAt.updateAndGet(current -> Math.max(current, target));
+    }
+
+    static Long parseLong(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * "1m30s", "6ms", "2.5s" 형태를 밀리초로 바꾼다.
+     *
+     * OpenAI 의 reset 헤더는 단위를 붙여서 준다.
+     * 형식이 한 가지가 아니라 조각을 다 더한다.
+     */
+    static long parseDurationMs(String value) {
+        if (value == null || value.isBlank()) return 0;
+
+        Matcher m = DURATION_PART.matcher(value.trim());
+        long total = 0;
+        while (m.find()) {
+            double amount = Double.parseDouble(m.group(1));
+            total += switch (m.group(2)) {
+                case "ms" -> (long) amount;
+                case "s" -> (long) (amount * 1000);
+                case "m" -> (long) (amount * 60_000);
+                case "h" -> (long) (amount * 3_600_000);
+                default -> 0L;
+            };
+        }
+        return total;
     }
 
     /**

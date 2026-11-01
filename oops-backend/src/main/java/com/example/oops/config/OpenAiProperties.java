@@ -21,6 +21,28 @@ public record OpenAiProperties(
         String reasoningEffort,
         Duration timeout,
 
+        /**
+         * 분당 보낼 요청 수. 계정 한도(RPM)에 맞춘다.
+         *
+         * 이 값이 계정 한도보다 크면 429 가 나고, OpenAI 는 벌칙으로
+         * 수십 분 뒤에 다시 오라고 답한다. 그러면 그 영상 분석은 사실상 끝난다.
+         * 그래서 **낮게 잡는 편이 안전하다.** 느린 것과 실패하는 것은 다르다.
+         *
+         * 실제 한도는 첫 응답 헤더(x-ratelimit-limit-requests)로 확인되고,
+         * 그때 이 값이 자동으로 맞춰진다. 여기 적는 건 그 전까지 쓸 초기값이다.
+         *
+         * 계정 한도 확인: https://platform.openai.com/settings/organization/limits
+         */
+        Integer requestsPerMinute,
+
+        /**
+         * 하루에 보낼 수 있는 요청 수(RPD). 몇 편이나 돌릴 수 있는지 로그에 찍는 데만 쓴다.
+         * 속도 제어에는 쓰지 않는다. 하루 한도는 헤더로 안 오기 때문에 알 방법이 없다.
+         *
+         * Tier 1 의 gpt-4o-mini 는 10,000 이다. 무료 계정은 200 이다.
+         */
+        Integer requestsPerDay,
+
         /** 토큰 단가. 비용을 로그로 확인하는 용도다. */
         Pricing pricing
 ) {
@@ -86,5 +108,28 @@ public record OpenAiProperties(
 
     public Duration timeoutOrDefault() {
         return timeout != null ? timeout : Duration.ofSeconds(90);
+    }
+
+    /** 하루 요청 한도. Tier 1 의 gpt-4o-mini 는 10,000, 무료 계정은 200 */
+    public int requestsPerDayOrDefault() {
+        return requestsPerDay == null || requestsPerDay <= 0 ? 10_000 : requestsPerDay;
+    }
+
+    /**
+     * 시작할 때 쓸 분당 요청 수. 기본 10.
+     *
+     * **낮게 시작하는 게 중요하다.** 실제 한도보다 빠르게 보내면 429 가 나고,
+     * OpenAI 는 벌칙으로 수십 분 뒤에 오라고 답한다. 그 영상은 결과가 통째로 빈다.
+     *
+     * 계정마다 한도가 크게 다르다.
+     *   무료      분당 3건
+     *   Tier 1    분당 500건   ($5 이상 구매)
+     *
+     * 어느 쪽인지 모르는 상태로 500 부터 시작하면 무료 계정에서 즉시 막힌다.
+     * 반대로 10 으로 시작해서 손해 보는 건 첫 호출까지의 몇 초뿐이고,
+     * 첫 응답 헤더(x-ratelimit-limit-requests)를 보면 알아서 올라간다.
+     */
+    public int requestsPerMinuteOrDefault() {
+        return requestsPerMinute == null || requestsPerMinute <= 0 ? 10 : requestsPerMinute;
     }
 }

@@ -130,7 +130,7 @@ class OpenAiClientTest {
     }
     private OpenAiProperties properties(String model, String effort) {
         return new OpenAiProperties("offline-test-key", null, null, "https://example.invalid", model,
-                effort, Duration.ofSeconds(2), null);
+                effort, Duration.ofSeconds(2), 60_000, null, null);
     }
 
     @Test

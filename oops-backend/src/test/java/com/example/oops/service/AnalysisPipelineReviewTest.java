@@ -73,7 +73,7 @@ class AnalysisPipelineReviewTest {
     void analyzersRunInParallelAndFailuresAreTrackedPerAnalyzer() {
         var client = new OpenAiClient(org.springframework.web.client.RestClient.create(),
                 new OpenAiProperties("offline-test-key", null, null, "https://example.invalid", null, null,
-                        java.time.Duration.ofSeconds(2), null));
+                        java.time.Duration.ofSeconds(2), 60_000, null, null));
         var transcripts = mock(TranscriptService.class);
         var progress = mock(JobProgressService.class);
         var videos = mock(VideoRepository.class);
