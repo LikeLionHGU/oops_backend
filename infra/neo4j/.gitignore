@@ -1,0 +1,5 @@
+.env
+connection.txt
+__pycache__/
+*.pyc
+.DS_Store

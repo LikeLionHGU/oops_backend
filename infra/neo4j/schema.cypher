@@ -1,0 +1,2 @@
+CREATE CONSTRAINT oops_entity_id IF NOT EXISTS
+FOR (n:OoPsEntity) REQUIRE n.id IS UNIQUE;

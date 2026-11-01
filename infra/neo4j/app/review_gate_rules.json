@@ -1,0 +1,1124 @@
+{
+  "schema_version": "oops-independent-review/1",
+  "version": "independent-review/1.0",
+  "ruleset_id": "ruleset:oops:all:0.4-draft",
+  "rules": [
+    {
+      "criterion_id": "G01-C01",
+      "criterion_node_id": "criterion:G01-C01@ALL-v0.4-draft",
+      "title": "조건·소속을 사람의 가치 서열로 전환",
+      "gate_id": "review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "사람·집단의 조건과 가치·자격·대우를 연결하는 표현이 확인된다.",
+      "exclusion_conditions": "조건 소개나 개인 선호에 머물고, 사람의 가치·자격·대우로 연결되지 않는다.",
+      "missing_information_scope": "평가 대상이나 조건과 평가의 연결을 파악할 수 없으면 해당 기준을 중단한다. 실제로 그 조건에 속하는지는 몰라도 표현 자체의 서열화는 검토할 수 있다. 다만 실제 소속은 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G02-C01",
+      "criterion_node_id": "criterion:G02-C01@ALL-v0.4-draft",
+      "title": "성적 사생활을 공개 질문·추정의 소재로 사용",
+      "gate_id": "review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "타인의 성적 사생활을 질문·추정·평가하거나 타인을 성적 대상으로 삼는 표현과 대상이 확인된다.",
+      "exclusion_conditions": "일반적인 성교육·건강 설명 등에 머물고, 타인의 사생활이나 대상화로 이어지지 않는다.",
+      "missing_information_scope": "표현의 성적 의미나 사생활의 대상을 구분할 수 없으면 해당 기준을 중단한다. 나이·동의·감정을 몰라도 질문·대상화 표현은 검토한다. 미성년자 대상, 동의 없는 공개, 불쾌감 유발이라는 판단은 각각 해당 근거가 없으면 하지 않는다."
+    },
+    {
+      "criterion_id": "G03-C01",
+      "criterion_node_id": "criterion:G03-C01@ALL-v0.4-draft",
+      "title": "사람의 신체·활동을 성적 평가 소재로 전환",
+      "gate_id": "review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "사람의 신체·사진·활동과 성적 상상·평가·요구를 연결하는 표현이 확인된다.",
+      "exclusion_conditions": "활동 평가나 호감 표현에 머물고, 성적으로 다루는 단서가 없다.",
+      "missing_information_scope": "무엇을 성적으로 묘사·평가·요구하는지 알 수 없으면 해당 판단을 중단한다. 화면을 보지 않아도 발언만으로 확인되는 성적 평가는 검토한다. 화면이 있어야 특정할 수 있는 신체 부위·동작은 판단하지 않는다."
+    },
+    {
+      "criterion_id": "G04-C01",
+      "criterion_node_id": "criterion:G04-C01@ALL-v0.4-draft",
+      "title": "사람을 거래·소비 가능한 대상으로 비유",
+      "gate_id": "review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "사람에게 가격·품질·소비·교환 등의 속성을 옮기는 표현이 확인된다.",
+      "exclusion_conditions": "실제 물건·서비스 거래나 보수를 설명할 뿐, 사람 자체를 소비·거래 대상으로 다루지 않는다.",
+      "missing_information_scope": "사람과 물건 중 무엇을 가리키는지, 어떤 속성을 옮기는지 확인할 수 없으면 해당 기준을 중단한다. 성적 의미가 불명확해도 거래·소비 대상으로 취급하는 의미가 확인되면 검토한다."
+    },
+    {
+      "criterion_id": "G05-C01",
+      "criterion_node_id": "criterion:G05-C01@ALL-v0.4-draft",
+      "title": "장애·질병·신체 특성을 모욕의 언어로 사용",
+      "gate_id": "review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "해당 특성이 모욕·무능·열등함·조롱의 표현으로 쓰이는 단서가 확인된다.",
+      "exclusion_conditions": "의학적 설명이나 경험 소개에 머물고, 모욕·열등함의 의미로 사용되지 않는다.",
+      "missing_information_scope": "핵심 표현의 전사나 의미를 확인할 수 없으면 해당 판단을 중단한다. 공격 대상이 실제로 해당 장애·질병을 가졌는지는 필수가 아니다. 특성을 모욕의 비유로 사용하는 방식은 검토하되 실제 건강 상태는 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G06-C01",
+      "criterion_node_id": "criterion:G06-C01@ALL-v0.4-draft",
+      "title": "집단 표상 특성의 모방을 웃음 장치로 사용",
+      "gate_id": "review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "어떤 집단의 특성을 재현하는지와, 이를 과장·조롱하는 표현의 단서가 확인된다.",
+      "exclusion_conditions": "집단 특성과 연결되지 않는 개인 캐릭터 모방이거나, 집단 특성 자체를 웃음·열등함의 소재로 삼지 않는다.",
+      "missing_information_scope": "집단과 표현의 연결 또는 필수적인 발음·몸짓 정보가 없으면 해당 판단을 중단한다. 대사만으로 확인되는 부분은 검토할 수 있다. 창작자의 의도는 필수가 아니며, 차별 의도가 있었다고 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G07-C01",
+      "criterion_node_id": "criterion:G07-C01@ALL-v0.4-draft",
+      "title": "실제 피해·고인의 경험을 농담·비유의 소재로 사용",
+      "gate_id": "review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "실제 피해·고인과 현재 표현을 연결하는 근거 및 이를 오락적으로 다루는 표현이 확인된다.",
+      "exclusion_conditions": "추모·사건 설명에 머물거나, 실제 피해와 관계없는 허구 상황임이 확인된다.",
+      "missing_information_scope": "실제 피해와의 연결이 AI의 연상에만 의존하면 해당 기준을 중단한다. 연결이 확인되면 고의 여부를 몰라도 표현은 검토하되, 특정 사건을 의도적으로 조롱했다고 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G08-C01",
+      "criterion_node_id": "criterion:G08-C01@ALL-v0.4-draft",
+      "title": "위로·배경 설명이 책임 축소로 해석",
+      "gate_id": "review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "위로·배경 설명이 어떤 행위·피해·책임과 연결되는지, 이를 축소하는 단서가 있는지 확인된다.",
+      "exclusion_conditions": "응원·관계 소개에 머물고, 피해나 행위 책임에 대한 평가로 이어지지 않는다.",
+      "missing_information_scope": "무엇에 대한 위로나 설명인지 알 수 없어 특정 사건 옹호를 가정해야 한다면 해당 판단을 중단한다. 사건의 진위가 미확정이어도 영상에서 제시한 전제와 표현의 관계는 검토한다. 의혹을 확정된 사실로 취급하지 않는다."
+    },
+    {
+      "criterion_id": "G09-C01",
+      "criterion_node_id": "criterion:G09-C01@ALL-v0.4-draft",
+      "title": "피해 경험자 쪽으로 원인·평가를 이동",
+      "gate_id": "review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "피해·고충과 당사자의 성향·대응·선택을 연결해 책임이나 부정적 평가를 옮기는 단서가 확인된다.",
+      "exclusion_conditions": "지원·예방 조언이나 경위 설명에 머물고, 당사자를 탓하거나 피해를 정당화하지 않는다.",
+      "missing_information_scope": "무엇이 피해·고충인지 또는 누구에게 책임을 옮기는지 알 수 없으면 해당 기준을 중단한다. 가족·건강·보호 조건이 없어도 직접적인 책임 전가 표현은 검토한다. 확인되지 않은 취약성은 판단 근거에 넣지 않는다."
+    },
+    {
+      "criterion_id": "G10-C01",
+      "criterion_node_id": "criterion:G10-C01@ALL-v0.4-draft",
+      "title": "제한된 정보에서 실태를 단정",
+      "gate_id": "review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "발언에서 제시한 제한된 경험·관찰과, 그 범위를 넘어선 일반화·인과 단정을 함께 확인할 수 있다.",
+      "exclusion_conditions": "개인 경험이나 가설로 범위를 한정하고, 이를 넘어 확정하지 않는다.",
+      "missing_information_scope": "사용한 근거의 범위를 알 수 없으면 ‘제한된 근거로 단정했다’는 판단을 중단한다. 영상에 근거 설명이 없다는 이유만으로 근거가 없다고 판단하지 않는다. 실제 주장의 참·거짓은 이 기준의 필수 정보가 아니다."
+    },
+    {
+      "criterion_id": "G11-C01",
+      "criterion_node_id": "criterion:G11-C01@ALL-v0.4-draft",
+      "title": "역사적 피해·책임의 차이를 설명에서 평면화",
+      "gate_id": "review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "역사적 대상과 설명·비유가 확인되고, 비교에 필요한 피해·강제성·책임 관계가 현재 입력 자료에 있다.",
+      "exclusion_conditions": "역사 사안을 언급할 뿐, 해당 관계를 동등하게 만들거나 가볍게 다루지 않는다.",
+      "missing_information_scope": "무엇을 생략·축소했는지 설명하려면 입력에 없는 역사적 사실을 보충해야 하는 경우 해당 판단을 중단한다. 제공된 관계만으로 설명 가능한 부분은 검토하되, 역사 왜곡의 의도나 추가적인 사실 오류까지 판단하지 않는다."
+    },
+    {
+      "criterion_id": "G12-C01",
+      "criterion_node_id": "criterion:G12-C01@ALL-v0.4-draft",
+      "title": "비판 내용 대신 상대의 동기·경험·자격을 문제 삼음",
+      "gate_id": "review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "비판·의견에 응답하는 관계와, 응답이 상대의 동기·자격 등을 겨냥하는 표현이 확인된다.",
+      "exclusion_conditions": "주장에 대한 반박이나 관련 근거 요구에 머물고, 사람을 공격하거나 발언을 압박하지 않는다.",
+      "missing_information_scope": "비판과 응답의 관계 또는 공격한 속성과 논점의 관계를 판단할 정보가 없으면 해당 판단을 중단한다. 발언자의 공식 직책·권한을 몰라도 인신공격 표현은 검토한다. 권력관계에 따른 압박은 확인된 경우에만 판단한다."
+    },
+    {
+      "criterion_id": "G13-C01",
+      "criterion_node_id": "criterion:G13-C01@ALL-v0.4-draft",
+      "title": "평가·갈등의 대화가 모욕·압박으로 전환",
+      "gate_id": "review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "사람을 향한 인격·능력 공격, 불이익 암시, 발언·행동 통제 등의 표현이 확인된다.",
+      "exclusion_conditions": "작업 지시·경쟁·행동 평가에 머물고, 사람에 대한 모욕·압박으로 이어지지 않는다.",
+      "missing_information_scope": "대상·핵심 표현을 확인할 수 없거나, 제공되지 않은 말투·관계를 가정해야만 공격으로 해석할 수 있다면 해당 판단을 중단한다. 실제 친분·속마음·사전 합의를 몰라도 원문에서 확인되는 공격 표현은 검토한다."
+    },
+    {
+      "criterion_id": "G14-C01",
+      "criterion_node_id": "criterion:G14-C01@ALL-v0.4-draft",
+      "title": "공적 역할·전문 활동을 무관한 개인 특성으로 평가",
+      "gate_id": "review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "평가하는 역할·활동과, 개인 특성을 평가 근거로 사용하는 표현이 확인된다.",
+      "exclusion_conditions": "개인 정보 소개에 머물거나, 해당 특성이 평가 목적에 직접 관련되고 자격 축소로 이어지지 않는다.",
+      "missing_information_scope": "역할·평가 목적을 몰라 개인 특성과의 관련성을 판단할 수 없으면 ‘무관한 특성으로 평가했다’는 판단을 중단한다. 실제 탈락·배제 결과를 몰라도 발언 속 자격 축소는 검토할 수 있다."
+    },
+    {
+      "criterion_id": "G15-C01",
+      "criterion_node_id": "criterion:G15-C01@ALL-v0.4-draft",
+      "title": "타인의 사생활을 공개 설명·전언·평가로 유통",
+      "gate_id": "review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "타인의 어떤 사적 정보를 질문·전달·추정·평가하는지 확인된다.",
+      "exclusion_conditions": "본인 경험이나 일반적 가정·정보 설명에 머물고, 타인의 사적 정보 공개·평가가 포함되지 않는다.",
+      "missing_information_scope": "누구의 어떤 사적 정보인지 구분할 수 없으면 해당 기준을 중단한다. 동의를 몰라도 단정적인 전언·소문 강화·사생활을 이용한 평가는 검토한다. 유일한 우려가 ‘동의 없는 공개’인데 동의를 확인할 수 없다면 그 판단은 중단한다."
+    },
+    {
+      "criterion_id": "G16-C01",
+      "criterion_node_id": "criterion:G16-C01@ALL-v0.4-draft",
+      "title": "콘텐츠가 만든 기대와 실제 조건이 불일치",
+      "gate_id": "review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "기대를 만든 표현과, 같은 대상에 관한 실제·제한 조건을 모두 현재 자료에서 확인할 수 있다.",
+      "exclusion_conditions": "두 조건이 일치하거나, 제한이 분명히 제시되어 불일치가 성립하지 않는다.",
+      "missing_information_scope": "기대 표현 또는 비교할 실제 조건 중 하나가 없으면 불일치 판단을 중단한다. 둘 다 확인된다면 제작자의 의도나 실제 항의 여부를 몰라도 차이는 검토한다. 고의적 기만이라고 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G17-C01",
+      "criterion_node_id": "criterion:G17-C01@ALL-v0.4-draft",
+      "title": "표면 의미와 유통·연상 의미가 엇갈림",
+      "gate_id": "review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "실제 표현과 다른 해석을 연결하는 설명·대화·제공된 용례가 확인된다.",
+      "exclusion_conditions": "문맥상 문자 그대로의 의미임이 확인되고, 후보로 잡은 다른 의미와 연결되지 않는다.",
+      "missing_information_scope": "다른 의미의 근거가 AI의 기억·연상뿐이거나, 필수적인 발음·동작·용례가 없으면 해당 해석을 중단한다. 현재 문맥에 근거가 있다면 널리 통용되는지는 몰라도 검토한다. 사회적으로 통용되는 의미나 고의적 사용이라고 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G18-C01",
+      "criterion_node_id": "criterion:G18-C01@ALL-v0.4-draft",
+      "title": "성적 표현의 공개·편집 범위가 수용 쟁점",
+      "gate_id": "review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "성적 표현 외에, 대화 목적을 벗어난 반복·강조 또는 명시된 공개 조건과의 충돌 등 구체적인 검토 단서가 확인된다.",
+      "exclusion_conditions": "성적 주제의 등장만 있을 뿐, 표현 방식·대화 목적·공개 조건에 관한 별도 검토 단서가 없다.",
+      "missing_information_scope": "판단이 미확정 시청층·연령 제한·향후 편집에 의존하면 그 판단을 중단한다. 현재 대화에서 확인되는 반복·강조·재현 방식은 별도로 검토할 수 있다. 원본만 보고 최종 공개 방식을 가정하지 않는다."
+    },
+    {
+      "criterion_id": "G19-C01",
+      "criterion_node_id": "criterion:G19-C01@ALL-v0.4-draft",
+      "title": "고충·생활 조건을 제한된 관점으로 단정",
+      "gate_id": "review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "타인의 고충·생활 조건과 이를 개인 경험·의지·단일 해법으로 축소하는 표현의 연결이 확인된다.",
+      "exclusion_conditions": "개인 경험 소개나 조건부 제안에 머물고, 타인의 제약을 지우거나 누구에게나 일반화하지 않는다.",
+      "missing_information_scope": "무시된 제약을 설명하려면 입력에 없는 건강·자산·제도 정보를 추측해야 하는 경우 해당 판단을 중단한다. 제약과 이를 축소하는 표현이 확인된다면 정확한 소득·진단명·수치를 몰라도 그 표현은 검토한다."
+    },
+    {
+      "criterion_id": "G20-C01",
+      "criterion_node_id": "criterion:G20-C01@ALL-v0.4-draft",
+      "title": "지역·조직·이용자 집단을 통째로 부정 규정",
+      "gate_id": "review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "평가 대상 집단과 부정적 속성, 평가를 집단 전체로 넓히는 표현이 확인된다.",
+      "exclusion_conditions": "특정 행동·사건·정책을 비판할 뿐, 집단 구성원 전체의 속성으로 확대하지 않는다.",
+      "missing_information_scope": "대상 집단이나 평가 범위를 파악할 수 없으면 해당 기준을 중단한다. 실제 집단 구성원들의 특성이나 피해 반응은 필수가 아니다. 발언의 일반화는 검토하되 집단의 실제 속성까지 단정하지 않는다."
+    },
+    {
+      "criterion_id": "G21-C01",
+      "criterion_node_id": "criterion:G21-C01@ALL-v0.4-draft",
+      "title": "공익적 문제 제기와 개인 공개·책임 귀속이 함께 발생",
+      "gate_id": "review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "body_id": "body:review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "minimum_information": "공익적 문제 제기와 함께 개인 식별정보 공개 또는 특정인에게 책임을 집중하는 표현 중 하나가 확인된다.",
+      "exclusion_conditions": "제도·정책 비판에 머물고, 개인 식별정보 공개나 개인 책임 단정으로 이어지지 않는다.",
+      "missing_information_scope": "식별정보 노출을 확인할 수 없으면 공개 관련 판단을 중단하고, 누구에게 어떤 책임을 귀속하는지 모르면 책임 귀속 판단을 중단한다. 둘 중 하나가 확인되면 그 부분은 검토한다. 동의·연령·실제 책임은 근거가 있는 경우에만 판단에 반영한다."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G01-C01",
+        "title": "조건·소속을 사람의 가치 서열로 전환 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "사람·집단의 조건과 가치·자격·대우를 연결하는 표현이 확인된다.",
+        "exclusion_conditions": "조건 소개나 개인 선호에 머물고, 사람의 가치·자격·대우로 연결되지 않는다.",
+        "missing_information_scope": "평가 대상이나 조건과 평가의 연결을 파악할 수 없으면 해당 기준을 중단한다. 실제로 그 조건에 속하는지는 몰라도 표현 자체의 서열화는 검토할 수 있다. 다만 실제 소속은 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G02-C01",
+        "title": "성적 사생활을 공개 질문·추정의 소재로 사용 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "타인의 성적 사생활을 질문·추정·평가하거나 타인을 성적 대상으로 삼는 표현과 대상이 확인된다.",
+        "exclusion_conditions": "일반적인 성교육·건강 설명 등에 머물고, 타인의 사생활이나 대상화로 이어지지 않는다.",
+        "missing_information_scope": "표현의 성적 의미나 사생활의 대상을 구분할 수 없으면 해당 기준을 중단한다. 나이·동의·감정을 몰라도 질문·대상화 표현은 검토한다. 미성년자 대상, 동의 없는 공개, 불쾌감 유발이라는 판단은 각각 해당 근거가 없으면 하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G03-C01",
+        "title": "사람의 신체·활동을 성적 평가 소재로 전환 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "사람의 신체·사진·활동과 성적 상상·평가·요구를 연결하는 표현이 확인된다.",
+        "exclusion_conditions": "활동 평가나 호감 표현에 머물고, 성적으로 다루는 단서가 없다.",
+        "missing_information_scope": "무엇을 성적으로 묘사·평가·요구하는지 알 수 없으면 해당 판단을 중단한다. 화면을 보지 않아도 발언만으로 확인되는 성적 평가는 검토한다. 화면이 있어야 특정할 수 있는 신체 부위·동작은 판단하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G04-C01",
+        "title": "사람을 거래·소비 가능한 대상으로 비유 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "사람에게 가격·품질·소비·교환 등의 속성을 옮기는 표현이 확인된다.",
+        "exclusion_conditions": "실제 물건·서비스 거래나 보수를 설명할 뿐, 사람 자체를 소비·거래 대상으로 다루지 않는다.",
+        "missing_information_scope": "사람과 물건 중 무엇을 가리키는지, 어떤 속성을 옮기는지 확인할 수 없으면 해당 기준을 중단한다. 성적 의미가 불명확해도 거래·소비 대상으로 취급하는 의미가 확인되면 검토한다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G05-C01",
+        "title": "장애·질병·신체 특성을 모욕의 언어로 사용 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "해당 특성이 모욕·무능·열등함·조롱의 표현으로 쓰이는 단서가 확인된다.",
+        "exclusion_conditions": "의학적 설명이나 경험 소개에 머물고, 모욕·열등함의 의미로 사용되지 않는다.",
+        "missing_information_scope": "핵심 표현의 전사나 의미를 확인할 수 없으면 해당 판단을 중단한다. 공격 대상이 실제로 해당 장애·질병을 가졌는지는 필수가 아니다. 특성을 모욕의 비유로 사용하는 방식은 검토하되 실제 건강 상태는 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G06-C01",
+        "title": "집단 표상 특성의 모방을 웃음 장치로 사용 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "어떤 집단의 특성을 재현하는지와, 이를 과장·조롱하는 표현의 단서가 확인된다.",
+        "exclusion_conditions": "집단 특성과 연결되지 않는 개인 캐릭터 모방이거나, 집단 특성 자체를 웃음·열등함의 소재로 삼지 않는다.",
+        "missing_information_scope": "집단과 표현의 연결 또는 필수적인 발음·몸짓 정보가 없으면 해당 판단을 중단한다. 대사만으로 확인되는 부분은 검토할 수 있다. 창작자의 의도는 필수가 아니며, 차별 의도가 있었다고 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G07-C01",
+        "title": "실제 피해·고인의 경험을 농담·비유의 소재로 사용 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "실제 피해·고인과 현재 표현을 연결하는 근거 및 이를 오락적으로 다루는 표현이 확인된다.",
+        "exclusion_conditions": "추모·사건 설명에 머물거나, 실제 피해와 관계없는 허구 상황임이 확인된다.",
+        "missing_information_scope": "실제 피해와의 연결이 AI의 연상에만 의존하면 해당 기준을 중단한다. 연결이 확인되면 고의 여부를 몰라도 표현은 검토하되, 특정 사건을 의도적으로 조롱했다고 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G08-C01",
+        "title": "위로·배경 설명이 책임 축소로 해석 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "위로·배경 설명이 어떤 행위·피해·책임과 연결되는지, 이를 축소하는 단서가 있는지 확인된다.",
+        "exclusion_conditions": "응원·관계 소개에 머물고, 피해나 행위 책임에 대한 평가로 이어지지 않는다.",
+        "missing_information_scope": "무엇에 대한 위로나 설명인지 알 수 없어 특정 사건 옹호를 가정해야 한다면 해당 판단을 중단한다. 사건의 진위가 미확정이어도 영상에서 제시한 전제와 표현의 관계는 검토한다. 의혹을 확정된 사실로 취급하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G09-C01",
+        "title": "피해 경험자 쪽으로 원인·평가를 이동 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "피해·고충과 당사자의 성향·대응·선택을 연결해 책임이나 부정적 평가를 옮기는 단서가 확인된다.",
+        "exclusion_conditions": "지원·예방 조언이나 경위 설명에 머물고, 당사자를 탓하거나 피해를 정당화하지 않는다.",
+        "missing_information_scope": "무엇이 피해·고충인지 또는 누구에게 책임을 옮기는지 알 수 없으면 해당 기준을 중단한다. 가족·건강·보호 조건이 없어도 직접적인 책임 전가 표현은 검토한다. 확인되지 않은 취약성은 판단 근거에 넣지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G10-C01",
+        "title": "제한된 정보에서 실태를 단정 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "발언에서 제시한 제한된 경험·관찰과, 그 범위를 넘어선 일반화·인과 단정을 함께 확인할 수 있다.",
+        "exclusion_conditions": "개인 경험이나 가설로 범위를 한정하고, 이를 넘어 확정하지 않는다.",
+        "missing_information_scope": "사용한 근거의 범위를 알 수 없으면 ‘제한된 근거로 단정했다’는 판단을 중단한다. 영상에 근거 설명이 없다는 이유만으로 근거가 없다고 판단하지 않는다. 실제 주장의 참·거짓은 이 기준의 필수 정보가 아니다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G11-C01",
+        "title": "역사적 피해·책임의 차이를 설명에서 평면화 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "역사적 대상과 설명·비유가 확인되고, 비교에 필요한 피해·강제성·책임 관계가 현재 입력 자료에 있다.",
+        "exclusion_conditions": "역사 사안을 언급할 뿐, 해당 관계를 동등하게 만들거나 가볍게 다루지 않는다.",
+        "missing_information_scope": "무엇을 생략·축소했는지 설명하려면 입력에 없는 역사적 사실을 보충해야 하는 경우 해당 판단을 중단한다. 제공된 관계만으로 설명 가능한 부분은 검토하되, 역사 왜곡의 의도나 추가적인 사실 오류까지 판단하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G12-C01",
+        "title": "비판 내용 대신 상대의 동기·경험·자격을 문제 삼음 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "비판·의견에 응답하는 관계와, 응답이 상대의 동기·자격 등을 겨냥하는 표현이 확인된다.",
+        "exclusion_conditions": "주장에 대한 반박이나 관련 근거 요구에 머물고, 사람을 공격하거나 발언을 압박하지 않는다.",
+        "missing_information_scope": "비판과 응답의 관계 또는 공격한 속성과 논점의 관계를 판단할 정보가 없으면 해당 판단을 중단한다. 발언자의 공식 직책·권한을 몰라도 인신공격 표현은 검토한다. 권력관계에 따른 압박은 확인된 경우에만 판단한다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G13-C01",
+        "title": "평가·갈등의 대화가 모욕·압박으로 전환 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "사람을 향한 인격·능력 공격, 불이익 암시, 발언·행동 통제 등의 표현이 확인된다.",
+        "exclusion_conditions": "작업 지시·경쟁·행동 평가에 머물고, 사람에 대한 모욕·압박으로 이어지지 않는다.",
+        "missing_information_scope": "대상·핵심 표현을 확인할 수 없거나, 제공되지 않은 말투·관계를 가정해야만 공격으로 해석할 수 있다면 해당 판단을 중단한다. 실제 친분·속마음·사전 합의를 몰라도 원문에서 확인되는 공격 표현은 검토한다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G14-C01",
+        "title": "공적 역할·전문 활동을 무관한 개인 특성으로 평가 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "평가하는 역할·활동과, 개인 특성을 평가 근거로 사용하는 표현이 확인된다.",
+        "exclusion_conditions": "개인 정보 소개에 머물거나, 해당 특성이 평가 목적에 직접 관련되고 자격 축소로 이어지지 않는다.",
+        "missing_information_scope": "역할·평가 목적을 몰라 개인 특성과의 관련성을 판단할 수 없으면 ‘무관한 특성으로 평가했다’는 판단을 중단한다. 실제 탈락·배제 결과를 몰라도 발언 속 자격 축소는 검토할 수 있다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G15-C01",
+        "title": "타인의 사생활을 공개 설명·전언·평가로 유통 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "타인의 어떤 사적 정보를 질문·전달·추정·평가하는지 확인된다.",
+        "exclusion_conditions": "본인 경험이나 일반적 가정·정보 설명에 머물고, 타인의 사적 정보 공개·평가가 포함되지 않는다.",
+        "missing_information_scope": "누구의 어떤 사적 정보인지 구분할 수 없으면 해당 기준을 중단한다. 동의를 몰라도 단정적인 전언·소문 강화·사생활을 이용한 평가는 검토한다. 유일한 우려가 ‘동의 없는 공개’인데 동의를 확인할 수 없다면 그 판단은 중단한다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G16-C01",
+        "title": "콘텐츠가 만든 기대와 실제 조건이 불일치 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "기대를 만든 표현과, 같은 대상에 관한 실제·제한 조건을 모두 현재 자료에서 확인할 수 있다.",
+        "exclusion_conditions": "두 조건이 일치하거나, 제한이 분명히 제시되어 불일치가 성립하지 않는다.",
+        "missing_information_scope": "기대 표현 또는 비교할 실제 조건 중 하나가 없으면 불일치 판단을 중단한다. 둘 다 확인된다면 제작자의 의도나 실제 항의 여부를 몰라도 차이는 검토한다. 고의적 기만이라고 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G17-C01",
+        "title": "표면 의미와 유통·연상 의미가 엇갈림 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "실제 표현과 다른 해석을 연결하는 설명·대화·제공된 용례가 확인된다.",
+        "exclusion_conditions": "문맥상 문자 그대로의 의미임이 확인되고, 후보로 잡은 다른 의미와 연결되지 않는다.",
+        "missing_information_scope": "다른 의미의 근거가 AI의 기억·연상뿐이거나, 필수적인 발음·동작·용례가 없으면 해당 해석을 중단한다. 현재 문맥에 근거가 있다면 널리 통용되는지는 몰라도 검토한다. 사회적으로 통용되는 의미나 고의적 사용이라고 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G18-C01",
+        "title": "성적 표현의 공개·편집 범위가 수용 쟁점 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "성적 표현 외에, 대화 목적을 벗어난 반복·강조 또는 명시된 공개 조건과의 충돌 등 구체적인 검토 단서가 확인된다.",
+        "exclusion_conditions": "성적 주제의 등장만 있을 뿐, 표현 방식·대화 목적·공개 조건에 관한 별도 검토 단서가 없다.",
+        "missing_information_scope": "판단이 미확정 시청층·연령 제한·향후 편집에 의존하면 그 판단을 중단한다. 현재 대화에서 확인되는 반복·강조·재현 방식은 별도로 검토할 수 있다. 원본만 보고 최종 공개 방식을 가정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G19-C01",
+        "title": "고충·생활 조건을 제한된 관점으로 단정 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "타인의 고충·생활 조건과 이를 개인 경험·의지·단일 해법으로 축소하는 표현의 연결이 확인된다.",
+        "exclusion_conditions": "개인 경험 소개나 조건부 제안에 머물고, 타인의 제약을 지우거나 누구에게나 일반화하지 않는다.",
+        "missing_information_scope": "무시된 제약을 설명하려면 입력에 없는 건강·자산·제도 정보를 추측해야 하는 경우 해당 판단을 중단한다. 제약과 이를 축소하는 표현이 확인된다면 정확한 소득·진단명·수치를 몰라도 그 표현은 검토한다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G20-C01",
+        "title": "지역·조직·이용자 집단을 통째로 부정 규정 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "평가 대상 집단과 부정적 속성, 평가를 집단 전체로 넓히는 표현이 확인된다.",
+        "exclusion_conditions": "특정 행동·사건·정책을 비판할 뿐, 집단 구성원 전체의 속성으로 확대하지 않는다.",
+        "missing_information_scope": "대상 집단이나 평가 범위를 파악할 수 없으면 해당 기준을 중단한다. 실제 집단 구성원들의 특성이나 피해 반응은 필수가 아니다. 발언의 일반화는 검토하되 집단의 실제 속성까지 단정하지 않는다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    },
+    {
+      "id": "review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "label": "ReviewGate",
+      "properties": {
+        "criterion_id": "G21-C01",
+        "title": "공익적 문제 제기와 개인 공개·책임 귀속이 함께 발생 — 독립 점검",
+        "version": "independent-review/1.0",
+        "ruleset_id": "ruleset:oops:all:0.4-draft",
+        "access": "internal",
+        "status": "approved_for_integration",
+        "source_date": "2026-10-29"
+      }
+    },
+    {
+      "id": "body:review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "label": "ContentBody",
+      "properties": {
+        "minimum_information": "공익적 문제 제기와 함께 개인 식별정보 공개 또는 특정인에게 책임을 집중하는 표현 중 하나가 확인된다.",
+        "exclusion_conditions": "제도·정책 비판에 머물고, 개인 식별정보 공개나 개인 책임 단정으로 이어지지 않는다.",
+        "missing_information_scope": "식별정보 노출을 확인할 수 없으면 공개 관련 판단을 중단하고, 누구에게 어떤 책임을 귀속하는지 모르면 책임 귀속 판단을 중단한다. 둘 중 하나가 확인되면 그 부분은 검토한다. 동의·연령·실제 책임은 근거가 있는 경우에만 판단에 반영한다.",
+        "version": "independent-review/1.0",
+        "body_kind": "independent_review",
+        "access": "internal"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel:f5ce9878aba1ae3ea7fe1f27",
+      "source": "criterion:G01-C01@ALL-v0.4-draft",
+      "target": "review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:28d83845567c697f7378234e",
+      "source": "review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G01-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:16dce060ffcb35060888084b",
+      "source": "criterion:G02-C01@ALL-v0.4-draft",
+      "target": "review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:85844a0af72c2c9d920ad503",
+      "source": "review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G02-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:1649ea0cf4f78ae43e98e63f",
+      "source": "criterion:G03-C01@ALL-v0.4-draft",
+      "target": "review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:2fc90f373ddc41a9bfd5c782",
+      "source": "review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G03-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:897f3d12baa815259ede866e",
+      "source": "criterion:G04-C01@ALL-v0.4-draft",
+      "target": "review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:cd94d5811ee081dc40df9e26",
+      "source": "review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G04-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:eb1bed003316662a89ff7dce",
+      "source": "criterion:G05-C01@ALL-v0.4-draft",
+      "target": "review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:def8f82d400b1b4b05e4190c",
+      "source": "review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G05-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:468f4dcc08b2f5b463129151",
+      "source": "criterion:G06-C01@ALL-v0.4-draft",
+      "target": "review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:50a1e50861da38efe29e1446",
+      "source": "review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G06-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:cb78e8f40ff4f9c39ab74ad1",
+      "source": "criterion:G07-C01@ALL-v0.4-draft",
+      "target": "review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:83b380e95f5a7250ef1aed86",
+      "source": "review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G07-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:0e4e640166d15d8b8455d309",
+      "source": "criterion:G08-C01@ALL-v0.4-draft",
+      "target": "review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:ed98ab7f23c9e7216b5ed333",
+      "source": "review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G08-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:72f3c39c6e6fa7d94e901686",
+      "source": "criterion:G09-C01@ALL-v0.4-draft",
+      "target": "review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:8911d1af71c10810c6abcea3",
+      "source": "review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G09-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:19baaed992c04cfc726ece9f",
+      "source": "criterion:G10-C01@ALL-v0.4-draft",
+      "target": "review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:8a4faa7937b267a8d6f95434",
+      "source": "review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G10-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:dd5be32eeca5efeac0b3ef28",
+      "source": "criterion:G11-C01@ALL-v0.4-draft",
+      "target": "review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:57cf011c340c94aad53df8d1",
+      "source": "review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G11-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:d3ebca6c55f96c2f3d23df47",
+      "source": "criterion:G12-C01@ALL-v0.4-draft",
+      "target": "review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:7f8cf02dd027c0f324b5a325",
+      "source": "review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G12-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:864e5c3538425f64269d1a2a",
+      "source": "criterion:G13-C01@ALL-v0.4-draft",
+      "target": "review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:c10efadb7e3ea34f6bc15b78",
+      "source": "review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G13-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:c445f9672cd64d236ac723f7",
+      "source": "criterion:G14-C01@ALL-v0.4-draft",
+      "target": "review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:fa400dbea7bbc1229d24ca9e",
+      "source": "review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G14-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:e768808ebafc589b01a7921b",
+      "source": "criterion:G15-C01@ALL-v0.4-draft",
+      "target": "review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:55ea08b6257c55b1c09e2995",
+      "source": "review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G15-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:e1737126ec1e673007f6eb85",
+      "source": "criterion:G16-C01@ALL-v0.4-draft",
+      "target": "review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:e1d152c3b72ba98048e9abd1",
+      "source": "review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G16-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:f62dd469d68d37bfe7714a34",
+      "source": "criterion:G17-C01@ALL-v0.4-draft",
+      "target": "review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:6feb2daf7a01367bdcef4b40",
+      "source": "review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G17-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:def78aa54fdc64a04d3ee00a",
+      "source": "criterion:G18-C01@ALL-v0.4-draft",
+      "target": "review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:7838d60b9d62e04c6120cb56",
+      "source": "review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G18-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:c00758f949f80f0789527840",
+      "source": "criterion:G19-C01@ALL-v0.4-draft",
+      "target": "review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:898e196231548b12a0f4a65f",
+      "source": "review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G19-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:00b1258d5b2553adae232878",
+      "source": "criterion:G20-C01@ALL-v0.4-draft",
+      "target": "review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:669f0e97e1294fcc793e938f",
+      "source": "review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G20-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:030543dc580d5f953ff9c91e",
+      "source": "criterion:G21-C01@ALL-v0.4-draft",
+      "target": "review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_REVIEW_GATE",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    },
+    {
+      "id": "rel:6be51a0d21a77099933595fc",
+      "source": "review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "target": "body:review-gate:G21-C01@ALL-v0.4-draft:1.0",
+      "type": "HAS_CONTENT",
+      "properties": {
+        "version": "independent-review/1.0"
+      }
+    }
+  ]
+}

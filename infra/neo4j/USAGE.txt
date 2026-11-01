@@ -1,0 +1,66 @@
+OoPs AWS Ubuntu 22.04 데이터 배포 묶음
+
+대상: 기존 JAR 백엔드를 운영하는 메모리 4GB 서버.
+내용: 현재 폴더의 111개 사례·공통 기준 21개·추가 기준 68개·독립 규칙 21개.
+이 묶음에는 기존 JAR 백엔드나 AI 분석 엔진이 포함되지 않는다.
+
+1. ZIP을 기존 JAR 파일과 구분되는 /home/ubuntu 아래에 업로드한다.
+2. 서버에서 unzip oops-neo4j-aws-ubuntu.zip 으로 압축을 해제한다.
+   unzip이 없으면 sudo apt-get update 후 sudo apt-get install -y unzip 으로 설치한다.
+3. cd /home/ubuntu/oops-neo4j-aws
+4. sudo bash install-docker-ubuntu.sh
+5. sudo bash start-server.sh
+6. 필요할 때 sudo bash verify-server.sh 로 읽기 검증한다.
+
+Docker 설치 스크립트는 Docker 공식 Ubuntu apt 저장소를 사용한다.
+기존 containerd/runc 등의 충돌 패키지가 있으면 자동 제거하지 않고 멈춘다.
+Docker 설치 시 다른 시스템 서비스가 변경되는지는 서버 운영자가 확인한다.
+
+첫 시작에는 MemAvailable 2GiB 이상을 요구한다. 이 값은 이 배포 묶음의
+보수적인 초기 시작 조건이며 안정적 운영을 보장하는 공식 최소 사양이 아니다.
+Neo4j 컨테이너 최대 메모리는 1536MiB, 적재 도구는 384MiB이다.
+Neo4j 힙 최대 512MiB와 페이지 캐시 256MiB 외에도 실제 메모리를 사용한다.
+동시 영상 처리 때 서버 사용량을 확인한다: free -h / sudo docker stats --no-stream
+필요하면 sudo docker compose stop neo4j 로 이 DB를 중지한다. 데이터 볼륨은 남는다.
+
+최초 시작 시 서버에서 임의 비밀번호를 .env에 생성하고 권한을 600으로 제한한다.
+재실행 시 이 파일을 유지한다. 볼륨만 남고 .env가 없으면 새 비밀번호로 바꾸지 않는다.
+이 묶음을 다시 업로드할 때 .env를 삭제하거나 덮어쓰지 않는다.
+서버 비밀번호 확인이 필요하면 해당 폴더에서 sudo cat .env 를 사용하되 결과를 공유하지 않는다.
+이 파일의 OOPS_DB_PASSWORD 값을 백엔드용 비밀 설정의 비밀번호로 전달한다.
+
+호스트에서 직접 실행하는 JAR 백엔드의 연결 정보:
+URI: bolt://127.0.0.1:7687
+USER: neo4j
+DATABASE: neo4j
+PASSWORD: 서버 .env의 OOPS_DB_PASSWORD 값
+
+백엔드가 위 설정을 읽고 조회하는 코드가 있는지 확인한다. 설정만으로 분석 흐름이
+자동 변경되지 않으며, 필요한 경우 백엔드 소스 변경·재빌드·재배포를 진행한다.
+이 환경변수 이름을 Spring이 자동으로 읽는다고 가정하지 않는다.
+
+7474와 7687은 127.0.0.1에만 공개된다. AWS 인바운드 규칙에 이 포트를 추가할 필요가 없다.
+노트북의 localhost로는 서버 DB에 연결되지 않는다. 관리자 화면은 필요할 때 SSH 터널을 사용한다.
+
+정상 검증 로그의 주요 수량:
+all_seed_nodes_found: 2498
+all_seed_relationships_found: 2742
+common_bodies_read: 21
+additional_bodies_read: 68
+review_gate_bodies_read: 21
+review_gate_fields_verified: 63
+analysis_engine_updated: false
+
+DB 데이터는 Docker 볼륨 oops-neo4j-aws_neo4j_data에 유지된다.
+이 볼륨은 백업이 아니므로 운영용 백업 정책은 별도로 마련한다.
+기존 본문을 보존하는 bootstrap.py를 사용하며 import_neo4j.py --apply를 직접 실행하지 않는다.
+규칙이 일부만 있거나 수정된 경우 자동 덮어쓰기 없이 멈춘다.
+
+검증 범위:
+배포 파일의 문법·데이터 동일성과 기존 오프라인 시험을 확인한다.
+실제 Docker 실행·AWS 서버 적재·JAR 연결은 서버 실행 후 별도로 확인한다.
+
+참고:
+https://docs.docker.com/engine/install/ubuntu/
+https://docs.docker.com/engine/containers/resource_constraints/
+https://neo4j.com/docs/operations-manual/current/performance/memory-configuration/
