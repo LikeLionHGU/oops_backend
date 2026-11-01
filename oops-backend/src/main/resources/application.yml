@@ -10,8 +10,10 @@ spring:
     active: local
   servlet:
     multipart:
-      max-file-size: 500MB
-      max-request-size: 500MB
+      # 2026-11 redesign-v3: 편집 전 원본(2시간 내외)을 받기 위해 4GB 로 올렸다.
+      # 리버스 프록시(nginx client_max_body_size 등)도 같은 값 이상이어야 한다.
+      max-file-size: 4GB
+      max-request-size: 4GB
   jackson:
     default-property-inclusion: non_null
   jpa:
@@ -68,7 +70,7 @@ oops:
 
   storage:
     location: ./uploads # 업로드 파일 저장 위치
-    max-file-size-bytes: 524288000 # 별도 코드 검증: 기본 500MiB. -1은 명시적 무제한.
+    max-file-size-bytes: 4294967296 # 별도 코드 검증: 4GiB (redesign-v3). -1은 명시적 무제한.
 
     # 며칠 지난 영상을 자동으로 지울지. 매일 새벽 4시에 정리한다.
     # 0 이면 정리하지 않는다. 로컬 개발에서는 테스트 영상이 사라지면 곤란하므로 꺼 둔다.

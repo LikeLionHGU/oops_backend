@@ -46,10 +46,10 @@ public class StorageService {
         return resolved;
     }
 
-    /** Independent application guard. Only explicit -1 disables it; default remains 500 MiB. */
-    private long maxFileSizeBytes = 500L * 1024 * 1024;
+    /** Independent application guard. Only explicit -1 disables it; default is 4 GiB (redesign-v3). */
+    private long maxFileSizeBytes = 4L * 1024 * 1024 * 1024;
 
-    @Value("${oops.storage.max-file-size-bytes:524288000}")
+    @Value("${oops.storage.max-file-size-bytes:4294967296}")
     public void setMaxFileSizeBytes(long bytes) {
         if (bytes == 0 || bytes < -1) {
             throw new IllegalArgumentException("Upload limit must be positive or -1");

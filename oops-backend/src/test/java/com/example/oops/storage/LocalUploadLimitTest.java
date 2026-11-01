@@ -21,7 +21,7 @@ class LocalUploadLimitTest {
     }
     @Test void defaultApplicationGuardStillRejectsOversizedVideo() {
         context().run(c -> assertThatThrownBy(() -> c.getBean(StorageService.class).validateVideoFile(large("large.mp4")))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("500MB"));
+                .isInstanceOf(BusinessException.class).hasMessageContaining("4096MB"));
     }
     @Test void localYamlDisablesBothMultipartAndApplicationGuardWithoutAllocatingLargeFile() throws Exception {
         var source=new YamlPropertySourceLoader().load("local",new ClassPathResource("application-local.yml")).get(0);

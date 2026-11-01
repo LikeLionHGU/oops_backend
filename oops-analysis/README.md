@@ -90,7 +90,7 @@ probe/transcribe/ocr 요청 예시:
 
 ## 길이·비용·관측 한계
 
-기본 `MAX_DURATION_SEC=5400`은 90분이다. `MAX_OCR_FRAMES=300`을 넘으면 프레임 간격이 늘어나므로 짧게 표시된 자막을 놓칠 수 있다. OCR 글자가 없다고 자막이 없다고 확정하지 않는다.
+기본 `MAX_DURATION_SEC=7200`은 120분이다 (Groq 기본 한도가 시간당 음성 7,200초). `MAX_OCR_FRAMES=300`을 넘으면 프레임 간격이 늘어나므로 짧게 표시된 자막을 놓칠 수 있다. OCR 글자가 없다고 자막이 없다고 확정하지 않는다.
 
 로컬에서 길이 상한을 해제하려면 `ANALYSIS_PROFILE=local` 환경변수를 지정하고 Python을 재시작한다. macOS 예: `ANALYSIS_PROFILE=local python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`. 기본 `ANALYSIS_PROFILE=default`는 설정된 길이 제한을 유지한다. 무제한 모드에서도 잘못된 영상 길이·경로 검증, OCR 프레임 예산과 처리 타임아웃은 유지된다. Spring도 `local` 프로필로 재시작해야 용량 상한이 해제된다. 운영에는 적용하지 않으며 긴 영상은 자원·비용과 제공자 한도에 영향을 받는다.
 

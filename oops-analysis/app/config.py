@@ -41,16 +41,17 @@ class Settings(BaseSettings):
     default_interval_sec: float = Field(default=4.0, gt=0, allow_inf_nan=False)
     media_timeout_sec: int = Field(default=300, gt=0, le=600)
 
-    # 영상 길이 상한.
-    # 타깃이 20~60분 롱폼 토크·인터뷰인데, 실제로는 70~80분짜리도 흔해서
-    # 90분까지 받는다.
+    # 영상 길이 상한. (2026-11 redesign-v3: 90분 → 120분)
+    # Groq Whisper 기본 한도가 시간당 음성 7,200초(=120분), 하루 28,800초다.
+    # 120분 영상 하나가 한 시간 한도를 다 쓰므로 이보다 길게 받으면 전사 중간에 429 로 막힌다.
+    # 더 늘리려면 Groq 한도를 올린 뒤 이 값을 올린다.
     #
     # 다만 긴 영상은 비용과 시간이 크게 늘어난다.
     #   60분: Groq 음성 인식만 약 155원(USD/KRW 1,400원 가정), 대본 300줄 이상 → LLM 호출 수십 번
-    #   90분: 음성 인식만 약 233원
+    #   120분: 음성 인식만 약 310원
     # 요청 한도가 낮은 계정에서는 중간에 끊길 수 있다.
     # 시연은 3~5분짜리로 하는 것을 권한다.
-    max_duration_sec: int = Field(default=5400, gt=0)
+    max_duration_sec: int = Field(default=7200, gt=0)
     # Explicit opt-in for a local worker. Default/deployed worker retains its configured limit.
     analysis_profile: Literal["default", "local"] = "default"
 

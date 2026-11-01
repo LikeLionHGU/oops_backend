@@ -42,7 +42,7 @@ public class VideoController {
                     영상 파일을 올리면 **즉시 분석이 시작된다**. 별도의 분석 시작 API 는 없다.
 
                     - 지원 형식: mp4, mov, avi
-                    - 최대 크기: 500MB
+                    - 최대 크기: 4GB, 최대 길이: 120분
                     - `genre` (선택): 영상 유형을 지정하면 그에 맞는 분석기가 돌아간다.
                       `TALK_PODCAST`, `GENERAL`
                       비워두면 대본을 보고 자동으로 판별한다.
