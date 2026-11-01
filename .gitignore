@@ -36,3 +36,6 @@ uploads/
 .DS_Store
 Thumbs.db
 oops-backend/videos/*
+
+# gradle wrapper 는 저장소에 포함한다 (redesign-v3)
+!**/gradle/wrapper/gradle-wrapper.jar
