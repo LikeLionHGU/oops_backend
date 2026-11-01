@@ -31,12 +31,6 @@ public class AnalysisServerClient {
 
     /** 분석은 스레드마다 하나씩 돌므로 스레드별로 들고 있으면 충분하다. */
     private static final ThreadLocal<String> lastFailure = new ThreadLocal<>();
-    private final ThreadLocal<OcrAssessment> ocrAssessment = new ThreadLocal<>();
-
-    public record OcrAssessment(AnalyzerStatus status, String message) {}
-    public Optional<OcrAssessment> lastOcrAssessment() {
-        return Optional.ofNullable(ocrAssessment.get());
-    }
 
     private final RestClient restClient;
     private final RestClient healthRestClient;
@@ -146,71 +140,6 @@ public class AnalysisServerClient {
         return "분석 서버 오류 (HTTP " + re.getStatusCode().value() + ")";
     }
 
-    public Optional<OcrResponse> ocr(Video video) {
-        return ocr(video, storageService.frameDir(video.getId()).toString());
-    }
-
-    public Optional<OcrResponse> ocr(Video video, String frameDir) {
-        // An STT failure is not an OCR failure.
-        lastFailure.remove();
-        ocrAssessment.remove();
-        try {
-            OcrResponse response = ocrRestClient.post()
-                    .uri("/ocr")
-                    .body(toRequest(video, properties.ocrIntervalOrDefault(), frameDir))
-                    .retrieve()
-                    .body(OcrResponse.class);
-            if (response == null || response.items() == null) {
-                throw new IllegalArgumentException("OCR response missing items");
-            }
-            ocrAssessment.set(assessOcr(response.processing()));
-            return Optional.ofNullable(response);
-        } catch (RestClientException e) {
-            // 503 = OCR 미설치. 이 경우는 정상 시나리오다.
-            lastFailure.set(extractDetail(e));
-            ocrAssessment.set(new OcrAssessment(AnalyzerStatus.FAILED, lastFailure.get()));
-            log.warn("[analysis-server] OCR 건너뜀 videoId={} : {}", video.getId(), describe(e));
-            return Optional.empty();
-        } catch (IllegalArgumentException e) {
-            lastFailure.set("OCR 처리 상태 응답을 확인하지 못했습니다.");
-            ocrAssessment.set(new OcrAssessment(AnalyzerStatus.FAILED, lastFailure.get()));
-            return Optional.empty();
-        }
-    }
-
-    static OcrAssessment assessOcr(OcrProcessing p) {
-        if (p == null) return new OcrAssessment(AnalyzerStatus.PARTIAL,
-                "이전 분석 서버 응답에는 프레임별 처리 상태가 없어 OCR 수행 완전성을 확인하지 못했습니다.");
-        if (p.totalFrames() == null || p.successfulFrames() == null || p.failedFrames() == null
-                || p.totalFrames() <= 0 || p.successfulFrames() <= 0 || p.failedFrames() < 0
-                || (long) p.successfulFrames() + p.failedFrames() != p.totalFrames()
-                || !(p.failedFrames() == 0 ? "SUCCESS" : "PARTIAL").equals(p.status()))
-            throw new IllegalArgumentException("Inconsistent OCR frame processing state");
-        return p.failedFrames() == 0 ? new OcrAssessment(AnalyzerStatus.SUCCESS, null)
-                : new OcrAssessment(AnalyzerStatus.PARTIAL,
-                    "OCR 프레임 %d개 중 %d개 인식에 실패했습니다. 성공한 %d개만 확인했습니다."
-                        .formatted(p.totalFrames(), p.failedFrames(), p.successfulFrames()));
-    }
-
-    /** Bounded upload-only scene extraction, independent of OCR availability. */
-    public Optional<SceneFrames> sceneFrames(Video video, List<Long> timestampsMs) {
-        if (video.getSourceType() != SourceType.UPLOAD || video.getStorageKey() == null
-                || timestampsMs == null || timestampsMs.isEmpty() || timestampsMs.size() > 3) return Optional.empty();
-        try {
-            return Optional.ofNullable(restClient.post().uri("/scene-frames")
-                    .body(new SceneRequest(storageService.resolve(video.getStorageKey()).toString(), timestampsMs))
-                    .retrieve().body(SceneFrames.class));
-        } catch (RestClientException ex) {
-            // Do not log image bytes or raw response bodies.
-            log.warn("[analysis-server] 장면 추출 실패 videoId={}", video.getId());
-            return Optional.empty();
-        }
-    }
-    public record SceneRequest(String filePath, List<Long> timestampsMs) {}
-    public record SceneFrames(List<Frame> frames) {
-        public record Frame(String frameId, long requestedMs, long timestampMs, String jpegBase64) {}
-    }
-
     /** 분석 서버가 돌려준 에러 본문까지 로그에 남긴다. 원인 파악이 훨씬 빨라진다. */
     private String describe(RestClientException e) {
         if (e instanceof RestClientResponseException re) {
@@ -237,16 +166,4 @@ public class AnalysisServerClient {
         public record Segment(long startMs, long endMs, String text) {}
     }
 
-    public record OcrProcessing(String status, Integer totalFrames, Integer successfulFrames, Integer failedFrames) {}
-    public record OcrResponse(List<Item> items, String formatVersion, OcrProcessing processing) {
-        public OcrResponse(List<Item> items) { this(items, null, null); }
-        public OcrResponse(List<Item> items, String formatVersion) { this(items, formatVersion, null); }
-        public record Item(long startMs, long endMs, String text, Double confidence, String framePath,
-                           Double boxX, Double boxY, Double boxWidth, Double boxHeight,
-                           String trackId, Integer observations, Integer slotTextChanges) {
-            public Item(long startMs, long endMs, String text, Double confidence, String framePath) {
-                this(startMs, endMs, text, confidence, framePath, null, null, null, null, null, null, null);
-            }
-        }
-    }
 }

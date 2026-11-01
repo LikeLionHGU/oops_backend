@@ -164,70 +164,11 @@ oops:
     parallelism: 4            # 영상 하나 안에서 동시에 보내는 AI 호출 수 (서버 전체 상한은 oops.openai.max-concurrent)
 
   analysis:
-    # Full-screen OCR is opt-in; candidate visual review is independent.
-    full-screen-ocr-enabled: ${FULL_SCREEN_OCR_ENABLED:false}
     # 단일 Spring 인스턴스의 시작 시 복구. 같은 DB를 공유하는 다중 인스턴스에서는 끈다.
     startup-recovery-enabled: true
-    # 원댓글/사건 예시와 별개인 압축 맥락 기준. 로컬 데이터는 Git 제외; 배포 시 파일도 제공한다.
-    guidelines-enabled: ${REVIEW_GUIDELINES_ENABLED:true}
-    guidelines-location: ${REVIEW_GUIDELINES_LOCATION:file:../datasets/controversy/guidelines/runtime.json} # 로컬 승격 기본 v7. build_incident_dataset.py의 runtime-selection 정책으로 재생성.
-    guidelines-max-code-points: 6000 # 공통 패턴 + 선택 예시의 요청 JSON 상한. 토큰 수 자체는 아님.
-    guidelines-example-max-cases: ${REVIEW_GUIDELINES_MAX_CASES:3} # 0: 예시 비활성화, 1~32: 보조 안전 상한. 실제 수는 관련성·크기 예산에 따라 0~상한.
-    guidelines-example-max-code-points: 3000 # 예시만의 상한. 잘라내지 않고 예시 전체를 제외.
-    structured-context-search-enabled: ${STRUCTURED_CONTEXT_SEARCH_ENABLED:true} # v7 로컬 개념 검색 보완. 판정·외부 호출 없음, false로 이전 문자 검색 재현.
-    guidelines-excluded-families: ${REVIEW_GUIDELINES_EXCLUDED_FAMILIES:} # 독립 평가 시 사건 family를 제외. 공통 기준은 유지.
-    mechanism-routing-enabled: ${CONTEXT_MECHANISM_ROUTING_ENABLED:false} # v6/v7에서만 배치별 검색 키 분류. 기본은 추가 과금 없이 기존 경로 유지.
-    mechanism-routing-location: ${CONTEXT_MECHANISM_ROUTING_LOCATION:file:../datasets/controversy/definitions/context-routing.json}
-    mechanism-routing-max-calls: ${CONTEXT_MECHANISM_ROUTING_MAX_CALLS:12} # 영상당 상한. 초과 배치도 어휘 검색·본 분석은 계속.
-    candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
-    rule-candidate-union-enabled: ${RULE_CANDIDATE_UNION_ENABLED:false} # 실험: 규칙+AI 후보 합집합. 기본 OFF, 활성화 시 검증 호출/결과가 달라질 수 있음.
-    candidate-source-relations-enabled: ${CANDIDATE_SOURCE_RELATIONS_ENABLED:false} # 실험 38: 결론형 가설 대신 원문 역할 ID 전달. 모델 비교 전 기본 OFF.
-    final-review-basis-enabled: ${FINAL_REVIEW_BASIS_ENABLED:false} # 텍스트 검증 최종 근거 분리. 실호출 효과 검증 전 기본 OFF.
-    situation-first-verification-enabled: ${SITUATION_FIRST_VERIFICATION_ENABLED:false} # 같은 검증 호출에서 상황 이해 → 비판 → 정상 대조. 효과 비교 전 기본 OFF.
-    source-understanding-enabled: ${SOURCE_UNDERSTANDING_ENABLED:false} # 검증 응답에 원문 행위 분류·근거 ID를 기록. 의미 정확도 검증 전 기본 OFF.
-    source-understanding-contract: ${SOURCE_UNDERSTANDING_CONTRACT:acts-v1} # acts-v1 유지. relations-v2 이력 보존, relations-v3는 행위·관계 단일 목록 선택 실험.
-    candidate-review-max-candidates: 24 # 영상당 검증 후보 상한. 초과는 PARTIAL로 알린다.
-    candidate-review-evidence-limit: ${CANDIDATE_REVIEW_EVIDENCE_LIMIT:0} # 0: 검증 응답의 고정 인용 개수 상한 해제. 원문/역할/중복 검증은 유지.
-    review-cases-enabled: ${REVIEW_CASES_ENABLED:true} # 검수·권한 확인된 사례만 탐색에 참고. 기본 파일은 비어 있다.
-    review-cases-location: ${REVIEW_CASES_LOCATION:classpath:review-cases.json} # classpath:/file:만 허용, 시작 시 로드.
-    review-cases-max-cases: 2 # 배치당 최대 1~3개. 임베딩/API 호출 없는 로컬 키워드 검색.
-    review-cases-max-code-points: 2400 # 사례 JSON 글자 한도. 실제 토큰/비용 상한은 아님.
-    review-cases-excluded-families: ${REVIEW_CASES_EXCLUDED_FAMILIES:} # 평가 대상 사건 familyId를 쉼표로 제외.
-    visual-context-enabled: ${VISUAL_CONTEXT_ENABLED:true} # 선택적 장면 검증. 포즈/음성/전체 영상 분석은 아님.
-    visual-context-max-candidates: 3 # 설정 가능한 것은 후보 수. 후보당 프레임 샘플·응답 observation은 각각 코드 고정 상한 3.
-    dialogue-review-enabled: true # 기존 방식에서만 적용. candidate-review-enabled=true이면 추가 대화 호출 없음.
-    review-diagnostics-enabled: false # 공개 서버에서는 활성화하지 않는다.
-    review-request-trace-enabled: false # 민감 원문 포함: 로컬에서만 명시적으로 활성화
-    review-request-trace-token: ${REVIEW_TRACE_TOKEN:}
-    # 실행할 분석기와 순서. 여기 없는 분석기는 빈으로 떠 있어도 실행되지 않는다.
-    # 장르와 무관한 게시 전 검수다. 알려진 문제도 원문 근거가 있으면 검토한다.
-    # 후보 탐색과 원문 검증이 중심이다. 전체 영상의 외부 검색은 기본에서 실행하지 않는다.
+    # 실행할 분석기. redesign-v3 는 두 흐름뿐이며 서로 독립으로 동시에 돈다.
+    #   context-review : 맥락 확인 (21개 기준, 후보 탐색 → 독립 점검 → 상세 검토)
+    #   fact-check     : 사실대조 (주장 추출 → Perplexity → 충분성 평가 → 필요 시 Serper 1회 → 판정)
     enabled-analyzers:
-      # redesign-v3: 맥락 확인은 21개 기준 3단계(context-review) 하나로 한다.
-      # 옛 분석기(subtitle, speech-review, context-lexicon, screen-text*)는 걷어낼 예정이라 끈다.
       - context-review
-
-      # entity-check / context-check : 외부 사실·최근 배경 검색은 선택 기능.
-      # 기존 검색 경로를 시험할 때만 external-review 프로필을 추가한다.
-      # 후보 한정 외부 맥락 확인은 후속 설계이며 이 프로필과 다르다.
-
-
-      # 아래는 방향이 달라 기본에서 뺐다. 필요하면 한 줄 주석만 풀면 된다.
-      #
-      # caption-mismatch : 발언과 자막 비교.
-      #   OCR 이 편집 자막과 화면에 우연히 있는 글자(간판, 메뉴판, 채널 로고)를
-      #   구분하지 못한다. 그래서 "발언은 A 인데 자막은 'POGUES' 다" 같은
-      #   의미 없는 결과가 대부분이었다.
-      #   자막이 발언과 다른 것 자체는 알릴 가치가 없고,
-      #   자막이나 발언의 내용에 확인할 것이 있을 때만 알린다.
-      #   화면 텍스트에서 편집 자막만 골라낼 수 있게 되면 다시 켠다.
-      #
-      # monetization : 노란딱지 예측. 광고 정책 문제라 지금 풀려는
-      #                편집·정확성 문제와 성격이 다르다. 나중에 별도 기능으로.
-      # comment      : 미구현. 공개 전에는 그 영상 댓글이 없다.
-      # pose         : 미구현. 장면 분석은 범위에서 뺐다.
-      #
-      # - caption-mismatch
-      # - monetization
-      # - comment
-      # - pose
+      - fact-check

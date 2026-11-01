@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, StrictInt
 
-from . import ocr, stt, scene_frames, ocr_jobs
+from . import stt
 from .config import get_settings
 from .media import MediaError, prepare, valid_duration
 
@@ -18,29 +18,9 @@ app = FastAPI(title="oops-analysis", version="0.1.0")
 class MediaRequest(BaseModel):
     videoUrl: str | None = None
     filePath: str | None = None
+    # redesign-v3: 화면 글자(OCR)는 쓰지 않는다. 옛 백엔드가 보내도 무시한다.
     intervalSec: float | None = Field(default=None, gt=0, allow_inf_nan=False)
-    # OCR 에서 텍스트가 잡힌 프레임을 보관할 폴더. Spring 이 지정한다.
     frameDir: str | None = None
-
-
-class SceneRequest(BaseModel):
-    # First version deliberately supports stored uploads only; no repeated URL downloads.
-    filePath: str
-    timestampsMs: list[StrictInt] = Field(min_length=1, max_length=3)
-
-
-@app.post("/scene-frames")
-def scene(request: SceneRequest) -> dict:
-    video = None
-    try:
-        video = prepare(None, request.filePath)
-        _guard_duration(video.duration_sec)
-        return {"frames": scene_frames.sample(video, request.timestampsMs)}
-    except MediaError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        if video:
-            video.cleanup()
 
 
 @app.get("/health")
@@ -51,13 +31,8 @@ def health() -> dict:
     return {
         "status": "UP",
         "sttAvailable": bool(stt_key),
-        "ocrAvailable": ocr.is_available(),
-        "ocrAvailabilityCheck": "DEPENDENCIES_ONLY_NOT_MODEL_READY",
-        "ocrBusy": ocr_jobs.is_busy(),
-        "ocrJobIsolation": "SUBPROCESS_PER_JOB",
+        "ocrAvailable": False,   # redesign-v3: OCR 제거
         "analysisProfile": settings.analysis_profile,
-        "ocrTimeoutSec": settings.effective_ocr_timeout_sec,
-        "maxOcrFrames": settings.max_ocr_frames,
     }
 
 
@@ -108,11 +83,6 @@ def transcribe(request: MediaRequest) -> dict:
     finally:
         if video:
             video.cleanup()
-
-
-@app.post("/ocr")
-async def run_ocr(payload: MediaRequest, request: Request) -> dict:
-    return await ocr_jobs.run(payload.model_dump(), request)
 
 
 def _guard_duration(duration_sec: float) -> None:

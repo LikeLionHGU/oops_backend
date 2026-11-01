@@ -5,12 +5,8 @@ import com.example.oops.client.*;
 import com.example.oops.config.*;
 import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
-import com.example.oops.genre.GenreDetector;
 import com.example.oops.repository.*;
-import com.example.oops.screentext.ScreenTextService;
 import com.example.oops.transcript.TranscriptService;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,55 +26,15 @@ class AnalysisPipelineReviewTest {
     void snapshotReadFailureIsHandledBeforeAnyExternalAnalysis() {
         var progress=mock(JobProgressService.class); var videos=mock(VideoRepository.class);
         var ai=mock(OpenAiClient.class); var transcript=mock(TranscriptService.class);
-        var screens=mock(ScreenTextService.class); var writer=mock(AnalysisResultWriter.class);
+        var writer=mock(AnalysisResultWriter.class);
         when(progress.begin(11L)).thenReturn(1L);
         when(videos.findById(1L)).thenThrow(new IllegalStateException("fixture read failure"));
-        var pipeline=new AnalysisPipeline(List.of(), new OopsProperties(null, null, null), transcript, screens,
-                mock(FindingFusionService.class), mock(GenreDetector.class), mock(AnalysisServerClient.class),
+        var pipeline=new AnalysisPipeline(List.of(), new OopsProperties(null, null, null), transcript,
+                mock(FindingFusionService.class), mock(AnalysisServerClient.class),
                 new ReportBuilder(), progress, videos, ai, writer);
         pipeline.run(11L);
         verify(progress).fail(eq(11L), eq("ANALYSIS_FAILED"), anyString());
-        verifyNoInteractions(ai, transcript, screens, writer);
-    }
-    @ParameterizedTest
-    @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,false"})
-    void preservesWorkerOcrFailureStateEvenWithRetainedText(AnalyzerStatus state, boolean hasText) {
-        var client = mock(OpenAiClient.class);
-        var transcripts = mock(TranscriptService.class);
-        var screens = mock(ScreenTextService.class);
-        var progress = mock(JobProgressService.class);
-        var videos = mock(VideoRepository.class);
-        var writer = mock(AnalysisResultWriter.class);
-        when(writer.save(eq(11L), any())).thenReturn(true);
-        var worker = mock(AnalysisServerClient.class);
-        var fusion = mock(FindingFusionService.class);
-        var video = Video.builder().filename("offline.mp4").build();
-        video.assignGenre(ContentGenre.GENERAL);
-        when(progress.begin(11L)).thenReturn(1L);
-        when(videos.findById(1L)).thenReturn(Optional.of(video));
-        when(transcripts.extract(video)).thenReturn(List.of(new TranscriptSegment(video, 0, 1000, "정상 발언")));
-        when(screens.extract(video, 11L)).thenReturn(hasText
-                ? List.of(new ScreenText(video, 0, 1000, "화면 문구", 0.9, null)) : List.of());
-        when(worker.lastOcrAssessment()).thenReturn(Optional.of(new AnalysisServerClient.OcrAssessment(state,
-                state == AnalyzerStatus.SUCCESS ? null : "프레임 처리 실패 또는 일부 누락")));
-        when(fusion.fuse(anyList())).thenReturn(List.of());
-        var usage = mock(OpenAiClient.TokenUsage.class);
-        when(usage.pricing()).thenReturn(mock(OpenAiProperties.Pricing.class));
-        when(usage.isEmpty()).thenReturn(true);
-        when(client.videoUsage()).thenReturn(usage);
-        var pipeline = new AnalysisPipeline(List.of(), new OopsProperties(null,
-                new OopsProperties.Analysis(List.of()), null), transcripts, screens, fusion,
-                mock(GenreDetector.class), worker, new ReportBuilder(), progress, videos,
-                client, writer);
-        org.springframework.test.util.ReflectionTestUtils.setField(pipeline, "fullScreenOcrEnabled", true);
-        pipeline.run(11L);
-        var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
-        verify(writer).save(eq(11L), captor.capture());
-        verify(screens).releaseFrames(video, 11L);
-        var result = captor.getValue().coverage().stream().filter(c -> c.getStep() == CoverageStep.OCR).findFirst().orElseThrow();
-        assertThat(result.getStatus()).isEqualTo(state);
-        if (state != AnalyzerStatus.SUCCESS) assertThat(result.getMessage()).contains("프레임 처리");
-        verify(progress, never()).fail(anyLong(), anyString(), anyString());
+        verifyNoInteractions(ai, transcript, writer);
     }
     @org.junit.jupiter.api.Test
     void retainsIndependentWarningsAtTheSameSeverity() {
@@ -113,70 +69,78 @@ class AnalysisPipelineReviewTest {
         assertThat(coverage.get(CoverageStep.SPEECH_REVIEW).warningCode()).isEqualTo("SPEECH_REVIEW_PARTIAL");
         assertThat(coverage.get(CoverageStep.SPEECH_REVIEW).getMessage()).contains("문맥 창", "응답 누락");
     }
-    @ParameterizedTest
-    @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,true"})
-    void propagatesValidatedCoverageAndDrainsIntermediateResults(AnalyzerStatus expected, boolean simulateApiFailure) {
-        var client = mock(OpenAiClient.class);
-        var analyzer = new SpeechReviewAnalyzer(client, false); // segment-scope coverage propagation
+    @org.junit.jupiter.api.Test
+    void analyzersRunInParallelAndFailuresAreTrackedPerAnalyzer() {
+        var client = new OpenAiClient(org.springframework.web.client.RestClient.create(),
+                new OpenAiProperties("offline-test-key", null, null, "https://example.invalid", null, null,
+                        java.time.Duration.ofSeconds(2), null));
         var transcripts = mock(TranscriptService.class);
-        var screens = mock(ScreenTextService.class);
-        var fusion = mock(FindingFusionService.class);
         var progress = mock(JobProgressService.class);
-        var videoRepo = mock(VideoRepository.class);
-        var analysisServer = mock(AnalysisServerClient.class);
+        var videos = mock(VideoRepository.class);
         var writer = mock(AnalysisResultWriter.class);
         when(writer.save(eq(11L), any())).thenReturn(true);
-        var props = new OopsProperties(null, new OopsProperties.Analysis(List.of("speech-review")), null);
-        var pipeline = new AnalysisPipeline(List.of(analyzer), props, transcripts, screens, fusion,
-                mock(GenreDetector.class), analysisServer, new ReportBuilder(), progress, videoRepo, client, writer);
+        var fusion = mock(FindingFusionService.class);
+        when(fusion.fuse(anyList())).thenAnswer(call -> call.getArgument(0));
         var video = Video.builder().filename("offline.mp4").build();
-        video.assignGenre(ContentGenre.GENERAL);
-        var input = expected == AnalyzerStatus.PARTIAL && simulateApiFailure
-                ? java.util.stream.IntStream.range(0, 25)
-                .mapToObj(i -> new TranscriptSegment(video, i * 1_000, i * 1_000 + 500, "일반적인 상황 설명" + i)).toList()
-                : List.of(new TranscriptSegment(video, 0, 1_000, "일반적인 상황 설명"));
         when(progress.begin(11L)).thenReturn(1L);
-        when(videoRepo.findById(1L)).thenReturn(Optional.of(video));
-        when(transcripts.extract(video)).thenReturn(input);
-        when(screens.extract(video, 11L)).thenReturn(List.of());
-        when(analysisServer.lastFailureDetail()).thenReturn(Optional.empty());
-        when(fusion.fuse(anyList())).thenAnswer(i -> i.getArgument(0));
-        when(client.isEnabled()).thenReturn(true);
-        var usage = mock(OpenAiClient.TokenUsage.class);
-        when(usage.pricing()).thenReturn(mock(OpenAiProperties.Pricing.class));
-        when(usage.isEmpty()).thenReturn(true);
-        when(client.videoUsage()).thenReturn(usage);
-        String decision = expected == AnalyzerStatus.PARTIAL ? "UNCERTAIN" : "PASS";
-        var item = new TextReviewEngine.LlmDecision("stt-index-0", decision, "상황 설명", "일반적인 상황 설명입니다.",
-                null, null, null, null, null, expected == AnalyzerStatus.PARTIAL ? List.of("발언의 대상") : List.of());
-        when(client.completeAsJson(anyString(), anyString(), eq(TextReviewEngine.LlmResult.class)))
-                .thenReturn(expected == AnalyzerStatus.FAILED ? Optional.empty()
-                        : Optional.of(new TextReviewEngine.LlmResult(List.of(item))));
-        if (expected == AnalyzerStatus.PARTIAL && simulateApiFailure) {
-            var firstBatch = java.util.stream.IntStream.range(0, 20)
-                    .mapToObj(i -> new TextReviewEngine.LlmDecision("stt-index-" + i, "PASS", "상황 설명",
-                            "일반적인 상황 설명입니다.", null, null, null, null, null, List.<String>of())).toList();
-            when(client.completeAsJson(anyString(), anyString(), eq(TextReviewEngine.LlmResult.class)))
-                    .thenReturn(Optional.of(new TextReviewEngine.LlmResult(firstBatch)), Optional.empty());
-        }
-        if (simulateApiFailure) {
-            when(client.failureCount()).thenReturn(1);
-            when(client.failureReason()).thenReturn(Optional.of("모의 API 실패"));
-        }
+        when(videos.findById(1L)).thenReturn(Optional.of(video));
+        when(transcripts.extract(video)).thenReturn(List.of(new TranscriptSegment(video, 0, 1000, "정상 발언")));
+        var bothStarted = new java.util.concurrent.CountDownLatch(2);
+        ContentAnalyzer context = analyzer("context-review", () -> {
+            bothStarted.countDown();
+            await(bothStarted);
+            return List.of(RiskFinding.builder().video(video).category(RiskCategory.CONTEXT_CRITERION)
+                    .source(EvidenceSource.SUBTITLE).score(.5).startMs(0).endMs(1000).text("정상 발언").reason("r").build());
+        });
+        ContentAnalyzer fact = analyzer("entity-check", () -> {
+            bothStarted.countDown();
+            await(bothStarted);   // 두 분석기가 동시에 돌지 않으면 여기서 멈춘다
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(client, "fail",
+                    failureCode("HTTP_FAILED"), "검색 판정 호출 실패");
+            return List.of();
+        });
+        var pipeline = new AnalysisPipeline(List.of(context, fact), new OopsProperties(null,
+                new OopsProperties.Analysis(List.of("context-review", "entity-check")), null), transcripts, fusion,
+                mock(AnalysisServerClient.class), new ReportBuilder(), progress, videos, client, writer);
         pipeline.run(11L);
         var captor = ArgumentCaptor.forClass(AnalysisResultWriter.Result.class);
         verify(writer).save(eq(11L), captor.capture());
-        var coverage = captor.getValue().coverage().stream().filter(c -> c.getStep() == CoverageStep.SPEECH_REVIEW).findFirst().orElseThrow();
-        for (var optional : List.of(CoverageStep.FACT_ENTITY, CoverageStep.CONTEXT_REFERENCE)) {
-            var disabled = captor.getValue().coverage().stream().filter(c -> c.getStep() == optional).findFirst().orElseThrow();
-            assertThat(disabled.getStatus()).isEqualTo(AnalyzerStatus.NOT_ENABLED);
-            assertThat(disabled.needsWarning()).isFalse();
-        }
-        assertThat(coverage.getStatus()).isEqualTo(expected);
-        assertThat(coverage.needsWarning()).isEqualTo(expected != AnalyzerStatus.SUCCESS);
-        if (expected != AnalyzerStatus.SUCCESS) assertThat(coverage.getMessage()).isNotBlank();
-        assertThat(analyzer.consumeReviewResult(new AnalysisContext(video, null, input, null))).isEmpty();
+        var coverage = captor.getValue().coverage();
+        assertThat(coverage).filteredOn(c -> c.getStep() == CoverageStep.SPEECH_REVIEW).singleElement()
+                .extracting(AnalysisCoverage::getStatus).isEqualTo(AnalyzerStatus.SUCCESS);
+        assertThat(coverage).filteredOn(c -> c.getStep() == CoverageStep.FACT_ENTITY).singleElement()
+                .satisfies(c -> {
+                    assertThat(c.getStatus()).isEqualTo(AnalyzerStatus.FAILED);
+                    assertThat(c.getMessage()).contains("검색 판정 호출 실패");
+                });
+        assertThat(captor.getValue().findings()).hasSize(1);
         verify(progress, never()).fail(anyLong(), anyString(), anyString());
-        assertThat(captor.getValue().diagnostics()).singleElement().extracting(ReviewDiagnostics::status).isEqualTo(expected);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    static Object failureCode(String name) {
+        try {
+            Class type = Class.forName("com.example.oops.client.OpenAiClient$FailureCode");
+            return Enum.valueOf(type, name);
+        } catch (ClassNotFoundException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    static void await(java.util.concurrent.CountDownLatch latch) {
+        try {
+            if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("analyzers did not overlap");
+        } catch (InterruptedException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    static ContentAnalyzer analyzer(String key, java.util.function.Supplier<List<RiskFinding>> body) {
+        return new ContentAnalyzer() {
+            public String key() { return key; }
+            public String displayName() { return key; }
+            public boolean supports(AnalysisContext context) { return true; }
+            public List<RiskFinding> analyze(AnalysisContext context) { return body.get(); }
+        };
     }
 }

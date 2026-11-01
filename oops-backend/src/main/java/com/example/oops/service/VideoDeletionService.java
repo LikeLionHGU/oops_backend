@@ -40,8 +40,6 @@ public class VideoDeletionService {
     private final TranscriptSegmentRepository transcriptRepository;
     private final VideoFrameRepository videoFrameRepository;
     private final StorageService storageService;
-    private final ReviewDiagnosticsStore diagnosticsStore;
-    private final ExpressionOccurrenceRepository expressionRepository;
 
     @Transactional
     public void delete(Long videoId) {
@@ -63,7 +61,6 @@ public class VideoDeletionService {
                         catch (RuntimeException e) { log.error("[delete] DB 삭제 후 파일 정리 실패 videoId={}", videoId, e); }
                     }
                 });
-        diagnosticsStore.removeAfterCommit(videoId);
 
         log.info("[delete] videoId={} DB 삭제 요청, 커밋 후 파일 정리", videoId);
     }
@@ -77,7 +74,6 @@ public class VideoDeletionService {
 
     /** 참조 순서를 지켜 자식부터 지운다. */
     private void deleteChildren(Long videoId) {
-        expressionRepository.deleteByVideoId(videoId);
         actionRepository.deleteByVideoId(videoId);       // risk_finding 참조
         referenceRepository.deleteByVideoId(videoId);    // risk_finding 참조
         coverageRepository.deleteByVideoId(videoId);

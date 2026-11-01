@@ -163,13 +163,43 @@ public class OpenAiClient {
      */
     public static final class CallScope {
         private final long videoId;
+        /** 사용량을 함께 올릴 상위 집계(영상 전체). 실패는 올리지 않는다(분석기마다 따로 판정). */
+        private final CallScope parent;
         private volatile String analyzer = "-";
         private final java.util.concurrent.atomic.AtomicLongArray usage = new java.util.concurrent.atomic.AtomicLongArray(4); // calls, prompt, cached, completion
         private final java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
         private final java.util.concurrent.atomic.AtomicReference<FailureState> lastFailure = new java.util.concurrent.atomic.AtomicReference<>();
 
         CallScope(long videoId) {
+            this(videoId, null, "-");
+        }
+
+        private CallScope(long videoId, CallScope parent, String analyzer) {
             this.videoId = videoId;
+            this.parent = parent;
+            this.analyzer = analyzer;
+        }
+
+        /** 분석기 하나를 따로 돌릴 때 쓰는 하위 집계. 사용량은 이 영상 전체에 합쳐지고 실패는 따로 센다. */
+        public CallScope child(String analyzerKey) {
+            return new CallScope(videoId, this, analyzerKey == null ? "-" : analyzerKey);
+        }
+
+        public int failures() {
+            return failures.get();
+        }
+
+        public java.util.Optional<String> failureReason() {
+            return java.util.Optional.ofNullable(lastFailure.get()).map(FailureState::message);
+        }
+
+        void addUsage(long prompt, long cached, long completion) {
+            for (CallScope s = this; s != null; s = s.parent) {
+                s.usage.incrementAndGet(0);
+                s.usage.addAndGet(1, prompt);
+                s.usage.addAndGet(2, cached);
+                s.usage.addAndGet(3, completion);
+            }
         }
     }
 
@@ -479,11 +509,7 @@ public class OpenAiClient {
         long cached = usage.prompt_tokens_details() == null
                 ? 0 : usage.prompt_tokens_details().cached_tokens();
 
-        var total = scope.get().usage;
-        total.incrementAndGet(0);
-        total.addAndGet(1, usage.prompt_tokens());
-        total.addAndGet(2, cached);
-        total.addAndGet(3, usage.completion_tokens());
+        scope.get().addUsage(usage.prompt_tokens(), cached, usage.completion_tokens());
 
         log.info("[openai-usage] videoId={} analyzer={} model={} input={} cached={} output={} total={}",
                 scope.get().videoId,

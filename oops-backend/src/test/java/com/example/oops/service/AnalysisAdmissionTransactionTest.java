@@ -68,7 +68,7 @@ class AnalysisAdmissionTransactionTest {
                 var target=videos.findById(id).orElseThrow();
                 var copied=transcriptService.extract(target);
                 assertThat(resultWriter.save(call.getArgument(0),new AnalysisResultWriter.Result(target,ContentGenre.GENERAL,
-                        copied,java.util.List.of(),java.util.List.of(),java.util.List.of(),0,"무료 저장 경로 검증","test-model-not-called",java.util.List.of())))
+                        copied,java.util.List.of(),java.util.List.of(),java.util.List.of(),0,"무료 저장 경로 검증","test-model-not-called")))
                         .isTrue();
                 observed.complete(id);
             } catch(Throwable error) {observed.completeExceptionally(error);}

@@ -36,7 +36,6 @@ public class AnalysisService {
     private final TranscriptSegmentRepository transcriptRepository;
     private final ScreenTextRepository screenTextRepository;
     private final ReviewActionRepository actionRepository;
-    private final ExpressionService expressionService;
 
     /**
      * 업로드 직후 분석 실행 1회를 새로 만든다. 재시도도 같은 admission 경로를 쓴다.
@@ -154,9 +153,6 @@ public class AnalysisService {
                                 lineBefore(transcript, f), lineAfter(transcript, f)))
                         .toList(),
                 video.genreOrGeneral(),
-                expressionService.find(videoId),
-                coverage.stream().filter(c -> c.getStep() == CoverageStep.EXPRESSION_SCAN)
-                        .map(c -> c.getStatus().name()).findFirst().orElse("NOT_ANALYZED"),
                 com.example.oops.dto.RepeatedPassageDto.from(findings),
                 com.example.oops.dto.RelatedFindingEvidenceDto.from(findings)
         );

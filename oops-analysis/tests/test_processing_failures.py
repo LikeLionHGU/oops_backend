@@ -6,17 +6,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
-from app import main, media, ocr, stt, ocr_worker
-
-
-async def inline_ocr_for_worker_unit_test(payload, request):
-    # These tests cover worker cleanup. Real OS supervision is tested separately.
-    try:
-        return ocr_worker.perform(payload)
-    except media.MediaError as exc:
-        raise HTTPException(400, str(exc))
-    except ocr.OcrProcessingFailed as exc:
-        raise HTTPException(503, str(exc))
+from app import main, media, stt
 
 
 @pytest.mark.parametrize(("model", "groq_key", "openai_key", "expected"), [
@@ -28,12 +18,11 @@ async def inline_ocr_for_worker_unit_test(payload, request):
 def test_health_checks_key_for_the_selected_stt_provider(monkeypatch, model, groq_key, openai_key, expected):
     monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(
         stt_model=None, whisper_model=model, groq_api_key=groq_key, openai_api_key=openai_key,
-        analysis_profile="default", effective_ocr_timeout_sec=540, max_ocr_frames=300))
-    monkeypatch.setattr(main.ocr, "is_available", lambda: False)
+        analysis_profile="default"))
     assert main.health()["sttAvailable"] is expected
 
 
-@pytest.mark.parametrize("endpoint", ["probe", "transcribe", "ocr"])
+@pytest.mark.parametrize("endpoint", ["probe", "transcribe"])
 @pytest.mark.parametrize("file_upload", [True, False])
 @pytest.mark.parametrize("fail", [True, False])
 def test_endpoints_clean_owned_workdir_but_not_source_or_saved_frames(tmp_path, monkeypatch, endpoint, file_upload, fail):
@@ -47,16 +36,12 @@ def test_endpoints_clean_owned_workdir_but_not_source_or_saved_frames(tmp_path, 
     video = media.PreparedVideo(source, work, 10, "fixture")
     monkeypatch.setattr(main, "prepare", lambda *args: video)
     monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(max_duration_sec=5400, effective_max_duration_sec=5400, default_interval_sec=4))
-    monkeypatch.setattr(ocr_worker, "prepare", lambda *args: video)
-    monkeypatch.setattr(ocr_worker, "get_settings", main.get_settings)
-    monkeypatch.setattr(main.ocr_jobs, "run", inline_ocr_for_worker_unit_test)
 
     def process(*args):
         if fail:
             raise media.MediaError("synthetic failure")
         return {"segments": [], "items": []}
     monkeypatch.setattr(main.stt, "transcribe", process)
-    monkeypatch.setattr(main.ocr, "run", process)
     if endpoint == "probe" and fail:
         monkeypatch.setattr(main, "get_settings", lambda: (_ for _ in ()).throw(media.MediaError("synthetic failure")))
     request = {"filePath": str(source)} if file_upload else {"videoUrl": "https://youtu.be/fixture"}
@@ -137,34 +122,3 @@ def test_failed_chunk_prevents_any_transcription_api_call(tmp_path, monkeypatch)
     create.assert_not_called()
 
 
-@pytest.mark.parametrize("results, expected", [([None, None], "SUCCESS"), ([None, "fail"], "PARTIAL"),
-                                               (["fail", "fail"], "FAILED"), ([], "FAILED")])
-def test_ocr_processing_state_including_legitimate_no_text(monkeypatch, results, expected):
-    class Engine:
-        def ocr(self, path, cls=True):
-            if results[int(path)] == "fail": raise RuntimeError("synthetic frame failure")
-            return []  # Successful recognition, no text.
-    monkeypatch.setattr(ocr, "_engine", lambda: Engine())
-    monkeypatch.setattr(ocr, "_adjust_interval", lambda *args: 1)
-    monkeypatch.setattr(ocr, "extract_frames", lambda *args: [(i * 1000, Path(str(i))) for i in range(len(results))])
-    monkeypatch.setattr(ocr, "_frame_size", lambda *args: None)
-    video = SimpleNamespace(duration_sec=10)
-    if expected == "FAILED":
-        with pytest.raises(ocr.OcrProcessingFailed): ocr.run(video, 1)
-    else:
-        result = ocr.run(video, 1)
-        assert result["items"] == []
-        assert result["processing"] == {"status": expected, "totalFrames": 2,
-                                         "successfulFrames": results.count(None), "failedFrames": results.count("fail")}
-
-
-def test_total_ocr_failure_is_http_503_and_cleans_workdir(tmp_path, monkeypatch):
-    work = tmp_path / "owned-work"
-    work.mkdir()
-    monkeypatch.setattr(main, "prepare", lambda *args: media.PreparedVideo(tmp_path / "source", work, 10))
-    monkeypatch.setattr(ocr_worker, "prepare", main.prepare)
-    monkeypatch.setattr(main.ocr_jobs, "run", inline_ocr_for_worker_unit_test)
-    monkeypatch.setattr(main.ocr, "run", lambda *args: (_ for _ in ()).throw(ocr.OcrProcessingFailed("synthetic OCR failure")))
-    response = TestClient(main.app).post("/ocr", json={"filePath": "fixture"})
-    assert response.status_code == 503
-    assert not work.exists()

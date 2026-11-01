@@ -33,9 +33,6 @@ public record AnalysisReportResponse(
 
         // ---- 아래는 내부 확장. 프론트 계약은 아니다 ----
         ContentGenre genre,
-        /** Optional watch-list occurrences, excluded from events, score and reviewSummary. */
-        List<ExpressionOccurrenceDto> expressionOccurrences,
-        String expressionDetectionStatus,
         /** Advisory repeated raw passages; events and review counts remain unchanged. */
         List<RepeatedPassageDto> repeatedPassages,
         /** Pairwise shared evidence only; does not establish same issue/target or merge events. */

@@ -41,12 +41,6 @@ def test_duration_guard_rejects_unknown_nonfinite_and_nonpositive(value):
     with pytest.raises(media.MediaError):main._guard_duration(value)
 
 
-@pytest.mark.parametrize('value',[0,-1])
-def test_invalid_ocr_interval_is_rejected_before_processing(monkeypatch,value):
-    monkeypatch.setattr(main,'prepare',lambda *a:pytest.fail('media prepared'))
-    assert TestClient(main.app).post('/ocr',json={'filePath':'fixture','intervalSec':value}).status_code==422
-
-
 def test_ocr_uses_actual_pts_not_frame_number(tmp_path,monkeypatch):
     video=media.PreparedVideo(tmp_path/'source',tmp_path,10)
     monkeypatch.setattr(media,'get_settings',lambda:SimpleNamespace(media_timeout_sec=300))

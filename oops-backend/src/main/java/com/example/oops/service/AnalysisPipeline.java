@@ -7,9 +7,7 @@ import com.example.oops.client.OpenAiClient;
 import com.example.oops.config.OopsProperties;
 import com.example.oops.domain.*;
 import com.example.oops.fusion.FindingFusionService;
-import com.example.oops.genre.GenreDetector;
 import com.example.oops.repository.VideoRepository;
-import com.example.oops.screentext.ScreenTextService;
 import com.example.oops.transcript.TranscriptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,9 +38,7 @@ public class AnalysisPipeline {
     private final List<ContentAnalyzer> analyzers;
     private final OopsProperties properties;
     private final TranscriptService transcriptService;
-    private final ScreenTextService screenTextService;
     private final FindingFusionService fusionService;
-    private final GenreDetector genreDetector;
     private final AnalysisServerClient analysisServerClient;
     private final ReportBuilder reportBuilder;
     private final JobProgressService progressService;
@@ -50,11 +46,66 @@ public class AnalysisPipeline {
     private final OpenAiClient openAiClient;
     private final AnalysisResultWriter resultWriter;
 
-    @org.springframework.beans.factory.annotation.Value("${oops.analysis.full-screen-ocr-enabled:false}")
-    private boolean fullScreenOcrEnabled;
+    /** 분석기 하나의 실행 결과 */
+    record AnalyzerRun(String key, List<RiskFinding> findings, AnalyzerStatus status, String message, long tookMs) {}
 
-    private static final String SCREEN_REVIEW_NOT_ENABLED =
-            "기본 발언 분석에서는 전체 화면 글자 검수를 실행하지 않았습니다. 화면에만 있는 표현·개인정보는 확인하지 않았습니다.";
+    private volatile java.util.concurrent.ExecutorService analyzerPool;
+
+    /** 분석기를 동시에 돌리는 스레드. 영상 동시 처리 수 × 분석기 수 정도면 충분하다. */
+    private java.util.concurrent.ExecutorService analyzerPool() {
+        var p = analyzerPool;
+        if (p == null) {
+            synchronized (this) {
+                if (analyzerPool == null) {
+                    var count = new java.util.concurrent.atomic.AtomicInteger();
+                    analyzerPool = java.util.concurrent.Executors.newCachedThreadPool(r -> {
+                        Thread t = new Thread(r, "analyzer-" + count.incrementAndGet());
+                        t.setDaemon(true);
+                        return t;
+                    });
+                }
+                p = analyzerPool;
+            }
+        }
+        return p;
+    }
+
+    @jakarta.annotation.PreDestroy
+    void shutdownAnalyzerPool() {
+        if (analyzerPool != null) analyzerPool.shutdownNow();
+    }
+
+    /**
+     * 분석기 하나를 돌리고 수행 결과를 정리한다. 분석기 하나가 실패해도 다른 분석기 결과는 살린다.
+     * AI 호출이 실패했으면 결과가 비어 있어도 SUCCESS 로 적지 않는다('봤는데 없음'과 '못 봄'은 다르다).
+     */
+    AnalyzerRun runAnalyzer(ContentAnalyzer analyzer, AnalysisContext context, OpenAiClient.CallScope scope) {
+        long start = System.currentTimeMillis();
+        try {
+            List<RiskFinding> produced = analyzer.analyze(context);
+            String notice = analyzer.consumeCoverageNotice(context).orElse(null);
+            long took = System.currentTimeMillis() - start;
+            log.info("[pipeline] 분석기별 결과 analyzer={} → {}건 ({}초)", analyzer.key(), produced.size(), took / 1000);
+            if (scope.failures() > 0) {
+                String why = scope.failureReason().orElse("AI 호출이 실패했습니다.");
+                log.warn("[pipeline] {} AI 호출 {}건 실패 — {}", analyzer.key(), scope.failures(), why);
+                AnalyzerStatus status = notice == null && produced.isEmpty() ? AnalyzerStatus.FAILED : AnalyzerStatus.PARTIAL;
+                return new AnalyzerRun(analyzer.key(), produced, status, notice == null ? why : notice + " " + why, took);
+            }
+            return new AnalyzerRun(analyzer.key(), produced, coverageStatus(AnalyzerStatus.SUCCESS, notice), notice, took);
+        } catch (java.util.concurrent.CancellationException e) {
+            throw e;
+        } catch (Exception e) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+            log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);
+            return new AnalyzerRun(analyzer.key(), List.of(), AnalyzerStatus.FAILED, "분석 중 오류가 발생했습니다.",
+                    System.currentTimeMillis() - start);
+        } finally {
+            analyzer.consumeCoverageNotice(context);
+            analyzer.consumeContextLimitNotice(context);
+        }
+    }
+
 
     /** Synchronous worker body; AnalysisDispatchService owns bounded async admission. */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -85,9 +136,6 @@ public class AnalysisPipeline {
             return;
         }
 
-        // Stored transcript replay is explicitly text-only, even if full OCR is globally enabled.
-        boolean runFullScreenOcr = fullScreenOcrEnabled && !video.hasStoredTranscript();
-
         // 단계별 소요 시간을 재서 마지막에 한 줄로 보여준다.
         // 어디가 느린지 짐작하지 않고 숫자로 확인하기 위해서다.
         Map<String, Long> elapsed = new LinkedHashMap<>();
@@ -102,9 +150,6 @@ public class AnalysisPipeline {
             long mark = System.currentTimeMillis();
             Map<CoverageStep, AnalysisCoverage> coverage = new LinkedHashMap<>();
             List<TranscriptSegment> transcript = transcriptService.extract(video);
-            record(coverage, video, CoverageStep.EXPRESSION_SCAN,
-                    transcript.isEmpty() ? AnalyzerStatus.FAILED : AnalyzerStatus.SUCCESS,
-                    transcript.isEmpty() ? "대본이 없어 선택 표현을 확인하지 못했습니다." : null);
             checkStillActive(jobId);
             elapsed.put("STT", System.currentTimeMillis() - mark);
 
@@ -116,75 +161,17 @@ public class AnalysisPipeline {
                                 .orElse("음성을 글자로 옮기지 못했습니다."));
             } else {
                 record(coverage, video, CoverageStep.STT, AnalyzerStatus.SUCCESS,
-                        !video.hasStoredTranscript() ? null : video.getTranscriptSourceVideoId() == null
-                                ? "사용자 제공 스크립트입니다. 원음·화자 정확도는 검증하지 않았고 종료 시각은 다음 자막 경계 추정입니다. 새 음성인식을 수행하지 않았습니다."
-                                : "저장 전사를 재사용했습니다. 새 음성인식을 수행하지 않았습니다.");
+                        !video.hasStoredTranscript() ? null : "저장 전사를 재사용했습니다. 새 음성인식을 수행하지 않았습니다.");
             }
 
-            // Full-screen OCR is explicit opt-in, not a prerequisite for speech analysis.
-            checkStillActive(jobId);
+            // redesign-v3: 입력은 발언(전사)뿐이다. 화면 글자(OCR)·장면 분석·영상 유형 판별은 하지 않는다.
             List<ScreenText> screenTexts = List.of();
-            if (runFullScreenOcr) {
-                progressService.update(jobId, AnalysisStage.OCR, 35);
-                mark = System.currentTimeMillis();
-                screenTexts = screenTextService.extract(video, jobId);
-                com.example.oops.screentext.ScreenTextClassifier.classify(screenTexts, transcript);
-                checkStillActive(jobId);
-                elapsed.put("OCR", System.currentTimeMillis() - mark);
+            ContentGenre genre = video.genreOrGeneral();
 
-                // 글자가 없는 영상도 있으므로 0건이 곧 실패는 아니다.
-                // 분석 서버가 사유를 남겼을 때만 실패로 본다.
-                var ocrAssessment = analysisServerClient.lastOcrAssessment().orElse(null);
-                if (ocrAssessment != null && ocrAssessment.status() != AnalyzerStatus.SUCCESS) {
-                    record(coverage, video, CoverageStep.OCR, ocrAssessment.status(), ocrAssessment.message());
-                } else if (screenTexts.isEmpty() && analysisServerClient.lastFailureDetail().isPresent()) {
-                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.FAILED,
-                            analysisServerClient.lastFailureDetail().orElse(null));
-                } else if (screenTexts.isEmpty()) {
-                    // 돌긴 돌았는데 한 글자도 못 찾았다.
-                    // 자막 없는 영상이면 정상이지만, 자막이 있는데 못 읽은 것일 수도 있다.
-                    // 그 둘을 우리가 구분할 방법이 없으므로 사용자에게 그대로 알린다.
-                    // 그냥 '완료' 로만 두면 "화면은 확인했다" 로 읽힌다.
-                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS,
-                            "화면에서 글자를 찾지 못했습니다. 영상에 자막이 있다면 인식에 실패한 것일 수 있습니다.");
-                } else {
-                    record(coverage, video, CoverageStep.OCR, AnalyzerStatus.SUCCESS, null);
-                }
-            } else {
-                record(coverage, video, CoverageStep.OCR, AnalyzerStatus.NOT_ENABLED, SCREEN_REVIEW_NOT_ENABLED);
-                record(coverage, video, CoverageStep.SCREEN_TEXT_REVIEW, AnalyzerStatus.NOT_ENABLED, SCREEN_REVIEW_NOT_ENABLED);
-                log.info("[pipeline] 전체 OCR 미선택, 발언 분석으로 진행 videoId={}", videoId);
-            }
-            record(coverage, video, CoverageStep.VISUAL, AnalyzerStatus.NOT_ENABLED,
-                    video.hasStoredTranscript() ? "저장 텍스트 실행에서는 영상·프레임 검토를 수행하지 않습니다."
-                    : "영상 전체 장면 분석은 제공하지 않습니다. 발언 후보에 대한 선택적 프레임 확인은 별도로 수행할 수 있습니다.");
-
-            // 영상 유형을 정한다. 업로드할 때 지정했으면 그대로 쓰고, 없으면 대본을 보고 판별한다.
-            // 유형에 따라 실행되는 분석기가 달라지므로 분석기를 돌리기 전에 정해야 한다.
-            ContentGenre genre = video.getGenre();
-            if (genre == null) {
-                checkStillActive(jobId);
-                progressService.update(jobId, AnalysisStage.TEXT_RISK, 42, "영상 유형 판별 중");
-                mark = System.currentTimeMillis();
-                openAiClient.beginAnalyzer("genre");
-                genre = genreDetector.detect(transcript, screenTexts);
-                checkStillActive(jobId);
-                elapsed.put("유형판별", System.currentTimeMillis() - mark);
-            }
-            log.info("[pipeline] videoId={} 유형={}", videoId, genre);
-
-            // 발언도 자막도 못 뽑았으면 분석을 한 게 아니다.
-            //
-            // 여기서 그냥 진행하면 모든 분석기가 스킵되고
-            // '완료 · 확인할 지점 0곳' 으로 끝난다.
-            // 사용자에게는 "검수했는데 문제없다" 로 읽히지만 실제로는
-            // 아무것도 보지 못한 것이다. 이건 거짓말이다.
-            if (transcript.isEmpty() && screenTexts.isEmpty()) {
-                String detail = runFullScreenOcr ? analysisServerClient.lastFailureDetail()
-                        .orElse("영상에서 음성과 화면 글자를 모두 읽지 못했습니다.")
-                        : "음성을 글자로 옮기지 못해 발언을 분석하지 못했습니다. 전체 화면 글자 검수는 선택되지 않았습니다.";
+            // 발언을 못 뽑았으면 분석을 한 게 아니다. '확인할 지점 0곳'으로 끝내면 "검수했는데 문제없다"로 읽힌다.
+            if (transcript.isEmpty()) {
+                String detail = analysisServerClient.lastFailureDetail().orElse("음성을 글자로 옮기지 못해 발언을 분석하지 못했습니다.");
                 log.error("[pipeline] videoId={} 분석 불가: {}", videoId, detail);
-
                 progressService.fail(jobId, "ANALYSIS_FAILED", detail);
                 return;
             }
@@ -193,88 +180,43 @@ public class AnalysisPipeline {
                     com.example.oops.analyzer.ReviewInput.from(transcript, screenTexts),
                     () -> progressService.isStopped(jobId));
 
-            // 3. 분석기 실행 → 논란 후보 수집
-            // 참고 자료가 risk_finding 을 참조하므로 먼저 지운다
-            // 검수 액션도 지운다. 후보 id 가 새로 발급되므로 옛 액션은 엉뚱한 곳을 가리킨다.
-            List<ContentAnalyzer> active = activeAnalyzers().stream()
-                    .filter(a -> runFullScreenOcr || CoverageStep.of(a.key()) != CoverageStep.SCREEN_TEXT_REVIEW)
-                    .toList(); // Excluded stages retain NOT_ENABLED and do not distort progress.
+            // 3. 분석기 실행 — 맥락 확인과 사실대조는 서로 독립이라 동시에 돈다.
+            // 분석기마다 하위 호출 집계(child scope)를 써서 실패는 따로 판정하고 사용량은 영상 전체에 합친다.
+            List<ContentAnalyzer> active = activeAnalyzers();
             List<RiskFinding> candidates = new ArrayList<>();
-            List<com.example.oops.analyzer.ReviewDiagnostics> diagnostics = new ArrayList<>();
-
-            int index = 0;
+            progressService.update(jobId, AnalysisStage.TEXT_RISK, 45,
+                    active.stream().map(ContentAnalyzer::displayName).collect(java.util.stream.Collectors.joining(", ")) + " 중");
+            var videoScope = openAiClient.currentScope();
+            List<java.util.concurrent.CompletableFuture<AnalyzerRun>> runs = new ArrayList<>();
             for (ContentAnalyzer analyzer : active) {
                 checkStillActive(jobId);
-                index++;
-                progressService.update(jobId, stageOf(analyzer),
-                        45 + (35 * index / Math.max(1, active.size())),
-                        analyzer.displayName() + " 중");
-
-                CoverageStep step = CoverageStep.of(analyzer.key());
-
                 if (!analyzer.supports(context)) {
                     String why = openAiClient.isEnabled()
                             ? "이 영상에는 해당하지 않아 건너뛰었습니다."
                             : "AI 키가 없어 이 단계를 수행하지 못했습니다.";
                     log.info("[pipeline] {} 스킵 (조건 불충족)", analyzer.key());
-                    record(coverage, video, step, AnalyzerStatus.SKIPPED, why);
+                    record(coverage, video, CoverageStep.of(analyzer.key()), AnalyzerStatus.SKIPPED, why);
                     continue;
                 }
+                var scope = videoScope.child(analyzer.key());
+                runs.add(java.util.concurrent.CompletableFuture.supplyAsync(
+                        () -> openAiClient.withScope(scope, () -> runAnalyzer(analyzer, context, scope)), analyzerPool()));
+            }
+            for (var future : runs) {
+                AnalyzerRun run;
                 try {
-                    long analyzerStart = System.currentTimeMillis();
-                    openAiClient.beginAnalyzer(analyzer.key());
-
-                    List<RiskFinding> produced = analyzer.analyze(context);
-                    String coverageNotice = analyzer.consumeCoverageNotice(context).orElse(null);
-                    String contextLimitNotice = analyzer.consumeContextLimitNotice(context).orElse(null);
-                    var reviewResult = analyzer.consumeReviewResult(context).orElse(null);
-                    if (reviewResult != null && reviewResult.diagnostics() != null) {
-                        diagnostics.add(reviewResult.diagnostics());
+                    run = future.join();
+                } catch (java.util.concurrent.CompletionException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof java.util.concurrent.CancellationException || progressService.isStopped(jobId)) {
+                        throw new AnalysisStoppedException();
                     }
-                    checkStillActive(jobId);
-
-                    long took = System.currentTimeMillis() - analyzerStart;
-                    elapsed.put(analyzer.key(), took);
-                    candidates.addAll(produced);
-                    log.info("[pipeline] 분석기별 결과 jobId={} analyzer={} → {}건 ({}초)",
-                            jobId, analyzer.key(), produced.size(), took / 1000);
-
-                    // 예외 없이 끝나도 AI 호출이 전부 실패했을 수 있다.
-                    // 요청 한도에 걸리면 조용히 빈손으로 돌아오는데,
-                    // 그걸 성공으로 적으면 사용자는 '봤는데 없다' 로 읽는다.
-                    if (openAiClient.failureCount() > 0) {
-                        String why = openAiClient.failureReason()
-                                .orElse("AI 호출이 실패했습니다.");
-                        log.warn("[pipeline] {} AI 호출 {}건 실패 — {}",
-                                analyzer.key(), openAiClient.failureCount(), why);
-                        AnalyzerStatus status = coverageStatus(
-                                reviewResult == null ? AnalyzerStatus.FAILED : reviewResult.status(), coverageNotice);
-                        record(coverage, video, step,
-                                status,
-                                coverageNotice == null ? why : coverageNotice + " " + why);
-                    } else {
-                        AnalyzerStatus status = reviewResult != null ? reviewResult.status()
-                                        : coverageNotice == null ? AnalyzerStatus.SUCCESS : AnalyzerStatus.PARTIAL;
-                        status = coverageStatus(status, coverageNotice);
-                        record(coverage, video, step, status, coverageNotice);
-                    }
-                    if (contextLimitNotice != null && step != null && coverage.containsKey(step)) {
-                        coverage.get(step).markContextLimited(contextLimitNotice);
-                    }
-                } catch (AnalysisStoppedException e) {
                     throw e;
-                } catch (java.util.concurrent.CancellationException e) {
-                    throw new AnalysisStoppedException();
-                } catch (Exception e) {
-                    // 분석기 하나가 죽어도 나머지 결과는 살린다
-                    log.error("[pipeline] {} 실패, 건너뜁니다", analyzer.key(), e);
-                    record(coverage, video, step, AnalyzerStatus.FAILED,
-                            "분석 중 오류가 발생했습니다.");
-                } finally {
-                    // Also drain results when cancellation or an exception interrupts the normal consume path.
-                    analyzer.consumeReviewResult(context);
-                    analyzer.consumeContextLimitNotice(context);
                 }
+                checkStillActive(jobId);
+                elapsed.put(run.key(), run.tookMs());
+                candidates.addAll(run.findings());
+                record(coverage, video, CoverageStep.of(run.key()), run.status(), run.message());
             }
 
             // 켜지지 않은 단계도 보고 대상이다. 아무 말이 없으면 돌았다고 오해한다.
@@ -302,7 +244,7 @@ public class AnalysisPipeline {
             String summary = reportBuilder.buildSummary(findings);
 
             if (!resultWriter.save(jobId, new AnalysisResultWriter.Result(video, genre, transcript, screenTexts,
-                    coverage.values(), findings, riskScore, summary, openAiClient.videoUsage().model(), diagnostics))) {
+                    coverage.values(), findings, riskScore, summary, openAiClient.videoUsage().model()))) {
                 throw new AnalysisStoppedException();
             }
 
@@ -320,8 +262,6 @@ public class AnalysisPipeline {
             log.error("[pipeline] 실패 jobId={}", jobId, e);
             progressService.fail(jobId, "ANALYSIS_FAILED", "분석 처리 또는 결과 저장에 실패했습니다.");
         } finally {
-            try { screenTextService.releaseFrames(video, jobId); }
-            catch (Exception e) { log.warn("[pipeline] 프레임 해제 표시 실패 jobId={}", jobId, e); }
             openAiClient.endVideo();
         }
     }
@@ -347,17 +287,6 @@ public class AnalysisPipeline {
                 .map(e -> "%s %d초(%d%%)".formatted(
                         e.getKey(), e.getValue() / 1000, e.getValue() * 100 / total))
                 .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    /** 분석기 종류에 맞는 진행 단계를 고른다. 프론트가 단계 라벨을 그리는 데 쓴다. */
-    private AnalysisStage stageOf(ContentAnalyzer analyzer) {
-        return switch (analyzer.key()) {
-            case "screen-text", "screen-text-review" -> AnalysisStage.OCR;
-            case "caption-mismatch", "context-check" -> AnalysisStage.MULTIMODAL;
-            case "entity-check", "monetization" -> AnalysisStage.TEXT_RISK;
-            case "pose" -> AnalysisStage.SCENE_DETECTION;
-            default -> AnalysisStage.TEXT_RISK;
-        };
     }
 
     /**
