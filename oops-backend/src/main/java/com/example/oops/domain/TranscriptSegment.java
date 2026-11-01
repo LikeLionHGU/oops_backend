@@ -29,6 +29,14 @@ public class TranscriptSegment {
     @Column(length = 2000, nullable = false)
     private String text;
 
+    /** 이 행이 속한 분석 실행(analysis_job ID). redesign-v3 이전 행은 null */
+    @Column(name = "run_id")
+    private Long runId;
+
+    public void assignRun(Long runId) {
+        this.runId = runId;
+    }
+
     public TranscriptSegment(Video video, long startMs, long endMs, String text) {
         this.video = video;
         this.startMs = startMs;

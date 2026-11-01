@@ -126,6 +126,16 @@ public class Video extends BaseTimeEntity {
      * 사용자의 검수 진행 상태. 명세 §4.
      * 분석 상태(status)와 별개다. 분석이 끝나도 사람이 안 봤을 수 있다.
      */
+    /**
+     * 화면에 보여줄 분석 실행(analysis_job ID). 재분석이 끝나면 새 실행으로 바뀌고 이전 실행 결과는 남는다.
+     * null 이면 redesign-v3 이전에 저장된 영상이다(run_id 가 null 인 행을 쓴다).
+     */
+    private Long currentRunId;
+
+    public void switchToRun(Long runId) {
+        this.currentRunId = runId;
+    }
+
     @Enumerated(EnumType.STRING)
     @Column(columnDefinition = "varchar(40)")
     private ReviewStatus reviewStatus;

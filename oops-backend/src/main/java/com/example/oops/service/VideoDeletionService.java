@@ -39,6 +39,8 @@ public class VideoDeletionService {
     private final ScreenTextRepository screenTextRepository;
     private final TranscriptSegmentRepository transcriptRepository;
     private final VideoFrameRepository videoFrameRepository;
+    private final AnalysisRunRepository runRepository;
+    private final AnalysisTraceRepository traceRepository;
     private final StorageService storageService;
 
     @Transactional
@@ -82,6 +84,8 @@ public class VideoDeletionService {
         videoFrameRepository.deleteByVideoId(videoId);
         transcriptRepository.deleteByVideoId(videoId);
         reportRepository.deleteByVideoId(videoId);
+        traceRepository.deleteByVideoId(videoId);
+        runRepository.deleteByVideoId(videoId);
         jobRepository.deleteByVideoId(videoId);
     }
 }

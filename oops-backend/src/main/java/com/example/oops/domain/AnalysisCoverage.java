@@ -47,6 +47,14 @@ public class AnalysisCoverage extends BaseTimeEntity {
     /** Nullable for existing rows. Does not change processing status. */
     private Boolean contextLimited;
 
+    /** 이 행이 속한 분석 실행(analysis_job ID). redesign-v3 이전 행은 null */
+    @Column(name = "run_id")
+    private Long runId;
+
+    public void assignRun(Long runId) {
+        this.runId = runId;
+    }
+
     public void markContextLimited(String notice) {
         contextLimited = true;
         message = combineMessages(message, notice);

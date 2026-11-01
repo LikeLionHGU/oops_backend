@@ -18,7 +18,8 @@ class VideoDeletionServiceTest {
     private final VideoDeletionService service = new VideoDeletionService(videos, jobs,
             mock(AnalysisReportRepository.class), mock(RiskFindingRepository.class), mock(ReviewReferenceRepository.class),
             mock(ReviewActionRepository.class), mock(AnalysisCoverageRepository.class), mock(ScreenTextRepository.class),
-            mock(TranscriptSegmentRepository.class), mock(VideoFrameRepository.class), storage);
+            mock(TranscriptSegmentRepository.class), mock(VideoFrameRepository.class), mock(AnalysisRunRepository.class),
+            mock(AnalysisTraceRepository.class), storage);
 
     @AfterEach void clear() {
         if (TransactionSynchronizationManager.isSynchronizationActive()) TransactionSynchronizationManager.clearSynchronization();

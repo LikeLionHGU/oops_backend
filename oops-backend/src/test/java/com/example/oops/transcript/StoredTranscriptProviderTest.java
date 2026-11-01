@@ -14,12 +14,12 @@ class StoredTranscriptProviderTest {
         org.springframework.test.util.ReflectionTestUtils.setField(video,"id",2L);
         var lines=List.of(new TranscriptProvider.TranscriptLine(100,900," 원문 그대로 "));
         video.assignTranscriptSnapshot(1L,TranscriptSnapshot.sha256(lines));
-        when(repository.findByVideoIdOrderByStartMsAscIdAsc(2L)).thenReturn(List.of(new TranscriptSegment(video,100,900," 원문 그대로 ")));
+        when(repository.findCurrentByVideoId(2L)).thenReturn(List.of(new TranscriptSegment(video,100,900," 원문 그대로 ")));
         assertThat(provider.fetch(video)).isEqualTo(lines);
         assertThat(provider.supports(video)).isTrue();
-        when(repository.findByVideoIdOrderByStartMsAscIdAsc(2L)).thenReturn(List.of(new TranscriptSegment(video,100,900,"원문 그대로")));
+        when(repository.findCurrentByVideoId(2L)).thenReturn(List.of(new TranscriptSegment(video,100,900,"원문 그대로")));
         assertThatThrownBy(()->provider.fetch(video)).isInstanceOf(IllegalStateException.class);
-        when(repository.findByVideoIdOrderByStartMsAscIdAsc(2L)).thenReturn(List.of());
+        when(repository.findCurrentByVideoId(2L)).thenReturn(List.of());
         assertThatThrownBy(()->provider.fetch(video)).isInstanceOf(IllegalArgumentException.class);
         assertThat(provider.supports(Video.builder().sourceType(SourceType.YOUTUBE).build())).isFalse();
     }

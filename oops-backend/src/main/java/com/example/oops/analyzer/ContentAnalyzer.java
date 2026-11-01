@@ -36,6 +36,14 @@ public interface ContentAnalyzer {
         return Optional.empty();
     }
 
+    /**
+     * 방금 analyze() 의 내부 기록(후보·제외·중단·검색어·판정)을 꺼낸다. 같은 스레드에서 analyze() 직후에 부른다.
+     * 파이프라인이 결과와 함께 analysis_trace 에 저장한다. (redesign-v3 8단계)
+     */
+    default Optional<AnalyzerTrace> consumeTrace(AnalysisContext context) {
+        return Optional.empty();
+    }
+
     /** Bounded input is a caveat, not evidence that processing failed or a response was missing. */
     default Optional<String> consumeContextLimitNotice(AnalysisContext context) {
         return Optional.empty();

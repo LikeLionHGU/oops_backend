@@ -128,6 +128,14 @@ public class RiskFinding extends BaseTimeEntity {
     @Column(length = 200)
     private String criteriaVersion;
 
+    /** 이 행이 속한 분석 실행(analysis_job ID). redesign-v3 이전 행은 null */
+    @Column(name = "run_id")
+    private Long runId;
+
+    public void assignRun(Long runId) {
+        this.runId = runId;
+    }
+
     public void recordCriterion(String criterionId, String criterionTitle, String criteriaVersion) {
         this.criterionId = criterionId;
         this.criterionTitle = criterionTitle;

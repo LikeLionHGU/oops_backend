@@ -47,7 +47,12 @@ public class AnalysisPipeline {
     private final AnalysisResultWriter resultWriter;
 
     /** 분석기 하나의 실행 결과 */
-    record AnalyzerRun(String key, List<RiskFinding> findings, AnalyzerStatus status, String message, long tookMs) {}
+    record AnalyzerRun(String key, List<RiskFinding> findings, AnalyzerStatus status, String message, long tookMs,
+                       com.example.oops.analyzer.AnalyzerTrace trace) {
+        AnalyzerRun(String key, List<RiskFinding> findings, AnalyzerStatus status, String message, long tookMs) {
+            this(key, findings, status, message, tookMs, null);
+        }
+    }
 
     private volatile java.util.concurrent.ExecutorService analyzerPool;
 
@@ -84,15 +89,16 @@ public class AnalysisPipeline {
         try {
             List<RiskFinding> produced = analyzer.analyze(context);
             String notice = analyzer.consumeCoverageNotice(context).orElse(null);
+            var trace = analyzer.consumeTrace(context).orElse(null);
             long took = System.currentTimeMillis() - start;
             log.info("[pipeline] 분석기별 결과 analyzer={} → {}건 ({}초)", analyzer.key(), produced.size(), took / 1000);
             if (scope.failures() > 0) {
                 String why = scope.failureReason().orElse("AI 호출이 실패했습니다.");
                 log.warn("[pipeline] {} AI 호출 {}건 실패 — {}", analyzer.key(), scope.failures(), why);
                 AnalyzerStatus status = notice == null && produced.isEmpty() ? AnalyzerStatus.FAILED : AnalyzerStatus.PARTIAL;
-                return new AnalyzerRun(analyzer.key(), produced, status, notice == null ? why : notice + " " + why, took);
+                return new AnalyzerRun(analyzer.key(), produced, status, notice == null ? why : notice + " " + why, took, trace);
             }
-            return new AnalyzerRun(analyzer.key(), produced, coverageStatus(AnalyzerStatus.SUCCESS, notice), notice, took);
+            return new AnalyzerRun(analyzer.key(), produced, coverageStatus(AnalyzerStatus.SUCCESS, notice), notice, took, trace);
         } catch (java.util.concurrent.CancellationException e) {
             throw e;
         } catch (Exception e) {
@@ -102,6 +108,7 @@ public class AnalysisPipeline {
                     System.currentTimeMillis() - start);
         } finally {
             analyzer.consumeCoverageNotice(context);
+            analyzer.consumeTrace(context);
             analyzer.consumeContextLimitNotice(context);
         }
     }
@@ -184,6 +191,8 @@ public class AnalysisPipeline {
             // 분석기마다 하위 호출 집계(child scope)를 써서 실패는 따로 판정하고 사용량은 영상 전체에 합친다.
             List<ContentAnalyzer> active = activeAnalyzers();
             List<RiskFinding> candidates = new ArrayList<>();
+            List<AnalysisResultWriter.TraceEntry> traces = new ArrayList<>();
+            String criteriaVersion = null;
             progressService.update(jobId, AnalysisStage.TEXT_RISK, 45,
                     active.stream().map(ContentAnalyzer::displayName).collect(java.util.stream.Collectors.joining(", ")) + " 중");
             var videoScope = openAiClient.currentScope();
@@ -216,6 +225,10 @@ public class AnalysisPipeline {
                 checkStillActive(jobId);
                 elapsed.put(run.key(), run.tookMs());
                 candidates.addAll(run.findings());
+                if (run.trace() != null) {
+                    traces.add(new AnalysisResultWriter.TraceEntry(run.key(), run.trace().json()));
+                    if (criteriaVersion == null) criteriaVersion = run.trace().criteriaVersion();
+                }
                 record(coverage, video, CoverageStep.of(run.key()), run.status(), run.message());
             }
 
@@ -244,7 +257,8 @@ public class AnalysisPipeline {
             String summary = reportBuilder.buildSummary(findings);
 
             if (!resultWriter.save(jobId, new AnalysisResultWriter.Result(video, genre, transcript, screenTexts,
-                    coverage.values(), findings, riskScore, summary, openAiClient.videoUsage().model()))) {
+                    coverage.values(), findings, riskScore, summary, openAiClient.videoUsage().model(),
+                    criteriaVersion, video.hasStoredTranscript(), traces))) {
                 throw new AnalysisStoppedException();
             }
 

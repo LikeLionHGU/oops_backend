@@ -152,7 +152,7 @@ class CompletionTransactionTest {
             assertThat(job.getStatus()).isEqualTo(AnalysisStatus.FAILED);
             assertThat(job.getVideo().getStatus()).isEqualTo(AnalysisStatus.FAILED);
             assertThat(reports.findByVideoId(job.getVideo().getId())).isEmpty();
-            assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
+            assertThat(segments.findCurrentByVideoId(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
         });
         verify(publisher, never()).publish(argThat(j -> j.getStatus() == AnalysisStatus.COMPLETED));
     }
@@ -172,7 +172,7 @@ class CompletionTransactionTest {
         assertThatThrownBy(() -> writer.save(id, result)).isInstanceOf(RuntimeException.class);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.PROCESSING);
         assertThat(reports.findByVideoId(video.getId()).orElseThrow().getSummary()).isEqualTo("이전 리포트");
-        assertThat(segments.findByVideoIdOrderByStartMsAsc(video.getId())).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
+        assertThat(segments.findCurrentByVideoId(video.getId())).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
         verifyNoInteractions(publisher);
     }
     @Test void externalExtractionHasNoTransactionOrCheckedOutConnection() throws Exception {
@@ -196,7 +196,7 @@ class CompletionTransactionTest {
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.FAILED);
         Long videoId=new TransactionTemplate(manager).execute(tx -> jobs.findById(id).orElseThrow().getVideo().getId());
         assertThat(reports.findByVideoId(videoId)).isEmpty();
-        assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).isEmpty();
+        assertThat(segments.findCurrentByVideoId(videoId)).isEmpty();
     }
     @Test void cancelledThenRetriedRunCannotReplacePreviousRows() throws Exception {
         Long id=seedPipeline();
@@ -217,7 +217,7 @@ class CompletionTransactionTest {
         });
         target.run(id);
         assertThat(jobs.findById(id).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.CANCELLED);
-        assertThat(segments.findByVideoIdOrderByStartMsAsc(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
+        assertThat(segments.findCurrentByVideoId(videoId)).extracting(TranscriptSegment::getText).containsExactly("이전 원문");
         assertThat(videos.findById(videoId).orElseThrow().getStatus()).isEqualTo(AnalysisStatus.PENDING);
     }
     @Test void writerRejectsSupersededAndCancelledSnapshotBeforeDeletingAnything() {
@@ -232,7 +232,7 @@ class CompletionTransactionTest {
         assertThat(writer.save(id, result)).isFalse();
         new TransactionTemplate(manager).executeWithoutResult(tx -> jobs.saveAndFlush(new AnalysisJob(video)));
         assertThat(writer.save(id, result)).isFalse();
-        assertThat(segments.findByVideoIdOrderByStartMsAsc(video.getId())).extracting(TranscriptSegment::getText).containsExactly("보존 원문");
+        assertThat(segments.findCurrentByVideoId(video.getId())).extracting(TranscriptSegment::getText).containsExactly("보존 원문");
     }
     @Test void twoAnalysesCanWaitOnMediaWithOnlyOneDatabaseConnection() throws Exception {
         Long first=seedPipeline(), second=seedPipeline();

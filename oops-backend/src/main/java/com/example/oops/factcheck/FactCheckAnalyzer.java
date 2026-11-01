@@ -54,6 +54,7 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
     private final StorageService storage;
 
     private final ThreadLocal<String> notice = new ThreadLocal<>();
+    private final ThreadLocal<com.example.oops.analyzer.AnalyzerTrace> trace = new ThreadLocal<>();
     private volatile ExecutorService pool;
 
     @Override
@@ -81,6 +82,7 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         notice.remove();
+        trace.remove();
         List<ContextLine> lines = context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH)
                 .map(s -> new ContextLine(s.id(), s.startMs(), s.endMs(), s.text())).toList();
@@ -114,6 +116,13 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
             notice.set(sb.toString());
         }
         return result.accepted().stream().map(a -> toFinding(context, a)).toList();
+    }
+
+    @Override
+    public Optional<com.example.oops.analyzer.AnalyzerTrace> consumeTrace(AnalysisContext context) {
+        var value = trace.get();
+        trace.remove();
+        return Optional.ofNullable(value);
     }
 
     @Override
@@ -157,8 +166,6 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
     private void writeTrace(AnalysisContext context, FactCheckEngine.Result result) {
         try {
             Long videoId = context.video().getId();
-            var dir = storage.root().resolve("fact-traces").resolve(String.valueOf(videoId));
-            Files.createDirectories(dir);
             Map<String, Object> doc = new LinkedHashMap<>();
             doc.put("videoId", videoId);
             doc.put("createdAt", Instant.now().toString());
@@ -171,7 +178,11 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
             doc.put("accepted", result.accepted().stream().map(a -> Map.of("claimId", a.claimId(), "subject", a.subject(),
                     "claim", a.claim(), "sources", a.sources().stream().map(s -> s.item().url()).toList())).toList());
             doc.put("trace", result.trace());
-            Files.writeString(dir.resolve(System.currentTimeMillis() + ".json"), JSON.writeValueAsString(doc));
+            String json = JSON.writeValueAsString(doc);
+            trace.set(new com.example.oops.analyzer.AnalyzerTrace(json, null));
+            var dir = storage.root().resolve("fact-traces").resolve(String.valueOf(videoId));
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve(System.currentTimeMillis() + ".json"), json);
         } catch (Exception e) {
             log.warn("[fact-check] 내부 기록 저장 실패: {}", e.getMessage());
         }

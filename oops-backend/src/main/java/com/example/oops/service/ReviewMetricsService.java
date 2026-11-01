@@ -32,8 +32,8 @@ public class ReviewMetricsService {
     private final ReviewActionRepository actionRepository;
 
     public ReviewMetricsResponse collect() {
-        List<RiskFinding> findings = findingRepository.findAll();
-        List<ReviewAction> actions = actionRepository.findAll();
+        List<RiskFinding> findings = findingRepository.findAllCurrent();
+        List<ReviewAction> actions = actionRepository.findAllCurrent();
 
         Map<ReviewActionType, Integer> counts = new EnumMap<>(ReviewActionType.class);
         for (ReviewActionType type : ReviewActionType.values()) {

@@ -63,6 +63,11 @@ public class ReviewActionService {
             throw new BusinessException(ErrorCode.EVENT_NOT_FOUND,
                     "이 영상의 검토 후보가 아닙니다.");
         }
+        // 재분석 전 실행의 카드는 이력이다. 결정은 지금 보여주는 실행의 카드에만 붙인다.
+        if (!java.util.Objects.equals(finding.getRunId(), video.getCurrentRunId())) {
+            throw new BusinessException(ErrorCode.EVENT_NOT_FOUND,
+                    "이전 분석 실행의 검토 후보입니다. 최신 결과에서 다시 선택해주세요.");
+        }
 
         ReviewAction action = actionRepository.findByFindingId(finding.getId())
                 .map(existing -> {
@@ -92,8 +97,8 @@ public class ReviewActionService {
     public ReviewCompletionResponse complete(Long videoId) {
         Video video = videoService.getEntity(videoId);
 
-        List<RiskFinding> findings = findingRepository.findByVideoId(videoId);
-        List<ReviewAction> actions = actionRepository.findByVideoIdOrderByIdAsc(videoId);
+        List<RiskFinding> findings = findingRepository.findCurrentByVideoId(videoId);
+        List<ReviewAction> actions = actionRepository.findCurrentByVideoId(videoId);
 
         Set<Long> decided = new HashSet<>();
         int confirmed = 0, edited = 0, hold = 0, notUseful = 0;
@@ -140,7 +145,7 @@ public class ReviewActionService {
      */
     public List<ReviewActionResponse> findByVideo(Long videoId) {
         videoService.getEntity(videoId);
-        return actionRepository.findByVideoIdOrderByIdAsc(videoId).stream()
+        return actionRepository.findCurrentByVideoId(videoId).stream()
                 .map(ReviewActionResponse::from)
                 .toList();
     }

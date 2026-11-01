@@ -52,6 +52,7 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
     private final StorageService storage;
 
     private final ThreadLocal<String> notice = new ThreadLocal<>();
+    private final ThreadLocal<com.example.oops.analyzer.AnalyzerTrace> trace = new ThreadLocal<>();
     private volatile java.util.concurrent.ExecutorService pool;
 
     /** 맥락 확인 AI 호출용 작업 스레드. 영상 여러 개가 함께 써도 서버 전체 상한은 OpenAiClient 가 지킨다. */
@@ -96,6 +97,7 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
     @Override
     public List<RiskFinding> analyze(AnalysisContext context) {
         notice.remove();
+        trace.remove();
         var criteria = criteriaSource.load();
         List<ContextLine> lines = context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH)
@@ -135,6 +137,13 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
     }
 
     @Override
+    public Optional<com.example.oops.analyzer.AnalyzerTrace> consumeTrace(AnalysisContext context) {
+        var value = trace.get();
+        trace.remove();
+        return Optional.ofNullable(value);
+    }
+
+    @Override
     public Optional<String> consumeCoverageNotice(AnalysisContext context) {
         String value = notice.get();
         notice.remove();
@@ -169,8 +178,6 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
     private void writeTrace(AnalysisContext context, int lineCount, ContextReviewEngine.Result result) {
         try {
             Long videoId = context.video().getId();
-            Path dir = storage.root().resolve("context-traces").resolve(String.valueOf(videoId));
-            Files.createDirectories(dir);
             Map<String, Object> doc = new LinkedHashMap<>();
             doc.put("videoId", videoId);
             doc.put("createdAt", Instant.now().toString());
@@ -186,7 +193,11 @@ public class ContextCriteriaAnalyzer implements ContentAnalyzer {
                     "allowedJudgments", a.allowedJudgments(), "stoppedJudgments", a.stoppedJudgments(),
                     "expanded", a.expanded())).toList());
             doc.put("trace", result.trace());
-            Files.writeString(dir.resolve(System.currentTimeMillis() + ".json"), JSON.writeValueAsString(doc));
+            String json = JSON.writeValueAsString(doc);
+            trace.set(new com.example.oops.analyzer.AnalyzerTrace(json, result.criteriaVersion()));
+            Path dir = storage.root().resolve("context-traces").resolve(String.valueOf(videoId));
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve(System.currentTimeMillis() + ".json"), json);
         } catch (Exception e) {
             // 내부 기록을 못 남겨도 분석 결과는 살린다. 결과를 "문제없음"으로 바꾸지는 않는다.
             log.warn("[context-review] 내부 기록 저장 실패: {}", e.getMessage());

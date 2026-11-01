@@ -15,7 +15,7 @@ public class StoredTranscriptProvider implements TranscriptProvider {
     private final TranscriptSegmentRepository transcripts;
     @Override public boolean supports(Video video) {return video.hasStoredTranscript();}
     @Override public List<TranscriptLine> fetch(Video video) {
-        var lines=transcripts.findByVideoIdOrderByStartMsAscIdAsc(video.getId()).stream()
+        var lines=transcripts.findCurrentByVideoId(video.getId()).stream()
                 .map(s->new TranscriptLine(s.getStartMs(),s.getEndMs(),s.getText())).toList();
         if(!TranscriptSnapshot.sha256(lines).equals(video.getTranscriptSnapshotSha256()))
             throw new IllegalStateException("Stored transcript snapshot changed");

@@ -120,15 +120,15 @@ public class AnalysisService {
 
         // 결정 내역을 한 번에 읽어 카드마다 붙인다
         Map<Long, ReviewActionType> actions = new HashMap<>();
-        for (ReviewAction a : actionRepository.findByVideoIdOrderByIdAsc(videoId)) {
+        for (ReviewAction a : actionRepository.findCurrentByVideoId(videoId)) {
             actions.put(a.getFinding().getId(), a.getAction());
         }
 
         // 발언 카드에 앞뒤 줄을 붙인다. 명세 v2.1 §10 — contextBefore / contextAfter
         List<TranscriptSegment> transcript =
-                transcriptRepository.findByVideoIdOrderByStartMsAsc(videoId);
+                transcriptRepository.findCurrentByVideoId(videoId);
 
-        List<AnalysisCoverage> coverage = coverageRepository.findByVideoIdOrderByIdAsc(videoId);
+        List<AnalysisCoverage> coverage = coverageRepository.findCurrentByVideoId(videoId);
         List<AnalysisWarningDto> warnings = coverage.stream()
                 .filter(AnalysisCoverage::needsWarning)
                 .map(AnalysisWarningDto::from)
@@ -226,7 +226,7 @@ public class AnalysisService {
 
     /** STT 대본 원문 (디버깅·대본 패널용) */
     public List<TranscriptLineDto> getTranscript(Long videoId) {
-        return transcriptRepository.findByVideoIdOrderByStartMsAsc(videoId).stream()
+        return transcriptRepository.findCurrentByVideoId(videoId).stream()
                 .map(TranscriptLineDto::from)
                 .toList();
     }

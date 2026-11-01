@@ -45,7 +45,7 @@ class TranscriptReplayServiceTest {
                 new TranscriptProvider.TranscriptLine(0,1500,"시작 시간이 같은 다음 줄"));
         assertThat(transcriptService.extract(target)).extracting(TranscriptSegment::getText).containsExactly(" 원문 첫 줄 ","시작 시간이 같은 다음 줄");
         verify(worker,never()).transcribe(any());
-        assertThat(transcripts.findByVideoIdOrderByStartMsAscIdAsc(source.getId())).extracting(TranscriptSegment::getId)
+        assertThat(transcripts.findCurrentByVideoId(source.getId())).extracting(TranscriptSegment::getId)
                 .containsExactly(first.getId(),second.getId());
         assertThat(source.getStatus()).isEqualTo(AnalysisStatus.COMPLETED);
         assertThat(source.getStorageKey()).isEqualTo("videos/source/original.mp4");

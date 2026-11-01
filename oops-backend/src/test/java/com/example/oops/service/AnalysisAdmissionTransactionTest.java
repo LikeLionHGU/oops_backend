@@ -63,7 +63,7 @@ class AnalysisAdmissionTransactionTest {
         doAnswer(call->{
             try {
                 Long id=progress.begin(call.getArgument(0));
-                assertThat(transcripts.findByVideoIdOrderByStartMsAscIdAsc(id)).extracting(TranscriptSegment::getText)
+                assertThat(transcripts.findCurrentByVideoId(id)).extracting(TranscriptSegment::getText)
                         .containsExactly("저장된 전체 전사");
                 var target=videos.findById(id).orElseThrow();
                 var copied=transcriptService.extract(target);
