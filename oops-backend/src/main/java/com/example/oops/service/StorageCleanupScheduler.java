@@ -34,7 +34,7 @@ public class StorageCleanupScheduler {
     private final StorageService storageService;
     private final SourceRetentionService sourceRetentionService;
 
-    /** 원본만 매시 정각 정리한다. 리포트·대본·프레임은 남긴다. */
+    /** 원본 영상과 화면 캡처를 매시 정각 정리한다. 대본·결과·검수 기록(텍스트)은 남긴다. */
     @Scheduled(cron = "0 0 * * * *")
     public void purgeExpiredSources() {
         int retentionHours = properties.storage().sourceRetentionHoursOrDefault();
@@ -44,7 +44,7 @@ public class StorageCleanupScheduler {
 
         LocalDateTime threshold = LocalDateTime.now().minusHours(retentionHours);
         List<Video> targets = videoRepository.findByCreatedAtBeforeAndStatusIn(
-                threshold, List.of(AnalysisStatus.COMPLETED, AnalysisStatus.FAILED));
+                threshold, SourceRetentionService.TERMINAL);
 
         int deleted = 0;
         for (Video video : targets) {

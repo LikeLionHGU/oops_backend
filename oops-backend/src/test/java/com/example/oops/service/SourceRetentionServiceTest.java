@@ -55,6 +55,14 @@ class SourceRetentionServiceTest {
         verifyNoInteractions(storage);
     }
 
+    @Test void cancelledVideoSourceAndFramesAreDeletedButTextRecordsStay() {
+        video(AnalysisStatus.CANCELLED, cutoff.minusHours(1));
+        assertThat(service.purgeIfExpired(1L, cutoff)).isTrue();
+        verify(storage).deleteSourceFile(1L);
+        verify(storage).deleteFrames(1L);
+        verify(storage, never()).deleteVideoFiles(1L);
+    }
+
     @Test void missingVideoIsNotDeleted() {
         when(videos.findByIdForUpdate(1L)).thenReturn(Optional.empty());
         assertThat(service.purgeIfExpired(1L, cutoff)).isFalse();

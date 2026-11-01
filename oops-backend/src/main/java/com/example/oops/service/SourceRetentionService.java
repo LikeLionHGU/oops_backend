@@ -15,6 +15,10 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class SourceRetentionService {
+    /** 원본을 지워도 되는 상태. 취소된 영상도 24시간 뒤 원본을 남기지 않는다. (redesign-v3) */
+    public static final List<AnalysisStatus> TERMINAL =
+            List.of(AnalysisStatus.COMPLETED, AnalysisStatus.FAILED, AnalysisStatus.CANCELLED);
+
     private final VideoRepository videos;
     private final AnalysisJobRepository jobs;
     private final StorageService storage;
@@ -23,7 +27,7 @@ public class SourceRetentionService {
     public boolean purgeIfExpired(Long videoId, LocalDateTime threshold) {
         var video = videos.findByIdForUpdate(videoId).orElse(null);
         if (video == null || video.getCreatedAt() == null || !video.getCreatedAt().isBefore(threshold)
-                || !(video.getStatus() == AnalysisStatus.COMPLETED || video.getStatus() == AnalysisStatus.FAILED)) {
+                || !TERMINAL.contains(video.getStatus())) {
             return false;
         }
         if (jobs.existsByVideoIdAndStatusIn(videoId, List.of(AnalysisStatus.PENDING, AnalysisStatus.PROCESSING))) {
@@ -31,6 +35,8 @@ public class SourceRetentionService {
         }
         // Keep the lock through deletion. A retry cannot become runnable in the gap.
         storage.deleteSourceFile(videoId);
+        // redesign-v3: 분석 기록은 텍스트(DB)만 남긴다. 화면 캡처 이미지도 원본과 함께 지운다.
+        storage.deleteFrames(videoId);
         return true;
     }
 }
