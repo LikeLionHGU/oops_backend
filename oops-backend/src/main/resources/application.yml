@@ -23,6 +23,16 @@ spring:
 
 server:
   port: 8080
+  # nginx 뒤에서 https·도메인을 올바로 알아야 구글 로그인 돌아올 주소(redirect_uri)가 맞게 만들어진다.
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      timeout: 30m            # 30분 동안 요청이 없으면 로그아웃
+      cookie:
+        http-only: true
+        # 프론트와 백엔드가 같은 사이트(같은 도메인의 하위 주소)면 lax, 완전히 다른 주소면 none + secure=true
+        same-site: ${OOPS_COOKIE_SAMESITE:lax}
+        secure: ${OOPS_COOKIE_SECURE:false} # 서버(https)에서는 true
 
 logging:
   pattern:
@@ -43,6 +53,17 @@ springdoc:
   paths-to-match: /api/**
 
 oops:
+  # ── 로그인 (구글) ─────────────────────────────────────────────────────────
+  # enabled=false 면 로그인 없이 모든 요청을 '로컬 개발자' 한 명으로 처리한다(로컬 시험용, application-local.yml).
+  # 서버에서는 반드시 true. 구글 키가 없으면 서버가 뜨지 않는다.
+  auth:
+    enabled: ${OOPS_AUTH_ENABLED:true}
+    success-redirect: ${OOPS_LOGIN_REDIRECT:/} # 로그인 후 돌아갈 프론트 주소 (예: https://oops-im-sorry.online/)
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+    admin-emails: [] # /api/v1/metrics 를 볼 수 있는 운영자 이메일
+
   rate-limit:
     # 인증 도입 전까지 IP 기준으로 제한한다. 0이면 해당 제한을 끈다.
     uploads-per-minute: 10

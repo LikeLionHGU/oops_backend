@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MetricsController {
 
     private final ReviewMetricsService metricsService;
+    private final com.example.oops.auth.CurrentUser currentUser;
 
     @Operation(summary = "검수 품질 지표",
             description = """
@@ -34,6 +35,8 @@ public class MetricsController {
                     """)
     @GetMapping
     public ApiResponse<ReviewMetricsResponse> metrics() {
+        // 모든 회원의 검수 결과를 합친 값이라 운영자(oops.auth.admin-emails)만 본다.
+        if (!currentUser.isAdmin()) throw new com.example.oops.common.BusinessException(com.example.oops.common.ErrorCode.FORBIDDEN);
         return ApiResponse.ok(metricsService.collect());
     }
 }

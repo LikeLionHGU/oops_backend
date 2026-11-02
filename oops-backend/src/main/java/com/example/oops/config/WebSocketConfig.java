@@ -29,8 +29,41 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     private final java.util.List<String> allowedOrigins;
 
-    public WebSocketConfig(CorsProperties properties) {
+    private final com.example.oops.auth.CurrentUser currentUser;
+    private final com.example.oops.repository.VideoRepository videos;
+
+    public WebSocketConfig(CorsProperties properties, @org.springframework.context.annotation.Lazy com.example.oops.auth.CurrentUser currentUser,
+                           @org.springframework.context.annotation.Lazy com.example.oops.repository.VideoRepository videos) {
         this.allowedOrigins = properties.originsOrDefault();
+        this.currentUser = currentUser;
+        this.videos = videos;
+    }
+
+    private static final java.util.regex.Pattern VIDEO_TOPIC = java.util.regex.Pattern.compile("^/topic/videos/(\\d+)/.*");
+
+    /**
+     * 진행률 구독도 영상 주인만. 연결할 때 HTTP 세션의 로그인 사용자가 STOMP 사용자로 넘어온다.
+     * 남의 videoId 로 구독하면 거절한다.
+     */
+    @Override
+    public void configureClientInboundChannel(org.springframework.messaging.simp.config.ChannelRegistration registration) {
+        registration.interceptors(new org.springframework.messaging.support.ChannelInterceptor() {
+            @Override
+            public org.springframework.messaging.Message<?> preSend(org.springframework.messaging.Message<?> message,
+                                                                 org.springframework.messaging.MessageChannel channel) {
+                var accessor = org.springframework.messaging.simp.stomp.StompHeaderAccessor.wrap(message);
+                if (accessor.getCommand() != org.springframework.messaging.simp.stomp.StompCommand.SUBSCRIBE
+                        || !currentUser.enforcesOwnership()) return message;
+                var m = VIDEO_TOPIC.matcher(String.valueOf(accessor.getDestination()));
+                if (!m.matches()) return message;
+                Long userId = accessor.getUser() instanceof org.springframework.security.core.Authentication a
+                        && a.getPrincipal() instanceof com.example.oops.auth.AuthenticatedUser u ? u.userId() : null;
+                var video = videos.findById(Long.parseLong(m.group(1))).orElse(null);
+                if (userId == null || video == null || !java.util.Objects.equals(video.getOwnerId(), userId))
+                    throw new org.springframework.messaging.MessageDeliveryException("구독할 수 없는 영상입니다.");
+                return message;
+            }
+        });
     }
 
 

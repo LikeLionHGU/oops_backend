@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "video")
+@Table(name = "video", indexes = @Index(name = "idx_video_owner", columnList = "owner_id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Video extends BaseTimeEntity {
 
@@ -126,6 +126,17 @@ public class Video extends BaseTimeEntity {
      * 사용자의 검수 진행 상태. 명세 §4.
      * 분석 상태(status)와 별개다. 분석이 끝나도 사람이 안 봤을 수 있다.
      */
+    /**
+     * 영상 주인(app_user.id). 업로드한 로그인 사용자다. 로그인 도입 전에 올린 영상은 null 이고, 아무도 볼 수 없다.
+     * 요청 본문의 값이 아니라 세션의 사용자로만 정한다.
+     */
+    @Column(name = "owner_id")
+    private Long ownerId;
+
+    public void assignOwner(Long ownerId) {
+        this.ownerId = ownerId;
+    }
+
     /**
      * 화면에 보여줄 분석 실행(analysis_job ID). 재분석이 끝나면 새 실행으로 바뀌고 이전 실행 결과는 남는다.
      * null 이면 redesign-v3 이전에 저장된 영상이다(run_id 가 null 인 행을 쓴다).

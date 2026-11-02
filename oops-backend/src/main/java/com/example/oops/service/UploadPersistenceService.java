@@ -20,6 +20,11 @@ public class UploadPersistenceService {
 
     @Transactional
     public Video persist(StorageService.StagedUpload staged, String filename, String genre) {
+        return persist(staged, filename, genre, null);
+    }
+
+    @Transactional
+    public Video persist(StorageService.StagedUpload staged, String filename, String genre, Long ownerId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCompletion(int status) {
                 if (status == STATUS_ROLLED_BACK) storage.discardUpload(staged);
@@ -30,6 +35,7 @@ public class UploadPersistenceService {
         staged.manageCompletion();
         var video = videos.save(Video.builder().sourceType(SourceType.UPLOAD)
                 .filename(filename).title(filename).genre(ContentGenre.fromOrDefault(genre, null)).build());
+        video.assignOwner(ownerId);
         video.assignStorageKey(storage.promoteUpload(staged, video.getId()));
         videos.flush();
         return video;

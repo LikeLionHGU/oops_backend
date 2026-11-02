@@ -25,9 +25,17 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final List<String> allowedOrigins;
 
-    public WebConfig(CorsProperties properties) {
+    private final com.example.oops.auth.AccessInterceptor accessInterceptor;
+
+    public WebConfig(CorsProperties properties, com.example.oops.auth.AccessInterceptor accessInterceptor) {
+        this.accessInterceptor = accessInterceptor;
         this.allowedOrigins = properties.originsOrDefault();
         log.info("[cors] 허용 Origin: {}", allowedOrigins);
+    }
+
+    @Override
+    public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
+        registry.addInterceptor(accessInterceptor).addPathPatterns("/api/**");
     }
 
     @Override

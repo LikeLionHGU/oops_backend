@@ -15,6 +15,7 @@ public class TranscriptReplayService {
     private final VideoRepository videos;
     private final TranscriptSegmentRepository transcripts;
     private final AnalysisAdmissionService admission;
+    private final com.example.oops.auth.CurrentUser currentUser;
 
     public record Response(String sourceVideoId,String videoId,String jobId,AnalysisStatus status,
                            int transcriptSegments,String transcriptSha256) {}
@@ -32,6 +33,7 @@ public class TranscriptReplayService {
                 .sourceUrl(source.getSourceUrl()).title(source.getTitle()).channelName(source.getChannelName())
                 .durationSec(source.getDurationSec()).genre(source.getGenre()).build();
         replay.assignTranscriptSnapshot(sourceId,sha);
+        replay.assignOwner(currentUser.ownerIdForNewVideo());
         replay=videos.save(replay);
         var target=replay;
         transcripts.saveAll(lines.stream().map(s->new TranscriptSegment(target,s.startMs(),s.endMs(),s.text())).toList());

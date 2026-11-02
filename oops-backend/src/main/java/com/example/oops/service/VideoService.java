@@ -46,6 +46,7 @@ public class VideoService {
     private final StorageService storageService;
     private final AnalysisServerClient analysisServerClient;
     private final UploadPersistenceService uploadPersistence;
+    private final com.example.oops.auth.CurrentUser currentUser;
 
     /**
      * 파일 업로드. (API 명세 2-1)
@@ -53,12 +54,13 @@ public class VideoService {
      */
     @Transactional(propagation = Propagation.NEVER)
     public Video createFromUpload(MultipartFile file, String genre) {
+        Long owner = currentUser.ownerIdForNewVideo();   // 로그인 확인을 파일 복사보다 먼저
         var staged = storageService.stageVideo(file);
         try {
             var input = Video.builder().sourceType(SourceType.UPLOAD).filename(file.getOriginalFilename())
                     .storageKey(storageService.stagedStorageKey(staged)).build();
             enforceDurationLimit(input);
-            return uploadPersistence.persist(staged, file.getOriginalFilename(), genre);
+            return uploadPersistence.persist(staged, file.getOriginalFilename(), genre, owner);
         } catch (RuntimeException | Error error) {
             // Once registered, transaction completion owns compensation. UNKNOWN
             // must preserve files because the DB commit might actually have succeeded.
@@ -71,13 +73,15 @@ public class VideoService {
     @Transactional
     public Video createFromUrl(VideoRegisterRequest request) {
         String videoUrl = validateVideoUrl(request.url());
-        return videoRepository.save(Video.builder()
+        Video video = Video.builder()
                 .sourceType(SourceType.YOUTUBE)
                 .sourceUrl(videoUrl)
                 .title(request.title())
                 .channelName(request.channelName())
                 .genre(ContentGenre.fromOrDefault(request.genre(), null))
-                .build());
+                .build();
+        video.assignOwner(currentUser.ownerIdForNewVideo());
+        return videoRepository.save(video);
     }
 
     private String validateVideoUrl(String value) {
@@ -145,9 +149,14 @@ public class VideoService {
                 org.springframework.data.domain.Sort.by(
                         org.springframework.data.domain.Sort.Direction.DESC, "id"));
 
-        var result = filter.isEmpty()
-                ? videoRepository.findAll(pageable)
-                : videoRepository.findByStatusIn(filter, pageable);
+        // 로그인을 켠 서버에서는 내 영상만. 주인이 없는 옛 영상은 누구 목록에도 나오지 않는다.
+        var result = currentUser.enforcesOwnership()
+                ? (filter.isEmpty()
+                    ? videoRepository.findByOwnerId(currentUser.require().userId(), pageable)
+                    : videoRepository.findByOwnerIdAndStatusIn(currentUser.require().userId(), filter, pageable))
+                : (filter.isEmpty()
+                    ? videoRepository.findAll(pageable)
+                    : videoRepository.findByStatusIn(filter, pageable));
 
         List<Video> videos = result.getContent();
         if (videos.isEmpty()) {
