@@ -26,7 +26,13 @@ public final class FactCheckPrompts {
 
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record Judgment(String verdict, String reason, String correction, List<SourceEvidence> evidence,
-                           List<String> missingInformation, Supplement supplement) {}
+                           List<String> missingInformation, Supplement supplement,
+                           Boolean asserted, Boolean correctedInVideo) {
+        public Judgment(String verdict, String reason, String correction, List<SourceEvidence> evidence,
+                        List<String> missingInformation, Supplement supplement) {
+            this(verdict, reason, correction, evidence, missingInformation, supplement, true, false);
+        }
+    }
 
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record SourceEvidence(String sourceId, String quote) {}
@@ -47,14 +53,22 @@ public final class FactCheckPrompts {
             5. 근거를 들 때는 제공된 ID 와, 그 원문·자료에 실제로 있는 연속된 문자열만 쓴다.
             6. 자료가 있다는 사실만으로 참·거짓을 정하지 않는다. 같은 대상·시점·조건을 직접 뒷받침하거나 반박할 때만 판단한다.
             7. 표현이 논란이 될지는 판단하지 않는다(별도 흐름이 맡는다).
+            8. 발언자가 사실로 단정해 말한 것만 사실 주장이다. 다음은 사실 주장이 아니다:
+               질문, 퀴즈·게임의 문제와 출연자의 답(맞든 틀리든), 정답 맞히기, 농담·과장·말장난, 가정, 다른 사람 말의 흉내,
+               출연자 본인·가족·지인의 개인 일화나 근황(공개 자료로 확인할 수 없는 사생활), 자기소개·별명.
             """;
 
     static final String EXTRACT_TASK = """
             [단계: 사실 주장 추출]
             "검토 대상" 안의 발언에서 공개 자료로 참·거짓을 확인할 수 있는 사실 주장을 고른다
-            (이름·날짜·수치·사건·기록·순위·공식 발표 등). 앞뒤 문맥은 대상을 특정하는 데만 쓴다.
+            (공인·기관·국가·작품·사건에 대한 이름·날짜·수치·기록·순위·공식 발표 등). 앞뒤 문맥은 대상을 특정하는 데만 쓴다.
+            - 원칙 8 에 해당하는 말은 고르지 않는다. 특히 퀴즈·게임 장면의 문제와 답은 고르지 않는다.
+            - 뒤 문맥이나 같은 구간에서 바로 고쳐 말하거나 정답을 알려주는 발언은 고르지 않는다.
+            - claim 은 claimQuote 가 실제로 말하는 내용만 옮긴다. 앞뒤 문맥에서 새 내용(분류·평가·이유)을 덧붙여 주장을 만들지 않는다.
+            - 확인할 가치가 없는 상식적 소개(예: "OO는 가수다")는 고르지 않는다.
             - segmentIds: 주장이 담긴 구간 ID (검토 대상 안). claimQuote: 그 구간 원문의 연속 문자열.
-            - subject: 주장의 대상(누구·무엇). 문맥으로도 특정되지 않으면 specific 을 false 로, searchQuery 는 빈 문자열로 둔다.
+            - subject: 주장의 대상(누구·무엇)의 고유한 이름. "화자·발언자·나·남편·친구"처럼 이름이 아닌 말이면
+              specific 을 false 로, searchQuery 는 빈 문자열로 둔다.
             - claim: 확인할 내용을 한 문장으로. conditions: 비교에 필요한 시점·범위·단위 (대본에 있는 것만).
             - searchQuery: 대상과 내용을 담은 구체적인 검색어 1개.
             - 확인할 주장이 없으면 claims 는 빈 배열이다.
@@ -69,6 +83,10 @@ public final class FactCheckPrompts {
                        REFUTED   = 자료가 직접 반박 (자료가 말하는 사실이 주장과 다름)
                        CONFLICT  = 자료끼리 서로 다름
                        INSUFFICIENT = 관련 자료가 없거나 대상·시점·조건이 달라 판단할 근거가 부족
+            - asserted: "발언 원문"이 이 주장 내용을 사실로 단정해 말하면 true. 질문·퀴즈의 답·농담·가정이거나,
+              주장 내용이 발언 원문에 없고 앞뒤 문맥에서 덧붙인 해석이면 false.
+            - correctedInVideo: "뒤 문맥"에서 발언자나 다른 출연자가 바로 고쳐 말하거나 정답을 알려주면 true.
+            - evidence 의 자료는 주장의 대상을 직접 다루는 자료여야 한다. 대상이 나오지 않는 자료는 근거로 쓰지 않는다.
             - evidence: 판단 근거 자료 ID 와 그 자료 제목·본문의 연속 문자열. INSUFFICIENT 가 아니면 1개 이상.
             - correction: REFUTED 일 때 자료가 말하는 내용을 한 문장으로.
             - reason: REFUTED 일 때 편집자에게 보여줄 짧은 이유. 발언을 어떻게 고치라고 지시하지 않는다.
@@ -76,7 +94,7 @@ public final class FactCheckPrompts {
             - INSUFFICIENT 이고 추가 검색으로 확인할 사실이 분명하면 supplement 에 {missingFact, purpose, query} 를 적는다.
               분명하지 않으면 null 이다.
             출력은 JSON 하나만:
-            {"verdict":"REFUTED","reason":"짧은 이유","correction":"자료가 말하는 내용","evidence":[{"sourceId":"s1","quote":"자료 일부"}],"missingInformation":[],"supplement":null}
+            {"verdict":"REFUTED","asserted":true,"correctedInVideo":false,"reason":"짧은 이유","correction":"자료가 말하는 내용","evidence":[{"sourceId":"s1","quote":"자료 일부"}],"missingInformation":[],"supplement":null}
             """;
 
     static final String FINAL_NOTE = "\n보조 검색까지 마친 자료다. supplement 는 반드시 null 로 둔다.\n";
@@ -91,11 +109,21 @@ public final class FactCheckPrompts {
 
     public static Prompt judge(String subject, String claim, List<String> conditions, String claimQuote,
                                List<Source> sources, boolean finalRound) {
+        return judge(subject, claim, conditions, claimQuote, List.of(), List.of(), sources, finalRound);
+    }
+
+    /** before/after: 주장 구간 앞뒤 대본 줄. 영상 안에서 바로 고쳐 말했는지, 퀴즈 장면인지 보게 한다. */
+    public static Prompt judge(String subject, String claim, List<String> conditions, String claimQuote,
+                               List<ContextLine> before, List<ContextLine> after,
+                               List<Source> sources, boolean finalRound) {
+        StringBuilder ctx = new StringBuilder();
+        appendLines(ctx, "앞 문맥", before);
+        appendLines(ctx, "뒤 문맥", after);
         StringBuilder user = new StringBuilder("# 주장\n")
                 .append("대상: ").append(subject).append('\n')
                 .append("내용: ").append(claim).append('\n')
                 .append("조건: ").append(conditions == null || conditions.isEmpty() ? "(없음)" : String.join(", ", conditions)).append('\n')
-                .append("발언 원문: ").append(claimQuote).append("\n\n# 자료\n");
+                .append("발언 원문: ").append(claimQuote).append("\n\n# 대본\n").append(ctx).append("\n# 자료\n");
         for (Source s : sources) {
             user.append('[').append(s.id()).append("] ").append(s.item().title());
             if (s.item().date() != null) user.append(" (").append(s.item().date()).append(')');

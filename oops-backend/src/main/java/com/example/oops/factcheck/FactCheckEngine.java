@@ -38,6 +38,12 @@ import java.util.function.Function;
  *
  * 검증: 주장 인용이 실제 구간 원문에 있는지, 근거가 실제로 받은 자료의 연속 문자열인지.
  * 근거를 고르지 못하면 상위 검색 결과를 자동으로 붙이지 않는다.
+ *
+ * 사실 주장이 아닌 것은 서버에서도 거른다 (470번 영상 시험 후 추가):
+ *   - 대상이 이름이 아닌 말(화자·발언자·남편 …) → NOT_SPECIFIC, 질문 형태의 주장 → NOT_ASSERTION
+ *   - 대조 결과 반박이어도, 발언 원문이 그 내용을 단정하지 않으면(퀴즈 답·문맥에서 덧붙인 해석) NOT_ASSERTED,
+ *     뒤 문맥에서 바로 고쳐 말했으면 CORRECTED_IN_VIDEO 로 제외
+ *   - 반박 근거 자료에 주장 대상이 나오지 않으면 그 자료는 버리고, 남는 근거가 없으면 INVALID
  */
 public final class FactCheckEngine {
 
@@ -56,7 +62,13 @@ public final class FactCheckEngine {
                            String reason, String correction, List<UsedSource> sources) {}
 
     public record Result(List<Accepted> accepted, List<TraceEntry> trace, int modelCalls, int failedCalls,
-                         int searchCalls, int failedSearches, int skippedClaims, int invalidOutputs) {
+                         int searchCalls, int failedSearches, int skippedClaims, int invalidOutputs,
+                         Map<String, Integer> searchesByProvider) {
+        public Result(List<Accepted> accepted, List<TraceEntry> trace, int modelCalls, int failedCalls,
+                      int searchCalls, int failedSearches, int skippedClaims, int invalidOutputs) {
+            this(accepted, trace, modelCalls, failedCalls, searchCalls, failedSearches, skippedClaims, invalidOutputs, Map.of());
+        }
+
         public boolean partial() {
             return failedCalls > 0 || failedSearches > 0 || skippedClaims > 0;
         }
@@ -88,6 +100,8 @@ public final class FactCheckEngine {
         final Runnable checkActive;
         final AtomicInteger calls = new AtomicInteger(), failed = new AtomicInteger(), searches = new AtomicInteger(),
                 failedSearches = new AtomicInteger(), invalid = new AtomicInteger();
+        /** 업체별 실제 요청 수(비용 계산용). 키 없음(DISABLED)은 세지 않는다. */
+        final java.util.concurrent.ConcurrentHashMap<String, AtomicInteger> byProvider = new java.util.concurrent.ConcurrentHashMap<>();
 
         Run(List<ContextLine> lines, Runnable checkActive) {
             this.lines = lines;
@@ -107,6 +121,7 @@ public final class FactCheckEngine {
             checkActive.run();
             if (!provider.isEnabled()) return Search.Outcome.disabled(provider.name(), query);
             searches.incrementAndGet();
+            byProvider.computeIfAbsent(provider.name(), k -> new AtomicInteger()).incrementAndGet();
             Search.Outcome out = provider.search(query, p.resultsPerSearch());
             if (out == null) out = Search.Outcome.failed(provider.name(), query, "응답 없음");
             if (out.status() == Search.Status.FAILED) failedSearches.incrementAndGet();
@@ -157,8 +172,10 @@ public final class FactCheckEngine {
             trace.add(o.trace());
             if (o.accepted() != null) accepted.add(o.accepted());
         }
+        Map<String, Integer> byProvider = new java.util.TreeMap<>();
+        run.byProvider.forEach((k, v) -> byProvider.put(k, v.get()));
         return new Result(accepted, trace, run.calls.get(), run.failed.get(), run.searches.get(),
-                run.failedSearches.get(), skipped, run.invalid.get());
+                run.failedSearches.get(), skipped, run.invalid.get(), Map.copyOf(byProvider));
     }
 
     private ExtractOutcome extract(Run run, ContextWindow window) {
@@ -185,7 +202,12 @@ public final class FactCheckEngine {
                 trace.add(new TraceEntry("EXTRACT", null, ids, c.subject(), c.claim(), "INVALID", problem, List.of(), List.of()));
                 continue;
             }
-            if (!Boolean.TRUE.equals(c.specific()) || blank(c.subject()) || blank(c.searchQuery())) {
+            if (isQuestion(c.claim())) {
+                trace.add(new TraceEntry("EXTRACT", null, ids, c.subject(), c.claim(), "NOT_ASSERTION",
+                        "질문이라 사실 주장이 아님", List.of(), List.of()));
+                continue;
+            }
+            if (!Boolean.TRUE.equals(c.specific()) || blank(c.subject()) || blank(c.searchQuery()) || genericSubject(c.subject())) {
                 // 모르는 대상을 추측해 검색하지 않는다
                 trace.add(new TraceEntry("EXTRACT", null, ids, c.subject(), c.claim(), "NOT_SPECIFIC",
                         "대상을 특정할 수 없어 검색하지 않음", List.of(), List.of()));
@@ -217,6 +239,7 @@ public final class FactCheckEngine {
         if (sources.isEmpty()) return outcome(c, "NO_RESULTS", "관련 검색 결과 없음", searches, List.of());
 
         var judged = judge(run, c, sources, false);
+        // (아래 두 번째 대조도 같은 앞뒤 문맥을 본다)
         if (judged.isEmpty()) return outcome(c, "FAILED", "자료 대조 호출 실패", searches, List.of());
         Judgment j = judged.get();
         Optional<String> problem = judgmentProblem(c, j, sources);
@@ -249,6 +272,11 @@ public final class FactCheckEngine {
             }
         }
 
+        if (verdict == Verdict.REFUTED && !Boolean.TRUE.equals(j.asserted()))
+            return outcome(c, "NOT_ASSERTED", "발언 원문이 이 내용을 사실로 단정하지 않음(질문·퀴즈 답·덧붙인 해석)", searches, missing(j));
+        if (verdict == Verdict.REFUTED && Boolean.TRUE.equals(j.correctedInVideo()))
+            return outcome(c, "CORRECTED_IN_VIDEO", "영상 안에서 바로 고쳐 말함", searches, missing(j));
+
         if (verdict != Verdict.REFUTED) {
             String outcome = switch (verdict) {
                 case SUPPORTED -> "SUPPORTED";
@@ -263,7 +291,13 @@ public final class FactCheckEngine {
         Set<String> usedIds = new HashSet<>();
         for (SourceEvidence e : j.evidence()) {
             Source s = byId.get(e.sourceId().strip());
+            // 주장 대상이 나오지 않는 자료는 근거로 붙이지 않는다 (예: 같은 단어가 메뉴에 있는 식당 소개 페이지)
+            if (!mentions(s.item().title() + " " + s.item().snippet(), c.subject())) continue;
             if (usedIds.add(s.id())) used.add(new UsedSource(s.id(), e.quote().strip(), s.item(), s.provider()));
+        }
+        if (used.isEmpty()) {
+            run.invalid.incrementAndGet();
+            return outcome(c, "INVALID", "반박 근거 자료에 주장 대상이 나오지 않음", searches, missing(j));
         }
         List<ContextLine> segments = run.lines.stream().filter(l -> c.segmentIds().contains(l.id())).toList();
         var accepted = new Accepted(c.id(), segments, c.subject(), c.claim(), c.quote(), j.reason().strip(),
@@ -273,8 +307,54 @@ public final class FactCheckEngine {
     }
 
     private Optional<Judgment> judge(Run run, Claim c, List<Source> sources, boolean finalRound) {
-        return run.call(FactCheckPrompts.judge(c.subject(), c.claim(), c.conditions(), c.quote(), sources, finalRound),
-                Judgment.class);
+        int first = -1, last = -1;
+        for (int i = 0; i < run.lines.size(); i++) {
+            if (c.segmentIds().contains(run.lines.get(i).id())) {
+                if (first < 0) first = i;
+                last = i;
+            }
+        }
+        List<ContextLine> before = first < 0 ? List.of() : run.lines.subList(Math.max(0, first - JUDGE_BEFORE), first);
+        List<ContextLine> after = last < 0 ? List.of() : run.lines.subList(last + 1, Math.min(run.lines.size(), last + 1 + JUDGE_AFTER));
+        return run.call(FactCheckPrompts.judge(c.subject(), c.claim(), c.conditions(), c.quote(), before, after,
+                sources, finalRound), Judgment.class);
+    }
+
+    /** 대조할 때 보여줄 앞뒤 줄 수. 뒤를 더 길게 보는 이유: 정답 공개·정정은 보통 몇 줄 뒤에 나온다. */
+    static final int JUDGE_BEFORE = 3, JUDGE_AFTER = 6;
+
+    /** 이름이 아닌 대상. 검색하면 같은 단어가 들어간 엉뚱한 사람·작품이 나온다. */
+    private static final Set<String> GENERIC_SUBJECTS = Set.of(
+            "화자", "발언자", "말하는사람", "진행자", "출연자", "게스트", "패널", "나", "저", "본인", "자신", "우리", "저희",
+            "남편", "아내", "부인", "와이프", "엄마", "아빠", "어머니", "아버지", "가족", "친구", "지인", "동료", "상대", "상대방",
+            "그", "그녀", "그사람", "이사람", "그분", "이분", "누군가", "사람들");
+
+    static boolean genericSubject(String subject) {
+        String s = normalize(subject);
+        if (s.isEmpty()) return true;
+        if (GENERIC_SUBJECTS.contains(s)) return true;
+        // "화자의 남편", "발언자의 방송 출연 일정" 처럼 이름이 아닌 말로 시작하는 대상
+        for (String g : List.of("화자", "발언자", "말하는사람", "출연자", "진행자", "본인", "자신"))
+            if (s.startsWith(g)) return true;
+        return false;
+    }
+
+    static boolean isQuestion(String claim) {
+        if (claim == null) return false;
+        String s = claim.strip();
+        return s.endsWith("?") || s.matches(".*(묻고 있다|묻는다|질문한다|무엇인가|무엇인지|어디인가|누구인가|몇 \\S+인가)\\.?$");
+    }
+
+    /** 자료가 주장 대상을 다루는가. 대상 이름(띄어쓰기 무시) 또는 두 글자 이상 낱말 중 하나라도 나오면 다룬다고 본다. */
+    static boolean mentions(String text, String subject) {
+        String t = normalize(text), s = normalize(subject);
+        if (s.isEmpty()) return false;
+        if (t.contains(s)) return true;
+        for (String w : subject.split("[\\s·,/()]+")) {
+            String n = normalize(w);
+            if (n.length() >= 2 && !GENERIC_SUBJECTS.contains(n) && t.contains(n)) return true;
+        }
+        return false;
     }
 
     private static Optional<String> judgmentProblem(Claim c, Judgment j, List<Source> sources) {

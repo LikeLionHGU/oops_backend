@@ -206,6 +206,32 @@ public class OpenAiClient {
             return failures.get();
         }
 
+        public String analyzer() {
+            return analyzer;
+        }
+
+        /** OpenAI 밖의 유료 호출(검색 등). 업체 → {요청 수, USD}. 영상 전체 집계에도 함께 올린다. */
+        private final java.util.concurrent.ConcurrentHashMap<String, double[]> external = new java.util.concurrent.ConcurrentHashMap<>();
+
+        public void addExternal(String provider, int requests, double usd) {
+            if (requests <= 0) return;
+            for (CallScope s = this; s != null; s = s.parent) {
+                s.external.compute(provider, (k, v) -> {
+                    double[] next = v == null ? new double[2] : v.clone();
+                    next[0] += requests;
+                    next[1] += usd;
+                    return next;
+                });
+            }
+        }
+
+        /** 업체별 {요청 수, USD} 복사본 */
+        public java.util.Map<String, double[]> external() {
+            var copy = new java.util.TreeMap<String, double[]>();
+            external.forEach((k, v) -> copy.put(k, v.clone()));
+            return copy;
+        }
+
         public java.util.Optional<String> failureReason() {
             return java.util.Optional.ofNullable(lastFailure.get()).map(FailureState::message);
         }
@@ -264,6 +290,12 @@ public class OpenAiClient {
     }
 
     /** 이 영상에 지금까지 쓴 양. 파이프라인이 마지막에 한 줄로 정리한다. */
+    /** 집계 하나(분석기별 하위 집계 포함)의 OpenAI 사용량 */
+    public TokenUsage usageOf(CallScope target) {
+        var u = target.usage;
+        return new TokenUsage(u.get(0), u.get(1), u.get(2), u.get(3), properties.modelOrDefault(), properties.pricing());
+    }
+
     public TokenUsage videoUsage() {
         var u = scope.get().usage;
         return new TokenUsage(u.get(0), u.get(1), u.get(2), u.get(3), properties.modelOrDefault(),

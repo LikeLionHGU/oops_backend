@@ -52,6 +52,7 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
     private final FactCheckProperties properties;
     private final ContextProperties contextProperties;
     private final StorageService storage;
+    private final com.example.oops.config.SearchApiProperties searchProperties;
 
     private final ThreadLocal<String> notice = new ThreadLocal<>();
     private final ThreadLocal<com.example.oops.analyzer.AnalyzerTrace> trace = new ThreadLocal<>();
@@ -104,6 +105,8 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
         });
         var engine = new FactCheckEngine(properties, contextProperties, model, perplexity, serper, executor);
         var result = engine.run(lines, context::checkActive);
+        // 검색 비용을 이 분석기 집계에 올린다. 파이프라인이 영상 끝에 업체별로 모아 로그를 남긴다.
+        result.searchesByProvider().forEach((provider, n) -> scope.addExternal(provider, n, n * costPerRequest(provider)));
         writeTrace(context, result);
         log.info("[fact-check] videoId={} AI {}회(실패 {}) 검색 {}회(실패 {}) 결과 {}건 상한초과 {}건",
                 context.video().getId(), result.modelCalls(), result.failedCalls(), result.searchCalls(),
@@ -209,6 +212,14 @@ public class FactCheckAnalyzer implements ContentAnalyzer {
     @jakarta.annotation.PreDestroy
     void shutdown() {
         if (pool != null) pool.shutdownNow();
+    }
+
+    double costPerRequest(String provider) {
+        return switch (provider) {
+            case "perplexity" -> searchProperties.perplexityOrEmpty().costPerRequestOrDefault();
+            case "serper" -> searchProperties.serperOrEmpty().costPerQueryOrDefault();
+            default -> 0;
+        };
     }
 
     private static String squash(String s) {

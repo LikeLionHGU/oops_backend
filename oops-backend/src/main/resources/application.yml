@@ -171,10 +171,13 @@ oops:
       search-type: ${PERPLEXITY_SEARCH_TYPE:web} # web(넓게, 1,000건당 $5) / fast(얇게, $1)
       country: KR
       max-tokens-per-page: 256
+      # 비용 로그([cost])용 건당 단가(USD). 비우면 search-type 에 맞춰 web $0.005 · fast $0.001
+      # cost-per-request-usd: 0.005
     serper:
       api-key: ${SERPER_API_KEY:}
       gl: kr
       hl: ko
+      cost-per-query-usd: 0.001 # 비용 로그용. Starter $50/50,000크레딧 기준
     max-snippet-chars: 400 # 자료 하나당 AI 에게 넘길 최대 글자 수
 
   fact-check:

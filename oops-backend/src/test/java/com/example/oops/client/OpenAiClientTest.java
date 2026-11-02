@@ -250,4 +250,16 @@ class OpenAiClientTest {
                 "usage", java.util.Map.of("prompt_tokens", 100, "completion_tokens", 20, "total_tokens", 120,
                         "prompt_tokens_details", java.util.Map.of("cached_tokens", 40))));
     }
+
+    @org.junit.jupiter.api.Test
+    void externalCostsAddUpToTheVideoScope() {
+        var video = new OpenAiClient.CallScope(7);
+        var fact = video.child("fact-check");
+        fact.addExternal("perplexity", 3, 0.015);
+        fact.addExternal("perplexity", 1, 0.005);
+        fact.addExternal("serper", 0, 0);
+        org.assertj.core.api.Assertions.assertThat(fact.external()).containsOnlyKeys("perplexity");
+        org.assertj.core.api.Assertions.assertThat(video.external().get("perplexity")).containsExactly(new double[]{4.0, 0.02},
+                org.assertj.core.api.Assertions.within(1e-9));
+    }
 }

@@ -200,6 +200,7 @@ public class AnalysisPipeline {
             progressService.update(jobId, AnalysisStage.TEXT_RISK, 45,
                     active.stream().map(ContentAnalyzer::displayName).collect(java.util.stream.Collectors.joining(", ")) + " 중");
             var videoScope = openAiClient.currentScope();
+            Map<String, OpenAiClient.CallScope> analyzerScopes = new LinkedHashMap<>();
             List<java.util.concurrent.CompletableFuture<AnalyzerRun>> runs = new ArrayList<>();
             for (ContentAnalyzer analyzer : active) {
                 checkStillActive(jobId);
@@ -212,6 +213,7 @@ public class AnalysisPipeline {
                     continue;
                 }
                 var scope = videoScope.child(analyzer.key());
+                analyzerScopes.put(analyzer.key(), scope);
                 runs.add(java.util.concurrent.CompletableFuture.supplyAsync(
                         () -> openAiClient.withScope(scope, () -> runAnalyzer(analyzer, context, scope)), analyzerPool()));
             }
@@ -276,7 +278,7 @@ public class AnalysisPipeline {
             log.info("[pipeline] 완료 jobId={} videoId={} score={} events={} 총 {}초",
                     jobId, videoId, riskScore, findings.size(), total / 1000);
             log.info("[pipeline] 소요 내역 jobId={} — {}", jobId, formatElapsed(elapsed, total));
-            logCost(videoId, video.getDurationSec(), video.hasStoredTranscript());
+            logCost(videoId, video.getDurationSec(), video.hasStoredTranscript(), videoScope, analyzerScopes, active);
 
         } catch (AnalysisStoppedException e) {
             log.info("[pipeline] 종료되었거나 대체된 작업 결과를 저장하지 않습니다. jobId={}", jobId);
@@ -379,34 +381,58 @@ public class AnalysisPipeline {
      * 긴 영상에서는 LLM 비용보다 음성 인식이 훨씬 크다.
      * LLM 만 보여주면 "생각보다 싸네" 라고 잘못 판단하게 된다.
      */
-    private void logCost(Long videoId, Integer durationSec, boolean transcriptReused) {
-        OpenAiClient.TokenUsage usage = openAiClient.videoUsage();
+    /**
+     * 영상 하나에 든 API 비용을 업체·분석기별로 남긴다.
+     *
+     *   [cost] videoId=470 ── API 비용 (추정) ──
+     *   [cost]   OpenAI · 맥락 기준 검토(context-review)  호출 24회 · 입력 151,200(캐시 120,000) · 출력 6,100   $0.0151
+     *   [cost]   OpenAI · 사실대조(fact-check)            호출 33회 · ...                                       $0.0040
+     *   [cost]   Groq · 음성인식                           13.2분                                               $0.0244
+     *   [cost]   Perplexity · 검색                         17회 × $0.0050                                      $0.0850
+     *   [cost]   Serper · 검색                              6회 × $0.0010                                      $0.0060
+     *   [cost]   합계 $0.1345 (약 188원) · 영상 1분당 약 14원
+     *
+     * OpenAI 는 응답의 실제 토큰 수 × 단가, Groq 은 영상 길이 × 분당 단가, 검색은 요청 수 × 건당 단가(설정값)다.
+     * 단가는 application.yml 의 oops.openai.pricing, oops.search.*.cost-per-* 로 바꾼다.
+     */
+    private void logCost(Long videoId, Integer durationSec, boolean transcriptReused, OpenAiClient.CallScope videoScope,
+                         Map<String, OpenAiClient.CallScope> analyzerScopes, List<ContentAnalyzer> analyzers) {
+        OpenAiClient.TokenUsage total = openAiClient.usageOf(videoScope);
+        var pricing = total.pricing();
+        double sttUsd = sttEstimateUsd(durationSec, pricing.sttUsdPerMinute(), transcriptReused);
+        double sum = sttUsd;
 
-        double sttUsd = sttEstimateUsd(durationSec,usage.pricing().sttUsdPerMinute(),transcriptReused);
-        double totalUsd = usage.costUsd() + sttUsd;
-        double krw = totalUsd * usage.pricing().krwRate();
-
-        if (usage.isEmpty() && sttUsd == 0) {
-            return;
+        log.info("[cost] videoId={} ── API 비용 (추정) ──", videoId);
+        for (var e : analyzerScopes.entrySet()) {
+            var u = openAiClient.usageOf(e.getValue());
+            String name = analyzers.stream().filter(a -> a.key().equals(e.getKey())).map(ContentAnalyzer::displayName)
+                    .findFirst().orElse(e.getKey());
+            sum += u.costUsd();
+            log.info("[cost]   OpenAI · {}({})  호출 {}회 · 입력 {}(캐시 {}) · 출력 {}   ${}", name, e.getKey(), u.calls(),
+                    "%,d".formatted(u.promptTokens()), "%,d".formatted(u.cachedTokens()),
+                    "%,d".formatted(u.completionTokens()), "%.4f".formatted(u.costUsd()));
         }
-
-        log.info("[ai-cost] videoId={} 호출 {}회 · 입력 {}토큰(캐시 {}) · 출력 {}토큰",
-                videoId, usage.calls(), usage.promptTokens(),
-                usage.cachedTokens(), usage.completionTokens());
-
-        log.info("[ai-cost] videoId={} 분석 ${} + 음성인식 ${} = ${} (약 {}원)",
-                videoId,
-                "%.5f".formatted(usage.costUsd()),
-                "%.5f".formatted(sttUsd),
-                "%.5f".formatted(totalUsd),
-                Math.round(krw));
-
-        if (durationSec != null && durationSec > 0) {
-            log.info("[ai-cost] videoId={} 1분당 약 {}원 (영상 {}분)",
-                    videoId,
-                    Math.round(krw / (durationSec / 60.0)),
-                    "%.1f".formatted(durationSec / 60.0));
+        if (transcriptReused) {
+            log.info("[cost]   Groq · 음성인식  저장 전사 재사용 — 호출 없음   $0.0000");
+        } else {
+            log.info("[cost]   Groq · 음성인식  {}분 × ${}/분   ${}", durationSec == null ? "?" : "%.1f".formatted(durationSec / 60.0),
+                    "%.5f".formatted(pricing.sttUsdPerMinute()), "%.4f".formatted(sttUsd));
         }
+        for (var e : videoScope.external().entrySet()) {
+            int n = (int) e.getValue()[0];
+            double usd = e.getValue()[1];
+            sum += usd;
+            String label = switch (e.getKey()) {
+                case "perplexity" -> "Perplexity · 검색";
+                case "serper" -> "Serper · 검색";
+                default -> e.getKey();
+            };
+            log.info("[cost]   {}  {}회 × ${}   ${}", label, n, "%.4f".formatted(n == 0 ? 0 : usd / n), "%.4f".formatted(usd));
+        }
+        long krw = Math.round(sum * pricing.krwRate());
+        String perMinute = durationSec != null && durationSec > 0
+                ? " · 영상 1분당 약 " + Math.round(krw / (durationSec / 60.0)) + "원 (" + "%.1f".formatted(durationSec / 60.0) + "분)" : "";
+        log.info("[cost]   합계 ${} (약 {}원){}", "%.4f".formatted(sum), krw, perMinute);
     }
 
     static double sttEstimateUsd(Integer durationSec,double perMinute,boolean transcriptReused) {

@@ -32,7 +32,14 @@ public record SearchApiProperties(Perplexity perplexity, Serper serper, Integer 
      * @param maxTokensPerPage 페이지 하나에서 뽑아 올 본문 토큰. 작을수록 싸고 빠르다. 기본 256
      */
     public record Perplexity(String apiKey, String searchType, String recentSearchType,
-                             String country, List<String> languages, Integer maxTokensPerPage) {
+                             String country, List<String> languages, Integer maxTokensPerPage,
+                             Double costPerRequestUsd) {
+
+        /** Search API 요청 1건 값. 토큰 요금은 없다. web $5/1,000건 · fast $1/1,000건 (docs.perplexity.ai, 2026-11 확인) */
+        public double costPerRequestOrDefault() {
+            if (costPerRequestUsd != null && costPerRequestUsd >= 0) return costPerRequestUsd;
+            return "fast".equalsIgnoreCase(searchTypeOrDefault()) ? 0.001 : 0.005;
+        }
         public boolean isConfigured() {
             return apiKey != null && !apiKey.isBlank();
         }
@@ -58,7 +65,12 @@ public record SearchApiProperties(Perplexity perplexity, Serper serper, Integer 
      * @param gl 검색 국가 (기본 kr)
      * @param hl 검색 언어 (기본 ko)
      */
-    public record Serper(String apiKey, String gl, String hl) {
+    public record Serper(String apiKey, String gl, String hl, Double costPerQueryUsd) {
+
+        /** 검색 1건(결과 10개 이하 = 1크레딧) 값. Starter $50/50,000크레딧 기준 $0.001 */
+        public double costPerQueryOrDefault() {
+            return costPerQueryUsd != null && costPerQueryUsd >= 0 ? costPerQueryUsd : 0.001;
+        }
         public boolean isConfigured() {
             return apiKey != null && !apiKey.isBlank();
         }
@@ -73,11 +85,11 @@ public record SearchApiProperties(Perplexity perplexity, Serper serper, Integer 
     }
 
     public Perplexity perplexityOrEmpty() {
-        return perplexity != null ? perplexity : new Perplexity(null, null, null, null, null, null);
+        return perplexity != null ? perplexity : new Perplexity(null, null, null, null, null, null, null);
     }
 
     public Serper serperOrEmpty() {
-        return serper != null ? serper : new Serper(null, null, null);
+        return serper != null ? serper : new Serper(null, null, null, null);
     }
 
     public int maxSnippetCharsOrDefault() {

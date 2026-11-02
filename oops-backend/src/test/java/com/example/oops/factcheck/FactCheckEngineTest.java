@@ -200,4 +200,75 @@ class FactCheckEngineTest {
         assertThat(result.invalidOutputs()).isOne();
         assertThat(perplexity.queries).isEmpty();
     }
+
+    // ── 470번 영상 시험 후 추가 ──
+
+    static List<ContextLine> quiz() {
+        return List.of(
+                new ContextLine("stt-1", 0L, 2_000L, "터키의 수도는?"),
+                new ContextLine("stt-2", 2_000L, 4_000L, "이스탄불이었습니다."),
+                new ContextLine("stt-3", 4_000L, 6_000L, "나 이거 알았는데."),
+                new ContextLine("stt-4", 6_000L, 8_000L, "땡 정답은 앙카라입니다."));
+    }
+
+    static ExtractedClaim capital() {
+        return new ExtractedClaim(List.of("stt-2"), "이스탄불이었습니다", "터키", "터키의 수도는 이스탄불이다", List.of(), true, "터키 수도");
+    }
+
+    static Search.Outcome ankara(String q) {
+        return Search.Outcome.of("perplexity", q, List.of(item("터키 국가 정보", "터키의 수도는 앙카라이다", "https://mofa.example/tr")));
+    }
+
+    @Test void refutedButNotAssertedIsDropped() {
+        model.extract.add(u -> new Extraction(List.of(capital())));
+        perplexity.answers.add(FactCheckEngineTest::ankara);
+        model.judge.add(u -> new Judgment("REFUTED", "다름", "앙카라", List.of(new SourceEvidence("s1", "터키의 수도는 앙카라")),
+                List.of(), null, false, false));
+        var result = engine().run(quiz(), null);
+        assertThat(result.accepted()).isEmpty();
+        assertThat(result.trace()).anySatisfy(t -> assertThat(t.outcome()).isEqualTo("NOT_ASSERTED"));
+    }
+
+    @Test void correctedInVideoIsDroppedAndJudgeSeesFollowingLines() {
+        model.extract.add(u -> new Extraction(List.of(capital())));
+        perplexity.answers.add(FactCheckEngineTest::ankara);
+        model.judge.add(u -> new Judgment("REFUTED", "다름", "앙카라", List.of(new SourceEvidence("s1", "터키의 수도는 앙카라")),
+                List.of(), null, true, true));
+        var result = engine().run(quiz(), null);
+        assertThat(result.accepted()).isEmpty();
+        assertThat(result.trace()).anySatisfy(t -> assertThat(t.outcome()).isEqualTo("CORRECTED_IN_VIDEO"));
+        assertThat(model.users.get(1)).contains("## 뒤 문맥").contains("[stt-4] 땡 정답은 앙카라입니다.")
+                .contains("## 앞 문맥").contains("[stt-1] 터키의 수도는?");
+    }
+
+    @Test void genericSubjectsAndQuestionsAreNeverSearched() {
+        model.extract.add(u -> new Extraction(List.of(
+                new ExtractedClaim(List.of("stt-1"), "그 밴드 데뷔가", "화자의 남편", "화자의 남편은 유도를 했다", List.of(), true, "화자 남편 유도"),
+                new ExtractedClaim(List.of("stt-1"), "그 밴드 데뷔가", "밴드 A", "밴드 A 의 데뷔 연도는 무엇인가", List.of(), true, "밴드 A 데뷔"))));
+        var result = engine().run(lines(), null);
+        assertThat(perplexity.queries).isEmpty();
+        assertThat(result.trace()).extracting(FactCheckEngine.TraceEntry::outcome).containsExactly("NOT_SPECIFIC", "NOT_ASSERTION");
+    }
+
+    @Test void evidenceThatDoesNotMentionTheSubjectIsNotAttached() {
+        model.extract.add(u -> new Extraction(List.of(debut())));
+        perplexity.answers.add(q -> Search.Outcome.of("perplexity", q, List.of(
+                item("시드니 식당 안내", "2016년 문을 연 식당", "https://sydney.example/food"))));
+        model.judge.add(u -> new Judgment("REFUTED", "다름", "2016년", List.of(new SourceEvidence("s1", "2016년 문을 연")),
+                List.of(), null));
+        var result = engine().run(lines(), null);
+        assertThat(result.accepted()).isEmpty();
+        assertThat(result.trace()).anySatisfy(t -> assertThat(t.note()).contains("대상이 나오지 않음"));
+    }
+
+    @Test void searchesAreCountedPerProvider() {
+        model.extract.add(u -> new Extraction(List.of(debut())));
+        perplexity.answers.add(q -> Search.Outcome.of("perplexity", q, List.of(item("밴드 A 소개", "결성", "https://a.example/intro"))));
+        model.judge.add(u -> new Judgment("INSUFFICIENT", null, null, List.of(), List.of(),
+                new Supplement("연도", "확인", "밴드 A 1집 발매일")));
+        serper.answers.add(q -> Search.Outcome.of("serper", q, List.of(item("밴드 A 1집", "2016년", "https://c.example"))));
+        model.judge.add(u -> new Judgment("INSUFFICIENT", null, null, List.of(), List.of(), null));
+        var result = engine().run(lines(), null);
+        assertThat(result.searchesByProvider()).containsEntry("perplexity", 1).containsEntry("serper", 1);
+    }
 }
