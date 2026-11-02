@@ -115,4 +115,16 @@ public class JsonCriteriaSourceTest {
                 new ByteArrayResource(JSON.writeValueAsString(ruleset).getBytes(StandardCharsets.UTF_8)),
                 new ByteArrayResource(JSON.writeValueAsString(stops).getBytes(StandardCharsets.UTF_8)));
     }
+
+    @org.junit.jupiter.api.Test
+    void version041AddsBodyEatingImageryToG04AndG17() {
+        var snap = JsonCriteriaSource.build(JsonCriteriaSource.read(new org.springframework.core.io.ClassPathResource("criteria/ruleset-oops-all-0.4.1-draft.json"), JsonCriteriaSource.RawRuleset.class),
+                JsonCriteriaSource.read(new org.springframework.core.io.ClassPathResource("criteria/stop-judgments-0.4.1-draft.json"), JsonCriteriaSource.RawStops.class));
+        org.assertj.core.api.Assertions.assertThat(snap.rulesetVersion()).isEqualTo("0.4.1-draft");
+        org.assertj.core.api.Assertions.assertThat(snap.criteria()).hasSize(21);
+        var g04 = snap.criteria().stream().filter(c -> c.common().id().equals("G04-C01")).findFirst().orElseThrow();
+        var g17 = snap.criteria().stream().filter(c -> c.common().id().equals("G17-C01")).findFirst().orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(g04.common().instructions()).anyMatch(i -> i.contains("사람의 신체를 먹는 장면"));
+        org.assertj.core.api.Assertions.assertThat(g17.common().candidateSignals()).anyMatch(i -> i.contains("식인"));
+    }
 }

@@ -29,8 +29,8 @@ import java.util.regex.Pattern;
 /**
  * 저장소 안 JSON 파일에서 기준을 읽는다. (redesign-v3)
  *
- * - 기준: criteria/ruleset-oops-all-0.4-draft.json (oops_ai_criteria_full.html 의 source-data)
- * - 중단 판단 코드: criteria/stop-judgments-draft.json
+ * - 기준: criteria/ruleset-oops-all-0.4.1-draft.json (0.4-draft = oops_ai_criteria_full.html 의 source-data, 0.4.1 은 G04·G17 보완)
+ * - 중단 판단 코드: criteria/stop-judgments-0.4.1-draft.json (0.4-draft 용은 stop-judgments-draft.json)
  *
  * Neo4j 서버 DB 가 준비되기 전까지 쓰는 구현이다. 파일은 바뀌지 않으므로 처음 성공한 결과를 재사용한다.
  */
@@ -50,8 +50,8 @@ public class JsonCriteriaSource implements CriteriaSource {
 
     @Autowired
     public JsonCriteriaSource(ResourceLoader loader,
-                              @Value("${oops.criteria.ruleset-location:classpath:criteria/ruleset-oops-all-0.4-draft.json}") String rulesetLocation,
-                              @Value("${oops.criteria.stop-judgments-location:classpath:criteria/stop-judgments-draft.json}") String stopLocation) {
+                              @Value("${oops.criteria.ruleset-location:classpath:criteria/ruleset-oops-all-0.4.1-draft.json}") String rulesetLocation,
+                              @Value("${oops.criteria.stop-judgments-location:classpath:criteria/stop-judgments-0.4.1-draft.json}") String stopLocation) {
         this(loader.getResource(rulesetLocation), loader.getResource(stopLocation));
     }
 

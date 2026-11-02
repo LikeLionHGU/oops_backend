@@ -85,7 +85,7 @@ public class Neo4jCriteriaSource implements CriteriaSource {
                                @Value("${oops.criteria.neo4j.password:}") String password,
                                @Value("${oops.criteria.neo4j.ruleset-id:ruleset:oops:all:0.4-draft}") String rulesetId,
                                @Value("${oops.criteria.neo4j.review-gate-version:independent-review/1.0}") String gateVersion,
-                               @Value("${oops.criteria.stop-judgments-location:classpath:criteria/stop-judgments-draft.json}") String stopLocation) {
+                               @Value("${oops.criteria.neo4j.stop-judgments-location:classpath:criteria/stop-judgments-draft.json}") String stopLocation) {
         this(buildClient(httpUri, username, password), database, rulesetId, gateVersion, loader.getResource(stopLocation));
         if (password == null || password.isBlank()) {
             log.warn("[criteria] oops.criteria.neo4j.password(NEO4J_PASSWORD)가 비어 있습니다. 기준 조회가 실패합니다.");

@@ -191,13 +191,16 @@ oops:
   # neo4j 는 같은 서버의 Neo4j HTTP Query API(127.0.0.1:7474)로 읽는다. infra/neo4j(neo4j-data-setup) 참고.
   criteria:
     source: ${OOPS_CRITERIA_SOURCE:json}
-    ruleset-location: classpath:criteria/ruleset-oops-all-0.4-draft.json
-    stop-judgments-location: classpath:criteria/stop-judgments-draft.json
+    # 0.4.1-draft(2026-11-02): G04·G17 에 '사람의 신체를 먹는 장면 연상' 추가. 0.4-draft 파일은 Neo4j 시드와 같은 원본이라 남겨 둔다.
+    ruleset-location: classpath:criteria/ruleset-oops-all-0.4.1-draft.json
+    stop-judgments-location: classpath:criteria/stop-judgments-0.4.1-draft.json
     neo4j:
       http-uri: ${NEO4J_HTTP_URI:http://127.0.0.1:7474}
       database: ${NEO4J_DATABASE:neo4j}
       username: ${NEO4J_USER:neo4j}
       password: ${NEO4J_PASSWORD:} # 서버 infra/neo4j/.env 의 OOPS_DB_PASSWORD 값
+      # Neo4j 에 올라간 기준은 아직 0.4-draft 다. 중단 판단 코드도 그 버전 것을 쓴다. Neo4j 를 0.4.1 로 올리면 함께 바꾼다.
+      stop-judgments-location: classpath:criteria/stop-judgments-draft.json
       ruleset-id: ruleset:oops:all:0.4-draft
       review-gate-version: independent-review/1.0
 
