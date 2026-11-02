@@ -1,0 +1,27 @@
+0.4.1-draft: immutable criteria version
+
+Exact source JSON files are copied from the redesign-v3 commit recorded in SOURCE.json.
+Only G04-C01 and G17-C01 instructions and candidate_signals change, aside from version IDs.
+All 89 criteria receive version 0.4.1-draft. Gate version remains independent-review/1.0.
+The stop-judgments file is validated for matching gate IDs; it remains a backend JSON resource.
+
+From /home/ubuntu/oops-neo4j-deploy/infra/neo4j:
+  sudo -n bash versions/0.4.1-draft/run-server.sh --dry-run
+  sudo -n bash versions/0.4.1-draft/run-server.sh --apply
+  sudo -n bash versions/0.4.1-draft/run-server.sh --verify
+
+Creates 221 nodes and 220 relationships for the new version. No case nodes are cloned.
+Existing 0.4-draft seed files and every existing graph node/relationship are preserved.
+Before writing, a private logical graph snapshot is saved as graph-before-<sha256>.json
+in this version directory. This is a logical snapshot, not a native Neo4j database dump.
+All writes and exact property/label/relationship comparisons use one transaction.
+Any mismatch aborts the transaction. Re-running an identical version verifies without updates;
+an incomplete or edited new version fails without overwrite.
+After commit, a separate DB read verifies all new nodes and relationships again.
+No backend settings or services are changed by this tool.
+
+After successful verification, the backend developer may switch:
+oops.criteria.neo4j.ruleset-id=ruleset:oops:all:0.4.1-draft
+oops.criteria.neo4j.stop-judgments-location=classpath:criteria/stop-judgments-0.4.1-draft.json
+The deployed backend JAR must contain that resource; these settings select an already-enabled
+Neo4j criteria source. They do not enable Neo4j mode on an older backend by themselves.

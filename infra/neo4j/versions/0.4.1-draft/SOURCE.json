@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/LikeLionHGU/oops_backend",
+  "source_branch": "redesign-v3",
+  "source_commit": "f08aa765674f4d220ac26685c81d1deba0856793",
+  "files": {
+    "ruleset-oops-all-0.4.1-draft.json": {
+      "source_path": "oops-backend/src/main/resources/criteria/ruleset-oops-all-0.4.1-draft.json",
+      "sha256": "96d4ccacb954ada504f985cf6e0ec5f94858cad3720da7a09ffe7ce23f923acd"
+    },
+    "stop-judgments-0.4.1-draft.json": {
+      "source_path": "oops-backend/src/main/resources/criteria/stop-judgments-0.4.1-draft.json",
+      "sha256": "5399fdcfe12036d563ac46a902ef29a244563c8a93b70571832c2be2d332864d"
+    }
+  }
+}
