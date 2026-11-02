@@ -37,8 +37,8 @@ if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
     if ($hasAudio) { Ok "오디오 트랙 있음 -> STT 가능" }
     else { Fail "오디오 트랙 없음! -> STT 가 절대 안 됩니다. 소리 있는 영상으로 바꾸세요." }
 
-    if ($hasVideo) { Ok "비디오 트랙 있음 -> OCR 가능" }
-    else { Warn "비디오 트랙 없음 -> OCR 불가" }
+    if ($hasVideo) { Ok "비디오 트랙 있음" }
+    else { Warn "비디오 트랙 없음 (전사에는 상관없음)" }
 
     $dur = ffprobe -v error -show_entries format=duration -of csv=p=0 "$full" 2>&1
     Write-Host "  길이: $dur 초"
@@ -81,39 +81,6 @@ if (-not $sttRaw) {
     } catch {
         Fail "응답 해석 실패. 원문:"
         Write-Host $sttRaw
-    }
-}
-
-# ---------------------------------------------------------- 4. OCR 직접 호출
-Section "4. /ocr 직접 호출"
-
-$frameDir = Join-Path $env:TEMP "oops-diag-frames"
-@{ filePath = $full; intervalSec = 2.0; frameDir = $frameDir } | ConvertTo-Json -Compress | Set-Content -Path $tmp -Encoding UTF8
-
-$ocrRaw = curl.exe -s -S -X POST "$Analysis/ocr" -H "Content-Type: application/json" -d "@$tmp"
-Write-Host ""
-if (-not $ocrRaw) {
-    Fail "응답 없음"
-} else {
-    try {
-        $ocr = $ocrRaw | ConvertFrom-Json
-        if ($ocr.detail) {
-            Fail "서버 오류: $($ocr.detail)"
-        } else {
-            $n = @($ocr.items).Count
-            if ($n -gt 0) {
-                Ok "화면 자막 $n 건"
-                @($ocr.items) | Select-Object -First 5 | ForEach-Object {
-                    Write-Host ("    {0,7}ms  {1}" -f $_.startMs, $_.text)
-                }
-                Write-Host "  프레임 저장 위치: $frameDir"
-            } else {
-                Warn "화면 자막 0건 - 영상에 글자가 없거나 인식하지 못했습니다."
-            }
-        }
-    } catch {
-        Fail "응답 해석 실패. 원문:"
-        Write-Host $ocrRaw
     }
 }
 

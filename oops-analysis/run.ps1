@@ -60,9 +60,6 @@ if (-not $py) {
     exit 1
 }
 Ok "$($py.Version)  ($($py.Exe) $($py.Pre -join ' '))"
-if ($py.Minor -ge 12) {
-    Warn "3.12 이상은 PaddleOCR 설치가 실패할 수 있습니다. STT 는 정상 동작합니다."
-}
 
 # ---------------------------------------------------------- 가상환경
 $activate = ".\.venv\Scripts\Activate.ps1"
@@ -106,17 +103,7 @@ if ($Setup) {
         exit 1
     }
     Ok "완료"
-
-    Info "`n[3] OCR 패키지 설치 (실패해도 계속 진행)"
-    $ErrorActionPreference = "Continue"
-    pip install -r requirements-ocr.txt
-    if ($LASTEXITCODE -ne 0) {
-        Warn "OCR 설치 실패 - 화면 자막 분석 없이 진행합니다."
-        Warn "파이썬 3.10 / 3.11 이면 대체로 해결됩니다."
-    } else {
-        Ok "완료"
-    }
-    $ErrorActionPreference = "Stop"
+    # redesign-v3: 화면 글자 인식(OCR)을 없앴다. 설치할 패키지는 전사(STT)용뿐이다.
 }
 
 # ---------------------------------------------------------- .env 확인

@@ -1,3 +1,2 @@
-# 전체 설치용. 단계별로 하려면 requirements-core.txt 부터 설치하세요.
+# 전체 설치용. redesign-v3 부터는 전사(STT)만 쓰므로 requirements-core.txt 와 같다.
 -r requirements-core.txt
--r requirements-ocr.txt

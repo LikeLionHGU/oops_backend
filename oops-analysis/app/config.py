@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -19,26 +19,6 @@ class Settings(BaseSettings):
     work_dir: str = "./workdir"
     # Spring 의 storage.location 과 같은 디렉터리. 서버 배포 환경에서는 절대 경로로 지정한다.
     media_storage_root: str = "../oops-backend/uploads"
-    ocr_lang: str = "korean"
-    # Per-job subprocess owns Paddle/native allocations; no shared in-process model.
-    ocr_timeout_sec: int | None = Field(default=None, ge=0, le=3600)
-    ocr_rec_batch_num: int = Field(default=1, ge=1, le=32)
-
-    @property
-    def effective_ocr_timeout_sec(self) -> int:
-        # Includes download, frame extraction, model startup and recognition.
-        if self.ocr_timeout_sec is not None:
-            return self.ocr_timeout_sec
-        return 0 if self.analysis_profile == "local" else 540
-
-    @model_validator(mode="after")
-    def unlimited_ocr_is_local_only(self):
-        if self.ocr_timeout_sec == 0 and self.analysis_profile != "local":
-            raise ValueError("OCR_TIMEOUT_SEC=0 requires ANALYSIS_PROFILE=local")
-        return self
-
-    # 프레임을 몇 초 간격으로 뽑을지 (OCR 기본값)
-    default_interval_sec: float = Field(default=4.0, gt=0, allow_inf_nan=False)
     media_timeout_sec: int = Field(default=300, gt=0, le=600)
 
     # 영상 길이 상한. (2026-11 redesign-v3: 90분 → 120분)
@@ -59,14 +39,6 @@ class Settings(BaseSettings):
     def effective_max_duration_sec(self) -> int:
         """0 means unlimited only in the explicitly selected local profile."""
         return 0 if self.analysis_profile == "local" else self.max_duration_sec
-
-    # OCR 로 인식할 최대 프레임 수.
-    #
-    # 간격만 고정하면 영상이 길어질수록 프레임이 선형으로 늘어난다.
-    # 4초 간격이면 60분 영상에 900장이고, 인식에만 7분 넘게 걸린다.
-    # 그래서 상한을 두고, 넘으면 간격을 자동으로 늘린다.
-    # 자막은 몇 초씩 유지되므로 간격이 벌어져도 대부분 잡힌다.
-    max_ocr_frames: int = 300
 
 
 @lru_cache

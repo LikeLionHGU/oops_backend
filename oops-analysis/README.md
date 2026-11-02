@@ -2,8 +2,6 @@
 
 ## macOS 기존 Conda 환경으로 실행할 때
 
-2026-10-18 로컬 점검에서 base Python3.13에는 paddleocr/paddle이 없었고, 기존 `oops-analysis` Conda 환경의 Python3.11.17에는 PaddleOCR2.9.1/PaddlePaddle2.6.2가 설치돼 import도 통과했다. 설치된 환경과 서버 실행 환경을 일치시켜야 한다. 패키지가 있어도 모델 초기화·실제 OCR 성공은 별도로 확인한다.
-
 기존 Python 서버를 실행한 터미널에서 Ctrl+C로 종료한 후:
 
 ```zsh
@@ -13,9 +11,9 @@ export MEDIA_STORAGE_ROOT=/Users/im_inwook/dev/oops_backend/oops-backend/uploads
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-다른 터미널에서 `curl http://127.0.0.1:8000/health`의 sttAvailable/ocrAvailable을 각각 확인한다. 기존 저장 결과는 재시작으로 소급 변경되지 않는다. 위 경로는 이 프로젝트 소유자의 Mac 예시이며 다른 머신에서는 실제 설치 경로를 사용한다. base 환경에 무작정 OCR을 재설치하지 않는다. pinned PaddlePaddle2.6.2의 지원 Python/배포 파일은 [공식 패키지 정보](https://pypi.org/project/paddlepaddle/2.6.2/)를 따른다.
+다른 터미널에서 `curl http://127.0.0.1:8000/health`의 sttAvailable을 확인한다. 위 경로는 이 프로젝트 소유자의 Mac 예시이며 다른 머신에서는 실제 설치 경로를 사용한다.
 
-2026-10-16 · Spring이 호출하는 Python FastAPI 분석 서버다. 기본 전사는 Groq `whisper-large-v3`이며 OCR·선택 프레임 추출은 로컬에서 수행한다.
+2026-10-16 · Spring이 호출하는 Python FastAPI 분석 서버다. 전사는 Groq `whisper-large-v3`만 쓴다. 화면 글자 인식(OCR)·장면 프레임은 redesign-v3 에서 없앴다.
 
 ## 설치·실행
 
@@ -28,7 +26,6 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-STT만 설치하려면 `requirements-core.txt`를 사용하고, OCR은 `requirements-ocr.txt`로 추가한다. PaddleOCR은 첫 실행에 모델 다운로드가 필요할 수 있다.
 
 최초에만 `.env.example`을 `.env`로 복사한다. 기존 파일은 덮어쓰지 않고 수정한다.
 
@@ -66,33 +63,28 @@ Diarize의 청크별 화자 ID는 전역 인물 ID가 아니다. Python 화자 �
 
 | 메서드·경로 | 기능 |
 |---|---|
-| GET `/health` | 서버 상태·선택 STT의 키 설정·OCR 사용 가능 여부 |
+| GET `/health` | 서버 상태·STT 키 설정 여부 |
 | POST `/probe` | 길이·제한 확인 |
 | POST `/transcribe` | 전사와 구간 시간 |
-| POST `/ocr` | 화면 글자·영역·프레임 |
-| POST `/scene-frames` | 지정 시각의 선택 프레임 |
 
-`sttAvailable=true`는 선택 모델의 키가 설정됐다는 의미이며 외부 API 인증·과금·전사 품질 검증은 아니다. OCR 미설치·처리 실패는 `/ocr`에서 503으로 전달한다.
+`sttAvailable=true`는 선택 모델의 키가 설정됐다는 의미이며 외부 API 인증·과금·전사 품질 검증은 아니다.
 
-probe/transcribe/ocr 요청 예시:
+probe/transcribe 요청 예시:
 
 ```json
 {
   "videoUrl": null,
-  "filePath": "/실제_공유저장소/videos/1/original.mp4",
-  "intervalSec": 4.0
+  "filePath": "/실제_공유저장소/videos/1/original.mp4"
 }
 ```
 
-로컬 원본은 `MEDIA_STORAGE_ROOT/videos/` 아래만 허용한다. OCR의 `frameDir`은 같은 저장소 `frames/` 하위여야 한다. `videoUrl`을 사용하면 HTTPS YouTube URL을 전달하며 yt-dlp 다운로드 가능 여부에 영향을 받는다.
-
-장면 요청은 업로드 원본의 `filePath`와 최대 3개의 정수 `timestampsMs`를 사용한다.
+로컬 원본은 `MEDIA_STORAGE_ROOT/videos/` 아래만 허용한다. `videoUrl`을 사용하면 HTTPS YouTube URL을 전달하며 yt-dlp 다운로드 가능 여부에 영향을 받는다.
 
 ## 길이·비용·관측 한계
 
-기본 `MAX_DURATION_SEC=7200`은 120분이다 (Groq 기본 한도가 시간당 음성 7,200초). `MAX_OCR_FRAMES=300`을 넘으면 프레임 간격이 늘어나므로 짧게 표시된 자막을 놓칠 수 있다. OCR 글자가 없다고 자막이 없다고 확정하지 않는다.
+기본 `MAX_DURATION_SEC=7200`은 120분이다 (Groq 기본 한도가 시간당 음성 7,200초).
 
-로컬에서 길이 상한을 해제하려면 `ANALYSIS_PROFILE=local` 환경변수를 지정하고 Python을 재시작한다. macOS 예: `ANALYSIS_PROFILE=local python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`. 기본 `ANALYSIS_PROFILE=default`는 설정된 길이 제한을 유지한다. 무제한 모드에서도 잘못된 영상 길이·경로 검증, OCR 프레임 예산과 처리 타임아웃은 유지된다. Spring도 `local` 프로필로 재시작해야 용량 상한이 해제된다. 운영에는 적용하지 않으며 긴 영상은 자원·비용과 제공자 한도에 영향을 받는다.
+로컬에서 길이 상한을 해제하려면 `ANALYSIS_PROFILE=local` 환경변수를 지정하고 Python을 재시작한다. macOS 예: `ANALYSIS_PROFILE=local python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`. 기본 `ANALYSIS_PROFILE=default`는 설정된 길이 제한을 유지한다. 무제한 모드에서도 잘못된 영상 길이·경로 검증과 처리 타임아웃은 유지된다. Spring도 `local` 프로필로 재시작해야 용량 상한이 해제된다. 운영에는 적용하지 않으며 긴 영상은 자원·비용과 제공자 한도에 영향을 받는다.
 
 Groq STT의 현재 설정 단가 추정은 분당 $0.00185다. 60분은 약 $0.111이며 환율 1,400원 가정 시 약 155원이다. 텍스트 판단 비용·실제 청구액은 별도다. Spring 비용 추정 단가는 Spring 설정에서 관리한다.
 

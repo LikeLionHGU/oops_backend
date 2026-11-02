@@ -4,13 +4,18 @@
 #   .\scripts\smoke-test.ps1 -VideoId 437                 이미 올린 영상: 진행 중이면 지켜보고, 끝났으면 결과만
 #
 # 백엔드(8080)와 분석 서버(8000)가 켜져 있어야 한다.
+#
+# 로그인을 켠 서버에 쓸 때: 브라우저로 로그인한 뒤 개발자 도구 → 애플리케이션 → 쿠키에서
+# JSESSIONID 값을 복사해 -Session 으로 넘긴다. (로컬은 로그인이 꺼져 있어 필요 없다)
+#   .\scripts\smoke-test.ps1 -Backend https://api.oops-im-sorry.online -Session "ABC123..." -VideoId 12
 
 param(
     [string]$File,
     [int]$VideoId = 0,
     [string]$Backend = "http://localhost:8080",
     [string]$Analysis = "http://localhost:8000",
-    [int]$TimeoutMinutes = 150
+    [int]$TimeoutMinutes = 150,
+    [string]$Session = ""
 )
 
 try {
@@ -25,9 +30,12 @@ function Warn($t) { Write-Host "  [WARN] $t" -ForegroundColor Yellow }
 function Fail($t) { Write-Host "  [FAIL] $t" -ForegroundColor Red }
 function Hint($t) { Write-Host "         $t" -ForegroundColor DarkGray }
 
+# 로그인한 서버면 세션 쿠키를 같이 보낸다.
+function Cookie-Args { if ($Session) { return @("-b", "JSESSIONID=$Session") } else { return @() } }
+
 # Invoke-RestMethod 는 PowerShell 5.1 에서 한글을 깨뜨린다. curl.exe 로 받아 직접 파싱한다.
 function Get-Json($url) {
-    $raw = (curl.exe -s $url) -join "`n"
+    $raw = (curl.exe -s @(Cookie-Args) $url) -join "`n"
     if (-not $raw) { return $null }
     try { return ($raw | ConvertFrom-Json) } catch { return $null }
 }
@@ -56,13 +64,22 @@ Section "2. 백엔드"
 $ping = curl.exe -s -o NUL -w "%{http_code}" "$Backend/api/v1/videos/999999/status"
 if ($ping -eq "000") { Fail "백엔드 응답 없음. gradlew bootRun 으로 켜세요."; exit 1 }
 Ok "응답함 (HTTP $ping)"
+$me = (Get-Json "$Backend/api/v1/auth/me").data
+if ($me -and $me.authEnabled) {
+    if ($me.loggedIn) { Ok "로그인: $($me.user.displayName)" }
+    else { Fail "이 서버는 로그인이 켜져 있습니다. 브라우저로 로그인한 뒤 JSESSIONID 를 -Session 으로 넘기세요."; exit 1 }
+}
 
 # ---------------------------------------------------------- 3. 업로드
 if ($File) {
     Section "3. 영상 업로드 (올리면 바로 분석 시작)"
     $item = Get-Item $File
     Write-Host ("  업로드 중... ({0} MB)" -f [math]::Round($item.Length / 1MB, 1))
-    $raw = (curl.exe -s -S -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)") -join "`n"
+    # 로그인한 서버는 업로드에 CSRF 토큰이 필요하다.
+    $csrf = (Get-Json "$Backend/api/v1/auth/csrf").data
+    $extra = @()
+    if ($csrf -and $csrf.token) { $extra = @("-H", "$($csrf.headerName): $($csrf.token)") }
+    $raw = (curl.exe -s -S @(Cookie-Args) @extra -X POST "$Backend/api/v1/videos" -F "file=@$($item.FullName)") -join "`n"
     if (-not $raw) { Fail "업로드 응답이 비었습니다."; exit 1 }
     try { $res = $raw | ConvertFrom-Json } catch { Fail "응답 해석 실패:"; Write-Host $raw; exit 1 }
     if (-not $res.success) { Fail "$($res.message)  [code=$($res.error.code)]"; exit 1 }
@@ -119,6 +136,8 @@ if (-not $report) { Fail "리포트를 가져오지 못했습니다."; exit 1 }
 
 foreach ($w in @($report.warnings)) {
     if ($null -eq $w) { continue }
+    # 화면 글자처럼 지금은 쓰지 않는 단계(…_NOT_ENABLED)는 경고가 아니라 안내다.
+    if ("$($w.code)" -like "*_NOT_ENABLED") { Hint ("(사용 안 함) {0}" -f $w.message); continue }
     Warn ("{0} {1}: {2}" -f $w.stage, $w.code, $w.message)
 }
 
