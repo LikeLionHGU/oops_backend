@@ -203,7 +203,7 @@ oops:
 
   # 줄 단위 + 시간 상·하한 문맥. 숫자는 출발점이다. 평가 세트로 조정한다.
   context:
-    discovery-lines: 20       # 후보 탐색 대상 한 묶음 최대 줄 수
+    discovery-lines: 10       # 후보 탐색 대상 한 묶음 최대 줄 수 (2026-11-02: 20 → 10, 놓침 줄이기 시험)
     discovery-max-ms: 60000   # 후보 탐색 대상 한 묶음 최대 길이
     context-lines: 5          # 기본 문맥 앞뒤 각 줄 수
     context-min-ms: 15000     # 기본 문맥 앞뒤 각 최소 길이
