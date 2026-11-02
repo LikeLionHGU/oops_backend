@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
 import shutil
 import subprocess
 import uuid
@@ -188,34 +187,3 @@ def extract_audio(video: PreparedVideo) -> Path:
     if result.returncode != 0 or not target.exists():
         raise MediaError(f"오디오 추출 실패: {result.stderr[-500:]}")
     return target
-
-
-def extract_frames(video: PreparedVideo, interval_sec: float) -> list[tuple[int, Path]]:
-    """interval_sec 간격으로 프레임을 뽑아 (타임코드ms, 파일경로) 목록을 돌려준다."""
-    if not math.isfinite(interval_sec) or interval_sec <= 0:
-        raise MediaError("프레임 간격은 양수여야 합니다.")
-    frame_dir = video.workdir / "frames"
-    frame_dir.mkdir(exist_ok=True)
-
-    cmd = [
-        "ffmpeg", "-hide_banner", "-nostats", "-y", "-i", str(video.path),
-        # 자막 글자가 작으면 OCR 이 깨진다. 원본이 작아도 업스케일해서 인식률을 올린다.
-        # 1920 은 인식률이 좋지만 느리다. 1600 이 속도와 정확도의 타협점이다.
-        # Sample the first source frame at/after each grid point. Retain actual
-        # source-relative PTS; fps resampling rewrites PTS and samples later frames.
-        "-vf", f"setpts=PTS-STARTPTS,select='gte(t,selected_n*{interval_sec})',"
-               "showinfo=checksum=0,scale=1600:-2:flags=lanczos",
-        "-fps_mode", "vfr",
-        "-q:v", "2",
-        str(frame_dir / "frame_%05d.jpg"),
-    ]
-    result = run_command(cmd, timeout=get_settings().media_timeout_sec, label="프레임 추출")
-    if result.returncode != 0:
-        raise MediaError(f"프레임 추출 실패: {result.stderr[-500:]}")
-
-    frames = sorted(frame_dir.glob("frame_*.jpg"))
-    times = [float(t) for t in re.findall(r"\[Parsed_showinfo_\d+[^\]]*\].*?\bpts_time:([0-9.eE+-]+)", result.stderr)]
-    if (len(times) != len(frames) or any(not math.isfinite(t) or t < 0 for t in times)
-            or any(b <= a for a, b in zip(times, times[1:]))):
-        raise MediaError("OCR 프레임의 실제 시간 정보를 확인하지 못했습니다.")
-    return [(round(t * 1000), path) for t, path in zip(times, frames)]
