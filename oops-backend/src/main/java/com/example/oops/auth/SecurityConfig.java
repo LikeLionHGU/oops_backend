@@ -47,6 +47,7 @@ import java.util.List;
  *   4. 상태를 바꾸는 요청(POST·PUT·DELETE)은 GET /api/v1/auth/csrf 로 받은 토큰을 X-CSRF-TOKEN 헤더에 넣는다(헤더 이름도 응답에 있다).
  *
  * oops.auth.enabled=false 이면 로그인 없이 모든 요청을 "로컬 개발자"로 처리하고 CSRF 도 끈다(로컬 시험용).
+ * 이때도 이 컴퓨터(localhost)에서 직접 온 요청만 받는다. 서버에 꺼진 채로 올라가도 외부에는 열리지 않는다.
  */
 @Slf4j
 @Configuration
@@ -172,6 +173,17 @@ public class SecurityConfig {
         @Override
         protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
                 throws jakarta.servlet.ServletException, IOException {
+            // 로그인을 끈 상태는 내 PC 에서만 쓴다. 서버에서 설정이 빠져 꺼진 채로 떠도 외부 요청은 막는다.
+            if (!fromThisMachine(req)) {
+                log.warn("[auth] 로그인이 꺼진 서버에 외부 요청이 와서 막았습니다. 서버에서는 OOPS_AUTH_ENABLED=true 로 켜세요. remote={}",
+                        req.getRemoteAddr());
+                res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                res.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                res.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                res.getWriter().write("{\"success\":false,\"data\":null,\"error\":{\"code\":\"UNAUTHORIZED\","
+                        + "\"message\":\"로그인이 꺼진 서버는 이 컴퓨터에서만 쓸 수 있습니다.\",\"details\":null}}");
+                return;
+            }
             if (SecurityContextHolder.getContext().getAuthentication() == null
                     || !(SecurityContextHolder.getContext().getAuthentication().getPrincipal() instanceof AuthenticatedUser)) {
                 var principal = users.localDeveloper();
@@ -182,6 +194,29 @@ public class SecurityConfig {
             }
             chain.doFilter(req, res);
         }
+    }
+
+    /**
+     * 이 컴퓨터에서 직접 온 요청인가.
+     * nginx 같은 프록시를 거치면 접속 주소는 127.0.0.1 이어도 Host 가 도메인이거나 X-Forwarded-For 가 붙는다.
+     * (forward-headers-strategy=framework 이면 접속 주소 자체가 실제 사용자 IP 로 바뀐다)
+     */
+    static boolean fromThisMachine(HttpServletRequest req) {
+        if (!isLoopback(req.getRemoteAddr())) return false;
+        String host = req.getServerName();
+        if (host == null || !(host.equalsIgnoreCase("localhost") || isLoopback(host))) return false;
+        String forwarded = req.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            for (String ip : forwarded.split(",")) if (!isLoopback(ip.strip())) return false;
+        }
+        return true;
+    }
+
+    private static boolean isLoopback(String address) {
+        if (address == null) return false;
+        String a = address.strip();
+        if (a.startsWith("[") && a.endsWith("]")) a = a.substring(1, a.length() - 1);
+        return a.equals("127.0.0.1") || a.startsWith("127.") || a.equals("::1") || a.equals("0:0:0:0:0:0:0:1");
     }
 
     /** 구글 access/refresh 토큰을 세션에 남기지 않는다. 로그인 확인 뒤에는 쓸 일이 없다. */
