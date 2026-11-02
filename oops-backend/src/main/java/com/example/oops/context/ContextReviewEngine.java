@@ -261,8 +261,14 @@ public final class ContextReviewEngine {
         Set<String> coreIds = window.coreIds();
         for (DiscoveryCandidate d : list(out.get().candidates())) {
             CriterionBundle criterion = d.criterionId() == null ? null : criteria.get(d.criterionId());
-            List<String> ids = list(d.coreSegmentIds());
-            if (criterion == null || ids.isEmpty() || !coreIds.containsAll(ids) || blank(d.reason())) {
+            List<String> raw = list(d.coreSegmentIds());
+            // 검토 대상 밖(뒤 문맥) 줄까지 함께 적는 경우가 많다. 그 줄 때문에 후보 전체를 버리지 않고,
+            // 검토 대상 안의 줄만 남긴다. 밖의 줄은 다음 창에서 따로 본다. (471번 영상 시험 후 추가)
+            List<String> ids = raw.stream().map(String::strip).filter(coreIds::contains).distinct().toList();
+            if (!ids.isEmpty() && ids.size() < raw.size()) {
+                d = new ContextModelOutput.DiscoveryCandidate(d.criterionId(), ids, d.reason());
+            }
+            if (criterion == null || ids.isEmpty() || blank(d.reason())) {
                 run.invalid.incrementAndGet();
                 trace.add(new TraceEntry("DISCOVERY", null, d.criterionId(), null, ids, "INVALID", d.reason(),
                         List.of(), List.of(), List.of(), false,
@@ -301,6 +307,15 @@ public final class ContextReviewEngine {
             }
             List<String> missing = list(r.missingInformation()).stream().map(MissingInformation::what)
                     .filter(w -> !blank(w)).toList();
+            // 중단 판단 칸에 이 기준의 코드가 아닌 말(예: "기준 전체 중단")을 적으면, 모델이 정보 부족을 알린 것이다.
+            // 형식 오류로 버리지 않고 이 후보를 중단으로 기록한다. 결과로 내보내지 않는 쪽이라 안전하다.
+            List<String> unknownCodes = list(r.stoppedJudgments()).stream().map(String::strip)
+                    .filter(code -> !c.criterion.stopIfMissingCodes().contains(code)).toList();
+            if (!unknownCodes.isEmpty() && !blank(r.reason())) {
+                run.trace(trace, stage, c, "STOP", r.reason(), missing,
+                        "중단 판단 칸에 기준에 없는 값(" + String.join(", ", unknownCodes) + ") → 전체 중단으로 처리");
+                continue;
+            }
             Optional<String> problem = gateProblem(c, r);
             if (problem.isPresent()) {
                 run.invalid.incrementAndGet();
@@ -412,6 +427,8 @@ public final class ContextReviewEngine {
         } catch (IllegalArgumentException e) {
             return Optional.of("알 수 없는 결정: " + r.decision());
         }
+        // 제외는 사용자에게 보여주지 않으므로 이유가 비어도 받아들인다. 결과로 낼 때만 이유가 필요하다.
+        if (decision == Decision.EXCLUDE) return Optional.empty();
         if (blank(r.reason())) return Optional.of("이유 없음");
         Optional<String> evidence = evidenceProblem(c.window, list(r.evidence()));
         if (evidence.isPresent()) return evidence;

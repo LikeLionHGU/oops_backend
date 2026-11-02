@@ -151,16 +151,35 @@ class ContextReviewEngineTest {
         assertThat(result.trace()).anySatisfy(t -> assertThat(t.note()).contains("원문에 없는 인용"));
     }
 
-    @Test void unknownStopCodeAndOutOfCoreDiscoveryAreInvalid() {
+    @Test void outOfCoreDiscoveryIsInvalidAndUnknownStopCodeStopsTheCandidate() {
         var model = new FakeModel();
         model.discovery.add(u -> new Discovery(List.of(), List.of(
                 new DiscoveryCandidate("G02-C01", List.of("stt-99"), "없는 구간"),
                 new DiscoveryCandidate("G99-C01", List.of("stt-4"), "없는 기준"),
                 new DiscoveryCandidate("G02-C01", List.of("stt-4"), "정상"))));
-        model.gate.add(u -> new Gate(List.of(proceed("c1", List.of("DISCOMFORT_X")))));
+        model.gate.add(u -> new Gate(List.of(proceed("c1", List.of("기준 전체 중단")))));
         var result = engine(model).run(talk(), CRITERIA, null);
-        assertThat(result.invalidOutputs()).isEqualTo(3);
+        assertThat(result.invalidOutputs()).isEqualTo(2);
         assertThat(model.stages).containsExactly("DISCOVERY", "GATE");
+        assertThat(result.accepted()).isEmpty();
+        assertThat(result.trace()).anySatisfy(t -> {
+            assertThat(t.stage()).isEqualTo("GATE");
+            assertThat(t.outcome()).isEqualTo("STOP");
+            assertThat(t.note()).contains("기준 전체 중단");
+        });
+    }
+
+    @Test void discoveryKeepsOnlyCoreLinesWhenSomeAreOutside() {
+        var model = new FakeModel();
+        model.discovery.add(u -> new Discovery(List.of(), List.of(
+                new DiscoveryCandidate("G02-C01", List.of("stt-4", "stt-99"), "일부는 밖"))));
+        model.gate.add(u -> new Gate(List.of(new GateResult("c1", "EXCLUDE", "제외 조건", List.of(), List.of(), List.of(), List.of(), false))));
+        var result = engine(model).run(talk(), CRITERIA, null);
+        assertThat(result.invalidOutputs()).isZero();
+        assertThat(result.trace()).anySatisfy(t -> {
+            assertThat(t.stage()).isEqualTo("DISCOVERY");
+            assertThat(t.coreSegmentIds()).containsExactly("stt-4");
+        });
     }
 
     @Test void expansionHappensOnceAndOnlyForTranscriptInformation() {
