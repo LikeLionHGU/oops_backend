@@ -32,6 +32,7 @@ from build_context_dictionary import compile_dictionary
 from build_review_guidelines import compile_guidelines
 from build_review_guidelines import write_private
 from controversy_cards import retention_open
+from dataset_write_lock import dataset_write_lock
 from review_dataset_catalog import inside
 import incidents_migration as mig
 from source_use_policy import LOCK_PATH, reviewed_incident_inputs, validate_incident_sources
@@ -296,7 +297,9 @@ def main():
         if args.verify:
             manifest = verify(args.dataset_root)
         elif args.write:
-            manifest = publish(args.dataset_root, args.allow_schema_downgrade)
+            # Lock only at the CLI: intakes already hold it when they call publish().
+            with dataset_write_lock(args.dataset_root):
+                manifest = publish(args.dataset_root, args.allow_schema_downgrade)
         else:
             _, manifest = prepare(args.dataset_root)
         result = {k: v for k, v in manifest.items() if k != "inputHashes"}

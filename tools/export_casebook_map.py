@@ -2,6 +2,8 @@
 """Export a local, git-ignored casebook snapshot for the read-only HTML map."""
 import hashlib
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +15,18 @@ LOCAL_VIEW = DATA / "visualizations" / "casebook-map-local.json"
 
 def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_private_text(path, text):
+    """Created 0600 and swapped in atomically, so the snapshot is never briefly world-readable."""
+    descriptor, temporary = tempfile.mkstemp(prefix=".snapshot-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def main():
@@ -32,8 +46,7 @@ def main():
                 "exampleView": local_view.get("exampleView")}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
-    OUT.write_text("window.CASEBOOK_SNAPSHOT=" + payload + ";\n", encoding="utf-8")
-    OUT.chmod(0o600)
+    write_private_text(OUT, "window.CASEBOOK_SNAPSHOT=" + payload + ";\n")
     print(f"Local snapshot: {OUT}; examples={len(runtime['examples'])}; "
           f"incidents={len(incidents)}; units={len(units)}")
 

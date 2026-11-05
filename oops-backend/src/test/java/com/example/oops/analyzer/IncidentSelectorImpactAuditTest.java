@@ -51,6 +51,25 @@ class IncidentSelectorImpactAuditTest {
         }
     }
 
+    @Test void refusesToReportLexicalFallbackAsStructuredSearch() throws Exception {
+        byte[] runtime = JSON.writeValueAsBytes(new ContextRelationRetrievalTest().archive());
+        var request = new LinkedHashMap<String, Object>();
+        request.put("schemaVersion", "incident-selector-impact-request-1");
+        request.put("auditBindingSha256", "b".repeat(64)); request.put("evaluationFingerprint", "e".repeat(64));
+        request.put("baselineRuntimeSha256", sha(runtime)); request.put("candidateRuntimeSha256", sha(runtime));
+        request.put("sourceCaseIdsAdded", List.of()); request.put("sourceCaseIdsRemoved", List.of());
+        request.put("evaluation", List.of(Map.of("caseId", "synthetic-query-1", "anchorId", "line-1",
+                "raw", List.of(Map.of("id", "line-1", "startMs", 0, "endMs", 1000, "text", "합성 원문", "confidence", 1.0)))));
+        var dir = Files.createTempDirectory("incident-impact-fallback-test-");
+        var requestPath = dir.resolve("request.json"); var runtimePath = dir.resolve("runtime.json");
+        Files.write(requestPath, JSON.writeValueAsBytes(request)); Files.write(runtimePath, runtime);
+        try (var catalog = org.mockito.Mockito.mockStatic(StructuredContextSearch.class)) {
+            catalog.when(StructuredContextSearch::load).thenThrow(new IllegalStateException("synthetic catalog failure"));
+            assertThatThrownBy(() -> IncidentSelectorImpactAudit.audit(requestPath, runtimePath, runtimePath))
+                    .hasMessageContaining("STRUCTURED_SEARCH_UNAVAILABLE");
+        }
+    }
+
     @Test void refusesARequestWhoseRuntimeBytesDoNotMatchPinnedHashes() throws Exception {
         byte[] runtime = JSON.writeValueAsBytes(new ContextRelationRetrievalTest().archive());
         var request = new LinkedHashMap<String, Object>();

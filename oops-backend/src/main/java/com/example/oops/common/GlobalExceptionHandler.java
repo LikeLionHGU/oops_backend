@@ -4,7 +4,10 @@ import com.example.oops.security.RequestIdFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -60,6 +63,22 @@ public class GlobalExceptionHandler {
                        MissingServletRequestParameterException.class})
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception e) {
         return build(ErrorCode.INVALID_REQUEST, e.getMessage(), e, false);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotAllowed(HttpRequestMethodNotSupportedException e) {
+        ResponseEntity<ApiResponse<Void>> response = build(ErrorCode.METHOD_NOT_ALLOWED,
+                ErrorCode.METHOD_NOT_ALLOWED.getDefaultMessage(), e, false);
+        var supported = e.getSupportedHttpMethods();
+        if (supported == null || supported.isEmpty()) return response;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAllow(supported);
+        return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException e) {
+        return build(ErrorCode.UNSUPPORTED_MEDIA_TYPE, ErrorCode.UNSUPPORTED_MEDIA_TYPE.getDefaultMessage(), e, false);
     }
 
     /**

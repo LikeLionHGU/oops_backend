@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.*;
 class LocalUploadLimitTest {
     OopsProperties properties=new OopsProperties(new OopsProperties.Storage("./uploads",0,0),null,null);
     MockMultipartFile large(String name) {
-        return new MockMultipartFile("file",name,"video/mp4",new byte[]{1}) {
+        return new MockMultipartFile("file",name,"video/mp4",VideoBytes.MP4_HEADER) {
             @Override public long getSize() { return 5L*1024*1024*1024; }
         };
     }

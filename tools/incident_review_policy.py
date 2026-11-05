@@ -5,6 +5,7 @@ per-statement review to a declared internal runtime use. They are provenance
 attestations, not proof of identity, source authenticity, legal rights, or truth.
 """
 import datetime
+import hashlib
 import re
 from pathlib import Path
 
@@ -61,7 +62,6 @@ def source_artifacts(root, incident):
                     "INCIDENT_REVIEW_SOURCE_DOCUMENT_BINDING_INVALID")
             path = _safe_file(root, snapshot)
             raw = read_bytes(path)
-            import hashlib
             require(hashlib.sha256(raw).hexdigest() == expected_hash,
                     "INCIDENT_REVIEW_SOURCE_SNAPSHOT_HASH_MISMATCH")
             body = raw.decode("utf-8")

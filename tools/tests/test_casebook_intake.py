@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import casebook_intake as tool
+from dataset_write_lock import LOCK_NAME, dataset_write_lock
 from casebook_provenance import validate_approval_document
 import build_incident_dataset as builder
 from test_incident_publish import setup
@@ -21,7 +22,9 @@ def save(root, name, value):
 
 
 def snapshot(root):
-    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+    """Dataset content only; the writer lock file is process coordination, not data."""
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*')
+            if p.is_file() and p.name != LOCK_NAME}
 
 
 def bind_approval_to_selection(root, value, segment_ids):
@@ -264,7 +267,7 @@ def test_apply_add_publishes_verified_runtime_and_private_receipt(dataset):
     assert unit['humanVerified'] is False and unit['trainingUseAuthorized'] is False
     receipt = json.loads((dataset / plan['receipt']).read_bytes())
     assert receipt['intake']['relatedUnitIds'] == ['dev#seed'] and receipt['retrievalAudit']['providerCalls'] == 0
-    assert not (dataset / '.casebook-intake.lock').exists()
+    with dataset_write_lock(dataset): pass
 
 
 def test_update_preserves_source_and_label_and_only_writes_authored_views(dataset):
@@ -386,6 +389,7 @@ def test_keyboard_interrupt_rolls_back_and_releases_lock(dataset, monkeypatch):
     with pytest.raises(KeyboardInterrupt): tool.apply_plan(dataset, value, preview['sha'], fake_audit,
                                                            expected_impact_sha=tool.impact_report_sha256(fake_audit(preview)))
     assert snapshot(dataset) == before
+    with dataset_write_lock(dataset): pass
 
 
 def test_partial_publication_restores_previous_runtime_pair(dataset, monkeypatch):
@@ -399,10 +403,12 @@ def test_partial_publication_restores_previous_runtime_pair(dataset, monkeypatch
     assert not (dataset / 'context-units/new-boundary.json').exists()
 
 
-def test_lock_is_not_removed_when_another_intake_owns_it(dataset):
-    lock = dataset / '.casebook-intake.lock'; lock.write_text('other owner')
-    with pytest.raises(FileExistsError): tool.apply_plan(dataset, spec(dataset), '0' * 64, fake_audit)
-    assert lock.read_text() == 'other owner'
+def test_apply_is_refused_while_another_dataset_writer_holds_the_lock(dataset):
+    before = tool.baseline(dataset)
+    with dataset_write_lock(dataset):
+        with pytest.raises(ValueError, match='DATASET_WRITE_IN_PROGRESS'):
+            tool.apply_plan(dataset, spec(dataset), '0' * 64, fake_audit)
+    assert tool.baseline(dataset) == before
 
 
 def test_symlink_input_and_target_are_refused(dataset):

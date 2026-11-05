@@ -13,11 +13,12 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
 
 import build_incident_dataset as builder
+from dataset_write_lock import dataset_write_lock
+from local_audit_runner import run_gradle_audit
 from source_use_policy import incident_lock_path
 from build_review_guidelines import write_private
 from review_context_pilot import parse, read_bytes, require, text, PilotError
@@ -43,7 +44,7 @@ def impact_report_sha256(report):
 
 def implementation_hashes():
     repo = Path(__file__).resolve().parents[1]
-    names = ["tools/" + name + ".py" for name in ("casebook_intake", "casebook_provenance", "build_incident_dataset", "build_context_units", "source_use_policy",
+    names = ["tools/" + name + ".py" for name in ("casebook_intake", "local_audit_runner", "casebook_provenance", "build_incident_dataset", "build_context_units", "source_use_policy",
              "build_context_dictionary", "build_review_guidelines", "incidents_migration", "review_context_pilot")]
     names += ["tools/context_unit_source_lock.json"]
     names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
@@ -383,20 +384,12 @@ def audit_retrieval(planned):
         (directory / "baseline-runtime.json").write_bytes(before_raw)
         write_private(directory / "runtime.json", planned["payload"]["candidateRuntime"])
         write_private(directory / "request.json", request)
-        env = {k: v for k, v in os.environ.items() if k in
-               {"PATH", "JAVA_HOME", "HOME", "USER", "TMPDIR", "LANG", "GRADLE_USER_HOME"}}
-        try:
-            process = subprocess.run(["bash", "./gradlew", "--offline", "--console=plain", "-q", "casebookImpactAudit",
-                    "-PimpactRequest=" + str(directory / "request.json"),
-                    "-PimpactBaseline=" + str(directory / "baseline-runtime.json"),
-                    "-PimpactCandidate=" + str(directory / "runtime.json")],
-                    cwd=repo / "oops-backend", env=env, text=True, capture_output=True, timeout=60)
-        except (OSError, subprocess.TimeoutExpired):
-            raise PilotError("LOCAL_RETRIEVAL_AUDIT_UNAVAILABLE") from None
-        rows = [s.removeprefix("CASEBOOK_IMPACT_AUDIT=") for s in process.stdout.splitlines()
-                if s.startswith("CASEBOOK_IMPACT_AUDIT=")]
-        require(process.returncode == 0 and len(rows) == 1, "LOCAL_RETRIEVAL_AUDIT_FAILED")
-        result = parse(rows[0])
+        result = run_gradle_audit("casebookImpactAudit",
+                                  {"impactRequest": directory / "request.json",
+                                   "impactBaseline": directory / "baseline-runtime.json",
+                                   "impactCandidate": directory / "runtime.json"},
+                                  "CASEBOOK_IMPACT_AUDIT=", "LOCAL_RETRIEVAL_AUDIT_UNAVAILABLE",
+                                  "LOCAL_RETRIEVAL_AUDIT_FAILED", backend=repo / "oops-backend")
         require(planned["payload"]["implementationHashes"] == implementation_hashes(),
                 "IMPLEMENTATION_CHANGED_DURING_IMPACT_AUDIT")
         require(result.get("planSha256") == planned["sha"]
@@ -432,90 +425,88 @@ def restore_bytes(path, raw):
 
 def apply_plan(root, spec, expected_sha, audit_runner=None, expected_impact_sha=None):
     root = Path(root).resolve()
-    lock = local(root, ".casebook-intake.lock")
-    fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with dataset_write_lock(root):
+        return _apply_locked(root, spec, expected_sha, audit_runner, expected_impact_sha)
+
+
+def _apply_locked(root, spec, expected_sha, audit_runner, expected_impact_sha):
+    planned = plan(root, spec)
+    require(expected_sha == planned["sha"], "PLAN_HASH_MISMATCH_REVIEW_NEW_PREVIEW")
+    files = planned["payload"]["files"]
+    require(files or spec["action"] == "HOLD", "NO_CHANGE")
+    if spec["action"] != "HOLD":
+        require(isinstance(expected_impact_sha, str)
+                and re.fullmatch(r"[0-9a-f]{64}", expected_impact_sha),
+                "IMPACT_APPROVAL_HASH_REQUIRED")
+    audit = (audit_runner or audit_retrieval)(planned) if spec["action"] != "HOLD" else None
+    if spec["action"] != "HOLD":
+        require(isinstance(audit, dict), "RETRIEVAL_REPORT_MISMATCH")
+        require(audit.get("schemaVersion") == "casebook-impact-report-6"
+                and audit.get("planSha256") == planned["sha"]
+                and audit.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
+                and audit.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
+                and isinstance(audit.get("evaluationFingerprint"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", audit["evaluationFingerprint"])
+                and audit.get("providerCalls") == 0 and audit.get("intakeRetrieved") is True
+                and audit.get("modelAccuracyMeasured") is False
+                and audit.get("judgmentPolicyExecuted") is False
+                and audit.get("retrievalOnlyImpact") is True
+                and audit.get("semanticQualityConclusion") == "NOT_MEASURED"
+                and isinstance(audit.get("mechanismSelectionImpact"), dict)
+                and isinstance(audit.get("intakeRelatedMechanismImpact"), dict)
+                and isinstance(audit.get("sourceGroupSummary"), dict)
+                and isinstance(audit.get("evaluationGroupSummary"), dict)
+                and isinstance(audit.get("casesWithoutSourceGroup"), int)
+                and isinstance(audit.get("intakeMechanismIds"), list)
+                and isinstance(audit.get("cases"), list) and audit["cases"],
+                "RETRIEVAL_REPORT_MISMATCH")
+        actual_impact_sha = impact_report_sha256(audit)
+        require(actual_impact_sha == expected_impact_sha, "IMPACT_REPORT_HASH_MISMATCH_REVIEW_NEW_REPORT")
+    names = list(files) + [planned["receipt"]]
+    if spec["action"] != "HOLD": names += ["guidelines/runtime.json", "guidelines/build-manifest.json"]
+    backups = {n: read_bytes(local(root, n)) if local(root, n).exists() else None for n in names}
+    require(backups[planned["receipt"]] is None, "RECEIPT_ALREADY_EXISTS")
+    require(all(backups[name] == (old.encode("utf-8") if old is not None else None)
+                for name, old in planned["payload"]["previousFiles"].items()), "TARGET_CHANGED_BEFORE_WRITE")
+    receipt_value = {"schemaVersion": "casebook-intake-receipt-1", "planSha256": planned["sha"], "intake": spec,
+                     "state": "HOLD_NOT_RUNTIME" if spec["action"] == "HOLD" else "DEVELOPMENT_REFERENCE_NOT_INDEPENDENT_GOLD",
+                     "trainingUseAuthorized": False, "semanticValidation": "NOT_PERFORMED", "retrievalAudit": audit,
+                     "impactReportSha256": impact_report_sha256(audit) if audit is not None else None,
+                     "previousFiles": planned["payload"]["previousFiles"],
+                     "previousRuntimeSha256": planned["payload"]["baseline"]["runtime"],
+                     "publishedRuntimeSha256": planned["summary"]["candidateRuntimeSha256"]}
+    expected_hashes = {n: digest(encoded(v)) for n, v in files.items()}
+    expected_hashes[planned["receipt"]] = digest(encoded(receipt_value))
+    if spec["action"] != "HOLD":
+        expected_hashes["guidelines/runtime.json"] = planned["payload"]["candidateManifest"]["runtimeSha256"]
+        expected_hashes["guidelines/build-manifest.json"] = digest(encoded(planned["payload"]["candidateManifest"]))
     try:
-        with os.fdopen(fd, "w") as owner:
-            owner.write(str(os.getpid()) + "\n")
-        planned = plan(root, spec)
-        require(expected_sha == planned["sha"], "PLAN_HASH_MISMATCH_REVIEW_NEW_PREVIEW")
-        files = planned["payload"]["files"]
-        require(files or spec["action"] == "HOLD", "NO_CHANGE")
+        require(planned["payload"]["baseline"] == baseline(root), "DATASET_CHANGED_BEFORE_WRITE")
+        require(planned["payload"]["implementationHashes"] == implementation_hashes(), "TOOL_CHANGED_BEFORE_WRITE")
+        for ref in provenance_refs(spec, root): reference(root, ref)
+        for name, value in files.items(): write_private(local(root, name), value)
         if spec["action"] != "HOLD":
-            require(isinstance(expected_impact_sha, str)
-                    and re.fullmatch(r"[0-9a-f]{64}", expected_impact_sha),
-                    "IMPACT_APPROVAL_HASH_REQUIRED")
-        audit = (audit_runner or audit_retrieval)(planned) if spec["action"] != "HOLD" else None
-        if spec["action"] != "HOLD":
-            require(isinstance(audit, dict), "RETRIEVAL_REPORT_MISMATCH")
-            require(audit.get("schemaVersion") == "casebook-impact-report-6"
-                    and audit.get("planSha256") == planned["sha"]
-                    and audit.get("candidateRuntimeSha256") == planned["summary"]["candidateRuntimeSha256"]
-                    and audit.get("baselineRuntimeSha256") == planned["payload"]["baseline"]["runtime"]
-                    and isinstance(audit.get("evaluationFingerprint"), str)
-                    and re.fullmatch(r"[0-9a-f]{64}", audit["evaluationFingerprint"])
-                    and audit.get("providerCalls") == 0 and audit.get("intakeRetrieved") is True
-                    and audit.get("modelAccuracyMeasured") is False
-                    and audit.get("judgmentPolicyExecuted") is False
-                    and audit.get("retrievalOnlyImpact") is True
-                    and audit.get("semanticQualityConclusion") == "NOT_MEASURED"
-                    and isinstance(audit.get("mechanismSelectionImpact"), dict)
-                    and isinstance(audit.get("intakeRelatedMechanismImpact"), dict)
-                    and isinstance(audit.get("sourceGroupSummary"), dict)
-                    and isinstance(audit.get("evaluationGroupSummary"), dict)
-                    and isinstance(audit.get("casesWithoutSourceGroup"), int)
-                    and isinstance(audit.get("intakeMechanismIds"), list)
-                    and isinstance(audit.get("cases"), list) and audit["cases"],
-                    "RETRIEVAL_REPORT_MISMATCH")
-            actual_impact_sha = impact_report_sha256(audit)
-            require(actual_impact_sha == expected_impact_sha, "IMPACT_REPORT_HASH_MISMATCH_REVIEW_NEW_REPORT")
-        names = list(files) + [planned["receipt"]]
-        if spec["action"] != "HOLD": names += ["guidelines/runtime.json", "guidelines/build-manifest.json"]
-        backups = {n: read_bytes(local(root, n)) if local(root, n).exists() else None for n in names}
-        require(backups[planned["receipt"]] is None, "RECEIPT_ALREADY_EXISTS")
-        require(all(backups[name] == (old.encode("utf-8") if old is not None else None)
-                    for name, old in planned["payload"]["previousFiles"].items()), "TARGET_CHANGED_BEFORE_WRITE")
-        receipt_value = {"schemaVersion": "casebook-intake-receipt-1", "planSha256": planned["sha"], "intake": spec,
-                         "state": "HOLD_NOT_RUNTIME" if spec["action"] == "HOLD" else "DEVELOPMENT_REFERENCE_NOT_INDEPENDENT_GOLD",
-                         "trainingUseAuthorized": False, "semanticValidation": "NOT_PERFORMED", "retrievalAudit": audit,
-                         "impactReportSha256": impact_report_sha256(audit) if audit is not None else None,
-                         "previousFiles": planned["payload"]["previousFiles"],
-                         "previousRuntimeSha256": planned["payload"]["baseline"]["runtime"],
-                         "publishedRuntimeSha256": planned["summary"]["candidateRuntimeSha256"]}
-        expected_hashes = {n: digest(encoded(v)) for n, v in files.items()}
-        expected_hashes[planned["receipt"]] = digest(encoded(receipt_value))
-        if spec["action"] != "HOLD":
-            expected_hashes["guidelines/runtime.json"] = planned["payload"]["candidateManifest"]["runtimeSha256"]
-            expected_hashes["guidelines/build-manifest.json"] = digest(encoded(planned["payload"]["candidateManifest"]))
-        try:
-            require(planned["payload"]["baseline"] == baseline(root), "DATASET_CHANGED_BEFORE_WRITE")
-            require(planned["payload"]["implementationHashes"] == implementation_hashes(), "TOOL_CHANGED_BEFORE_WRITE")
-            for ref in provenance_refs(spec, root): reference(root, ref)
-            for name, value in files.items(): write_private(local(root, name), value)
-            if spec["action"] != "HOLD":
-                published = builder.publish(root)
-                require(published == planned["payload"]["candidateManifest"], "PUBLISHED_PLAN_MISMATCH")
-            write_private(local(root, planned["receipt"]), receipt_value)
-            builder.verify(root)
-        except BaseException:
-            conflicts = []
-            for name, raw in backups.items():
-                path = local(root, name)
-                current = read_bytes(path) if path.exists() else None
-                if current == raw: continue
-                # Never undo bytes written by a non-cooperating editor/build process.
-                if current is None or digest(current) != expected_hashes[name]:
-                    conflicts.append(name); continue
-                if raw is None:
-                    path.unlink()
-                else: restore_bytes(path, raw)
-            require(not conflicts, "ROLLBACK_CONFLICT_MANUAL_REVIEW_REQUIRED")
-            raise
-        return {**planned["summary"], "applied": True, "retrievalAudit": audit,
-                "impactReportSha256": impact_report_sha256(audit) if audit is not None else None,
-                "serverRestartRequired": spec["action"] != "HOLD"}
-    finally:
-        lock.unlink()
+            published = builder.publish(root)
+            require(published == planned["payload"]["candidateManifest"], "PUBLISHED_PLAN_MISMATCH")
+        write_private(local(root, planned["receipt"]), receipt_value)
+        builder.verify(root)
+    except BaseException:
+        conflicts = []
+        for name, raw in backups.items():
+            path = local(root, name)
+            current = read_bytes(path) if path.exists() else None
+            if current == raw: continue
+            # Never undo bytes written by a non-cooperating editor/build process.
+            if current is None or digest(current) != expected_hashes[name]:
+                conflicts.append(name); continue
+            if raw is None:
+                path.unlink()
+            else: restore_bytes(path, raw)
+        require(not conflicts, "ROLLBACK_CONFLICT_MANUAL_REVIEW_REQUIRED")
+        raise
+    return {**planned["summary"], "applied": True, "retrievalAudit": audit,
+            "impactReportSha256": impact_report_sha256(audit) if audit is not None else None,
+            "serverRestartRequired": spec["action"] != "HOLD"}
 
 
 def main():

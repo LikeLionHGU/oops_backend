@@ -23,6 +23,7 @@ def inspect(root, proposal_rel):
             "CORRECTION_RESEARCH_PATH_REQUIRED")
     raw = read_bytes(local(root, proposal_rel))
     proposal = parse(raw)
+    require(isinstance(proposal, dict), "CORRECTION_PROPOSAL_INVALID")
     require(proposal.get("schema") == "incident-correction-research-proposal-1"
             and proposal.get("status") == "RESEARCH_ONLY_NOT_APPLIED"
             and proposal.get("applied") is False

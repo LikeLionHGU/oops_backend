@@ -10,12 +10,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * 파일 저장소.
@@ -30,6 +32,8 @@ public class StorageService {
 
     /** API 명세 2-1 의 MVP 지원 형식 */
     private static final List<String> ALLOWED_EXTENSIONS = List.of("mp4", "mov", "avi");
+    /** Top-level ISO BMFF / QuickTime box types that can open an mp4 or mov file. */
+    private static final Set<String> ISO_BMFF_BOXES = Set.of("ftyp", "moov", "mdat", "wide", "free", "skip", "pnot");
 
     private final OopsProperties properties;
 
@@ -70,6 +74,29 @@ public class StorageService {
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             throw new BusinessException(ErrorCode.UNSUPPORTED_VIDEO_FORMAT,
                     "지원하지 않는 영상 형식입니다. (%s)".formatted(String.join(", ", ALLOWED_EXTENSIONS)));
+        }
+        if (!hasContainerSignature(extension, readHeader(file))) {
+            throw new BusinessException(ErrorCode.UNSUPPORTED_VIDEO_FORMAT, "파일 내용이 확장자의 영상 형식과 맞지 않습니다.");
+        }
+    }
+
+    /** The duration probe lets unmeasurable files through, so a renamed non-video must stop here. */
+    private static boolean hasContainerSignature(String extension, byte[] head) {
+        if (extension.equals("avi")) {
+            return head.length >= 12 && ascii(head, 0).equals("RIFF") && ascii(head, 8).equals("AVI ");
+        }
+        return head.length >= 8 && ISO_BMFF_BOXES.contains(ascii(head, 4));
+    }
+
+    private static String ascii(byte[] bytes, int offset) {
+        return new String(bytes, offset, 4, StandardCharsets.US_ASCII);
+    }
+
+    private static byte[] readHeader(MultipartFile file) {
+        try (var in = file.getInputStream()) {
+            return in.readNBytes(12);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "영상 파일을 읽을 수 없습니다.");
         }
     }
 

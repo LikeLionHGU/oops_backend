@@ -139,7 +139,8 @@ public final class IncidentSelectorImpactAudit {
         result.put("selectorReplayMode", "PRODUCTION_SELECTOR_CLASS_DEFAULTS_EMPTY_HINTS");
         result.put("selectorConfiguration", Map.of("guidelineBudgetCodePoints", 6000, "maxExamples", 3,
                 "exampleBudgetCodePoints", 3000, "excludedFamilies", List.of(),
-                "structuredContextSearchEnabled", true, "boundarySupplementEnabled", true,
+                "structuredContextSearchEnabled", baseline.structuredSearchActive() && candidate.structuredSearchActive(),
+                "boundarySupplementEnabled", true,
                 "environmentOverridesReproduced", false));
         result.put("providerCalls", 0); result.put("modelJudgmentExecuted", false);
         result.put("accuracyMeasured", false); result.put("retrievalImpactOnly", true);
@@ -206,6 +207,8 @@ public final class IncidentSelectorImpactAudit {
         result.load();
         if (!"READY_WORKING_REFERENCE".equals(result.trace(TimelineEventType.SPEECH).state()))
             throw new IllegalArgumentException("RUNTIME_NOT_READY");
+        if (result.relationArchive() && !result.structuredSearchActive())
+            throw new IllegalArgumentException("STRUCTURED_SEARCH_UNAVAILABLE");
         return result;
     }
 

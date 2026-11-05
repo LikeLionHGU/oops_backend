@@ -8,6 +8,7 @@ import pytest
 
 from test_casebook_intake import dataset, spec
 import casebook_intake as tool
+from dataset_write_lock import dataset_write_lock
 import build_incident_dataset as builder
 
 
@@ -29,4 +30,4 @@ def test_real_offline_java_gate_and_cli_apply_end_to_end(dataset):
     assert builder.verify(dataset)['examples'] == 3
     receipt = json.loads((dataset / preview['receipt']).read_bytes())
     assert receipt['retrievalAudit']['modelAccuracyMeasured'] is False
-    assert not (dataset / '.casebook-intake.lock').exists()
+    with dataset_write_lock(dataset): pass

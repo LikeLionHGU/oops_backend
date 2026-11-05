@@ -299,6 +299,7 @@ public class ReviewGuidelineLibrary {
     boolean contextUnitArchive() { return archive != null && Set.of("review-guidelines-6", "review-guidelines-7").contains(archive.schemaVersion())
             && "READY_WORKING_REFERENCE".equals(state) && !expired(); }
     boolean relationArchive() { return contextUnitArchive() && "review-guidelines-7".equals(archive.schemaVersion()); }
+    boolean structuredSearchActive() { return structuredSearch != null; }
     Set<String> routingKeys() {
         if (!contextUnitArchive() || maxExamples == 0) return Set.of();
         var keys = new TreeSet<String>();

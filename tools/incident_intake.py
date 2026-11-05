@@ -13,15 +13,15 @@ import json
 import os
 import re
 import tempfile
-import subprocess
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT))
-from review_context_pilot import parse, read_bytes, require, PilotError
-from build_review_guidelines import write_private
+from review_context_pilot import parse, read_bytes, require
 import build_incident_dataset as builder
+from dataset_write_lock import dataset_write_lock
+from local_audit_runner import run_gradle_audit
 from source_use_policy import incident_lock_path
 from incident_review_policy import validate_review_record
 
@@ -54,9 +54,13 @@ def local(root, relative):
     return resolved
 
 
+IMPACT_SIGNALS = ("SHARED_POLICY_INPUTS_CHANGED", "SHARED_PATTERN_CHANGED", "SOURCE_CASES_REMOVED",
+                  "MECHANISM_MAPPINGS_REMOVED", "EVALUATION_SELECTION_CHANGED", "EXISTING_REFERENCES_DISPLACED")
+
+
 def implementation_hashes():
     names = (
-        "tools/incident_intake.py", "tools/incident_review_policy.py", "tools/source_use_policy.py",
+        "tools/incident_intake.py", "tools/local_audit_runner.py", "tools/incident_review_policy.py", "tools/source_use_policy.py",
         "tools/build_incident_dataset.py", "tools/incidents_migration.py",
         "tools/incident_build_definition.py", "tools/build_context_dictionary.py",
         "tools/build_review_guidelines.py", "tools/review_context_pilot.py",
@@ -110,20 +114,11 @@ def audit_selector_impact(root, baseline_runtime_raw, candidate_runtime, binding
         _write_bytes(request_path, encoded(request))
         _write_bytes(baseline_path, baseline_runtime_raw)
         _write_bytes(candidate_path, candidate_raw)
-        env = {k: v for k, v in os.environ.items() if k in
-               {"PATH", "JAVA_HOME", "HOME", "USER", "TMPDIR", "LANG", "GRADLE_USER_HOME"}}
-        try:
-            process = subprocess.run(["bash", "./gradlew", "--offline", "--console=plain", "-q",
-                    "incidentSelectorImpactAudit", "-PincidentImpactRequest=" + str(request_path),
-                    "-PincidentImpactBaseline=" + str(baseline_path),
-                    "-PincidentImpactCandidate=" + str(candidate_path)],
-                    cwd=ROOT / "oops-backend", env=env, text=True, capture_output=True, timeout=120)
-        except (OSError, subprocess.TimeoutExpired):
-            raise PilotError("INCIDENT_SELECTOR_AUDIT_UNAVAILABLE") from None
-        rows = [line.removeprefix("INCIDENT_SELECTOR_IMPACT=") for line in process.stdout.splitlines()
-                if line.startswith("INCIDENT_SELECTOR_IMPACT=")]
-        require(process.returncode == 0 and len(rows) == 1, "INCIDENT_SELECTOR_AUDIT_FAILED")
-        report = parse(rows[0])
+        report = run_gradle_audit("incidentSelectorImpactAudit",
+                                  {"incidentImpactRequest": request_path, "incidentImpactBaseline": baseline_path,
+                                   "incidentImpactCandidate": candidate_path},
+                                  "INCIDENT_SELECTOR_IMPACT=", "INCIDENT_SELECTOR_AUDIT_UNAVAILABLE",
+                                  "INCIDENT_SELECTOR_AUDIT_FAILED", backend=ROOT / "oops-backend")
     require(report.get("schemaVersion") == "incident-selector-impact-report-1"
             and report.get("auditBindingSha256") == binding_sha
             and report.get("evaluationFingerprint") == evaluation_fingerprint
@@ -277,6 +272,16 @@ def plan(root, candidate_path, approval_path, audit_runner=None):
             and implementations == implementation_hashes()
             and previous_runtime_raw == read_bytes(local(root, "guidelines/runtime.json")),
             "DATASET_OR_TOOL_CHANGED_DURING_IMPACT_AUDIT")
+    counts = ("changedQueryCount", "queriesSelectingNewIncidentReference", "removedReferenceCountAcrossQueries")
+    require(all(type(impact_audit.get(key)) is int and impact_audit[key] >= 0 for key in counts)
+            and isinstance(impact_audit.get("sharedPatternUnchanged"), bool), "INCIDENT_SELECTOR_REPORT_MISMATCH")
+    present = {"SHARED_POLICY_INPUTS_CHANGED": not unchanged_policy_inputs,
+               "SHARED_PATTERN_CHANGED": not impact_audit["sharedPatternUnchanged"],
+               "SOURCE_CASES_REMOVED": bool(before_source_ids - after_source_ids or before_example_ids - after_example_ids),
+               "MECHANISM_MAPPINGS_REMOVED": bool(before_mappings - after_mappings),
+               "EVALUATION_SELECTION_CHANGED": impact_audit["changedQueryCount"] > 0,
+               "EXISTING_REFERENCES_DISPLACED": impact_audit["removedReferenceCountAcrossQueries"] > 0}
+    impact_signals = [signal for signal in IMPACT_SIGNALS if present[signal]]
     impact_sha = digest(json.dumps(impact_audit, ensure_ascii=False, sort_keys=True,
                                   separators=(",", ":")).encode("utf-8"))
     payload = {"toolRevision": REVISION, "datasetRoot": str(root), "action": action,
@@ -314,6 +319,7 @@ def plan(root, candidate_path, approval_path, audit_runner=None):
                "evaluationQueriesSelectingNewIncidentReference": impact_audit["queriesSelectingNewIncidentReference"],
                "sharedPatternUnchangedInSelectorPrompt": impact_audit["sharedPatternUnchanged"],
                "selectorImpactAuditReport": impact_audit,
+               "impactSignals": impact_signals,
                "trainingUseAuthorized": False, "independentTruthClaim": False,
                "receiptPath": receipt_rel, "applied": False}
     return {"sha": plan_hash, "payload": payload, "summary": summary, "receipt": receipt_rel,
@@ -336,76 +342,78 @@ def _write_bytes(path, raw):
             os.unlink(temporary)
 
 
-def apply(root, candidate_path, approval_path, expected_plan_sha, audit_runner=None):
+def apply(root, candidate_path, approval_path, expected_plan_sha, audit_runner=None, acknowledged_impact=()):
+    """Risky impact signals must be acknowledged one by one; a matching plan hash alone is not consent."""
     root = Path(root).resolve()
-    guard_path = local(root, ".incident-intake.lock")
-    descriptor = os.open(guard_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with dataset_write_lock(root):
+        return _apply_locked(root, candidate_path, approval_path, expected_plan_sha, audit_runner,
+                             acknowledged_impact)
+
+
+def _apply_locked(root, candidate_path, approval_path, expected_plan_sha, audit_runner, acknowledged_impact):
+    planned = plan(root, candidate_path, approval_path, audit_runner=audit_runner)
+    require(expected_plan_sha == planned["sha"], "PLAN_HASH_MISMATCH_REVIEW_NEW_PREVIEW")
+    require(set(acknowledged_impact) == set(planned["summary"]["impactSignals"]), "IMPACT_ACKNOWLEDGEMENT_MISMATCH")
+    payload = planned["payload"]
+    targets = {
+        payload["targetPath"]: (root / payload["targetPath"], planned["candidateRaw"]),
+        payload["reviewPath"]: (root / payload["reviewPath"], planned["reviewRaw"]),
+        "incident-source-lock": (Path(payload["lockPath"]), planned["lockRaw"]),
+        "guidelines/runtime.json": (root / "guidelines/runtime.json", encoded(payload["candidateRuntime"])),
+        "guidelines/build-manifest.json": (root / "guidelines/build-manifest.json", encoded(payload["candidateManifest"])),
+        planned["receipt"]: (root / planned["receipt"], b""),
+    }
+    backups = {}
+    for key, (path, _) in targets.items():
+        require(not path.is_symlink(), "INCIDENT_INTAKE_OUTPUT_SYMLINK_REFUSED")
+        backups[key] = path.read_bytes() if path.exists() else None
+    require(backups[planned["receipt"]] is None, "INCIDENT_INTAKE_RECEIPT_EXISTS")
+
+    receipt = {"schemaVersion": "incident-intake-receipt-1", "planSha256": planned["sha"],
+               "incidentId": planned["summary"]["incidentId"], "action": planned["summary"]["action"],
+               "candidateSha256": digest(planned["candidateRaw"]),
+               "approvalSha256": digest(planned["reviewRaw"]),
+               "previousRuntimeSha256": payload["baselineManifest"]["runtimeSha256"],
+               "publishedRuntimeSha256": payload["candidateManifest"]["runtimeSha256"],
+               "previousFiles": {key: backups[key].decode("utf-8") if backups[key] is not None else None
+                                 for key in (payload["targetPath"], payload["reviewPath"], "incident-source-lock")},
+               "previousFileSha256": {key: digest(backups[key]) if backups[key] is not None else None
+                                       for key in (payload["targetPath"], payload["reviewPath"], "incident-source-lock")},
+               "selectorImpactAudit": payload["selectorImpactAudit"],
+               "selectorImpactAuditSha256": payload["selectorImpactAuditSha256"],
+               "acknowledgedImpactSignals": planned["summary"]["impactSignals"],
+               "trainingUseAuthorized": False, "independentTruthClaim": False}
+    targets[planned["receipt"]] = (targets[planned["receipt"]][0], encoded(receipt))
+    expected_current = {key: raw for key, (_, raw) in targets.items()}
+
     try:
-        with os.fdopen(descriptor, "w") as stream:
-            stream.write(str(os.getpid()) + "\n")
-        planned = plan(root, candidate_path, approval_path, audit_runner=audit_runner)
-        require(expected_plan_sha == planned["sha"], "PLAN_HASH_MISMATCH_REVIEW_NEW_PREVIEW")
-        payload = planned["payload"]
-        targets = {
-            payload["targetPath"]: (root / payload["targetPath"], planned["candidateRaw"]),
-            payload["reviewPath"]: (root / payload["reviewPath"], planned["reviewRaw"]),
-            "incident-source-lock": (Path(payload["lockPath"]), planned["lockRaw"]),
-            "guidelines/runtime.json": (root / "guidelines/runtime.json", encoded(payload["candidateRuntime"])),
-            "guidelines/build-manifest.json": (root / "guidelines/build-manifest.json", encoded(payload["candidateManifest"])),
-            planned["receipt"]: (root / planned["receipt"], b""),
-        }
-        backups = {}
+        require(payload["baselineManifest"] == builder.verify(root)
+                and payload["baselineInputHashes"] == builder.input_hashes(root)
+                and payload["implementationHashes"] == implementation_hashes(),
+                "DATASET_OR_TOOL_CHANGED_BEFORE_APPLY")
+        for key in (payload["targetPath"], payload["reviewPath"], "incident-source-lock"):
+            _write_bytes(targets[key][0], targets[key][1])
+        published = builder.publish(root)
+        require(published == payload["candidateManifest"], "PUBLISHED_INCIDENT_PLAN_MISMATCH")
+        _write_bytes(targets[planned["receipt"]][0], targets[planned["receipt"]][1])
+        builder.verify(root)
+    except BaseException:
+        conflicts = []
         for key, (path, _) in targets.items():
-            require(not path.is_symlink(), "INCIDENT_INTAKE_OUTPUT_SYMLINK_REFUSED")
-            backups[key] = path.read_bytes() if path.exists() else None
-        require(backups[planned["receipt"]] is None, "INCIDENT_INTAKE_RECEIPT_EXISTS")
-
-        receipt = {"schemaVersion": "incident-intake-receipt-1", "planSha256": planned["sha"],
-                   "incidentId": planned["summary"]["incidentId"], "action": planned["summary"]["action"],
-                   "candidateSha256": digest(planned["candidateRaw"]),
-                   "approvalSha256": digest(planned["reviewRaw"]),
-                   "previousRuntimeSha256": payload["baselineManifest"]["runtimeSha256"],
-                   "publishedRuntimeSha256": payload["candidateManifest"]["runtimeSha256"],
-                   "previousFiles": {key: backups[key].decode("utf-8") if backups[key] is not None else None
-                                     for key in (payload["targetPath"], payload["reviewPath"], "incident-source-lock")},
-                   "previousFileSha256": {key: digest(backups[key]) if backups[key] is not None else None
-                                           for key in (payload["targetPath"], payload["reviewPath"], "incident-source-lock")},
-                   "selectorImpactAudit": payload["selectorImpactAudit"],
-                   "selectorImpactAuditSha256": payload["selectorImpactAuditSha256"],
-                   "trainingUseAuthorized": False, "independentTruthClaim": False}
-        targets[planned["receipt"]] = (targets[planned["receipt"]][0], encoded(receipt))
-        expected_current = {key: raw for key, (_, raw) in targets.items()}
-
-        try:
-            require(payload["baselineManifest"] == builder.verify(root)
-                    and payload["baselineInputHashes"] == builder.input_hashes(root)
-                    and payload["implementationHashes"] == implementation_hashes(),
-                    "DATASET_OR_TOOL_CHANGED_BEFORE_APPLY")
-            for key in (payload["targetPath"], payload["reviewPath"], "incident-source-lock"):
-                _write_bytes(targets[key][0], targets[key][1])
-            published = builder.publish(root)
-            require(published == payload["candidateManifest"], "PUBLISHED_INCIDENT_PLAN_MISMATCH")
-            _write_bytes(targets[planned["receipt"]][0], targets[planned["receipt"]][1])
-            builder.verify(root)
-        except BaseException:
-            conflicts = []
-            for key, (path, _) in targets.items():
-                previous = backups[key]
-                current = path.read_bytes() if path.exists() else None
-                if current == previous:
-                    continue
-                if current != expected_current[key]:
-                    conflicts.append(key)
-                    continue
-                if previous is None:
-                    path.unlink()
-                else:
-                    _write_bytes(path, previous)
-            require(not conflicts, "ROLLBACK_CONFLICT_MANUAL_REVIEW_REQUIRED")
-            raise
-        return {**planned["summary"], "applied": True}
-    finally:
-        guard_path.unlink(missing_ok=True)
+            previous = backups[key]
+            current = path.read_bytes() if path.exists() else None
+            if current == previous:
+                continue
+            if current != expected_current[key]:
+                conflicts.append(key)
+                continue
+            if previous is None:
+                path.unlink()
+            else:
+                _write_bytes(path, previous)
+        require(not conflicts, "ROLLBACK_CONFLICT_MANUAL_REVIEW_REQUIRED")
+        raise
+    return {**planned["summary"], "applied": True}
 
 
 def main():
@@ -415,11 +423,16 @@ def main():
     parser.add_argument("--approval", required=True, help="research/incident-approvals/{id}.json")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--expected-plan-sha")
+    parser.add_argument("--acknowledge-impact", action="append", default=[], choices=IMPACT_SIGNALS,
+                        help="repeat once per impactSignals entry in the preview")
     args = parser.parse_args()
     if args.apply != bool(args.expected_plan_sha):
         parser.error("APPLY_REQUIRES_EXPECTED_PLAN_SHA")
+    if args.acknowledge_impact and not args.apply:
+        parser.error("ACKNOWLEDGEMENT_REQUIRES_APPLY")
     try:
-        result = apply(args.dataset_root, args.candidate, args.approval, args.expected_plan_sha) if args.apply \
+        result = apply(args.dataset_root, args.candidate, args.approval, args.expected_plan_sha,
+                       acknowledged_impact=tuple(args.acknowledge_impact)) if args.apply \
             else plan(args.dataset_root, args.candidate, args.approval)["summary"]
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except Exception as error:  # noqa: BLE001 — CLI boundary

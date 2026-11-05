@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import add_incident
 import build_incident_dataset as builder
 import incident_intake as intake
+from dataset_write_lock import dataset_write_lock
 from test_incident_publish import setup as setup_dataset
 
 
@@ -117,6 +118,57 @@ def test_reviewed_incident_apply_updates_lock_and_runtime_transactionally(prepar
     assert receipt["selectorImpactAuditSha256"] == planned["summary"]["selectorImpactAuditSha256"]
     assert receipt["selectorImpactAudit"]["providerCalls"] == 0
     assert receipt["previousFiles"]["incidents/" + incident_id + ".json"] is None
+
+
+def test_apply_is_refused_while_another_dataset_writer_holds_the_lock(prepared):
+    root, candidate, approval, incident_id = prepared
+    planned = intake.plan(root, candidate, approval, audit_runner=offline_test_audit)
+    with dataset_write_lock(root):
+        with pytest.raises(ValueError, match="DATASET_WRITE_IN_PROGRESS"):
+            intake.apply(root, candidate, approval, planned["sha"], audit_runner=offline_test_audit)
+    assert not (root / "incidents" / f"{incident_id}.json").exists()
+    assert intake.apply(root, candidate, approval, planned["sha"], audit_runner=offline_test_audit)["applied"] is True
+
+
+def test_clean_preview_has_no_impact_signals(prepared):
+    root, candidate, approval, _ = prepared
+    assert intake.plan(root, candidate, approval, audit_runner=offline_test_audit)["summary"]["impactSignals"] == []
+
+
+def test_selection_change_and_displaced_references_require_exact_acknowledgement(prepared):
+    root, candidate, approval, incident_id = prepared
+
+    def shifted_audit(*args):
+        report = offline_test_audit(*args)
+        report["changedQueryCount"] = 1
+        report["removedReferenceCountAcrossQueries"] = 2
+        report["cases"][0]["changed"] = True
+        return report
+
+    planned = intake.plan(root, candidate, approval, audit_runner=shifted_audit)
+    signals = ["EVALUATION_SELECTION_CHANGED", "EXISTING_REFERENCES_DISPLACED"]
+    assert planned["summary"]["impactSignals"] == signals
+    for acknowledged in ((), ("EVALUATION_SELECTION_CHANGED",), (*signals, "SHARED_PATTERN_CHANGED")):
+        with pytest.raises(ValueError, match="IMPACT_ACKNOWLEDGEMENT_MISMATCH"):
+            intake.apply(root, candidate, approval, planned["sha"], audit_runner=shifted_audit,
+                         acknowledged_impact=acknowledged)
+        assert not (root / "incidents" / f"{incident_id}.json").exists()
+    result = intake.apply(root, candidate, approval, planned["sha"], audit_runner=shifted_audit,
+                          acknowledged_impact=tuple(reversed(signals)))
+    receipt = json.loads((root / result["receiptPath"]).read_bytes())
+    assert result["applied"] is True and receipt["acknowledgedImpactSignals"] == signals
+
+
+def test_report_without_new_reference_count_is_rejected(prepared):
+    root, candidate, approval, _ = prepared
+
+    def incomplete_audit(*args):
+        report = offline_test_audit(*args)
+        del report["queriesSelectingNewIncidentReference"]
+        return report
+
+    with pytest.raises(ValueError, match="INCIDENT_SELECTOR_REPORT_MISMATCH"):
+        intake.plan(root, candidate, approval, audit_runner=incomplete_audit)
 
 
 def test_changed_selector_audit_after_preview_requires_new_plan(prepared):

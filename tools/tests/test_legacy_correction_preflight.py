@@ -60,3 +60,10 @@ def test_refuses_permission_claim_and_path_traversal(fixture):
         preflight.inspect(root, "research/proposal.json")
     with pytest.raises(PilotError, match="INCIDENT_INTAKE_UNSAFE_PATH"):
         preflight.inspect(root, "research/../proposal.json")
+
+
+def test_non_object_proposal_is_a_contract_error_not_a_traceback(fixture):
+    root, _ = fixture
+    (root / "research/proposal.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(PilotError, match="CORRECTION_PROPOSAL_INVALID"):
+        preflight.inspect(root, "research/proposal.json")

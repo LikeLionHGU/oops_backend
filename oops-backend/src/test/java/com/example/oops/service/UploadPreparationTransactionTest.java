@@ -36,14 +36,14 @@ class UploadPreparationTransactionTest {
     @MockitoSpyBean VideoRepository rows;
     @MockitoBean AnalysisServerClient media;
 
-    private MockMultipartFile file() { return new MockMultipartFile("file","v1.mp4","video/mp4",new byte[]{1,2,3}); }
+    private MockMultipartFile file() { return new MockMultipartFile("file","v1.mp4","video/mp4",com.example.oops.storage.VideoBytes.mp4(1,2,3)); }
     private void assertNoIncoming() throws Exception {
         if (!Files.exists(root.resolve("videos/.incoming"))) return;
         try(var paths=Files.list(root.resolve("videos/.incoming"))) { assertThat(paths.count()).isZero(); }
     }
     @Test void copyAndProbeDoNotHoldConnectionAndVideoAppearsOnlyAfterPreparation() throws Exception {
         long before=rows.count();
-        var file=new MockMultipartFile("file","v1.mp4","video/mp4",new byte[]{1,2,3}) {
+        var file=new MockMultipartFile("file","v1.mp4","video/mp4",com.example.oops.storage.VideoBytes.mp4(1,2,3)) {
             @Override public java.io.InputStream getInputStream() throws java.io.IOException {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
                 try(var c=dataSource.getConnection()) { assertThat(c.isClosed()).isFalse(); }
@@ -61,7 +61,7 @@ class UploadPreparationTransactionTest {
         });
         var video=videos.createFromUpload(file,"GENERAL");
         assertThat(video.getStorageKey()).isEqualTo("videos/"+video.getId()+"/original.mp4");
-        assertThat(storage.resolve(video.getStorageKey())).hasBinaryContent(new byte[]{1,2,3});
+        assertThat(storage.resolve(video.getStorageKey())).hasBinaryContent(com.example.oops.storage.VideoBytes.mp4(1,2,3));
         assertThat(rows.findById(video.getId())).isPresent(); assertNoIncoming();
     }
     @Test void durationRejectionLeavesNoRowOrFile() throws Exception {
