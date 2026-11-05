@@ -544,8 +544,10 @@ class CandidateReviewEngineTest {
         });
     }
     @Test void placePolicySeparatesGenericInformationFromValueJudgementWithoutBenchmarkKeywordRules() {
-        assertThat(POLICY).contains("주민 전체 일반화는 조롱의 필수 조건이 아니다", "정보나 개인의 불편만으로 경고하지 않는다");
-        assertThat(VERIFICATION_PROMPT).contains("지역 가치 절하·특정 대상 조롱", "비하를 만들지 않는다");
+        // Revision 52: region/store/menu boundaries live in case references, not in the shared prompts.
+        assertThat(POLICY).contains("정상 해석이 가능하다는 이유만으로", "무엇을 어떻게 낮추는지 원문으로 설명한다")
+                .doesNotContain("주민", "매장", "메뉴");
+        assertThat(VERIFICATION_PROMPT).doesNotContain("지역 가치 절하·특정 대상 조롱", "매장·시설 부재");
         assertThat(POLICY + DISCOVERY_PROMPT + VERIFICATION_PROMPT).doesNotContain("롯데리아", "영양", "피식대학");
     }
 }

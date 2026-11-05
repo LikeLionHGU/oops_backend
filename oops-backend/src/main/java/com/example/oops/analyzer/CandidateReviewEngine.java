@@ -8,9 +8,9 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
-    static final String REVISION = "2026-10-25-shared-reading-page-51-linked-pass-all-axes";
+    static final String REVISION = "2026-11-05-shared-reading-page-52-generic-policy";
     static final String RECALL_DISCOVERY_REVISION = "2026-11-05-recall-first-discovery-1";
-    static final String RELATION_REVISION = "2026-10-25-source-relations-reading-page-51-linked-pass-all-axes";
+    static final String RELATION_REVISION = "2026-11-05-source-relations-reading-page-52-generic-policy";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
     static final String VERIFICATION_PROMPT = CandidateReviewPrompts.VERIFICATION_PROMPT;

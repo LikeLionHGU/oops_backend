@@ -164,8 +164,8 @@ class TargetGroundingRepairTest {
         var r = run(f.client, f.context("음식이 별로고 돈이 아까웠다", "메뉴에 특색이 없다", "오늘은 정해진 메뉴만 판매합니다"), 24);
         assertThat(r.findings()).isEmpty();
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
-        assertThat(DISCOVERY_PROMPT).contains("평가와 뒤따르는 설명", "메뉴 불만·판매 조건 안내 자체는 후보 근거가 아니다")
-                .doesNotContain("피식대학", "롯데리아", "메뉴가 의미가 없어");
+        assertThat(DISCOVERY_PROMPT).contains("평가와 뒤따르는 설명")
+                .doesNotContain("메뉴 불만", "피식대학", "롯데리아", "메뉴가 의미가 없어");
     }
     @Test void visualRepairUsesImagesWithoutFallingBackToText() {
         var v = new VisualContextReviewerTest();

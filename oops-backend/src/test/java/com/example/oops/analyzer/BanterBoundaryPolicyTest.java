@@ -40,7 +40,7 @@ class BanterBoundaryPolicyTest {
         String prompt = BanterBoundaryPolicy.replacePolicy(SourceRelationPrompts.verification(0));
         assertThat(prompt).contains("한 번이어도 검토할 수 있다", "합의를 추정하지 않는다",
                 "부정적 평가어가 있다는 이유만으로", "실제 동조·추가 공격은 구별한다",
-                "주민 전체 일반화는 조롱의 필수 조건이 아니다", "구체적 신체 훼손 비유",
+                "구체적 신체 훼손 비유",
                 "UNCERTAIN으로 부족한 정보를 명시한다");
         assertThat(BanterBoundaryPolicy.BOUNDARY).doesNotContain("피식대학", "뻔뻔", "거짓말 게임", "videoId");
     }

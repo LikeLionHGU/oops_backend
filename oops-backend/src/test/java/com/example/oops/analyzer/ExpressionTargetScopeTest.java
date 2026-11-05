@@ -38,6 +38,7 @@ class ExpressionTargetScopeTest {
                     "상품 평가와 구별되는 사람의 선택을 낮추는 실제 표현을 검토합니다.");
             assertThat(validate(candidate, d, c.reviewInput(), 0).failureCode()).isEqualTo("TARGET_REQUIRED");
         }
-        assertThat(VERIFICATION_PROMPT).contains("메뉴·서비스에 대한 후보를", "지역 비하가 없다는 이유만으로 PASS 처리하지 않는다");
+        assertThat(VERIFICATION_PROMPT).contains("정상 해석이 가능하다는 이유만으로")
+                .doesNotContain("메뉴·서비스에 대한 후보를", "지역 비하가 없다는 이유만으로");
     }
 }

@@ -29,7 +29,9 @@ class DiscoveryRecallPromptTest {
                 CandidateReviewEngine.VERIFICATION_PROMPT)) {
             assertThat(prompt).startsWith(CandidateReviewPrompts.POLICY);
         }
-        assertThat(CandidateReviewEngine.DISCOVERY_PROMPT).contains("메뉴 불만·판매 조건 안내 자체는 후보 근거가 아니다");
+        assertThat(CandidateReviewEngine.DISCOVERY_PROMPT).contains("  문제 연결이 원문으로 설명될 때만 후보로 만든다.\n")
+                .doesNotContain("메뉴 불만");
+        assertThat(CandidateReviewPrompts.RECALL_DISCOVERY_PROMPT).doesNotContain("문제 연결이 원문으로 설명될 때만 후보로 만든다");
     }
 
     @Test void factorySelectsRecallPromptOnlyWhenRequested() {

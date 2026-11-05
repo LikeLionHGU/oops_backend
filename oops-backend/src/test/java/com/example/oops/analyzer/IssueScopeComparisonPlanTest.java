@@ -13,7 +13,7 @@ class IssueScopeComparisonPlanTest {
         for (int repeat = 1; repeat <= 3; repeat++) for (JsonNode row : fixture.baseline().path("requests")) {
             var r = JSON.treeToValue(row, DefaultVerificationPlan.Request.class);
             String before = r.system().replace(IssueScopeComparisonPlan.ADDED, "")
-                    .replace("대상 취급 후보에서는 매장", IssueScopeComparisonPlan.OLD + "대상 취급 후보에서는 매장");
+                    .replace("먼저 proposedEvidence의 평가·대상·앞뒤 연결", IssueScopeComparisonPlan.OLD + "먼저 proposedEvidence의 평가·대상·앞뒤 연결");
             requests.add(JSON.valueToTree(new DefaultVerificationPlan.Request(r.caseId(), r.labelStatus(),
                     r.expectedDecision(), "WITHOUT", repeat, before, r.input())));
         }
