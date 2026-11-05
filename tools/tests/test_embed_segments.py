@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from embed_segments import FORMAT, INPUT_VERSION, build_file, ordered_segments, transcript_sha256, write_file
+from embed_segments import ALLOW_PATTERNS, FORMAT, INPUT_VERSION, build_file, ordered_segments, transcript_sha256, write_file
 
 META = {
     "modelId": "BAAI/bge-m3",
@@ -83,6 +83,11 @@ class EmbedSegmentsTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["format"], FORMAT)
             with self.assertRaises(FileExistsError):
                 write_file({}, path)
+
+    def test_downloads_only_the_dense_sentence_transformers_files(self):
+        self.assertIn("pytorch_model.bin", ALLOW_PATTERNS)
+        self.assertIn("1_Pooling/config.json", ALLOW_PATTERNS)
+        self.assertFalse(any(p.startswith(("onnx", "imgs")) or p.endswith(".pt") for p in ALLOW_PATTERNS))
 
 
 if __name__ == "__main__":

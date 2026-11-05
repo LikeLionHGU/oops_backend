@@ -1,0 +1,9 @@
+# Offline A2-T embedder (tools/embed_segments.py). Not used by the backend or oops-analysis.
+# python3 -m venv .venv && .venv/bin/pip install -r tools/requirements-embed.txt
+huggingface_hub==2.4.0
+numpy==2.5.4
+safetensors==0.8.0
+sentence-transformers==6.2.0
+tokenizers==0.23.3
+torch==2.15.0
+transformers==5.22.1

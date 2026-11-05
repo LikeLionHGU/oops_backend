@@ -2,8 +2,8 @@
 
 Input JSON: {"segments": [{"id", "startMs", "endMs", "text"}, ...]} from the frozen ReviewInput.
 Query = the target segment's raw text; document = each segment's raw text (target-raw-text-v1).
-Runs locally on CPU; transcript text never leaves the machine. Downloads model files only when
-they are not already cached. Run from the repository root:
+Runs locally on CPU; transcript text never leaves the machine. Downloads only the dense
+sentence-transformers files (ALLOW_PATTERNS, about 2.3 GB) when they are not already cached. Run from the repository root:
 python tools/embed_segments.py INPUT.json NEW_OUTPUT.json --revision <40-hex commit>
 """
 from __future__ import annotations
@@ -24,6 +24,11 @@ INPUT_VERSION = "target-raw-text-v1"
 MODEL_ID = "BAAI/bge-m3"
 NORM_TOLERANCE = 1e-3
 BATCH_SIZE = 16
+ALLOW_PATTERNS = (
+    "config.json", "config_sentence_transformers.json", "modules.json", "sentence_bert_config.json",
+    "1_Pooling/config.json", "pytorch_model.bin", "sentencepiece.bpe.model", "special_tokens_map.json",
+    "tokenizer.json", "tokenizer_config.json",
+)
 LIBRARIES = ("sentence-transformers", "transformers", "torch", "huggingface-hub", "numpy")
 
 Encoder = Callable[[Sequence[str]], Sequence[Sequence[float]]]
@@ -119,7 +124,7 @@ def bge_m3_encoder(revision: str) -> tuple[Encoder, str]:
 
     torch.manual_seed(0)
     torch.use_deterministic_algorithms(True)
-    model_dir = Path(snapshot_download(MODEL_ID, revision=revision))
+    model_dir = Path(snapshot_download(MODEL_ID, revision=revision, allow_patterns=list(ALLOW_PATTERNS)))
     model = SentenceTransformer(str(model_dir), device="cpu")
 
     def encode(texts: Sequence[str]) -> list[list[float]]:
