@@ -1031,3 +1031,36 @@ tasks.register('responsiveRepetitionTrial', JavaExec) {
         args values
     }
 }
+
+tasks.register('recallFirstDiscoveryTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RecallFirstDiscoveryTrial'
+    doFirst {
+        def values = providers.gradleProperty('recallFirstArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run recallFirstArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('privacyScopeTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.PrivacyScopeTrial'
+    doFirst {
+        def values = providers.gradleProperty('privacyScopeArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run privacyScopeArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('genericPolicyTrial', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.GenericPolicyTrial'
+    doFirst {
+        def values = providers.gradleProperty('genericPolicyArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run genericPolicyArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
