@@ -57,6 +57,10 @@ final class ExperimentalBatchRendering {
 
     /** Exactly the CONTEXT_ONLY rows as rendered, including their markers: the unit the token budget counts. */
     String budgetedContext(List<ReviewInput.Segment> raw) {
-        return JSON.writeValueAsString(render(raw).stream().filter(r -> CONTEXT_ONLY.equals(r.get("batchRole"))).toList());
+        return JSON.writeValueAsString(contextRows(raw));
+    }
+
+    List<Map<String, Object>> contextRows(List<ReviewInput.Segment> raw) {
+        return render(raw).stream().filter(r -> CONTEXT_ONLY.equals(r.get("batchRole"))).toList();
     }
 }

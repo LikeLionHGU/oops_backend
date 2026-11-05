@@ -35,6 +35,9 @@ dependencies {
     // 문서만 빠지고 나머지 기능은 그대로 동작한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
 
+    // 실험용 맥락 토큰 예산 계산(ContextTokenBudget). 운영 분석 경로는 사용하지 않는다.
+    implementation 'com.knuddels:jtokkit:1.1.0'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
