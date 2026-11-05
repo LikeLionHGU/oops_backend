@@ -15,7 +15,8 @@ public record SpeechReviewProperties(
         @DefaultValue("false") boolean situationFirstVerificationEnabled,
         @DefaultValue("false") boolean sourceUnderstandingEnabled,
         @DefaultValue("acts-v1") String sourceUnderstandingContract,
-        @DefaultValue("false") boolean ruleCandidateUnionEnabled) {
+        @DefaultValue("false") boolean ruleCandidateUnionEnabled,
+        @DefaultValue("false") boolean recallFirstDiscoveryEnabled) {
     public SpeechReviewProperties {
         if (candidateReviewMaxCandidates < 1 || candidateReviewMaxCandidates > 200)
             throw new IllegalArgumentException("Candidate budget must be 1..200");

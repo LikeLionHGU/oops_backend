@@ -21,7 +21,7 @@ class SpeechReviewPropertiesTest {
             assertThat(context).hasNotFailed();
             var p = context.getBean(SpeechReviewProperties.class);
             assertThat(p).isEqualTo(new SpeechReviewProperties(true, true, 24, 0,
-                    false, false, false, false, "acts-v1", false));
+                    false, false, false, false, "acts-v1", false, false));
         });
     }
 
@@ -35,11 +35,12 @@ class SpeechReviewPropertiesTest {
                 "oops.analysis.situation-first-verification-enabled=true",
                 "oops.analysis.source-understanding-enabled=true",
                 "oops.analysis.source-understanding-contract=relations-v3",
-                "oops.analysis.rule-candidate-union-enabled=true").run(context -> {
+                "oops.analysis.rule-candidate-union-enabled=true",
+                "oops.analysis.recall-first-discovery-enabled=true").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context.getBean(SpeechReviewProperties.class)).isEqualTo(
                     new SpeechReviewProperties(false, false, 12, 3, true, true, true,
-                            true, "relations-v3", true));
+                            true, "relations-v3", true, true));
         });
     }
 

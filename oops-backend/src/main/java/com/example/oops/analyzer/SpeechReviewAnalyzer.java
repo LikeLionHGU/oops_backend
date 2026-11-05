@@ -136,6 +136,10 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     void setRuleUnionEnabled(boolean enabled) {
         this.ruleUnionEnabled=enabled;
     }
+    private boolean recallFirstDiscoveryEnabled;
+    void setRecallFirstDiscoveryEnabled(boolean enabled) {
+        this.recallFirstDiscoveryEnabled = enabled;
+    }
     private SourceUnderstandingContract.Version sourceUnderstandingVersion=SourceUnderstandingContract.Version.ACTS_V1;
     void setSourceUnderstandingVersion(String value) {
         this.sourceUnderstandingVersion=SourceUnderstandingContract.Version.config(value);
@@ -213,6 +217,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         setSourceUnderstandingEnabled(settings.sourceUnderstandingEnabled());
         setSourceUnderstandingVersion(settings.sourceUnderstandingContract());
         setRuleUnionEnabled(settings.ruleCandidateUnionEnabled());
+        setRecallFirstDiscoveryEnabled(settings.recallFirstDiscoveryEnabled());
         setGuidelineLibrary(guidelineLibrary);
         setMechanismRouter(mechanismRouter);
         setRequestTraces(requestTraces);
@@ -256,7 +261,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
             var features = new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,
                     situationFirstEnabled, sourceUnderstandingEnabled, sourceUnderstandingVersion);
             var options = new CandidateReviewEngine.RunOptions(maxCandidates, evidenceLimit,
-                    sourceRelationsEnabled, features, ruleUnionEnabled);
+                    sourceRelationsEnabled, features, ruleUnionEnabled, recallFirstDiscoveryEnabled);
             return CandidateReviewEngine.run(openAiClient, context, services, options);
         }
     }
