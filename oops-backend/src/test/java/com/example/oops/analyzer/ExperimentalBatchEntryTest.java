@@ -133,6 +133,18 @@ class ExperimentalBatchEntryTest {
         assertThat(r.diagnostics().candidatePipeline().revision()).contains(ExperimentalBatchRendering.VERSION);
     }
 
+    @Test void a0tSelectionFlowsIntoTheEngineAsContextOnly() {
+        var c = farContext();
+        var transcript = c.reviewInput();
+        var target = transcript.find("stt-index-3").orElseThrow();
+        var selection = new DialoguePageContextSelector().select(target, transcript);
+        assertThat(selection.contextSegmentIds()).containsExactly("stt-index-4");
+        f.discovery(List.of("stt-index-3"));
+        var r = run(c, selection.toBatch(target, transcript));
+        assertThat(discoveryPrimaryIds()).containsExactly("stt-index-3");
+        assertThat(r.diagnostics().segments()).extracting(ReviewDiagnostics.SegmentTrace::segmentId).containsExactly("stt-index-3");
+    }
+
     @Test void productionRunRequestsStayFreeOfExperimentalRendering() {
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"));
         CandidateReviewEngine.run(f.client, farContext(), 24);
