@@ -62,8 +62,20 @@ final class EmbeddingContextSelector implements ContextSelector {
         return sha256(joined.toString().getBytes(StandardCharsets.UTF_8));
     }
 
+    String modelRef() {
+        return file.modelId() + "@" + file.revision();
+    }
+
+    String vectorFileSha256() {
+        return vectorFileSha256;
+    }
+
+    String transcriptSha256() {
+        return file.transcriptSha256();
+    }
+
     String id() {
-        return "A2-T:" + POLICY + ":model=" + file.modelId() + "@" + file.revision() + ":input=" + file.embeddingInputVersion()
+        return "A2-T:" + POLICY + ":model=" + modelRef() + ":input=" + file.embeddingInputVersion()
                 + ":vectors=" + vectorFileSha256 + ":" + ContextTokenBudget.COUNTER_ID + ":B=" + budget.budget();
     }
 
@@ -148,7 +160,7 @@ final class EmbeddingContextSelector implements ContextSelector {
         return total;
     }
 
-    private static long distance(ReviewInput.Segment target, ReviewInput.Segment other) {
+    static long distance(ReviewInput.Segment target, ReviewInput.Segment other) {
         return other.startMs() >= target.endMs() ? other.startMs() - target.endMs()
                 : Math.max(0, target.startMs() - other.endMs());
     }
