@@ -196,6 +196,45 @@ final class CandidateReviewEngine {
                 new RunOptions(maxCandidates,evidenceLimit,sourceRelationsEnabled,features,ruleUnionEnabled));
     }
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, RunServices services, RunOptions options) {
+        ReviewInput input = speechInput(context);
+        return execute(client, context, services, options, input, DialogueReadingPage.plan(input), input.segments());
+    }
+
+    /** Experiment-only per-target batch: IDs refer to the context transcript; context IDs are never judged. */
+    record ExperimentalBatch(List<String> primaryIds, List<String> contextIds) {
+        ExperimentalBatch { primaryIds = List.copyOf(primaryIds); contextIds = List.copyOf(contextIds); }
+    }
+
+    static TextReviewEngine.Result runExperimental(OpenAiClient client, AnalysisContext context, RunServices services,
+                                                   RunOptions options, ExperimentalBatch batch) {
+        if (services.visual() != null) throw new IllegalArgumentException("Experimental batches are speech-only");
+        if (options.ruleUnionEnabled()) throw new IllegalArgumentException("Experimental batches do not support rule union");
+        if (batch.primaryIds().isEmpty()) throw new IllegalArgumentException("Experimental batch requires a primary");
+        Set<String> primaryIds = new HashSet<>(batch.primaryIds());
+        if (primaryIds.size() != batch.primaryIds().size()
+                || new HashSet<>(batch.contextIds()).size() != batch.contextIds().size()
+                || batch.contextIds().stream().anyMatch(primaryIds::contains))
+            throw new IllegalArgumentException("Primary and context IDs must be distinct");
+        ReviewInput input = speechInput(context);
+        var primary = segments(input, batch.primaryIds());
+        var explicit = TextReviewBatchPlanner.Batch.explicit(primary, segments(input, batch.contextIds()));
+        return execute(client, context, services, options, input, List.of(explicit), primary);
+    }
+
+    private static ReviewInput speechInput(AnalysisContext context) {
+        return new ReviewInput(context.reviewInput().segments().stream()
+                .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
+    }
+
+    private static List<ReviewInput.Segment> segments(ReviewInput input, List<String> ids) {
+        return ids.stream().map(id -> input.find(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown speech segment: " + id))).toList();
+    }
+
+    private static TextReviewEngine.Result execute(OpenAiClient client, AnalysisContext context, RunServices services,
+                                                   RunOptions options, ReviewInput input,
+                                                   List<TextReviewBatchPlanner.Batch> batches,
+                                                   List<ReviewInput.Segment> targets) {
         context.checkActive();
         int maxCandidates=options.maxCandidates(), evidenceLimit=options.evidenceLimit();
         boolean sourceRelationsEnabled=options.sourceRelationsEnabled(), ruleUnionEnabled=options.ruleUnionEnabled();
@@ -206,8 +245,6 @@ final class CandidateReviewEngine {
         var requestTrace=services.requestTrace();
         ContextMechanismRouter router=services.router();
         boolean finalReviewBasisEnabled = features.finalBasis();
-        ReviewInput input = new ReviewInput(context.reviewInput().segments().stream()
-                .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
         var stats = new Stats();
         var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
@@ -217,6 +254,11 @@ final class CandidateReviewEngine {
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
         if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.version(features.understandingVersion());
         else if(features.situationFirst()) stats.revision += "+"+SituationFirstVerification.VERSION;
+        if (batches.stream().anyMatch(TextReviewBatchPlanner.Batch::explicitWindow)) {
+            stats.rendering = new ExperimentalBatchRendering(input,
+                    targets.stream().map(ReviewInput.Segment::id).collect(java.util.stream.Collectors.toSet()));
+            stats.revision += "+" + ExperimentalBatchRendering.VERSION;
+        }
         String modelPromptRevision=stats.revision;
         if(ruleUnionEnabled) stats.revision += "+"+RuntimeCandidateUnion.REVISION;
         stats.guidelineReference = guidelines == null ? null : guidelines.trace(TimelineEventType.SPEECH);
@@ -234,7 +276,7 @@ final class CandidateReviewEngine {
         Map<String, Integer> pending = new HashMap<>();
         boolean partial = false;
         int counter = 0;
-        for (var batch : DialogueReadingPage.plan(input)) {
+        for (var batch : batches) {
             context.checkActive();
             var primaryIds = batch.primary().stream().map(ReviewInput.Segment::id).toList();
             if(ruleUnionEnabled && Thread.currentThread().isInterrupted()) {unresolved.addAll(primaryIds);partial=true;continue;}
@@ -253,7 +295,7 @@ final class CandidateReviewEngine {
             Discovery response;
             var builtDiscovery = CandidateReviewRequestFactory.discovery(modelPromptRevision, sourceRelationsEnabled,
                     options.recallFirstDiscovery(), guidelinePrompt, primaryIds, raw, units, targetUnits, batch.contextLimited(),
-                    references == null ? List.of() : references.examples());
+                    references == null ? List.of() : references.examples(), stats.rendering);
             String discoverySystem = builtDiscovery.system();
             String discoveryInput = builtDiscovery.input();
             try {
@@ -430,7 +472,7 @@ final class CandidateReviewEngine {
                 }
             } catch(RuntimeException ex) {
                 // Rule planning failure must not erase existing AI work or unleash the deferred discovery pool.
-                partial=true; input.segments().forEach(s -> unresolved.add(s.id()));
+                partial=true; targets.forEach(s -> unresolved.add(s.id()));
                 unionTrace=new RuntimeCandidateUnion.Trace(RuntimeCandidateUnion.REVISION,"UNION_UNAVAILABLE",
                         CandidateUnionShadow.snapshotHash(input),0,false,List.of());
                 candidates.clear();
@@ -473,9 +515,9 @@ final class CandidateReviewEngine {
             String responseFailure = null;
             int failuresBefore = client.failureCount();
             String requestSystem = ruleRequest != null ? ruleRequest.system()
-                    : CandidateReviewRequestFactory.verificationSystem(group.get(0), evidenceLimit, guidelinePrompt, features);
+                    : CandidateReviewRequestFactory.verificationSystem(group.get(0), evidenceLimit, guidelinePrompt, features, stats.rendering);
             String requestInput = ruleRequest != null ? ruleRequest.user()
-                    : CandidateReviewRequestFactory.verification(group, null, null, finalReviewBasisEnabled);
+                    : CandidateReviewRequestFactory.verification(group, null, null, finalReviewBasisEnabled, stats.rendering);
             try {
                 context.checkActive();
                 response = client.completeAsJson(requestSystem, requestInput,
@@ -642,19 +684,19 @@ final class CandidateReviewEngine {
             if(unionTrace!=null) unionTrace=new RuntimeCandidateUnion.Trace(unionTrace.revision(),unionTrace.state(),
                     unionTrace.inputSha256(),unionTrace.totalEntries(),unionTrace.truncated(),unionTrace.entries(),List.copyOf(unionConflicts),findingGate.suppressed());
         }
-        input.segments().stream().map(ReviewInput.Segment::id).filter(id -> !explored.contains(id)).forEach(unresolved::add);
+        targets.stream().map(ReviewInput.Segment::id).filter(id -> !explored.contains(id)).forEach(unresolved::add);
         pending.forEach((id, count) -> { if (count > 0) unresolved.add(id); });
         partial |= !unresolved.isEmpty();
         AnalyzerStatus status = explored.isEmpty() ? AnalyzerStatus.FAILED : partial ? AnalyzerStatus.PARTIAL : AnalyzerStatus.SUCCESS;
         String notice = partial || status == AnalyzerStatus.FAILED || stats.limitedBatches > 0 || stats.verificationLimitedCandidates > 0 ?
                 "후보 탐색 %d/%d구간 · 미확인 %d구간 · 탐색 응답 검증 실패 %d건 · 검증 누락/실패 %d건 · 판단 보류 %d건 · 예산 제외 %d건 · 문맥 제한 %d배치 · 후보 잘림 %d배치 · 검증 문맥 제한 %d후보"
-                        .formatted(explored.size(), input.segments().size(), unresolved.size(), stats.invalidProposals,
+                        .formatted(explored.size(), targets.size(), unresolved.size(), stats.invalidProposals,
                                 stats.verificationFailed, stats.uncertain, stats.budgetSkipped, stats.limitedBatches, stats.truncatedBatches,
                                 stats.verificationLimitedCandidates) : null;
         if(unionTrace!=null && "UNION_UNAVAILABLE".equals(unionTrace.state()))
             notice=(notice==null?"":notice+" · ")+"규칙 합집합 준비 실패: 제한된 기존 AI 후보만 검증했습니다.";
         if(!unionConflicts.isEmpty()) notice=(notice==null?"":notice+" · ")+"동일 발언의 PASS/검토 결과 차이 "+unionConflicts.size()+"구간: 합의 판정이 아닙니다.";
-        List<ReviewDiagnostics.SegmentTrace> traces = input.segments().stream().limit(400).map(s -> {
+        List<ReviewDiagnostics.SegmentTrace> traces = targets.stream().limit(400).map(s -> {
             List<Observation> items = observations.getOrDefault(s.id(), List.of());
             var state = unionConflicts.contains(s.id()) ? ReviewDiagnostics.State.CONFLICT
                     : items.stream().anyMatch(o -> o.decision() == Decision.REVIEW_REQUIRED) ? ReviewDiagnostics.State.REVIEW_REQUIRED
@@ -669,8 +711,8 @@ final class CandidateReviewEngine {
             return new ReviewDiagnostics.SegmentTrace(s.id(), s.type(), s.startMs(), s.endMs(), state,
                     decisions, List.of(), 0, items.size() > 4);
         }).toList();
-        var diagnostic = new ReviewDiagnostics("speech-review", status, input.segments().size(),
-                input.segments().size() > 400, Map.of(), traces).withCandidatePipeline(stats.finish(explored.size())).withCandidateUnion(unionTrace);
+        var diagnostic = new ReviewDiagnostics("speech-review", status, targets.size(),
+                targets.size() > 400, Map.of(), traces).withCandidatePipeline(stats.finish(explored.size())).withCandidateUnion(unionTrace);
         return new TextReviewEngine.Result(findings, evaluations, status, notice, unresolved.stream().sorted().toList(), List.of(), diagnostic);
     }
 
@@ -711,9 +753,9 @@ final class CandidateReviewEngine {
             Set<String> permitted = new HashSet<>(); windows.forEach(w -> permitted.addAll(w.segmentIds()));
             request = JSON.writeValueAsString(Map.of("promptRevision", REVISION,
                     "anchorId", original.anchorId(), "axis", original.axis(),
-                    "hypothesisNotEvidence", original.reason(), "raw", compact(raw(batch).stream().filter(s -> permitted.contains(s.id())).toList()),
+                    "hypothesisNotEvidence", original.reason(), "raw", repairRaw(stats, raw(batch).stream().filter(s -> permitted.contains(s.id())).toList()),
                     "allowedWindows", compactWindows(windows), "repair", Map.of("attempt", 1, "failureCode", initial)));
-            system = repairPrompt + reference;
+            system = stats.rendering == null ? repairPrompt + reference : stats.rendering.system(repairPrompt + reference);
             context.checkActive();
             var response = client.completeAsJson(system, request, ProposalRepairResult.class).orElse(null);
             if (requestTrace != null) requestTrace.record("CANDIDATE_DISCOVERY_REPAIR", system, request, null, response,
@@ -763,7 +805,8 @@ final class CandidateReviewEngine {
             var correction = repairPrompt(initial, evidenceLimit);
             system=(c.proposal().sourceRelations()==null?verificationPrompt(evidenceLimit):SourceRelationPrompts.verification(evidenceLimit))+reference+"\n"+correction;
             system=verificationSystem(system,features);
-            request = CandidateReviewRequestFactory.verification(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled);
+            if (stats.rendering != null) system = stats.rendering.system(system);
+            request = CandidateReviewRequestFactory.verification(List.of(c), initial, targetDetail(c, previous, initial), finalReviewBasisEnabled, stats.rendering);
             context.checkActive();
             var response = client.completeAsJson(system, request, VerificationResult.class).orElse(null);
             if (requestTrace != null) requestTrace.record("CANDIDATE_VERIFICATION_REPAIR", system, request, null, response,
@@ -1052,6 +1095,9 @@ final class CandidateReviewEngine {
     static List<Map<String, Object>> compact(List<ReviewInput.Segment> raw) {
         return raw.stream().map(s -> Map.<String, Object>of("id", s.id(), "startMs", s.startMs(), "endMs", s.endMs(), "text", s.text())).toList();
     }
+    private static List<Map<String, Object>> repairRaw(Stats stats, List<ReviewInput.Segment> raw) {
+        return stats.rendering == null ? compact(raw) : stats.rendering.render(raw);
+    }
     /** Identical raw windows share one ID list; anchor permissions remain explicit. */
     static List<Map<String, Object>> compactWindows(List<ReviewUnit> units) {
         Map<List<String>, Set<String>> grouped = new LinkedHashMap<>();
@@ -1061,6 +1107,7 @@ final class CandidateReviewEngine {
     }
     private static final class Stats {
         String revision = REVISION;
+        ExperimentalBatchRendering rendering;
         int discoveryCalls, verificationCalls, proposed, duplicates, invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches;
         int expandedCandidates, verificationLimitedCandidates, repairCalls, discoveryRepairCalls;
         final CandidateTraceBuffer traces = new CandidateTraceBuffer(MAX_TRACES);

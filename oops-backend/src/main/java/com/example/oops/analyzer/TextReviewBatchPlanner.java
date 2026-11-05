@@ -97,9 +97,16 @@ final class TextReviewBatchPlanner {
     }
 
     record Batch(List<ReviewInput.Segment> primary, List<ReviewInput.Segment> context,
-                 boolean contextLimited, boolean oversizedPrimary, boolean sharedReadingPage) {
+                 boolean contextLimited, boolean oversizedPrimary, boolean sharedReadingPage, boolean explicitWindow) {
         Batch(List<ReviewInput.Segment> primary,List<ReviewInput.Segment> context,boolean limited,boolean oversized) {
             this(primary,context,limited,oversized,false);
+        }
+        Batch(List<ReviewInput.Segment> primary,List<ReviewInput.Segment> context,boolean limited,boolean oversized,boolean sharedReadingPage) {
+            this(primary,context,limited,oversized,sharedReadingPage,false);
+        }
+        /** Experiment-only: caller-selected context, read as one window regardless of time gaps. */
+        static Batch explicit(List<ReviewInput.Segment> primary,List<ReviewInput.Segment> context) {
+            return new Batch(primary,context,false,false,false,true);
         }
         Batch { primary = List.copyOf(primary); context = List.copyOf(context); }
     }

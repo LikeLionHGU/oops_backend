@@ -21,8 +21,21 @@ final class CandidateContextWindow {
 
     /** Both judgment axes read bounded dialogue, not an axis-dependent permission window. */
     static List<ReviewUnit> conversationUnits(TextReviewBatchPlanner.Batch batch) {
+        if(batch.explicitWindow())return explicitUnits(batch);
         if(batch.sharedReadingPage())return DialogueReadingPage.windows(batch);
         return discoveryUnits(batch, 120_000);
+    }
+
+    /** Every supplied segment is one window per primary; gaps are rendered, not used to split. */
+    private static List<ReviewUnit> explicitUnits(TextReviewBatchPlanner.Batch batch) {
+        List<ReviewInput.Segment> raw = new ArrayList<>(batch.primary());
+        raw.addAll(batch.context());
+        raw.sort(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id));
+        var ids = raw.stream().map(ReviewInput.Segment::id).toList();
+        long start = raw.get(0).startMs();
+        long end = raw.stream().mapToLong(ReviewInput.Segment::endMs).max().orElseThrow();
+        return batch.primary().stream()
+                .map(p -> new ReviewUnit(p.id(), ids, start, end, false, ReviewUnit.View.CENTRED)).toList();
     }
 
     private static List<ReviewUnit> discoveryUnits(TextReviewBatchPlanner.Batch batch, long maxSpan) {

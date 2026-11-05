@@ -23,6 +23,15 @@ final class CandidateReviewRequestFactory {
                                       String guidelinePrompt, List<String> primaryIds, List<ReviewInput.Segment> raw,
                                       List<ReviewUnit> units, List<ReviewUnit> targetUnits,
                                       boolean contextLimited, List<ReviewCaseLibrary.Example> references) {
+        return discovery(revision, sourceRelationsEnabled, recallFirst, guidelinePrompt, primaryIds, raw, units, targetUnits,
+                contextLimited, references, null);
+    }
+
+    static DiscoveryRequest discovery(String revision, boolean sourceRelationsEnabled, boolean recallFirst,
+                                      String guidelinePrompt, List<String> primaryIds, List<ReviewInput.Segment> raw,
+                                      List<ReviewUnit> units, List<ReviewUnit> targetUnits,
+                                      boolean contextLimited, List<ReviewCaseLibrary.Example> references,
+                                      ExperimentalBatchRendering rendering) {
         boolean hasReferences = references != null && !references.isEmpty();
         String baseline = recallFirst ? CandidateReviewPrompts.RECALL_DISCOVERY_PROMPT : CandidateReviewEngine.DISCOVERY_PROMPT;
         String system = (sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : baseline)
@@ -34,29 +43,48 @@ final class CandidateReviewRequestFactory {
                 "raw", CandidateReviewEngine.compact(raw), "windows", CandidateReviewEngine.compactWindows(units),
                 "targetWindows", CandidateReviewEngine.compactWindows(targetUnits),
                 "contextLimited", contextLimited));
-        request.put("readingPage", DialogueReadingPage.metadata());
+        if (rendering == null) request.put("readingPage", DialogueReadingPage.metadata());
+        else {
+            request.put("raw", rendering.render(raw));
+            request.put("experimentalBatch", ExperimentalBatchRendering.VERSION);
+            system = rendering.system(system);
+        }
         if (hasReferences) request.put("referenceCases", references);
         return new DiscoveryRequest(system, JSON.writeValueAsString(request), hasReferences);
     }
 
     static String verificationSystem(CandidateReviewEngine.Candidate candidate, int evidenceLimit,
                                      String reference, CandidateReviewEngine.VerificationFeatures features) {
+        return verificationSystem(candidate, evidenceLimit, reference, features, null);
+    }
+
+    static String verificationSystem(CandidateReviewEngine.Candidate candidate, int evidenceLimit,
+                                     String reference, CandidateReviewEngine.VerificationFeatures features,
+                                     ExperimentalBatchRendering rendering) {
         String system = candidate.proposal().sourceRelations() == null
                 ? CandidateReviewEngine.verificationPrompt(evidenceLimit)
                 : SourceRelationPrompts.verification(evidenceLimit);
-        return CandidateReviewEngine.verificationSystem(system + reference, features);
+        String built = CandidateReviewEngine.verificationSystem(system + reference, features);
+        return rendering == null ? built : rendering.system(built);
     }
 
     static String verification(List<CandidateReviewEngine.Candidate> candidates, String failure,
                                String detail, boolean finalReviewBasisEnabled) {
+        return verification(candidates, failure, detail, finalReviewBasisEnabled, null);
+    }
+
+    static String verification(List<CandidateReviewEngine.Candidate> candidates, String failure,
+                               String detail, boolean finalReviewBasisEnabled, ExperimentalBatchRendering rendering) {
         Map<String, ReviewInput.Segment> raw = new LinkedHashMap<>();
         candidates.forEach(candidate -> candidate.raw().forEach(segment -> raw.put(segment.id(), segment)));
         Map<String, Object> request = new LinkedHashMap<>();
         boolean relations = candidates.stream().anyMatch(candidate -> candidate.proposal().sourceRelations() != null);
         request.put("promptRevision", relations ? CandidateReviewEngine.RELATION_REVISION : CandidateReviewEngine.REVISION);
         if (finalReviewBasisEnabled) request.put("verificationContract", FinalReviewBasisContract.VERSION);
-        request.put("raw", CandidateReviewEngine.compact(raw.values().stream()
-                .sorted(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id)).toList()));
+        var orderedRaw = raw.values().stream()
+                .sorted(Comparator.comparingLong(ReviewInput.Segment::startMs).thenComparing(ReviewInput.Segment::id)).toList();
+        request.put("raw", rendering == null ? CandidateReviewEngine.compact(orderedRaw) : rendering.render(orderedRaw));
+        if (rendering != null) request.put("experimentalBatch", ExperimentalBatchRendering.VERSION);
         if (!relations) request.put("candidates", candidates.stream().map(candidate -> Map.of(
                 "candidateId", candidate.candidateId(), "anchorId", candidate.proposal().anchorId(),
                 "axis", candidate.proposal().axis(), "hypothesisNotEvidence", candidate.proposal().reason(),
