@@ -2,11 +2,21 @@ package com.example.oops.analyzer;
 
 import java.util.*;
 
-/** Selected context IDs in transcript order, excluding the judged segment. */
-record ContextSelection(List<String> contextSegmentIds, String selectorId) {
+/**
+ * Selected context IDs in transcript order, excluding the judged segment.
+ * BUDGET_INFEASIBLE keeps the full required set; it is reported apart, never trimmed to fit.
+ */
+record ContextSelection(List<String> contextSegmentIds, String selectorId, Status status) {
+    enum Status { SELECTED, BUDGET_INFEASIBLE }
+
     ContextSelection {
         contextSegmentIds = List.copyOf(contextSegmentIds);
         if (selectorId == null || selectorId.isBlank()) throw new IllegalArgumentException("Selector ID required");
+        Objects.requireNonNull(status);
+    }
+
+    ContextSelection(List<String> contextSegmentIds, String selectorId) {
+        this(contextSegmentIds, selectorId, Status.SELECTED);
     }
 
     /** Validates the contract against the frozen transcript and builds the engine batch. */
