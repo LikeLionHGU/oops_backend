@@ -22,6 +22,10 @@ final class ContextTokenBudget {
         this.budget = budget;
     }
 
+    int budget() {
+        return budget;
+    }
+
     Measurement measure(ExperimentalBatchRendering rendering, List<ReviewInput.Segment> raw) {
         int tokens = rendering.contextRows(raw).isEmpty() ? 0 : count(rendering.budgetedContext(raw));
         return new Measurement(tokens, budget, tokens > budget);
