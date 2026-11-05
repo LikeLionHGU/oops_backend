@@ -5,14 +5,13 @@ promotion. Default is validation only. --write creates an atomic private runtime
 artifact; never uploads sources, calls models or changes original approvals.
 """
 import argparse
-import datetime
 import hashlib
 import json
 import os
 import tempfile
 from pathlib import Path
 
-from controversy_cards import build_bundle
+from controversy_cards import build_bundle, retention_deadline, retention_open
 from review_context_pilot import PilotError, parse, read_bytes, require, text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,8 +142,7 @@ def compile_guidelines(bundle, plan, source_bytes, dictionary=None):
             "status": "WORKING_REFERENCE_NOT_VALIDATED", "humanValidated": False,
             "usage": "REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED",
             "sourceBundleSha256": hashlib.sha256(source_bytes).hexdigest(),
-            "refreshOrDeleteBy": min((datetime.datetime.fromisoformat(c["refreshOrDeleteBy"])
-                                      for c in bundle["collections"])).isoformat(),
+            "refreshOrDeleteBy": retention_deadline(bundle),
             "sourceCases": [{"caseId": c["id"], "familyId": c["familyId"], "status": c["status"]}
                             for c in cards.values()], "guidelines": rules}
     if dictionary is not None:
@@ -198,8 +196,7 @@ def main():
         require(dictionary == parse(read_bytes(root / "drafts/context-dictionary.json")),
                 "DICTIONARY_SOURCE_OR_PLAN_MISMATCH")
         result = compile_guidelines(bundle, plan, source_bytes, dictionary)
-        require(datetime.datetime.fromisoformat(result["refreshOrDeleteBy"]) >
-                datetime.datetime.now(datetime.timezone.utc), "REFRESH_OR_DELETE_REQUIRED")
+        require(retention_open(result["refreshOrDeleteBy"]), "REFRESH_OR_DELETE_REQUIRED")
         output = root / "guidelines/runtime.json"
         if args.write:
             metadata = {k: result[k] for k in ("version", "status", "humanValidated", "usage",

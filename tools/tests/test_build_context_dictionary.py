@@ -106,5 +106,9 @@ class ContextDictionaryTests(unittest.TestCase):
             self.build({"snapshot.txt": self.raw})
 
 
+    def test_dictionary_deadline_ignores_unreferenced_collections(self):
+        self.bundle["collections"].append({"id": "unused", "refreshOrDeleteBy": "2000-01-01T00:00:00+00:00"})
+        self.assertEqual("2099-01-01T00:00:00+00:00", self.build()["refreshOrDeleteBy"])
+
 if __name__ == "__main__":
     unittest.main()

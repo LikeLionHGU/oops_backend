@@ -214,7 +214,7 @@ public class ReviewGuidelineLibrary {
                 || a.sourceBundleSha256() == null || !a.sourceBundleSha256().matches("[0-9a-f]{64}")
                 || a.sourceCases() == null || a.sourceCases().isEmpty() || a.sourceCases().size() > 1000
                 || a.guidelines() == null || a.guidelines().isEmpty() || a.guidelines().size() > 16) return false;
-        try { OffsetDateTime.parse(a.refreshOrDeleteBy()); } catch (Exception ex) { return false; }
+        try { if (a.refreshOrDeleteBy() != null) OffsetDateTime.parse(a.refreshOrDeleteBy()); } catch (Exception ex) { return false; }
         boolean relations = "review-guidelines-7".equals(a.schemaVersion());
         boolean units = relations || "review-guidelines-6".equals(a.schemaVersion());
         boolean frozenRetrieval = units || "review-guidelines-5".equals(a.schemaVersion());
@@ -306,7 +306,9 @@ public class ReviewGuidelineLibrary {
                 .forEach(e -> keys.addAll(e.routingKeys()));
         return Collections.unmodifiableSet(keys);
     }
-    private boolean expired() { return archive != null && !OffsetDateTime.parse(archive.refreshOrDeleteBy()).isAfter(OffsetDateTime.now()); }
+    /** No deadline means the archive carries no comment-derived content to refresh or delete. */
+    private boolean expired() { return archive != null && archive.refreshOrDeleteBy() != null
+            && !OffsetDateTime.parse(archive.refreshOrDeleteBy()).isAfter(OffsetDateTime.now()); }
     List<Example> examples(TimelineEventType channel) {
         if (archive == null || expired() || !"READY_WORKING_REFERENCE".equals(state)) return List.of();
         return archive.guidelines().stream().filter(r -> r.channels().contains(channel.name()))

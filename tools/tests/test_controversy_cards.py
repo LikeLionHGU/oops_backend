@@ -109,5 +109,32 @@ class CommonCardTests(unittest.TestCase):
             tool.validate_bundle(self.bundle)
 
 
+
+class RetentionTests(unittest.TestCase):
+    def setUp(self):
+        self.bundle = fixture()[0]
+        self.bundle["collections"][0]["refreshOrDeleteBy"] = "2099-01-01T00:00:00+00:00"
+
+    def test_deadline_ignores_collections_without_derived_reactions(self):
+        self.bundle["collections"].append({"id": "unused", "refreshOrDeleteBy": "2000-01-01T00:00:00+00:00"})
+        self.assertEqual("2099-01-01T00:00:00+00:00", tool.retention_deadline(self.bundle))
+
+    def test_bundle_without_comment_reactions_has_no_comment_deadline(self):
+        self.bundle["collections"][0]["refreshOrDeleteBy"] = "2000-01-01T00:00:00+00:00"
+        for card in self.bundle["incidents"][0]["cards"]:
+            card["reactions"] = []
+        self.assertIsNone(tool.retention_deadline(self.bundle))
+
+    def test_reaction_from_unknown_collection_is_rejected(self):
+        self.bundle["incidents"][0]["cards"][0]["reactions"][0]["source"]["collectionId"] = "absent"
+        with self.assertRaisesRegex(tool.PilotError, "UNKNOWN_COMMENT_COLLECTION"):
+            tool.retention_deadline(self.bundle)
+
+    def test_retention_gate_blocks_only_passed_deadlines(self):
+        now = tool.datetime.datetime(2026, 11, 5, tzinfo=tool.datetime.timezone.utc)
+        self.assertTrue(tool.retention_open(None, now))
+        self.assertTrue(tool.retention_open("2026-11-08T11:01:53+00:00", now))
+        self.assertFalse(tool.retention_open("2026-11-05T00:00:00+00:00", now))
+
 if __name__ == "__main__":
     unittest.main()

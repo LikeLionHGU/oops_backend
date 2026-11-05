@@ -121,4 +121,12 @@ class GuidelineCompilerTests(unittest.TestCase):
         self.assertEqual(tool.prompt_rules(first, "SPEECH"), tool.prompt_rules(expanded, "SPEECH"))
 
 
+    def test_runtime_without_comment_reactions_does_not_inherit_collection_deadline(self):
+        self.bundle["collections"][0]["refreshOrDeleteBy"] = "2000-01-01T00:00:00+00:00"
+        for card in self.bundle["incidents"][0]["cards"]:
+            card["reactions"] = []
+            card["controversy"]["reasonHypotheses"] = []
+            card["controversy"]["reasonSupportReactionIds"] = []
+        self.assertIsNone(tool.compile_guidelines(self.bundle, self.plan, b"source")["refreshOrDeleteBy"])
+
 if __name__=="__main__":unittest.main()

@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse
 
-from controversy_cards import build_bundle, validate_bundle
+from controversy_cards import build_bundle, retention_deadline, retention_open, validate_bundle
 from build_review_guidelines import write_private
 from review_context_pilot import PilotError, parse, read_bytes, require, text
 from review_dataset_catalog import inside
@@ -138,13 +138,11 @@ def compile_dictionary(bundle, plan, guideline_plan, source_bytes, snapshots=Non
         if "criticismHypotheses" in config:
             entries[-1]["interpretationMaterial"]["criticismHypotheses"] = validate_criticism_hypotheses(
                 config["criticismHypotheses"], card)
-    deadlines = [datetime.datetime.fromisoformat(c["refreshOrDeleteBy"]) for c in bundle["collections"]]
-    require(deadlines, "SOURCE_RETENTION_REQUIRED")
     return {"schemaVersion": "context-dictionary-1", "status": "UNREVIEWED_DRAFT",
             "sourceBundleSha256": hashlib.sha256(source_bytes).hexdigest(),
             "planSha256": hashlib.sha256(json.dumps(plan, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
             "guidelinePlanSha256": hashlib.sha256(json.dumps(guideline_plan, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
-            "refreshOrDeleteBy": min(deadlines).isoformat(),
+            "refreshOrDeleteBy": retention_deadline(bundle),
             "humanApproved": False, "runtimeEligible": False, "trainingUseAuthorized": False,
             "entries": entries}
 
@@ -185,8 +183,7 @@ def main():
                 require(name.startswith("research/source-snapshots/"), "PRIVATE_SOURCE_SNAPSHOT_PATH_REQUIRED")
                 snapshots[name] = read_bytes(inside(root, name))
         dictionary = compile_dictionary(bundle, plan, parse(read_bytes(root / "guidelines/plan.json")), source_bytes, snapshots)
-        require(datetime.datetime.fromisoformat(dictionary["refreshOrDeleteBy"]) > datetime.datetime.now(datetime.timezone.utc),
-                "REFRESH_OR_DELETE_REQUIRED")
+        require(retention_open(dictionary["refreshOrDeleteBy"]), "REFRESH_OR_DELETE_REQUIRED")
         output = root / "drafts/context-dictionary.json"
         if args.verify:
             require(parse(read_bytes(output)) == dictionary, "DICTIONARY_SOURCE_OR_PLAN_MISMATCH")

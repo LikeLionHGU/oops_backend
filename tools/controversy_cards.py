@@ -4,6 +4,7 @@ Default output is counts only. --build explicitly prints private JSON for local 
 """
 import argparse
 import copy
+import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -175,6 +176,21 @@ def validate_bundle(bundle):
     return {"status": "STRUCTURALLY_VALID_COMMON_DRAFT", "incidentFamilies": len(families), "cards": len(cards),
             "reactions": len(reaction_ids), "reactionStages": stages, "semanticMappingVerified": False,
             "approvedCases": 0, "runtimeEligible": False}
+
+
+def retention_deadline(bundle):
+    """Only comment-derived reactions carry the collection's refresh-or-delete deadline."""
+    known = {c["id"]: c for c in bundle["collections"]}
+    used = {r["source"]["collectionId"] for incident in bundle["incidents"]
+            for card in incident["cards"] for r in card["reactions"]}
+    require(used <= set(known), "UNKNOWN_COMMENT_COLLECTION")
+    deadlines = [datetime.datetime.fromisoformat(known[cid]["refreshOrDeleteBy"]) for cid in used]
+    return min(deadlines).isoformat() if deadlines else None
+
+
+def retention_open(deadline, now=None):
+    return deadline is None or datetime.datetime.fromisoformat(deadline) > (
+        now or datetime.datetime.now(datetime.timezone.utc))
 
 
 def build_bundle(dataset_root, private_root, plan):

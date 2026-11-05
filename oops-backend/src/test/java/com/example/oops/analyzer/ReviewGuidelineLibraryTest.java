@@ -150,6 +150,12 @@ class ReviewGuidelineLibraryTest {
         assertThat(library(new byte[1_048_577], 6000).trace(SPEECH).state()).isEqualTo("ARCHIVE_TOO_LARGE");
         assertThat(library("{broken".getBytes(StandardCharsets.UTF_8),6000).examples(SPEECH)).isEmpty();
     }
+    @Test void archiveWithoutCommentDerivedContentHasNoRetentionExpiry() {
+        var l = library(with("refreshOrDeleteBy", null));
+        assertThat(l.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
+        assertThat(l.examples(SPEECH)).hasSize(1);
+        assertThat(library(with("refreshOrDeleteBy", "not-a-date")).prompt(SPEECH)).isEmpty();
+    }
     @Test void channelsFilterWithoutKeywordBlocking() {
         var a = archive(); var rule = a.guidelines().get(0);
         var caption = new Rule(rule.id(),rule.axis(),List.of("CAPTION"),rule.condition(),rule.normalContrast(),rule.requiredEvidence(),rule.missingContext(),rule.sourceCaseIds());

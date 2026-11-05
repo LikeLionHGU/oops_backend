@@ -16,7 +16,6 @@
 실제 incidents/*.json 은 /datasets/ 아래 Git 제외 로컬 생성물이다.
 """
 import argparse
-import datetime
 import hashlib
 import json
 import os
@@ -32,6 +31,7 @@ from review_context_pilot import parse, read_bytes, require
 from build_context_dictionary import compile_dictionary
 from build_review_guidelines import compile_guidelines
 from build_review_guidelines import write_private
+from controversy_cards import retention_open
 from review_dataset_catalog import inside
 import incidents_migration as mig
 from source_use_policy import LOCK_PATH, reviewed_incident_inputs, validate_incident_sources
@@ -167,8 +167,7 @@ def prepare(root):
     require(hashes == input_hashes(root), "INPUT_CHANGED_DURING_BUILD")
     raw = (json.dumps(runtime, ensure_ascii=False, indent=2) + "\n").encode()
     require(len(raw) <= 1_048_576, "RUNTIME_EXCEEDS_JAVA_LIMIT")
-    require(datetime.datetime.fromisoformat(runtime["refreshOrDeleteBy"]) >
-            datetime.datetime.now(datetime.timezone.utc), "REFERENCE_EXPIRED")
+    require(retention_open(runtime["refreshOrDeleteBy"]), "REFERENCE_EXPIRED")
     manifest = {"schemaVersion": "incident-build-manifest-1", "version": runtime["version"],
                 "runtimeSchema": runtime["schemaVersion"],
                 "inputHashes": hashes, "runtimeSha256": hashlib.sha256(raw).hexdigest(),
