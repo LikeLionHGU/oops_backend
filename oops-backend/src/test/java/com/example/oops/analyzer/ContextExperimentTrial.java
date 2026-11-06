@@ -133,7 +133,7 @@ public final class ContextExperimentTrial {
     }
 
     /** Builds the analysis context and checks that regenerated speech IDs equal the frozen file IDs. */
-    private static AnalysisContext context(Long videoId, Path path) throws Exception {
+    static AnalysisContext context(Long videoId, Path path) throws Exception {
         var video = Video.builder().filename("experiment-" + videoId).build();
         ReflectionTestUtils.setField(video, "id", videoId);
         var rows = JSON.readTree(Files.readAllBytes(path)).path("segments");

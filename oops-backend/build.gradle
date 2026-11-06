@@ -65,6 +65,18 @@ tasks.register('datasetTest', Test) {
     }
 }
 
+// Offline, no provider calls: A0-T context per label target for deriving Near.
+tasks.register('a0ProvidedContext', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.A0ProvidedContext'
+    doFirst {
+        def manifest = providers.gradleProperty('labelManifest').orNull
+        def output = providers.gradleProperty('a0Output').orNull
+        if (!manifest || !output) throw new GradleException('labelManifest and a0Output required')
+        args manifest, output
+    }
+}
+
 // Explicit opt-in text-only model trial; never part of test/bootRun.
 tasks.register('textBoundaryTrial', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath

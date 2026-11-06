@@ -5,9 +5,13 @@ frozen (its SHA is recorded in the T2 file); speaker and topic annotators see se
 targets or risk labels and must not be T1/T2 annotators. Validation collects every error instead of
 stopping; export writes only valid cases.
 
+contextDistance is never labelled. Export derives it from the A0 planner output (a0-provided-v1,
+written by the Gradle task a0ProvidedContext) and the frozen topic episodes. Without that file the
+distance is NOT_COMPUTED; no fixed time window stands in for the planner.
+
 python tools/label_packets.py packets MANIFEST NEW_DIR
 python tools/label_packets.py validate MANIFEST T1 T2 SPEAKERS TOPICS
-python tools/label_packets.py export MANIFEST T1 T2 SPEAKERS TOPICS NEW_DIR
+python tools/label_packets.py export MANIFEST T1 T2 SPEAKERS TOPICS NEW_DIR [A0_PROVIDED]
 """
 from __future__ import annotations
 
@@ -18,9 +22,9 @@ import sys
 from pathlib import Path
 
 DECISIONS = {"PASS", "REVIEW_REQUIRED", "UNCERTAIN"}
-DISTANCES = ("Near", "Far-topic", "Far-video")
 T2_FIELDS = ("videoId", "targetSegmentId", "finalDecision", "goldContextSegmentIds", "contextNecessary",
-             "contextDistance", "evidenceSegmentIds", "necessityRationale")
+             "evidenceSegmentIds", "necessityRationale")
+A0_FORMAT = "a0-provided-v1"
 
 
 def _read(path: Path) -> dict:
@@ -63,22 +67,20 @@ def make_packets(manifest_path: Path, out_dir: Path) -> None:
     _write_once(out_dir / "topic-packet.json", {"role": "TOPIC", "labelVersion": version, "videos": segment_videos})
 
 
-def _gap(target: dict, other: dict) -> int:
-    if other["startMs"] >= target["endMs"]:
-        return other["startMs"] - target["endMs"]
-    return max(0, target["startMs"] - other["endMs"])
-
-
-def context_distance(target: dict, context: list[dict], episodes: dict[str, int], near_window_ms: int) -> str | None:
-    """Farthest category over the context: Near within the window, else Far-topic in the same episode, else Far-video."""
-    if not context:
+def derive_context_distance(target_id: str, gold_context_ids: list[str], context_necessary: bool,
+                            final_decision: str, planner_provided_ids: list[str],
+                            topic_by_segment: dict[str, int]) -> str | None:
+    """Near first: every gold context segment is already in the A0 input. Otherwise any gold segment in
+    another topic episode is Far-video, else Far-topic. IDs must be validated before this call."""
+    if final_decision == "UNCERTAIN" or not context_necessary:
         return None
-    rank = 0
-    for c in context:
-        if _gap(target, c) <= near_window_ms:
-            continue
-        rank = max(rank, 1 if episodes[c["id"]] == episodes[target["id"]] else 2)
-    return DISTANCES[rank]
+    gold = set(gold_context_ids)
+    if gold <= set(planner_provided_ids):
+        return "Near"
+    target_topic = topic_by_segment[target_id]
+    if any(topic_by_segment[segment_id] != target_topic for segment_id in gold):
+        return "Far-video"
+    return "Far-topic"
 
 
 def case_type(t2: dict) -> str:
@@ -96,19 +98,18 @@ def _episodes(starts: list[str], segments: list[dict]) -> dict[str, int]:
     return result
 
 
-def _validate_t2(label: dict, segments: dict[str, dict], episodes: dict[str, int] | None, near_window_ms: int) -> list[str]:
-    missing = [f for f in T2_FIELDS if f not in label]
-    if missing:
+def _validate_t2(label: dict, segments: dict[str, dict]) -> list[str]:
+    if any(f not in label for f in T2_FIELDS):
         return ["MISSING_FIELD"]
     errors = []
     target, context, evidence = label["targetSegmentId"], label["goldContextSegmentIds"], label["evidenceSegmentIds"]
-    decision, necessary, distance = label["finalDecision"], label["contextNecessary"], label["contextDistance"]
+    decision, necessary = label["finalDecision"], label["contextNecessary"]
+    if "contextDistance" in label:
+        errors.append("CONTEXT_DISTANCE_IS_DERIVED")
     if decision not in DECISIONS:
         errors.append("INVALID_DECISION")
     if not isinstance(necessary, bool):
         errors.append("INVALID_CONTEXT_NECESSARY")
-    if distance is not None and distance not in DISTANCES:
-        errors.append("INVALID_DISTANCE")
     if target not in segments:
         errors.append("INVALID_TARGET_ID")
     if target in context:
@@ -121,21 +122,12 @@ def _validate_t2(label: dict, segments: dict[str, dict], episodes: dict[str, int
         errors.append("DUPLICATE_IDS")
     if bool(context) != bool(necessary):
         errors.append("CONTEXT_NECESSITY_MISMATCH")
-    if necessary and distance is None:
-        errors.append("MISSING_CONTEXT_DISTANCE")
-    if not necessary and distance is not None:
-        errors.append("UNEXPECTED_CONTEXT_DISTANCE")
     if necessary and not (label["necessityRationale"] or "").strip():
         errors.append("MISSING_NECESSITY_RATIONALE")
     if decision == "UNCERTAIN" and necessary:
         errors.append("UNCERTAIN_CONTEXT_CONFLICT")
     if decision == "REVIEW_REQUIRED" and not evidence:
         errors.append("MISSING_RISK_EVIDENCE")
-    resolvable = target in segments and not set(context) - segments.keys() and target not in context
-    if episodes is not None and resolvable and distance in DISTANCES:
-        expected = context_distance(segments[target], [segments[c] for c in context], episodes, near_window_ms)
-        if expected != distance:
-            errors.append("CONTEXT_DISTANCE_MISMATCH")
     return errors
 
 
@@ -179,8 +171,7 @@ def validate(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: P
         elif len(labels) > 1:
             errors.append("DUPLICATE_LABEL")
         else:
-            segments = {s["id"]: s for s in transcripts[vid]}
-            errors += _validate_t2(labels[0], segments, episodes_by_video.get(vid), manifest["nearWindowMs"])
+            errors += _validate_t2(labels[0], {s["id"]: s for s in transcripts[vid]})
         if errors:
             case_errors.append({"videoId": int(vid) if vid.isdigit() else vid, "targetSegmentId": target, "errors": errors})
         else:
@@ -189,14 +180,54 @@ def validate(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: P
     if unplanned:
         file_errors.append("UNPLANNED_T2_LABELS")
     return {"labelVersion": manifest["labelVersion"], "fileErrors": sorted(set(file_errors)), "caseErrors": case_errors,
-            "plannedCases": len(planned), "validCases": len(valid), "_valid": valid}
+            "plannedCases": len(planned), "validCases": len(valid), "_valid": valid, "_episodes": episodes_by_video}
 
 
-def export(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Path, topics_path: Path, out_dir: Path) -> dict:
+def _sha(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _load_a0(a0_path: Path, manifest_path: Path, manifest: dict) -> dict:
+    a0 = _read(a0_path)
+    base = Path(manifest_path).resolve().parent
+    transcripts = {str(v["videoId"]): _sha(base / v["transcriptPath"]) for v in manifest["videos"]}
+    targets = {str(v["videoId"]): set(v["targets"]) for v in manifest["videos"]}
+    problems = []
+    if a0.get("format") != A0_FORMAT or not a0.get("selectorId"):
+        problems.append("format")
+    if a0.get("manifestSha256") != _sha(manifest_path) or a0.get("labelVersion") != manifest["labelVersion"]:
+        problems.append("manifest")
+    if a0.get("transcriptSha256") != transcripts:
+        problems.append("transcripts")
+    provided = a0.get("provided", {})
+    if {vid: set(entries) for vid, entries in provided.items()} != targets:
+        problems.append("targets")
+    if any(e.get("status") not in ("PROVIDED", "NOT_PLANNED") for entries in provided.values() for e in entries.values()):
+        problems.append("status")
+    if problems:
+        raise ValueError(f"A0 planner output does not match this manifest: {problems}")
+    return a0
+
+
+def _distance(label: dict, a0: dict | None, episodes: dict[str, int]) -> tuple[str | None, str]:
+    if label["finalDecision"] == "UNCERTAIN" or not label["contextNecessary"]:
+        return None, "NOT_APPLICABLE"
+    if a0 is None:
+        return None, "NOT_COMPUTED"
+    entry = a0["provided"][str(label["videoId"])][label["targetSegmentId"]]
+    if entry["status"] == "NOT_PLANNED":
+        return None, "TARGET_NOT_PLANNED"
+    return derive_context_distance(label["targetSegmentId"], label["goldContextSegmentIds"], True,
+                                   label["finalDecision"], entry["contextSegmentIds"], episodes), "COMPUTED"
+
+
+def export(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Path, topics_path: Path, out_dir: Path,
+           a0_path: Path | None) -> dict:
     report = validate(manifest_path, t1_path, t2_path, speakers_path, topics_path)
     if report["fileErrors"]:
         raise ValueError(f"File-level label errors: {report['fileErrors']}")
     manifest, _ = _transcripts(manifest_path)
+    a0 = None if a0_path is None else _load_a0(a0_path, manifest_path, manifest)
     clusters = {str(v["videoId"]): v["clusterId"] for v in manifest["videos"]}
     speakers = _read(speakers_path)
     Path(out_dir).mkdir(parents=False, exist_ok=False)
@@ -206,20 +237,22 @@ def export(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Pat
         vid = str(label["videoId"])
         oracle.setdefault(vid, {})[label["targetSegmentId"]] = {
             "goldContextSegmentIds": label["goldContextSegmentIds"], "evidenceSegmentIds": label["evidenceSegmentIds"]}
+        distance, status = _distance(label, a0, report["_episodes"][vid])
         row = {"videoId": label["videoId"], "targetId": label["targetSegmentId"], "clusterId": clusters[vid],
-               "caseType": case_type(label), "contextDistance": label["contextDistance"]}
+               "caseType": case_type(label), "contextDistance": distance, "distanceStatus": status}
         if label["finalDecision"] == "UNCERTAIN":
             uncertain.append(row)
         else:
             binary.append({**row, "expected": "RISK" if label["finalDecision"] == "REVIEW_REQUIRED" else "NO_RISK"})
     version = report["labelVersion"]
-    hashes = {name: hashlib.sha256(Path(p).read_bytes()).hexdigest() for name, p in
-              (("manifest", manifest_path), ("t1", t1_path), ("t2", t2_path), ("speakers", speakers_path), ("topics", topics_path))}
+    inputs = [("manifest", manifest_path), ("t1", t1_path), ("t2", t2_path), ("speakers", speakers_path), ("topics", topics_path)]
+    hashes = {name: _sha(p) for name, p in inputs + ([("a0Provided", a0_path)] if a0_path else [])}
     _write_once(out_dir / "gold-oracle.json", {"labelVersion": version, "labels": oracle})
     _write_once(out_dir / "speakers-a6h.json", {"labelVersion": version, "labels": {
         vid: {seg: {"speakerId": None if l.get("ambiguous") else l["speakerId"], "ambiguous": bool(l.get("ambiguous"))}
               for seg, l in labels.items()} for vid, labels in speakers["labels"].items()}})
-    _write_once(out_dir / "gold-cases.json", {"labelVersion": version, "nearWindowMs": manifest["nearWindowMs"],
+    _write_once(out_dir / "gold-cases.json", {"labelVersion": version, "distanceComputed": a0 is not None,
+                                              "a0SelectorId": a0 and a0["selectorId"],
                                               "binary": binary, "intrinsicallyUncertain": uncertain})
     summary = {"labelVersion": version, "exportedCases": len(report["_valid"]), "excludedCases": report["caseErrors"],
                "inputSha256": hashes}
@@ -237,10 +270,12 @@ def main(argv: list[str] | None = None) -> None:
     elif args.mode == "validate" and len(args.paths) == 5:
         report = validate(*args.paths)
         report.pop("_valid")
+        report.pop("_episodes")
         print(json.dumps(report, ensure_ascii=False, indent=2))
         sys.exit(1 if report["fileErrors"] or report["caseErrors"] else 0)
-    elif args.mode == "export" and len(args.paths) == 6:
-        print(json.dumps(export(*args.paths), ensure_ascii=False, indent=2))
+    elif args.mode == "export" and len(args.paths) in (6, 7):
+        paths = args.paths + [None] * (7 - len(args.paths))
+        print(json.dumps(export(*paths), ensure_ascii=False, indent=2))
     else:
         parser.error("Wrong number of paths for mode")
 

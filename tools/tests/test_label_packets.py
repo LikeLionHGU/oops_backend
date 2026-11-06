@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from label_packets import case_type, context_distance, export, make_packets, validate
+from label_packets import case_type, derive_context_distance, export, make_packets, validate
 
 SEGMENTS = [
     {"id": "stt-index-0", "startMs": 0, "endMs": 1500, "text": "요즘 신입들은 끈기가 없어"},
@@ -23,7 +23,7 @@ class LabelPacketTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         (self.dir / "video-1.json").write_text(json.dumps({"segments": SEGMENTS}, ensure_ascii=False), encoding="utf-8")
-        self.manifest = {"labelVersion": "dev-v0", "nearWindowMs": 30000,
+        self.manifest = {"labelVersion": "dev-v0",
                          "videos": [{"videoId": 1, "clusterId": "video-1", "transcriptPath": "video-1.json",
                                      "targets": ["stt-index-0", "stt-index-2"]}]}
         (self.dir / "manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
@@ -32,10 +32,10 @@ class LabelPacketTests(unittest.TestCase):
             {"videoId": 1, "targetSegmentId": "stt-index-2", "targetDecisionT1": "PASS", "t1Rationale": "일상 대화"}]}
         self.t2 = {"role": "T2", "annotatorId": "ann-a", "t1FileSha256": None, "labels": [
             {"videoId": 1, "targetSegmentId": "stt-index-0", "finalDecision": "PASS",
-             "goldContextSegmentIds": ["stt-index-3"], "contextNecessary": True, "contextDistance": "Far-video",
+             "goldContextSegmentIds": ["stt-index-3"], "contextNecessary": True,
              "evidenceSegmentIds": [], "necessityRationale": "뒤에서 주장을 철회함"},
             {"videoId": 1, "targetSegmentId": "stt-index-2", "finalDecision": "PASS",
-             "goldContextSegmentIds": [], "contextNecessary": False, "contextDistance": None,
+             "goldContextSegmentIds": [], "contextNecessary": False,
              "evidenceSegmentIds": [], "necessityRationale": ""}]}
         self.speakers = {"role": "SPEAKER", "annotatorId": "ann-s", "labels": {"1": {
             "stt-index-0": {"speakerId": "A", "ambiguous": False}, "stt-index-1": {"speakerId": "B", "ambiguous": False},
@@ -58,6 +58,18 @@ class LabelPacketTests(unittest.TestCase):
         return (self.dir / "manifest.json", t1, self.write("t2.json", self.t2),
                 self.write("speakers.json", self.speakers), self.write("topics.json", self.topics))
 
+    def a0(self, provided=None, manifest_sha=None):
+        manifest = self.dir / "manifest.json"
+        transcript = self.dir / "video-1.json"
+        value = {"format": "a0-provided-v1", "selectorId": "A0-T:test", "labelVersion": "dev-v0",
+                 "manifestSha256": manifest_sha or hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                 "transcriptSha256": {"1": hashlib.sha256(transcript.read_bytes()).hexdigest()},
+                 "provided": {"1": provided or {
+                     "stt-index-0": {"status": "PROVIDED", "contextSegmentIds": ["stt-index-1"]},
+                     "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": ["stt-index-3"]},
+                     "stt-index-4": {"status": "NOT_PLANNED", "contextSegmentIds": []}}}}
+        return self.write("a0-provided.json", value)
+
     def test_packets_hide_what_each_role_must_not_see(self):
         out = self.dir / "packets"
         make_packets(self.dir / "manifest.json", out)
@@ -75,14 +87,21 @@ class LabelPacketTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             make_packets(self.dir / "manifest.json", out)
 
-    def test_distance_uses_the_near_window_then_topic_episodes(self):
-        episodes = {"stt-index-0": 0, "stt-index-1": 0, "stt-index-2": 1, "stt-index-3": 1, "stt-index-4": 2}
-        by_id = {s["id"]: s for s in SEGMENTS}
-        target = by_id["stt-index-0"]
-        self.assertEqual(context_distance(target, [by_id["stt-index-1"]], episodes, 30000), "Near")
-        self.assertEqual(context_distance(by_id["stt-index-2"], [by_id["stt-index-3"]], episodes, 30000), "Far-topic")
-        self.assertEqual(context_distance(target, [by_id["stt-index-1"], by_id["stt-index-3"]], episodes, 30000), "Far-video")
-        self.assertIsNone(context_distance(target, [], episodes, 30000))
+    def test_distance_is_near_when_a0_provides_all_gold_context_else_follows_topic_episodes(self):
+        topics = {"stt-index-0": 0, "stt-index-1": 0, "stt-index-2": 1, "stt-index-3": 1, "stt-index-4": 2}
+
+        def derive(gold, provided, necessary=True, decision="PASS", target="stt-index-0"):
+            return derive_context_distance(target, gold, necessary, decision, provided, topics)
+
+        self.assertEqual(derive(["stt-index-1"], ["stt-index-1", "stt-index-2"]), "Near")
+        self.assertEqual(derive(["stt-index-2"], ["stt-index-1", "stt-index-2"]), "Near")
+        self.assertEqual(derive(["stt-index-1"], []), "Far-topic")
+        self.assertEqual(derive(["stt-index-3"], [], target="stt-index-2"), "Far-topic")
+        self.assertEqual(derive(["stt-index-2"], []), "Far-video")
+        self.assertEqual(derive(["stt-index-4"], []), "Far-video")
+        self.assertEqual(derive(["stt-index-1", "stt-index-2"], ["stt-index-1"]), "Far-video")
+        self.assertIsNone(derive(["stt-index-1"], [], decision="UNCERTAIN"))
+        self.assertIsNone(derive([], [], necessary=False))
 
     def test_valid_batch_has_no_errors(self):
         report = validate(*self.files())
@@ -102,14 +121,14 @@ class LabelPacketTests(unittest.TestCase):
         self.assertIn("MISSING_RISK_EVIDENCE", errors["stt-index-2"])
         self.assertEqual(report["validCases"], 0)
 
-    def test_flags_necessity_distance_and_rationale_inconsistencies(self):
+    def test_flags_necessity_rationale_and_labelled_distance(self):
         self.t2["labels"][0].update({"contextDistance": "Near", "necessityRationale": ""})
         self.t2["labels"][1].update({"contextNecessary": True})
         report = validate(*self.files())
         errors = {e["targetSegmentId"]: set(e["errors"]) for e in report["caseErrors"]}
-        self.assertIn("CONTEXT_DISTANCE_MISMATCH", errors["stt-index-0"])
+        self.assertIn("CONTEXT_DISTANCE_IS_DERIVED", errors["stt-index-0"])
         self.assertIn("MISSING_NECESSITY_RATIONALE", errors["stt-index-0"])
-        self.assertTrue({"CONTEXT_NECESSITY_MISMATCH", "MISSING_CONTEXT_DISTANCE"} <= errors["stt-index-2"])
+        self.assertIn("CONTEXT_NECESSITY_MISMATCH", errors["stt-index-2"])
 
     def test_file_level_rules_freeze_t1_keep_annotators_blind_and_cover_every_segment(self):
         self.t2["t1FileSha256"] = "0" * 64
@@ -129,13 +148,13 @@ class LabelPacketTests(unittest.TestCase):
 
     def test_export_writes_cli_and_aggregator_inputs_for_valid_cases_only(self):
         self.t2["labels"].append({"videoId": 1, "targetSegmentId": "stt-index-4", "finalDecision": "UNCERTAIN",
-                                  "goldContextSegmentIds": [], "contextNecessary": False, "contextDistance": None,
+                                  "goldContextSegmentIds": [], "contextNecessary": False,
                                   "evidenceSegmentIds": [], "necessityRationale": ""})
         self.manifest["videos"][0]["targets"].append("stt-index-4")
         self.write("manifest.json", self.manifest)
         self.t1["labels"].append({"videoId": 1, "targetSegmentId": "stt-index-4", "targetDecisionT1": "UNCERTAIN", "t1Rationale": "정보 부족"})
         out = self.dir / "export"
-        summary = export(*self.files(), out)
+        summary = export(*self.files(), out, self.a0())
         self.assertEqual(summary["exportedCases"], 3)
         gold = json.loads((out / "gold-oracle.json").read_text(encoding="utf-8"))
         self.assertEqual(gold["labelVersion"], "dev-v0")
@@ -149,14 +168,50 @@ class LabelPacketTests(unittest.TestCase):
         self.assertEqual([c["targetId"] for c in cases["intrinsicallyUncertain"]], ["stt-index-4"])
         self.assertEqual(cases["binary"][0]["clusterId"], "video-1")
         self.assertEqual(cases["binary"][0]["caseType"], "CONTEXT_DEPENDENT_PASS")
-        self.assertEqual(cases["nearWindowMs"], 30000)
+        self.assertEqual(cases["binary"][0]["contextDistance"], "Far-video")
+        self.assertEqual(cases["binary"][0]["distanceStatus"], "COMPUTED")
+        self.assertEqual((cases["binary"][1]["contextDistance"], cases["binary"][1]["distanceStatus"]), (None, "NOT_APPLICABLE"))
+        self.assertEqual(cases["intrinsicallyUncertain"][0]["distanceStatus"], "NOT_APPLICABLE")
+        self.assertTrue(cases["distanceComputed"])
+        self.assertNotIn("nearWindowMs", json.dumps(cases))
         with self.assertRaises(FileExistsError):
-            export(*self.files(), out)
+            export(*self.files(), out, self.a0())
+
+    def test_export_without_a0_planner_output_marks_distance_not_computed(self):
+        out = self.dir / "export"
+        export(*self.files(), out, None)
+        cases = json.loads((out / "gold-cases.json").read_text(encoding="utf-8"))
+        self.assertFalse(cases["distanceComputed"])
+        self.assertEqual((cases["binary"][0]["contextDistance"], cases["binary"][0]["distanceStatus"]), (None, "NOT_COMPUTED"))
+
+    def test_near_when_a0_already_provides_gold_context_from_another_episode(self):
+        out = self.dir / "export"
+        export(*self.files(), out, self.a0({
+            "stt-index-0": {"status": "PROVIDED", "contextSegmentIds": ["stt-index-1", "stt-index-3"]},
+            "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": []}}))
+        cases = json.loads((out / "gold-cases.json").read_text(encoding="utf-8"))
+        self.assertEqual(cases["binary"][0]["contextDistance"], "Near")
+
+    def test_target_outside_the_a0_plan_has_no_distance(self):
+        out = self.dir / "export"
+        export(*self.files(), out, self.a0({
+            "stt-index-0": {"status": "NOT_PLANNED", "contextSegmentIds": []},
+            "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": []}}))
+        row = json.loads((out / "gold-cases.json").read_text(encoding="utf-8"))["binary"][0]
+        self.assertEqual((row["contextDistance"], row["distanceStatus"]), (None, "TARGET_NOT_PLANNED"))
+
+    def test_export_refuses_a0_output_for_another_manifest_or_missing_targets(self):
+        with self.assertRaises(ValueError):
+            export(*self.files(), self.dir / "export-a", self.a0(manifest_sha="0" * 64))
+        with self.assertRaises(ValueError):
+            export(*self.files(), self.dir / "export-b", self.a0({
+                "stt-index-0": {"status": "PROVIDED", "contextSegmentIds": []}}))
+
 
     def test_export_refuses_a_batch_with_file_level_errors(self):
         self.t2["t1FileSha256"] = "0" * 64
         with self.assertRaises(ValueError):
-            export(*self.files(), self.dir / "export")
+            export(*self.files(), self.dir / "export", None)
 
 
 if __name__ == "__main__":
