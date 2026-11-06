@@ -118,6 +118,30 @@ class ExperimentalBatchEntryTest {
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
 
+    @Test void experimentalRunsRecordRepairLimitsAndUncappedOutcomeCounts() {
+        var ids = List.of("stt-index-0", "stt-index-1", "stt-index-2");
+        f.discovery(ids, ids.stream().map(id -> f.proposal(id, "그 집")).toArray(Proposal[]::new));
+        var broken = new CandidateReferenceRepairTest();
+        when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class))).thenAnswer(invocation -> {
+            var tree = JsonMapper.builder().build().readTree((String) invocation.getArgument(1));
+            List<Verification> responses = new ArrayList<>();
+            for (var n : tree.get("candidates")) responses.add(new Verification(n.get("candidateId").asText(),
+                    broken.badId(f.assessment(n.get("anchorId").asText(), "PASS", "그 집"))));
+            return Optional.of(new VerificationResult(responses));
+        });
+        var r = run(f.context("그 집 첫째", "그 집 둘째", "그 집 셋째"), new ExperimentalBatch(ids, List.of()));
+        assertThat(r.diagnostics().candidatePipeline().repairUsage())
+                .isEqualTo(new CandidateReviewDiagnostics.RepairUsage(1, 2, 0, 2, 0, 2, 1));
+    }
+
+    @Test void productionDiagnosticsStayFreeOfRepairUsage() {
+        f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
+        f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
+        var pipeline = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), 24).diagnostics().candidatePipeline();
+        assertThat(pipeline.repairUsage()).isNull();
+        assertThat(JsonMapper.builder().build().writeValueAsString(pipeline)).doesNotContain("repairUsage");
+    }
+
     private static List<String> failureCodes(TextReviewEngine.Result r) {
         return r.diagnostics().candidatePipeline().candidates().stream().map(c -> c.failureCode()).toList();
     }

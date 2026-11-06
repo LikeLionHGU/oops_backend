@@ -14,7 +14,26 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
         List<ContextMechanismRouter.Trace> mechanismRouting,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
-        List<DecisionConflictTrace> decisionConflicts) {
+        List<DecisionConflictTrace> decisionConflicts,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        RepairUsage repairUsage) {
+    /** Experimental runs only: limits in force and outcome counts that survive trace truncation. */
+    public record RepairUsage(int discoveryRepairLimit, int contractRepairLimit, int discoveryRepairCalls,
+                              int verificationRepairCalls, int recovered, int failed, int notAttemptedForBudget) {}
+    public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
+            int exploredSegments, int proposed, int duplicates, int invalidProposals,
+            int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
+            int expandedCandidates, int verificationLimitedCandidates, boolean truncated,
+            List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
+            List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+            List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
+            int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts, List<ContextMechanismRouter.Trace> mechanismRouting,
+            List<DecisionConflictTrace> decisionConflicts) {
+        this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,rejected,uncertain,
+                verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,expandedCandidates,verificationLimitedCandidates,
+                truncated,candidates,visualCandidates,caseRetrieval,guidelineReference,contextSelections,repairCalls,repairs,
+                discoveryRepairCalls,evidenceCounts,mechanismRouting,decisionConflicts,null);
+    }
     public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
             int exploredSegments, int proposed, int duplicates, int invalidProposals,
             int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,

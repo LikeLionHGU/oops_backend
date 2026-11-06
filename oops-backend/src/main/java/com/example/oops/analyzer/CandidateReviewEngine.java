@@ -369,7 +369,7 @@ final class CandidateReviewEngine {
                                     response.reviewedSegmentIds(), input, guidelinePrompt, stats, failure, !needsVisual,
                                     context, requestTrace, discoveryRepairPrompt);
                             if (repaired != null) { candidate = repaired; proposal = repaired.proposal(); }
-                        } else if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+                        } else stats.repair(new CandidateReviewDiagnostics.RepairTrace(
                                 id, failure, "NOT_ATTEMPTED_BUDGET", failure));
                     }
                 }
@@ -576,7 +576,7 @@ final class CandidateReviewEngine {
         }
         for (var candidate : repairPlan.skipped()) {
             Validation initial = candidateValidations.get(candidate.candidateId());
-            if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+            stats.repair(new CandidateReviewDiagnostics.RepairTrace(
                     candidate.candidateId(), initial.failureCode(), "NOT_ATTEMPTED_BUDGET", initial.failureCode()));
         }
         // Publication consumes validated decisions only; discovery, verification, repair and
@@ -642,10 +642,10 @@ final class CandidateReviewEngine {
                                         "VISUAL_STAGE_EXCEPTION", List.of(), List.of(), null), false);
                     }
                     if (result.modelCalled()) stats.verificationCalls++;
-                    if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+                    stats.repair(new CandidateReviewDiagnostics.RepairTrace(
                             c.candidateId(), initialFailure, result.validation().observation() == null ? "FAILED" : "RECOVERED",
                             result.validation().failureCode()));
-                } else if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+                } else stats.repair(new CandidateReviewDiagnostics.RepairTrace(
                         c.candidateId(), initialFailure, "NOT_ATTEMPTED_BUDGET", initialFailure));
             }
             stats.visualTraces.add(result.trace());
@@ -782,7 +782,7 @@ final class CandidateReviewEngine {
             if (requestTrace != null && !traceRecorded)
                 requestTrace.record("CANDIDATE_DISCOVERY_REPAIR", system, request, null, null, failure);
         }
-        if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(id, initial,
+        stats.repair(new CandidateReviewDiagnostics.RepairTrace(id, initial,
                 result == null ? "FAILED" : "RECOVERED", failure));
         return result;
     }
@@ -836,7 +836,7 @@ final class CandidateReviewEngine {
             if (requestTrace != null && !traceRecorded)
                 requestTrace.record("CANDIDATE_VERIFICATION_REPAIR", system, request, null, null, "REQUEST_EXCEPTION");
         }
-        if (stats.repairs.size() < MAX_TRACES) stats.repairs.add(new CandidateReviewDiagnostics.RepairTrace(
+        stats.repair(new CandidateReviewDiagnostics.RepairTrace(
                 c.candidateId(), initial, result.observation() == null ? "FAILED" : "RECOVERED", result.failureCode(),
                 previous == null ? null : previous.decision(), repaired == null ? null : repaired.decision(),
                 previous != null && repaired != null ? !Objects.equals(previous.decision(), repaired.decision()) : null));
@@ -1131,6 +1131,16 @@ final class CandidateReviewEngine {
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
         final List<ContextMechanismRouter.Trace> mechanismRouting = new ArrayList<>();
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
+        int repairsRecovered, repairsFailed, repairsNotAttempted;
+        void repair(CandidateReviewDiagnostics.RepairTrace trace) {
+            switch (trace.state()) {
+                case "RECOVERED" -> repairsRecovered++;
+                case "FAILED" -> repairsFailed++;
+                case "NOT_ATTEMPTED_BUDGET" -> repairsNotAttempted++;
+                default -> { }
+            }
+            if (repairs.size() < MAX_TRACES) repairs.add(trace);
+        }
         final List<CandidateReviewDiagnostics.EvidenceCountTrace> evidenceCounts = new ArrayList<>();
         final Map<String, CandidateReviewDiagnostics.InputSnapshot> snapshots = new LinkedHashMap<>();
         final CandidateDecisionConflicts conflicts=new CandidateDecisionConflicts();
@@ -1242,7 +1252,9 @@ final class CandidateReviewEngine {
             return new CandidateReviewDiagnostics(revision, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
                     expandedCandidates, verificationLimitedCandidates, traces.truncated(), traces.snapshot(), visualTraces, retrievalTraces,
-                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting,conflicts.traces());
+                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting,conflicts.traces(),
+                    rendering == null ? null : new CandidateReviewDiagnostics.RepairUsage(MAX_DISCOVERY_REPAIRS, MAX_CONTRACT_REPAIRS,
+                            discoveryRepairCalls, repairCalls, repairsRecovered, repairsFailed, repairsNotAttempted));
         }
     }
 }
