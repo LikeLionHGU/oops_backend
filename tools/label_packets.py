@@ -254,8 +254,13 @@ def export(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Pat
     _write_once(out_dir / "gold-cases.json", {"labelVersion": version, "distanceComputed": a0 is not None,
                                               "a0SelectorId": a0 and a0["selectorId"],
                                               "binary": binary, "intrinsicallyUncertain": uncertain})
+    rows = binary + uncertain
+    statuses: dict[str, int] = {}
+    for row in rows:
+        statuses[row["distanceStatus"]] = statuses.get(row["distanceStatus"], 0) + 1
+    distances = {d: sum(1 for row in rows if row["contextDistance"] == d) for d in ("Near", "Far-topic", "Far-video")}
     summary = {"labelVersion": version, "exportedCases": len(report["_valid"]), "excludedCases": report["caseErrors"],
-               "inputSha256": hashes}
+               "distanceStatusCounts": statuses, "contextDistanceCounts": distances, "inputSha256": hashes}
     _write_once(out_dir / "export-report.json", summary)
     return summary
 

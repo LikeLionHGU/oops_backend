@@ -156,6 +156,8 @@ class LabelPacketTests(unittest.TestCase):
         out = self.dir / "export"
         summary = export(*self.files(), out, self.a0())
         self.assertEqual(summary["exportedCases"], 3)
+        self.assertEqual(summary["distanceStatusCounts"], {"COMPUTED": 1, "NOT_APPLICABLE": 2})
+        self.assertEqual(summary["contextDistanceCounts"], {"Near": 0, "Far-topic": 0, "Far-video": 1})
         gold = json.loads((out / "gold-oracle.json").read_text(encoding="utf-8"))
         self.assertEqual(gold["labelVersion"], "dev-v0")
         self.assertEqual(gold["labels"]["1"]["stt-index-0"],
@@ -199,6 +201,9 @@ class LabelPacketTests(unittest.TestCase):
             "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": []}}))
         row = json.loads((out / "gold-cases.json").read_text(encoding="utf-8"))["binary"][0]
         self.assertEqual((row["contextDistance"], row["distanceStatus"]), (None, "TARGET_NOT_PLANNED"))
+        report = json.loads((out / "export-report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["distanceStatusCounts"]["TARGET_NOT_PLANNED"], 1)
+        self.assertEqual(sum(report["contextDistanceCounts"].values()), 0)
 
     def test_export_refuses_a0_output_for_another_manifest_or_missing_targets(self):
         with self.assertRaises(ValueError):
