@@ -307,9 +307,7 @@ final class CandidateReviewEngine {
                     discoveryInput == null ? "DISCOVERY_REQUEST_BUILD_FAILED" : discoveryInput, null, response,
                     response == null ? "NO_PARSED_RESPONSE" : "PARSED_RESPONSE_NOT_YET_VALIDATED");
             if (!validDiscovery(response, primaryIds)) {
-                stats.trace(discoveryRequestKey,null,null,"INVALID_DISCOVERY",
-                        response == null ? "DISCOVERY_NO_USABLE_RESPONSE" : response.truncated() == null
-                                ? "DISCOVERY_TRUNCATED_REQUIRED" : "DISCOVERY_ENVELOPE_INVALID");
+                stats.trace(discoveryRequestKey,null,null,"INVALID_DISCOVERY", discoveryFailure(response, batch));
                 stats.invalidProposals++; unresolved.addAll(primaryIds); partial = true; continue;
             }
             explored.addAll(response.reviewedSegmentIds());
@@ -849,6 +847,21 @@ final class CandidateReviewEngine {
             unresolved.add(proposal.anchorId());
         else unresolved.addAll(primary);
     }
+    /** Experimental batches separate CONTEXT_ONLY misuse from other envelope errors; production codes are unchanged. */
+    private static String discoveryFailure(Discovery r, TextReviewBatchPlanner.Batch batch) {
+        if (r == null) return "DISCOVERY_NO_USABLE_RESPONSE";
+        if (r.truncated() == null) return "DISCOVERY_TRUNCATED_REQUIRED";
+        if (batch.explicitWindow() && reportsContextAsJudged(r, batch)) return "DISCOVERY_CONTEXT_ID_VIOLATION";
+        return "DISCOVERY_ENVELOPE_INVALID";
+    }
+    private static boolean reportsContextAsJudged(Discovery r, TextReviewBatchPlanner.Batch batch) {
+        Set<String> context = new HashSet<>();
+        batch.context().forEach(s -> context.add(s.id()));
+        boolean reviewed = r.reviewedSegmentIds() != null && r.reviewedSegmentIds().stream().anyMatch(context::contains);
+        boolean uncertain = r.uncertainSegments() != null && r.uncertainSegments().stream()
+                .anyMatch(u -> u != null && context.contains(u.segmentId()));
+        return reviewed || uncertain;
+    }
     private static boolean validDiscovery(Discovery r, List<String> primary) {
         if (r == null || r.reviewedSegmentIds() == null || r.candidates() == null || r.uncertainSegments() == null
                 || r.truncated() == null || r.candidates().size() + (r.visualCandidates() == null ? 0 : r.visualCandidates().size()) > 12
@@ -888,6 +901,8 @@ final class CandidateReviewEngine {
     private static String proposalFailure(Proposal p, TextReviewBatchPlanner.Batch batch,
                                           List<ReviewUnit> units, List<String> reviewed) {
         if (p == null) return "PROPOSAL_NULL";
+        if (batch.explicitWindow() && p.anchorId() != null
+                && batch.context().stream().anyMatch(s -> s.id().equals(p.anchorId()))) return "PROPOSAL_ANCHOR_CONTEXT_ONLY";
         if (p.anchorId() == null || !reviewed.contains(p.anchorId())) return "PROPOSAL_ANCHOR_NOT_REVIEWED";
         if (!Set.of("TARGET_TREATMENT", "EXPRESSION_CONTENT").contains(p.axis() == null ? "" : p.axis())) return "PROPOSAL_AXIS";
         if (p.sourceRelations() == null && !useful(p.reason(), 300)) return "PROPOSAL_REASON";

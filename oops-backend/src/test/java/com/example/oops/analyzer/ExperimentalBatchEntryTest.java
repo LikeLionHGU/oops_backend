@@ -92,6 +92,34 @@ class ExperimentalBatchEntryTest {
         assertThat(r.diagnostics().segments()).extracting(ReviewDiagnostics.SegmentTrace::segmentId).containsExactly("stt-index-3");
         assertThat(r.diagnostics().segments().get(0).state()).isEqualTo(ReviewDiagnostics.State.NOT_RETURNED);
         assertThat(r.unassessedSegmentIds()).containsExactly("stt-index-3");
+        assertThat(failureCodes(r)).contains("DISCOVERY_CONTEXT_ID_VIOLATION").doesNotContain("DISCOVERY_ENVELOPE_INVALID");
+    }
+
+    @Test void contextIdMarkedUncertainIsAContextIdViolation() {
+        when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(new Discovery(
+                List.of("stt-index-3"), List.of(), List.of(new UncertainSegment("stt-index-0", List.of("앞선 발언의 대상"))), false)));
+        var r = run(farContext(), new ExperimentalBatch(List.of("stt-index-3"), List.of("stt-index-0")));
+        assertThat(failureCodes(r)).contains("DISCOVERY_CONTEXT_ID_VIOLATION");
+        assertThat(r.diagnostics().segments().get(0).state()).isEqualTo(ReviewDiagnostics.State.NOT_RETURNED);
+    }
+
+    @Test void unknownIdOutsideTheBatchStaysAnEnvelopeError() {
+        f.discovery(List.of("stt-index-3", "stt-index-4"));
+        var r = run(farContext(), new ExperimentalBatch(List.of("stt-index-3"), List.of("stt-index-0")));
+        assertThat(failureCodes(r)).contains("DISCOVERY_ENVELOPE_INVALID").doesNotContain("DISCOVERY_CONTEXT_ID_VIOLATION");
+    }
+
+    @Test void proposalAnchoredOnContextIsSeparatedFromOtherAnchorErrors() {
+        var p = new Proposal("stt-index-0", "TARGET_TREATMENT", "맥락 구간을 판단 대상으로 잘못 고른 제안입니다.",
+                List.of(new Quote("stt-index-0", "그건 사실이 아니었어")));
+        f.discovery(List.of("stt-index-3"), p);
+        var r = run(farContext(), new ExperimentalBatch(List.of("stt-index-3"), List.of("stt-index-0")));
+        assertThat(failureCodes(r)).contains("PROPOSAL_ANCHOR_CONTEXT_ONLY").doesNotContain("PROPOSAL_ANCHOR_NOT_REVIEWED");
+        verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
+    }
+
+    private static List<String> failureCodes(TextReviewEngine.Result r) {
+        return r.diagnostics().candidatePipeline().candidates().stream().map(c -> c.failureCode()).toList();
     }
 
     @Test void rejectsMalformedBatchesAndUnsupportedServices() {
