@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from label_packets import case_type, derive_context_distance, export, make_packets, validate
+from label_packets import case_type, derive_context_distance, diagnose, export, make_packets, validate
 
 SEGMENTS = [
     {"id": "stt-index-0", "startMs": 0, "endMs": 1500, "text": "요즘 신입들은 끈기가 없어"},
@@ -37,7 +37,7 @@ class LabelPacketTests(unittest.TestCase):
             {"videoId": 1, "targetSegmentId": "stt-index-2", "finalDecision": "PASS",
              "goldContextSegmentIds": [], "contextNecessary": False,
              "evidenceSegmentIds": [], "necessityRationale": ""}]}
-        self.speakers = {"role": "SPEAKER", "annotatorId": "ann-s", "labels": {"1": {
+        self.speakers = {"role": "SPEAKER", "annotatorId": "ann-s", "basis": "AUDIO_VERIFIED", "labels": {"1": {
             "stt-index-0": {"speakerId": "A", "ambiguous": False}, "stt-index-1": {"speakerId": "B", "ambiguous": False},
             "stt-index-2": {"speakerId": None, "ambiguous": True}, "stt-index-3": {"speakerId": "A", "ambiguous": False},
             "stt-index-4": {"speakerId": "B", "ambiguous": False}}}}
@@ -139,6 +139,51 @@ class LabelPacketTests(unittest.TestCase):
         self.assertTrue({"T1_NOT_FROZEN", "BLINDNESS_VIOLATION", "SPEAKER_LABELS_INCOMPLETE"} <= set(report["fileErrors"]))
         errors = {e["targetSegmentId"]: set(e["errors"]) for e in report["caseErrors"]}
         self.assertIn("MISSING_T2", errors["stt-index-2"])
+
+    def test_formal_export_requires_audio_verified_speaker_labels(self):
+        self.speakers["basis"] = "TRANSCRIPT_INFERRED"
+        self.assertIn("SPEAKER_LABELS_NOT_AUDIO_VERIFIED", validate(*self.files())["fileErrors"])
+        with self.assertRaises(ValueError):
+            export(*self.files(), self.dir / "export", self.a0())
+        del self.speakers["basis"]
+        self.assertIn("SPEAKER_LABELS_NOT_AUDIO_VERIFIED", validate(*self.files())["fileErrors"])
+
+    def test_diagnose_builds_the_pilot_table_without_speaker_labels(self):
+        self.t2["labels"].pop()
+        manifest, t1, t2, _, topics = self.files()
+        out = self.dir / "diagnostic.json"
+        a0 = self.a0({"stt-index-0": {"status": "PROVIDED", "contextSegmentIds": ["stt-index-1"]},
+                      "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": ["stt-index-3"]}})
+        diagnose(manifest, t1, t2, topics, a0, out)
+        table = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(table["format"], "label-diagnostic-v1")
+        self.assertTrue(table["diagnosticOnly"])
+        self.assertEqual(table["fileErrors"], [])
+        first, second = table["cases"]
+        self.assertEqual({k: first[k] for k in ("targetSegmentId", "t1Decision", "t2Decision", "contextNecessary",
+                                                 "goldContextSegmentIds", "evidenceSegmentIds", "a0ContextSegmentIds",
+                                                 "contextDistance", "distanceStatus", "exportStatus", "errors")},
+                         {"targetSegmentId": "stt-index-0", "t1Decision": "REVIEW_REQUIRED", "t2Decision": "PASS",
+                          "contextNecessary": True, "goldContextSegmentIds": ["stt-index-3"], "evidenceSegmentIds": [],
+                          "a0ContextSegmentIds": ["stt-index-1"], "contextDistance": "Far-video",
+                          "distanceStatus": "COMPUTED", "exportStatus": "VALID", "errors": []})
+        self.assertEqual((second["exportStatus"], second["distanceStatus"], second["t2Decision"]), ("EXCLUDED", "INVALID_LABEL", None))
+        self.assertIn("MISSING_T2", second["errors"])
+        self.assertEqual(second["a0ContextSegmentIds"], ["stt-index-3"])
+        with self.assertRaises(FileExistsError):
+            diagnose(manifest, t1, t2, topics, a0, out)
+
+    def test_diagnose_still_reports_frozen_t1_and_topic_blindness(self):
+        self.t2["t1FileSha256"] = "0" * 64
+        self.topics["annotatorId"] = "ann-a"
+        manifest, t1, t2, _, topics = self.files()
+        out = self.dir / "diagnostic.json"
+        diagnose(manifest, t1, t2, topics, self.a0({
+            "stt-index-0": {"status": "PROVIDED", "contextSegmentIds": []},
+            "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": []}}), out)
+        errors = set(json.loads(out.read_text(encoding="utf-8"))["fileErrors"])
+        self.assertTrue({"T1_NOT_FROZEN", "BLINDNESS_VIOLATION"} <= errors)
+        self.assertNotIn("SPEAKER_LABELS_INCOMPLETE", errors)
 
     def test_case_type_follows_t2_only(self):
         self.assertEqual(case_type({"finalDecision": "UNCERTAIN", "contextNecessary": False}), "INTRINSICALLY_UNCERTAIN")

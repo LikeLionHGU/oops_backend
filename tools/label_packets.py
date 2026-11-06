@@ -12,6 +12,7 @@ distance is NOT_COMPUTED; no fixed time window stands in for the planner.
 python tools/label_packets.py packets MANIFEST NEW_DIR
 python tools/label_packets.py validate MANIFEST T1 T2 SPEAKERS TOPICS
 python tools/label_packets.py export MANIFEST T1 T2 SPEAKERS TOPICS NEW_DIR [A0_PROVIDED]
+python tools/label_packets.py diagnose MANIFEST T1 T2 TOPICS A0_PROVIDED NEW_FILE
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ DECISIONS = {"PASS", "REVIEW_REQUIRED", "UNCERTAIN"}
 T2_FIELDS = ("videoId", "targetSegmentId", "finalDecision", "goldContextSegmentIds", "contextNecessary",
              "evidenceSegmentIds", "necessityRationale")
 A0_FORMAT = "a0-provided-v1"
+SPEAKER_GOLD_BASIS = "AUDIO_VERIFIED"
 
 
 def _read(path: Path) -> dict:
@@ -132,21 +134,31 @@ def _validate_t2(label: dict, segments: dict[str, dict]) -> list[str]:
 
 
 def validate(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Path, topics_path: Path) -> dict:
+    return _check(manifest_path, t1_path, t2_path, speakers_path, topics_path)
+
+
+def _check(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Path | None, topics_path: Path) -> dict:
+    """Without a speaker file (diagnostics only) the speaker rules are skipped, not passed."""
     manifest, transcripts = _transcripts(manifest_path)
-    t1, t2, speakers, topics = (_read(p) for p in (t1_path, t2_path, speakers_path, topics_path))
+    t1, t2, topics = (_read(p) for p in (t1_path, t2_path, topics_path))
+    speakers = None if speakers_path is None else _read(speakers_path)
     file_errors = []
-    for doc, role in ((t1, "T1"), (t2, "T2"), (speakers, "SPEAKER"), (topics, "TOPIC")):
+    docs = [(t1, "T1"), (t2, "T2"), (topics, "TOPIC")] + ([(speakers, "SPEAKER")] if speakers is not None else [])
+    for doc, role in docs:
         if doc.get("role") != role or not doc.get("annotatorId"):
             file_errors.append(f"INVALID_{role}_FILE")
     if t2.get("t1FileSha256") != hashlib.sha256(Path(t1_path).read_bytes()).hexdigest():
         file_errors.append("T1_NOT_FROZEN")
-    if {speakers.get("annotatorId"), topics.get("annotatorId")} & {t1.get("annotatorId"), t2.get("annotatorId")}:
+    blind = {topics.get("annotatorId")} | ({speakers.get("annotatorId")} if speakers is not None else set())
+    if blind & {t1.get("annotatorId"), t2.get("annotatorId")}:
         file_errors.append("BLINDNESS_VIOLATION")
+    if speakers is not None and speakers.get("basis") != SPEAKER_GOLD_BASIS:
+        file_errors.append("SPEAKER_LABELS_NOT_AUDIO_VERIFIED")
     episodes_by_video = {}
     for vid, segments in transcripts.items():
-        labels = speakers.get("labels", {}).get(vid, {})
-        if set(labels) != {s["id"] for s in segments} or any(
-                (l.get("ambiguous") is not True) and not (l.get("speakerId") or "").strip() for l in labels.values()):
+        labels = {} if speakers is None else speakers.get("labels", {}).get(vid, {})
+        if speakers is not None and (set(labels) != {s["id"] for s in segments} or any(
+                (l.get("ambiguous") is not True) and not (l.get("speakerId") or "").strip() for l in labels.values())):
             file_errors.append("SPEAKER_LABELS_INCOMPLETE")
         starts = topics.get("episodeStarts", {}).get(vid)
         if starts is None or set(starts) - {s["id"] for s in segments}:
@@ -180,7 +192,8 @@ def validate(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: P
     if unplanned:
         file_errors.append("UNPLANNED_T2_LABELS")
     return {"labelVersion": manifest["labelVersion"], "fileErrors": sorted(set(file_errors)), "caseErrors": case_errors,
-            "plannedCases": len(planned), "validCases": len(valid), "_valid": valid, "_episodes": episodes_by_video}
+            "plannedCases": len(planned), "validCases": len(valid), "_valid": valid, "_episodes": episodes_by_video,
+            "_t1": {(str(l["videoId"]), l["targetSegmentId"]): l for l in t1.get("labels", [])}, "_t2": t2_by_key}
 
 
 def _sha(path: Path) -> str:
@@ -265,22 +278,61 @@ def export(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Pat
     return summary
 
 
+def diagnose(manifest_path: Path, t1_path: Path, t2_path: Path, topics_path: Path, a0_path: Path, out_path: Path) -> dict:
+    """Interim per-target table without speaker labels. Never an experiment input."""
+    report = _check(manifest_path, t1_path, t2_path, None, topics_path)
+    manifest, _ = _transcripts(manifest_path)
+    a0 = _load_a0(a0_path, manifest_path, manifest)
+    valid = {(str(l["videoId"]), l["targetSegmentId"]) for l in report["_valid"]}
+    errors = {(str(e["videoId"]), e["targetSegmentId"]): e["errors"] for e in report["caseErrors"]}
+    cases = []
+    for video in manifest["videos"]:
+        vid = str(video["videoId"])
+        for target in video["targets"]:
+            key = (vid, target)
+            t1 = report["_t1"].get(key, {})
+            t2 = (report["_t2"].get(key) or [{}])[0]
+            entry = a0["provided"][vid][target]
+            if key in valid and vid in report["_episodes"]:
+                distance, status = _distance(t2, a0, report["_episodes"][vid])
+            else:
+                distance, status = None, "INVALID_LABEL" if key not in valid else "TOPICS_INVALID"
+            cases.append({"videoId": video["videoId"], "targetSegmentId": target,
+                          "t1Decision": t1.get("targetDecisionT1"), "t2Decision": t2.get("finalDecision"),
+                          "contextNecessary": t2.get("contextNecessary"),
+                          "goldContextSegmentIds": t2.get("goldContextSegmentIds"),
+                          "evidenceSegmentIds": t2.get("evidenceSegmentIds"),
+                          "a0Status": entry["status"], "a0ContextSegmentIds": entry["contextSegmentIds"],
+                          "contextDistance": distance, "distanceStatus": status,
+                          "exportStatus": "VALID" if key in valid else "EXCLUDED", "errors": errors.get(key, [])})
+    table = {"format": "label-diagnostic-v1", "diagnosticOnly": True,
+             "note": "No speaker labels; not an experiment input and not a formal export.",
+             "labelVersion": report["labelVersion"], "fileErrors": report["fileErrors"], "cases": cases,
+             "inputSha256": {name: _sha(p) for name, p in (("manifest", manifest_path), ("t1", t1_path), ("t2", t2_path),
+                                                            ("topics", topics_path), ("a0Provided", a0_path))}}
+    _write_once(Path(out_path), table)
+    return table
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("mode", choices=("packets", "validate", "export"))
+    parser.add_argument("mode", choices=("packets", "validate", "export", "diagnose"))
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
     if args.mode == "packets" and len(args.paths) == 2:
         make_packets(*args.paths)
     elif args.mode == "validate" and len(args.paths) == 5:
         report = validate(*args.paths)
-        report.pop("_valid")
-        report.pop("_episodes")
+        for key in ("_valid", "_episodes", "_t1", "_t2"):
+            report.pop(key)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         sys.exit(1 if report["fileErrors"] or report["caseErrors"] else 0)
     elif args.mode == "export" and len(args.paths) in (6, 7):
         paths = args.paths + [None] * (7 - len(args.paths))
         print(json.dumps(export(*paths), ensure_ascii=False, indent=2))
+    elif args.mode == "diagnose" and len(args.paths) == 6:
+        table = diagnose(*args.paths)
+        print(json.dumps({"fileErrors": table["fileErrors"], "cases": len(table["cases"])}, ensure_ascii=False))
     else:
         parser.error("Wrong number of paths for mode")
 
