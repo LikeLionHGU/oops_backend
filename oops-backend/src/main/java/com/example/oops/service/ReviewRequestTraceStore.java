@@ -19,6 +19,7 @@ public class ReviewRequestTraceStore {
                            int retainedBytes, int droppedRequests, boolean truncated) {}
     private final boolean enabled;
     private final Clock clock;
+    private final int maxRequests, maxBytes;
     private final LinkedHashMap<Long, Snapshot> snapshots = new LinkedHashMap<>();
     @org.springframework.beans.factory.annotation.Autowired
     public ReviewRequestTraceStore(@Value("${oops.analysis.review-request-trace-enabled:false}") boolean enabled,
@@ -27,8 +28,15 @@ public class ReviewRequestTraceStore {
                 && Set.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1").contains(environment.getProperty("server.address", ""))
                 && environment.getProperty("oops.analysis.review-request-trace-token", "").length() >= 32, Clock.systemUTC());
     }
-    ReviewRequestTraceStore(boolean enabled, Clock clock) { this.enabled = enabled; this.clock = clock; }
-    public Session begin(Long videoId) { return new Session(videoId, enabled); }
+    ReviewRequestTraceStore(boolean enabled, Clock clock) { this(enabled, clock, MAX_REQUESTS, MAX_BYTES); }
+    private ReviewRequestTraceStore(boolean enabled, Clock clock, int maxRequests, int maxBytes) {
+        this.enabled = enabled; this.clock = clock; this.maxRequests = maxRequests; this.maxBytes = maxBytes;
+    }
+    public Session begin(Long videoId) { return new Session(videoId, enabled, true); }
+    /** Offline experiment runs only: no request or byte caps, never published to the in-memory debug store. */
+    public static Session experimentalSession() {
+        return new ReviewRequestTraceStore(true, Clock.systemUTC(), Integer.MAX_VALUE, Integer.MAX_VALUE).new Session(0L, true, false);
+    }
     public synchronized Optional<Snapshot> find(Long id) { expire(); return Optional.ofNullable(snapshots.get(id)); }
     public synchronized void remove(Long id) { snapshots.remove(id); }
     private void expire() { snapshots.values().removeIf(s -> !s.recordedAt().isAfter(clock.instant().minusSeconds(3600))); }
@@ -46,10 +54,15 @@ public class ReviewRequestTraceStore {
         private final Long videoId;
         private final boolean active;
         private final List<Entry> entries = new ArrayList<>();
+        private final boolean publishOnClose;
         private int bytes, dropped;
         private boolean closed;
-        private Session(Long id, boolean active) { this.videoId = id; this.active = active && id != null; }
+        private Session(Long id, boolean active, boolean publishOnClose) {
+            this.videoId = id; this.active = active && id != null; this.publishOnClose = publishOnClose;
+        }
         public boolean enabled() { return active && !closed; }
+        public List<Entry> entries() { return List.copyOf(entries); }
+        public int dropped() { return dropped; }
         public void record(String system, String input, Object response, String outcome) {
             record("TEXT_INITIAL_VERIFICATION", system, input, null, response, outcome);
         }
@@ -65,12 +78,12 @@ public class ReviewRequestTraceStore {
                 Entry entry = new Entry(stage, system, input, hash(system), hash(input), body,
                         body == null ? null : hash(body), parsed, outcome);
                 int size = JSON.writeValueAsString(entry).getBytes(StandardCharsets.UTF_8).length;
-                if (entries.size() >= MAX_REQUESTS || size > MAX_BYTES - bytes) { dropped++; return; }
+                if (entries.size() >= maxRequests || (long) bytes + size > maxBytes) { dropped++; return; }
                 entries.add(entry); bytes += size;
             } catch (RuntimeException ignored) { dropped++; } // Debugging must not alter analysis outcomes.
         }
         @Override public void close() {
-            if (!closed && active) publish(this);
+            if (!closed && active && publishOnClose) publish(this);
             closed = true;
         }
     }

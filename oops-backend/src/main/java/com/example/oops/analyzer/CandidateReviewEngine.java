@@ -221,7 +221,7 @@ final class CandidateReviewEngine {
         return execute(client, context, services, options, input, List.of(explicit), primary);
     }
 
-    private static ReviewInput speechInput(AnalysisContext context) {
+    static ReviewInput speechInput(AnalysisContext context) {
         return new ReviewInput(context.reviewInput().segments().stream()
                 .filter(s -> s.type() == TimelineEventType.SPEECH).toList());
     }

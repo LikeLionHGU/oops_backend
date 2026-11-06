@@ -24,6 +24,23 @@ class ReviewRequestTraceStoreTest {
         });
         assertThat(snapshot.truncated()).isFalse();
     }
+    @Test void experimentalSessionsKeepEveryRequestAndStayOutOfTheDebugStore() {
+        var session = ReviewRequestTraceStore.experimentalSession();
+        assertThat(session.enabled()).isTrue();
+        String large = "x".repeat(4_000);
+        for (int i = 0; i < 200; i++) session.record("CANDIDATE_DISCOVERY", "system", large + i, null, null, "PARSED");
+        session.close();
+        assertThat(session.entries()).hasSize(200);
+        assertThat(session.dropped()).isZero();
+        assertThat(session.entries().get(199).input()).endsWith("199");
+    }
+    @Test void productionSessionsKeepTheirCaps() {
+        var store = new ReviewRequestTraceStore(true, Clock.systemUTC());
+        try (var session = store.begin(3L)) {
+            for (int i = 0; i < 130; i++) session.record("CANDIDATE_DISCOVERY", "system", "raw" + i, null, null, "PARSED");
+        }
+        assertThat(store.find(3L).orElseThrow().droppedRequests()).isEqualTo(2);
+    }
     @Test void keepsStageLabelsForBoundedMultiStageReplay() {
         var store = new ReviewRequestTraceStore(true, Clock.systemUTC());
         try (var session = store.begin(2L)) {
