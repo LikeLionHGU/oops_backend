@@ -56,9 +56,9 @@ def make_packets(manifest_path: Path, out_dir: Path) -> None:
         by_id = {s["id"]: s for s in transcripts[vid]}
         for target in video["targets"]:
             t1_cases.append({"videoId": video["videoId"], "targetSegmentId": target, "targetText": by_id[target]["text"],
-                             "targetDecisionT1": None, "t1Rationale": None})
+                             "targetDecisionT1": None, "t1Rationale": None, "transcriptQualityNote": None})
             t2_cases.append({**{f: None for f in T2_FIELDS}, "videoId": video["videoId"], "targetSegmentId": target,
-                             "goldContextSegmentIds": [], "evidenceSegmentIds": []})
+                             "goldContextSegmentIds": [], "evidenceSegmentIds": [], "transcriptQualityNote": None})
         t2_videos.append({"videoId": video["videoId"], "segments": transcripts[vid]})
         segment_videos.append({"videoId": video["videoId"],
                                "segments": [{k: s[k] for k in ("id", "startMs", "endMs", "text")} for s in transcripts[vid]]})
@@ -278,6 +278,12 @@ def export(manifest_path: Path, t1_path: Path, t2_path: Path, speakers_path: Pat
     return summary
 
 
+def _quality(t1: dict, t2: dict) -> dict | None:
+    """TRANSCRIPT_QUALITY: annotators note STT problems instead of correcting the frozen text."""
+    notes = {role: (label.get("transcriptQualityNote") or "").strip() or None for role, label in (("t1", t1), ("t2", t2))}
+    return notes if any(notes.values()) else None
+
+
 def diagnose(manifest_path: Path, t1_path: Path, t2_path: Path, topics_path: Path, a0_path: Path, out_path: Path) -> dict:
     """Interim per-target table without speaker labels. Never an experiment input."""
     report = _check(manifest_path, t1_path, t2_path, None, topics_path)
@@ -304,7 +310,8 @@ def diagnose(manifest_path: Path, t1_path: Path, t2_path: Path, topics_path: Pat
                           "evidenceSegmentIds": t2.get("evidenceSegmentIds"),
                           "a0Status": entry["status"], "a0ContextSegmentIds": entry["contextSegmentIds"],
                           "contextDistance": distance, "distanceStatus": status,
-                          "exportStatus": "VALID" if key in valid else "EXCLUDED", "errors": errors.get(key, [])})
+                          "exportStatus": "VALID" if key in valid else "EXCLUDED", "errors": errors.get(key, []),
+                          "transcriptQuality": _quality(t1, t2)})
     table = {"format": "label-diagnostic-v1", "diagnosticOnly": True,
              "note": "No speaker labels; not an experiment input and not a formal export.",
              "labelVersion": report["labelVersion"], "fileErrors": report["fileErrors"], "cases": cases,

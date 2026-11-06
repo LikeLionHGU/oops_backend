@@ -173,6 +173,24 @@ class LabelPacketTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             diagnose(manifest, t1, t2, topics, a0, out)
 
+    def test_transcript_quality_notes_are_flagged_without_changing_the_label(self):
+        self.t1["labels"][0]["transcriptQualityNote"] = "STT 오기로 지칭 대상이 불명확"
+        manifest, t1, t2, _, topics = self.files()
+        out = self.dir / "diagnostic.json"
+        a0 = self.a0({"stt-index-0": {"status": "PROVIDED", "contextSegmentIds": []},
+                      "stt-index-2": {"status": "PROVIDED", "contextSegmentIds": []}})
+        diagnose(manifest, t1, t2, topics, a0, out)
+        first, second = json.loads(out.read_text(encoding="utf-8"))["cases"]
+        self.assertEqual(first["transcriptQuality"], {"t1": "STT 오기로 지칭 대상이 불명확", "t2": None})
+        self.assertEqual(first["exportStatus"], "VALID")
+        self.assertIsNone(second["transcriptQuality"])
+        packet_dir = self.dir / "packets"
+        make_packets(self.dir / "manifest.json", packet_dir)
+        for name in ("t1-packet.json", "t2-packet.json"):
+            case = json.loads((packet_dir / name).read_text(encoding="utf-8"))["cases"][0]
+            self.assertIn("transcriptQualityNote", case)
+            self.assertIsNone(case["transcriptQualityNote"])
+
     def test_diagnose_still_reports_frozen_t1_and_topic_blindness(self):
         self.t2["t1FileSha256"] = "0" * 64
         self.topics["annotatorId"] = "ann-a"
