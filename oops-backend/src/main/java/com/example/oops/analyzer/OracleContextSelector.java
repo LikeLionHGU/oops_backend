@@ -34,6 +34,25 @@ final class OracleContextSelector implements ContextSelector {
 
     @Override
     public ContextSelection select(ReviewInput.Segment target, ReviewInput transcript) {
+        var context = required(target, transcript);
+        boolean exceeded = measure(target, transcript, context).exceeded();
+        return new ContextSelection(context.stream().map(ReviewInput.Segment::id).toList(), id(),
+                exceeded ? ContextSelection.Status.BUDGET_INFEASIBLE : ContextSelection.Status.SELECTED);
+    }
+
+    /** Gold-context rendering cost for the target; the basis of the pre-registered budget-feasible set. */
+    ContextTokenBudget.Measurement measure(ReviewInput.Segment target, ReviewInput transcript) {
+        return measure(target, transcript, required(target, transcript));
+    }
+
+    private ContextTokenBudget.Measurement measure(ReviewInput.Segment target, ReviewInput transcript,
+                                                   List<ReviewInput.Segment> context) {
+        List<ReviewInput.Segment> raw = new ArrayList<>(context);
+        raw.add(target);
+        return budget.measure(new ExperimentalBatchRendering(transcript, Set.of(target.id())), raw);
+    }
+
+    private List<ReviewInput.Segment> required(ReviewInput.Segment target, ReviewInput transcript) {
         var label = labels.get(target.id());
         if (label == null) throw new IllegalArgumentException("No oracle label for target: " + target.id());
         Set<String> required = new LinkedHashSet<>(label.goldContextSegmentIds());
@@ -44,10 +63,6 @@ final class OracleContextSelector implements ContextSelector {
                 .orElseThrow(() -> new IllegalArgumentException("Oracle ID outside transcript: " + id)));
         var order = transcript.segments();
         context.sort(Comparator.comparingInt(order::indexOf));
-        List<ReviewInput.Segment> raw = new ArrayList<>(context);
-        raw.add(target);
-        boolean exceeded = budget.measure(new ExperimentalBatchRendering(transcript, Set.of(target.id())), raw).exceeded();
-        return new ContextSelection(context.stream().map(ReviewInput.Segment::id).toList(), id(),
-                exceeded ? ContextSelection.Status.BUDGET_INFEASIBLE : ContextSelection.Status.SELECTED);
+        return context;
     }
 }
