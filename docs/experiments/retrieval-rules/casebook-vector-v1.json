@@ -1,0 +1,29 @@
+{
+ "format": "casebook-vector-rules-v1",
+ "frozenAt": "2026-11-07",
+ "design": "docs/superpowers/specs/2026-11-07-casebook-reason-vector-design.md",
+ "freezePolicy": "These parameters are fixed before the first paid call. Artifacts produced later (items, confirmed reasons, query reasons, selections, plans) are recorded by SHA-256 in docs/experiments/사례집-비판이유-벡터검색-실험.md as they are produced; results are never fed back into these rules or into the reasons.",
+ "instructions": {
+  "casebookReason": {"path": "docs/experiments/label-instructions/Casebook-reason-v1.md", "sha256": "05a80600be5c74602d33d6d471fbb9394e56d8d6e139e93da95646eb2f8e928e", "model": "gpt-6.1-sol", "reasoningEffort": "high"},
+  "queryReason": {"path": "docs/experiments/label-instructions/Query-reason-v1.md", "sha256": "10b2c1fefbf4e3abaab5484fba935f9fdbeede0e5f6fee0925808f75b6fd3a4f", "model": "gpt-6-luna", "reasoningEffort": "high"}
+ },
+ "embedding": {"modelId": "BAAI/bge-m3", "revision": "5617a9f61b028005a4858fdac845db406aefb181", "modelArtifactsHash": "6ed2cc117280c725b908c7772be2faad8de62d2f201c47500f59364675e5887b", "similarity": "cosine on normalized vectors, ties by document id", "k": 3},
+ "documents": "confirmed casebook reasons of statements that are runtime examples (guidelines/runtime.json)",
+ "familyExclusion": "a casebook target never receives documents (VECTOR) or examples (KEYWORD) of its own incident family",
+ "inputs": {
+  "casebook": "every quote segment of casebook-items-v1.json (tools/casebook_reasons.py items, after the chat quote check), videoIds from 6001",
+  "falseAlarm": "J1 RANDOM-layer targets whose final-labels-v2 decision is PASS (58 targets in videos 5001-5003)"
+ },
+ "service": {"selector": {"type": "A0", "budget": 1}, "model": "gpt-6-luna", "repeats": 3, "guidelinesRuntimePath": "guidelines/runtime.json as of the plan"},
+ "conditions": {
+  "NONE": "discoveryReferences absent: base guidelines only, as in J1",
+  "KEYWORD": "runtime lexical selection, max 3 examples, 3000/6000 code points, target family excluded",
+  "VECTOR": "precomputed reason-vector selection rendered with selectFixed, same limits"
+ },
+ "metrics": {
+  "retrieval": "tools/reason_vectors.py retrieval: hit@3 = a selected document shares a mechanism with the target statement and comes from another family; same denominator for VECTOR and KEYWORD; chance expected hits reported; mechanisms with no other family and NULL/INVALID query reasons are excluded and counted",
+  "judgment": "tools/casebook_vector_eval.py: statement flag rate (any quote target REVIEW_REQUIRED in a repeat) and J1 random-layer false-alarm rate, per condition",
+  "success": "VECTOR retrieval hits exceed both KEYWORD and chance; VECTOR statement flag rate is highest; VECTOR false-alarm rate is not above NONE. Small sample: direction only, no significance test"
+ },
+ "cost": {"probe": "5 targets of one casebook video per condition first, as in J1", "totalCapUsd": 15, "note": "capUsd in each spec is the guard's conservative reservation, not expected spend"}
+}
