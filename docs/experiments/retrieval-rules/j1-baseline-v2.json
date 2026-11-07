@@ -1,0 +1,29 @@
+{
+ "rulesVersion": "j1-baseline-v2",
+ "replaces": "j1-baseline-v1 (SHA-256 548466b4ed137e8cddd8c895a6cc8a818adcfccbdc4846ee3f09d8cfd10efe71) for the reference labels only; data, targets, conditions, runner, repeats, cost cap and metrics are unchanged",
+ "whyChanged": "the blind human review of 81 cases was too heavy and was stopped before any final human label existed; the reference becomes an AI panel with a light human check of the disagreements",
+ "disclosure": "this version was written after the gpt-6-luna T2 drafts existed and their decision counts per layer had been printed; no case content, rationale or human decision was used to write it",
+ "frozenBefore": "the second panel labeller runs, the human check and the service judge runs",
+ "referenceLabels": {
+  "panel": {
+   "memberA": "existing gpt-6-luna drafts (labels-<ID>/t2-initial.json, tools/ai_labels.py, T1 v2, Topic, T2)",
+   "memberB": "a second OpenAI model, gpt-6 at reasoning_effort high, run by tools/ai_labels.py on the same blind handoffs into labels-gpt6-<ID>; the API model ID returned in run-record.json is reported",
+   "independence": "member B never sees member A's output; both see only the blind handoff"
+  },
+  "agreement": "per case, compare the two T2 decisions (PASS, REVIEW_REQUIRED, UNCERTAIN)",
+  "silver": "both members give the same decision: that decision is the silver label; an agreed UNCERTAIN stays UNCERTAIN and leaves the primary metrics, counted",
+  "disagreement": "the decisions differ, or either member's label is invalid: the case goes to the human check",
+  "humanCheck": {
+   "what": "not blind: the reviewer sees the target, a short transcript window and each member's decision with its rationale, and chooses which decision they agree with: A, B, or neither (UNCERTAIN)",
+   "result": "the chosen decision is the final label; neither becomes UNCERTAIN and leaves the primary metrics; the reviewer may skip the whole check, and then disagreement cases leave the primary metrics and are counted as PANEL_DISAGREEMENT",
+   "context": "for A4-T, the final label's context and evidence are those of the member whose decision was chosen; for silver cases, the union of both members' gold context and evidence"
+  },
+  "freeze": "final labels are frozen before the service judge runs and never changed after seeing its output"
+ },
+ "reporting": {
+  "name": "results are agreement with an AI-panel reference (silver labels), not accuracy against human ground truth",
+  "panelAgreement": "member A versus member B agreement on all 107 cases with counts, per layer",
+  "humanCheck": "number of disagreement cases, how many the reviewer sided with A, with B, or neither, or that the check was skipped",
+  "correlation": "both members come from one vendor, so shared errors are possible and are not detected by this design"
+ }
+}
