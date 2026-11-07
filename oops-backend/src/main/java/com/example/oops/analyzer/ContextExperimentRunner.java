@@ -38,8 +38,9 @@ final class ContextExperimentRunner {
         if (new HashSet<>(targetIds).size() != targetIds.size()) throw new IllegalArgumentException("Duplicate target IDs");
         List<ReviewInput.Segment> targets = targetIds.stream().map(id -> transcript.find(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown speech target: " + id))).toList();
+        Long videoId = context.video() == null ? null : context.video().getId();
         for (String id : targetIds)
-            if (store.contains(conditionId, repeat, id)) throw new IllegalArgumentException("Already recorded: " + id);
+            if (store.contains(conditionId, repeat, videoId, id)) throw new IllegalArgumentException("Already recorded: " + videoId + "/" + id);
         for (var target : targets) store.append(runTarget(context, conditionId, selector, target, transcript, repeat));
     }
 

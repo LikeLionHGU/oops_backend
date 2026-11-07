@@ -87,6 +87,30 @@ class ContextExperimentRunnerTest {
         verifyNoInteractions(f.client);
     }
 
+    private static AnalysisContext videoContext(long id, String... lines) {
+        var video = com.example.oops.domain.Video.builder().filename("v" + id).build();
+        org.springframework.test.util.ReflectionTestUtils.setField(video, "id", id);
+        List<com.example.oops.domain.TranscriptSegment> segments = new ArrayList<>();
+        for (int i = 0; i < lines.length; i++)
+            segments.add(new com.example.oops.domain.TranscriptSegment(video, i * 2000L, i * 2000L + 1500, lines[i]));
+        return new AnalysisContext(video, com.example.oops.domain.ContentGenre.GENERAL, segments, List.of());
+    }
+
+    @Test void sameTargetIdInAnotherVideoIsADifferentRecord(@TempDir Path dir) {
+        discoveryReturnsNoCandidateForEachPrimary();
+        var first = videoContext(1, "그 집은 별로다", "다른 말");
+        var second = videoContext(2, "전혀 다른 영상", "다른 말");
+        try (var store = store(dir)) {
+            var runner = new ContextExperimentRunner(f.client, null, options, store);
+            runner.run(first, "T0", everythingElse(), List.of("stt-index-0"), 0);
+            runner.run(second, "T0", everythingElse(), List.of("stt-index-0"), 0);
+            assertThatThrownBy(() -> runner.run(second, "T0", everythingElse(), List.of("stt-index-0"), 0))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(ExperimentResultStore.read(dir.resolve("run-1")))
+                .extracting(ContextExperimentRunner.TargetRecord::videoId).containsExactly(1L, 2L);
+    }
+
     @Test void storeIsWriteOnceAndRejectsDuplicateRecords(@TempDir Path dir) throws Exception {
         discoveryReturnsNoCandidateForEachPrimary();
         var context = f.context("그 집은 별로다", "다른 말");

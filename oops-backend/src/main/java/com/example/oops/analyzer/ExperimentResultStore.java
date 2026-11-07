@@ -53,8 +53,9 @@ final class ExperimentResultStore implements AutoCloseable {
 
     void append(ContextExperimentRunner.TargetRecord record) {
         if (!runId.equals(record.runId())) throw new IllegalArgumentException("Record belongs to another run: " + record.runId());
-        if (!written.add(key(record.conditionId(), record.repeat(), record.targetId())))
-            throw new IllegalArgumentException("Duplicate record: " + record.conditionId() + "/" + record.repeat() + "/" + record.targetId());
+        if (!written.add(key(record.conditionId(), record.repeat(), record.videoId(), record.targetId())))
+            throw new IllegalArgumentException("Duplicate record: " + record.conditionId() + "/" + record.repeat() + "/"
+                    + record.videoId() + "/" + record.targetId());
         try {
             Files.writeString(runDir.resolve(RESULTS), JSON.writeValueAsString(record) + "\n", StandardCharsets.UTF_8,
                     StandardOpenOption.APPEND, StandardOpenOption.SYNC);
@@ -63,8 +64,8 @@ final class ExperimentResultStore implements AutoCloseable {
         }
     }
 
-    boolean contains(String conditionId, int repeat, String targetId) {
-        return written.contains(key(conditionId, repeat, targetId));
+    boolean contains(String conditionId, int repeat, Long videoId, String targetId) {
+        return written.contains(key(conditionId, repeat, videoId, targetId));
     }
 
     static List<ContextExperimentRunner.TargetRecord> read(Path runDir) {
@@ -76,8 +77,8 @@ final class ExperimentResultStore implements AutoCloseable {
         }
     }
 
-    private static String key(String conditionId, int repeat, String targetId) {
-        return conditionId + "\0" + repeat + "\0" + targetId;
+    private static String key(String conditionId, int repeat, Long videoId, String targetId) {
+        return conditionId + "\0" + repeat + "\0" + videoId + "\0" + targetId;
     }
 
     @Override
