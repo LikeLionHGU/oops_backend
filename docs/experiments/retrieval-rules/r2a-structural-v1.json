@@ -19,7 +19,10 @@
     "EDGE": "eligible targets among the first 3 or last 3 primaries of their page",
     "INTERIOR": "all other eligible targets"
    },
-   "perVideo": {"EDGE": 20, "INTERIOR": 10},
+   "perVideo": {
+    "EDGE": 20,
+    "INTERIOR": 10
+   },
    "randomness": "Python random.Random(seed), seed = int(sha256(transcriptSha256 + ':r2a-sampling-v1').hexdigest()[:16], 16); random.sample over each stratum's IDs in transcript order, EDGE first; drawn targets sorted by transcript order",
    "shortStratum": "if a stratum has fewer eligible targets than its quota, take all and report the shortfall; no top-up from the other stratum",
    "noReplacement": "no target is redrawn, swapped or dropped after drawing"
@@ -39,5 +42,19 @@
   "breakdown": "per condition, per stratum (EDGE, INTERIOR), per video and per Far type (A preview, B page boundary, C long-range reference) of the S0 miss",
   "notInThisRun": "reference-label agreement with the judging model on each condition is a later, separate run"
  },
- "expectedYield": "random P1 targets needed context 3/90; EDGE targets may yield few A0 misses; a small count is a valid result"
+ "expectedYield": "random P1 targets needed context 3/90; EDGE targets may yield few A0 misses; a small count is a valid result",
+ "handling": {
+  "samePage": "S1-S3 never re-plan pages: the A0 page split, the target's page and its S0 window are kept as they are; conditions only add segments",
+  "dedupAndOrder": "a segment already in the S0 window (or the target itself) is not added or counted again; the final context is S0 plus added segments, deduplicated and placed in ReviewInput order; at the start or end of the video only existing segments are used, with no padding or wrap-around",
+  "limits": "S1's 10000 ms and 1000 code points apply only to its forward suffix (the S0 backward prefix is unchanged); S2 and S3 add their fixed counts with no time, gap or character limit before the input-limit step",
+  "inputLimit": {
+   "measure": "DialogueReadingPage.inputCodePoints over the expanded window (S0 window plus added segments, with the target's page primaries as anchors) against 24000 minus 256 code points",
+   "theoretical": "coverage computed on the expanded context before any limit",
+   "withinLimit": "if the expanded window exceeds the limit, remove added segments one at a time, farthest from the target first (transcript-order distance; ties: the later segment first), until it fits; S0 segments are never removed; coverage is recomputed on what remains",
+   "reporting": "both theoretical and within-limit coverage are reported for every condition, plus the count of cases that needed trimming and the segments removed; only within-limit coverage counts as usable success"
+  },
+  "zeroDenominators": "cases with empty goldContextSegmentIds are excluded from coverage metrics; if no case is missed by S0, the A0-miss recovery rate is N/A, not 0; every rate is shown with its count (e.g. recovered / A0-missed)"
+ },
+ "reporting": "EDGE and INTERIOR are reported first and separately; the pooled 90-case figure is labelled as a boundary-oversampled sample (EDGE drawn at twice the INTERIOR quota) and is never presented as production-average performance; the A0-miss recovery rate is always shown as recovered cases / A0-missed cases next to the percentage, because a small denominator makes it unstable",
+ "parameterNote": "5 neighbours, first/last 3 primaries, 10-segment expansion and the 20/10 quota are reasonable initial fixed values for testing the hypothesis, not tuned optima"
 }
