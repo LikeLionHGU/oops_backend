@@ -3,7 +3,8 @@
 Inputs per case: the frozen transcript, its BGE-M3 vector file (tools/embed_segments.py), the A0 provided set and the
 label diagnostic (gold context). Only target text builds queries; gold text never does. Runs locally on CPU in the
 repository .venv; no paid calls. Run from the repository root:
-HF_HUB_OFFLINE=1 .venv/bin/python tools/far_retrieval_eval.py CASES.json NEW_OUTPUT.json
+HF_HUB_OFFLINE=1 .venv/bin/python tools/far_retrieval_eval.py CASES.json NEW_OUTPUT.json [--rules r2b]
+--rules r2b swaps in the split-v2 rule of r2b-semantic-v1; every run reports A3 top exposure at the largest K.
 """
 from __future__ import annotations
 
@@ -28,6 +29,9 @@ RERANK_REVISION = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
 METHODS = ("Q0_RAW", "MAX", "RRF", "TOPN_EQUAL", "UNION_A3")
 BUDGETS = (20, 50, 100)
 RRF_K = 60
+EXPOSURE_CUTS = (5, 10, 20)
+R2B_RULES = ROOT / "docs/experiments/retrieval-rules/r2b-semantic-v1.json"
+R2B_RULES_SHA256 = "7600935c9b611eca00b4fdc9bd43c6459be08d7a5c12d8f21b6215cdea301f36"
 Scorer = Callable[[Sequence[tuple[str, str]]], Sequence[float]]
 
 
@@ -101,9 +105,14 @@ def case_metrics(gold: list[str], ranked: list[str], a0_ids: list[str]) -> dict:
             "allContext": len(found) == len(gold), "ranks": {g: position.get(g) for g in gold}}
 
 
-def evaluate_case(case: dict, segments: list[dict], embeddings: dict, encode, scorer: Scorer) -> dict:
+def top_exposure(gold: list[str], ranked: list[str]) -> dict[str, float]:
+    return {str(cut): sum(g in set(ranked[:cut]) for g in gold) / len(gold) for cut in EXPOSURE_CUTS}
+
+
+def evaluate_case(case: dict, segments: list[dict], embeddings: dict, encode, scorer: Scorer,
+                  split: Callable[[str], list[str]] = split_pieces) -> dict:
     target = next(s for s in segments if s["id"] == case["target"])
-    pieces = split_pieces(target["text"])
+    pieces = split(target["text"])
     docs = embeddings["documentVectors"]
     q0 = {s["id"]: _dot(embeddings["queryVectors"][target["id"]], docs[s["id"]]) for s in segments}
     piece_vectors = encode(pieces) if len(pieces) > 1 else [embeddings["queryVectors"][target["id"]]]
@@ -124,6 +133,8 @@ def evaluate_case(case: dict, segments: list[dict], embeddings: dict, encode, sc
                 top = candidates(method, scores, segments, target, k, past_only)
                 a3 = rerank(top, queries, segments, target, scorer)
                 entry["atK"][str(k)] = {**case_metrics(gold, top, a0), "a3Ranks": case_metrics(gold, a3, a0)["ranks"]}
+                if k == max(BUDGETS):
+                    entry["atK"][str(k)]["topExposure"] = {"a2": top_exposure(gold, top), "a3": top_exposure(gold, a3)}
             scope_result["methods"][method] = entry
         result["scopes"][scope] = scope_result
     return result
@@ -154,9 +165,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("cases", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--rules", choices=("r1", "r2b"), default="r1")
     args = parser.parse_args(argv)
     if _sha(RULES) != RULES_SHA256:
         raise ValueError("Retrieval rules file differs from the frozen r1 file")
+    split = split_pieces
+    if args.rules == "r2b":
+        if _sha(R2B_RULES) != R2B_RULES_SHA256:
+            raise ValueError("Rules file differs from the frozen r2b-semantic-v1 file")
+        from r2b_types import split_v2
+        split = lambda text: split_v2(text)[0]
     from embed_segments import bge_m3_encoder
     from rerank_segments import reranker_scorer
     encode, _ = bge_m3_encoder(EMBED_REVISION)
@@ -168,10 +186,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         transcript, vectors = base / case["transcript"], base / case["embeddings"]
         segments = ordered_segments(json.loads(transcript.read_text(encoding="utf-8"))["segments"])
         embeddings = json.loads(vectors.read_text(encoding="utf-8"))
-        results.append(evaluate_case(case, segments, embeddings, encode, scorer))
+        results.append(evaluate_case(case, segments, embeddings, encode, scorer, split))
         inputs.append({"videoId": case["videoId"], "target": case["target"], "transcriptSha256": _sha(transcript),
                        "vectorFileSha256": _sha(vectors)})
-    output = {"format": "far-retrieval-eval-v1", "rulesSha256": RULES_SHA256, "casesSha256": _sha(args.cases),
+    output = {"format": "far-retrieval-eval-v1", "rules": args.rules, "rulesSha256": RULES_SHA256,
+              "r2bRulesSha256": R2B_RULES_SHA256 if args.rules == "r2b" else None, "casesSha256": _sha(args.cases),
               "inputs": inputs, "summary": summarize(results), "cases": results,
               "note": "At the same K, A3 reorders the same candidate set, so its recall equals A2's; A3 effect is in a3Ranks."}
     with args.output.open("x", encoding="utf-8") as out:

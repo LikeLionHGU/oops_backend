@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from far_retrieval_eval import candidates, case_metrics, rerank, split_pieces
+from far_retrieval_eval import candidates, case_metrics, evaluate_case, rerank, split_pieces, top_exposure
 
 SEGS = [{"id": f"s{i}", "startMs": i * 10_000, "endMs": i * 10_000 + 5_000, "text": f"t{i}"} for i in range(7)]
 TARGET = SEGS[3]
@@ -55,6 +55,31 @@ class RerankAndMetricTests(unittest.TestCase):
         self.assertEqual(m, {"recall": 0.5, "recallOutsideA0": 1.0, "allContext": False,
                              "ranks": {"s0": None, "s5": 1}})
         self.assertIsNone(case_metrics(["s0"], ["s0"], a0_ids=["s0"])["recallOutsideA0"])
+
+
+class TopExposureTests(unittest.TestCase):
+    def test_share_of_gold_in_each_cut(self):
+        ranked = [f"d{i}" for i in range(30)]
+        self.assertEqual(top_exposure(["d0", "d7", "d15", "x"], ranked), {"5": 0.25, "10": 0.5, "20": 0.75})
+
+
+class EvaluateCaseSplitTests(unittest.TestCase):
+    def test_custom_split_and_top_exposure_at_largest_budget(self):
+        segs = [{"id": f"s{i}", "startMs": i * 10_000, "endMs": i * 10_000 + 5_000, "text": f"t{i}"} for i in range(4)]
+        segs[1]["text"] = "one two"
+        vec = {s["id"]: [1.0, 0.0] for s in segs}
+        embeddings = {"documentVectors": vec, "queryVectors": vec}
+        case = {"videoId": 1, "target": "s1", "type": "NEAR", "gold": ["s0"], "a0ContextSegmentIds": ["s0"]}
+        seen = []
+        encode = lambda texts: seen.append(list(texts)) or [[1.0, 0.0] for _ in texts]
+        scorer = lambda pairs: [0.0 for _ in pairs]
+        result = evaluate_case(case, segs, embeddings, encode, scorer, split=lambda t: t.split())
+        self.assertEqual(result["pieces"], ["one", "two"])
+        self.assertEqual(seen[0], ["one", "two"])
+        cell = result["scopes"]["FULL_VIDEO"]["methods"]["MAX"]["atK"]["100"]
+        self.assertEqual(cell["topExposure"], {"a2": {"5": 1.0, "10": 1.0, "20": 1.0},
+                                               "a3": {"5": 1.0, "10": 1.0, "20": 1.0}})
+        self.assertNotIn("topExposure", result["scopes"]["FULL_VIDEO"]["methods"]["MAX"]["atK"]["20"])
 
 
 if __name__ == "__main__":
