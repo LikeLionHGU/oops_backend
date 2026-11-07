@@ -55,6 +55,15 @@ class ContextExperimentTrialTest {
         assertThat(JSON.writeValueAsString(ContextExperimentTrial.prepare(dir.resolve("spec.json")))).isEqualTo(JSON.writeValueAsString(plan));
     }
 
+    @Test void targetOnlyConditionPlansEmptyContext(@TempDir Path dir) throws Exception {
+        var plan = ContextExperimentTrial.prepare(spec(dir, Map.of("type", "T0", "budget", 1), 1.0, 24));
+        assertThat(plan.targets()).allSatisfy(t -> {
+            assertThat(t.contextIds()).isEmpty();
+            assertThat(t.status()).isEqualTo("SELECTED");
+            assertThat(t.selectorId()).isEqualTo(TargetOnlyContextSelector.ID);
+        });
+    }
+
     @Test void oracleSelectionsOverBudgetArePlannedAsInfeasible(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("gold.json"), JSON.writeValueAsString(Map.of("labelVersion", "gold-v0", "labels", Map.of("1", Map.of(
                 "stt-index-0", Map.of("goldContextSegmentIds", List.of("stt-index-1"), "evidenceSegmentIds", List.of("stt-index-0")),

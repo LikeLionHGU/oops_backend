@@ -98,7 +98,7 @@ public final class ContextExperimentTrial {
         GoldFile gold = null;
         SpeakerFile speakers = null;
         String type = spec.selector().type();
-        check(Set.of("A0", "A1", "A2", "A3", "A4", "A5", "A6H").contains(type), "Unknown selector type: " + type);
+        check(Set.of("T0", "A0", "A1", "A2", "A3", "A4", "A5", "A6H").contains(type), "Unknown selector type: " + type);
         if (type.equals("A4")) gold = JSON.readValue(Files.readAllBytes(resolve(base, spec.selector().labelsPath(), hashes)), GoldFile.class);
         if (type.equals("A6H"))
             speakers = JSON.readValue(Files.readAllBytes(resolve(base, spec.selector().labelsPath(), hashes)), SpeakerFile.class);
@@ -107,6 +107,7 @@ public final class ContextExperimentTrial {
             contexts.put(t.videoId(), context(t.videoId(), resolve(base, t.path(), hashes)));
             String video = String.valueOf(t.videoId());
             ContextSelector selector = switch (type) {
+                case "T0" -> new TargetOnlyContextSelector();
                 case "A0" -> new DialoguePageContextSelector();
                 case "A1" -> new AdjacentContextSelector(budget);
                 case "A5" -> new Bm25ContextSelector(budget);
