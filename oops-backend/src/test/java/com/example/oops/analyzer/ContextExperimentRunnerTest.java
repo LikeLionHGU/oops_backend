@@ -111,6 +111,17 @@ class ContextExperimentRunnerTest {
                 .extracting(ContextExperimentRunner.TargetRecord::videoId).containsExactly(1L, 2L);
     }
 
+    @Test void recordsDiscoveryReferenceIds(@TempDir Path dir) {
+        discoveryReturnsNoCandidateForEachPrimary();
+        var lib = new ContextExampleSelectionTest().library(new ContextExampleSelectionTest().archive(4), 3, 3000, "");
+        try (var store = store(dir)) {
+            new ContextExperimentRunner(f.client, null, options, store).run(f.context("그 집은 별로다", "다른 말"), "VECTOR",
+                    everythingElse(), List.of("stt-index-0"), 0, lib, raw -> List.of("source-1"));
+        }
+        var record = ExperimentResultStore.read(dir.resolve("run-1")).get(0);
+        assertThat(record.discoveryReferenceIds()).containsExactly("source-1");
+    }
+
     @Test void storeIsWriteOnceAndRejectsDuplicateRecords(@TempDir Path dir) throws Exception {
         discoveryReturnsNoCandidateForEachPrimary();
         var context = f.context("그 집은 별로다", "다른 말");

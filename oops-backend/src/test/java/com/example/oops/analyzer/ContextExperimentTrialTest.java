@@ -41,6 +41,46 @@ class ContextExperimentTrialTest {
         return path;
     }
 
+    private Path refsSpec(Path dir, Map<String, Object> refs) throws Exception {
+        Path path = spec(dir, Map.of("type", "A0", "budget", 1), 1.0, 24);
+        Files.writeString(dir.resolve("runtime.json"),
+                JSON.writeValueAsString(new ContextExampleSelectionTest().archive(4)));
+        var tree = (tools.jackson.databind.node.ObjectNode) JSON.readTree(Files.readString(path));
+        tree.set("discoveryReferences", JSON.valueToTree(refs));
+        Files.writeString(path, JSON.writeValueAsString(tree));
+        return path;
+    }
+
+    @Test void vectorModeRequiresASelectionForEveryPlannedTarget(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("selections.json"), JSON.writeValueAsString(Map.of("format", "casebook-vector-selections-v1",
+                "selections", Map.of("1/stt-index-0", List.of("source-1")))));
+        assertThatThrownBy(() -> ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "VECTOR", "selectionsPath", "selections.json"))))
+                .hasMessageContaining("1/stt-index-2");
+        Files.writeString(dir.resolve("selections.json"), JSON.writeValueAsString(Map.of("format", "casebook-vector-selections-v1",
+                "selections", Map.of("1/stt-index-0", List.of("source-1"), "1/stt-index-2", List.of()))));
+        var plan = ContextExperimentTrial.prepare(dir.resolve("spec.json"));
+        assertThat(plan.inputHashes()).containsKey(dir.resolve("selections.json").toRealPath().toString());
+    }
+
+    @Test void keywordModeExcludesTheTargetFamily(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("families.json"), JSON.writeValueAsString(Map.of("1", "family-0")));
+        var plan = ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "KEYWORD", "familiesPath", "families.json")));
+        assertThat(plan.inputHashes()).containsKey(dir.resolve("families.json").toRealPath().toString());
+        var runtime = Files.readString(dir.resolve("runtime.json"));
+        var held = ContextExperimentTrial.keywordLibrary(runtime, "family-0");
+        assertThatThrownBy(() -> held.selectFixed(com.example.oops.domain.TimelineEventType.SPEECH, "k", List.of("source-0")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(held.selectFixed(com.example.oops.domain.TimelineEventType.SPEECH, "k", List.of("source-1")).trace().exampleIds())
+                .containsExactly("source-1");
+    }
+
+    @Test void missingDiscoveryReferencesMeansNone(@TempDir Path dir) throws Exception {
+        var plan = ContextExperimentTrial.prepare(spec(dir, Map.of("type", "A0", "budget", 1), 1.0, 24));
+        assertThat(ContextExperimentTrial.referenceMode(plan.spec())).isEqualTo("NONE");
+        assertThatThrownBy(() -> ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "BM25"))))
+                .hasMessageContaining("mode");
+    }
+
     @Test void prepareFreezesSelectionsInputsAndReservationWithoutProviderCalls(@TempDir Path dir) throws Exception {
         var plan = ContextExperimentTrial.prepare(spec(dir, Map.of("type", "A1", "budget", 1_000_000), 1.0, 24));
         assertThat(plan.targets()).extracting(ContextExperimentTrial.PlannedTarget::targetId).containsExactly("stt-index-0", "stt-index-2");

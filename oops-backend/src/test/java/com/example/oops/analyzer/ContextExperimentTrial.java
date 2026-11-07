@@ -1,5 +1,7 @@
 package com.example.oops.analyzer;
 
+import com.example.oops.domain.TimelineEventType;
+
 import com.example.oops.client.OpenAiClient;
 import com.example.oops.domain.ContentGenre;
 import com.example.oops.domain.TranscriptSegment;
@@ -30,7 +32,12 @@ public final class ContextExperimentTrial {
 
     record Spec(String runId, String consent, String conditionId, SelectorSpec selector, List<TranscriptSpec> transcripts,
                 List<TargetSpec> targets, int repeats, int maxHttpAttempts, double capUsd, String guidelinesRuntimePath,
-                Map<String, String> metadata) {}
+                Map<String, String> metadata, DiscoveryReferenceSpec discoveryReferences) {}
+
+    /** NONE (or absent) = base guidelines only, as in J1; KEYWORD = runtime lexical selection minus the target family; VECTOR = precomputed IDs. */
+    record DiscoveryReferenceSpec(String mode, String selectionsPath, String familiesPath) {}
+
+    record SelectionFile(String format, Map<String, List<String>> selections) {}
 
     record PlannedTarget(Long videoId, String targetId, String selectorId, String status, List<String> contextIds) {}
 
@@ -71,6 +78,7 @@ public final class ContextExperimentTrial {
             planned.add(new PlannedTarget(t.videoId(), t.targetId(), selection.selectorId(), selection.status().name(),
                     selection.contextSegmentIds()));
         }
+        checkReferences(spec, base, inputs.hashes());
         var implementation = new TreeMap<>(ConfrontationStageTrial.implementation());
         for (String f : List.of("ContextExperimentTrial.java", "ConfrontationStageTrial.java")) {
             var path = Path.of("src/test/java/com/example/oops/analyzer/" + f);
@@ -78,6 +86,50 @@ public final class ContextExperimentTrial {
         }
         return new Plan(specPath.toRealPath().toString(), ReferenceOnlyTrial.sha(specBytes), spec, inputs.hashes(),
                 implementation, List.copyOf(planned), worst);
+    }
+
+    static String referenceMode(Spec spec) {
+        return spec.discoveryReferences() == null || spec.discoveryReferences().mode() == null ? "NONE" : spec.discoveryReferences().mode();
+    }
+
+    static ReviewGuidelineLibrary keywordLibrary(String runtime, String excludedFamily) {
+        var library = new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(runtime), true, "classpath:frozen.json",
+                6000, 3, 3000, excludedFamily, true, true);
+        library.load();
+        check(library.trace(TimelineEventType.SPEECH).state().equals("READY_WORKING_REFERENCE"), "Runtime references unavailable");
+        return library;
+    }
+
+    static Map<String, String> families(Spec spec, Path base, Map<String, String> hashes) throws Exception {
+        String path = spec.discoveryReferences().familiesPath();
+        if (path == null) return Map.of();
+        return JSON.readValue(Files.readAllBytes(resolve(base, path, hashes)),
+                JSON.getTypeFactory().constructMapType(Map.class, String.class, String.class));
+    }
+
+    static Map<String, List<String>> selections(Spec spec, Path base, Map<String, String> hashes) throws Exception {
+        var file = JSON.readValue(Files.readAllBytes(resolve(base, spec.discoveryReferences().selectionsPath(), hashes)), SelectionFile.class);
+        check("casebook-vector-selections-v1".equals(file.format()) && file.selections() != null, "Unknown selections file");
+        return file.selections();
+    }
+
+    private static void checkReferences(Spec spec, Path base, Map<String, String> hashes) throws Exception {
+        String mode = referenceMode(spec);
+        check(Set.of("NONE", "KEYWORD", "VECTOR").contains(mode), "Unknown discoveryReferences mode: " + mode);
+        if (mode.equals("NONE")) return;
+        String runtime = Files.readString(base.resolve(spec.guidelinesRuntimePath()));
+        if (mode.equals("KEYWORD")) {
+            var families = families(spec, base, hashes);
+            for (var t : spec.targets()) keywordLibrary(runtime, families.getOrDefault(String.valueOf(t.videoId()), ""));
+            return;
+        }
+        var selections = selections(spec, base, hashes);
+        var library = keywordLibrary(runtime, "");
+        for (var t : spec.targets()) {
+            String key = t.videoId() + "/" + t.targetId();
+            check(selections.containsKey(key), "No vector selection for " + key);
+            library.selectFixed(TimelineEventType.SPEECH, key, selections.get(key));
+        }
     }
 
     static Plan authorize(byte[] planBytes, String sha, String consent) throws Exception {
@@ -200,6 +252,7 @@ public final class ContextExperimentTrial {
             Files.write(out.resolve("plan.json"), bytes, StandardOpenOption.CREATE_NEW);
             System.out.println("CTXA_PREPARED providerCalls=0 targets=" + plan.targets().size() + " repeats=" + plan.spec().repeats()
                     + " maxHttp=" + plan.spec().maxHttpAttempts() + " maxReservationUsd=" + plan.maxReservationUsd()
+                    + " refs=" + referenceMode(plan.spec())
                     + " sha=" + ReferenceOnlyTrial.sha(bytes));
             return;
         }
@@ -219,10 +272,21 @@ public final class ContextExperimentTrial {
         var options = new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false, false, false), false);
         var store = ExperimentResultStore.create(out, plan.spec().runId(), metadata);
         var runner = new ContextExperimentRunner(client, guidelines, options, store);
+        Path specBase = Path.of(plan.specPath()).getParent();
+        String runtime = Files.readString(specBase.resolve(plan.spec().guidelinesRuntimePath()));
+        String mode = referenceMode(plan.spec());
+        Map<String, String> families = mode.equals("KEYWORD") ? families(plan.spec(), specBase, new TreeMap<>()) : Map.of();
+        Map<String, List<String>> vector = mode.equals("VECTOR") ? selections(plan.spec(), specBase, new TreeMap<>()) : Map.of();
+        Map<String, ReviewGuidelineLibrary> libraries = new HashMap<>();
         for (int repeat = 0; repeat < plan.spec().repeats(); repeat++) {
             for (var t : plan.targets()) {
+                String targetKey = t.videoId() + "/" + t.targetId();
+                var library = mode.equals("NONE") ? guidelines : libraries.computeIfAbsent(
+                        mode.equals("KEYWORD") ? families.getOrDefault(String.valueOf(t.videoId()), "") : "",
+                        family -> keywordLibrary(runtime, family));
+                DiscoveryReferences references = mode.equals("VECTOR") ? raw -> vector.get(targetKey) : null;
                 runner.run(inputs.contexts().get(t.videoId()), plan.spec().conditionId(), inputs.selectors().get(t.videoId()),
-                        List.of(t.targetId()), repeat);
+                        List.of(t.targetId()), repeat, library, references);
                 System.out.println("CTXA_RESULT repeat=" + repeat + " video=" + t.videoId() + " target=" + t.targetId()
                         + " http=" + guard.attempts() + " reservedUsd=" + guard.reserved());
                 check(!guard.blocked(), "Stopped at HTTP or cost cap; the last record may be incomplete");

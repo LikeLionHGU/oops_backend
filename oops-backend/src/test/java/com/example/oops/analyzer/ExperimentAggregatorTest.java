@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.*;
 class ExperimentAggregatorTest {
     private static ContextExperimentRunner.TargetRecord record(String condition, int repeat, long video, String target, String state) {
         return new ContextExperimentRunner.TargetRecord("run-1", condition, repeat, video, target, "TEST",
-                ContextSelection.Status.SELECTED, List.of(), state, "SUCCESS", "rev", null, List.of(), List.of(), 0);
+                ContextSelection.Status.SELECTED, List.of(), state, "SUCCESS", "rev", null, List.of(), List.of(), 0, List.of());
     }
 
     private static ExperimentAggregator.GoldCase gold(long video, String target, ExperimentAggregator.Label label, String cluster) {
