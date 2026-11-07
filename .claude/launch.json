@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "j1-review",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "tools/j1_review_server.py",
+        "datasets/controversy/experiments/j1-baseline-20261107",
+        "5001",
+        "5002",
+        "5003",
+        "--port",
+        "8765"
+      ],
+      "port": 8765
+    }
+  ]
+}
