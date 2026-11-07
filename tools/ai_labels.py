@@ -80,6 +80,20 @@ def check_topics(topics: dict, video_id: int, segments: list[dict]) -> list[str]
     return errors
 
 
+def check_t2(t2: dict, packet: dict, t1_sha: str) -> list[str]:
+    errors = []
+    if t2.get("role") != "T2" or not t2.get("annotatorId") or t2.get("aiDraft") is not True:
+        errors.append("T2_HEADER")
+    if t2.get("t1FileSha256") != t1_sha:
+        errors.append("T2_T1_SHA")
+    planned = [c["targetSegmentId"] for c in packet["cases"]]
+    labelled = [l.get("targetSegmentId") for l in t2.get("labels", [])]
+    errors += [f"T2_MISSING:{t}" for t in planned if t not in labelled]
+    errors += [f"T2_DUPLICATE:{t}" for t in sorted({t for t in labelled if labelled.count(t) > 1})]
+    errors += [f"T2_UNPLANNED:{t}" for t in sorted(set(labelled) - set(planned))]
+    return errors
+
+
 def fill_t1_sha(instructions: str, sha: str) -> str:
     if instructions.count(T1_SHA_PLACEHOLDER) != 1:
         raise ValueError("T2 instructions need exactly one T1 SHA placeholder")
@@ -134,8 +148,8 @@ def run_labels(handoff: Path, out: Path, model: Model, settings: dict) -> dict:
         record["files"]["T2-instructions-filled.md"] = _write_once(out / "T2-instructions-filled.md",
                                                                    t2_instructions.encode("utf-8"))
         t2 = _call(model, "t2", instruction_body(t2_instructions), handoff / "t2-packet.json", out, record)
-        if t2.get("role") != "T2" or t2.get("t1FileSha256") != t1_sha or t2.get("aiDraft") is not True:
-            raise ValueError("T2 output does not name the frozen T1 file")
+        if errors := check_t2(t2, json.loads(read("t2-packet.json")), t1_sha):
+            raise ValueError(f"T2 check failed: {errors}")
         record["files"]["t2-initial.json"] = _write_once(out / "t2-initial.json", _json_bytes(t2))
         record["state"] = "COMPLETE"
     except Exception:

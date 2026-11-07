@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ai_labels import check_t1, check_topics, fill_t1_sha, instruction_body, parse_output, run_labels
+from ai_labels import check_t1, check_t2, check_topics, fill_t1_sha, instruction_body, parse_output, run_labels
 
 SEGMENTS = [{"id": f"stt-index-{i}", "startMs": i * 1000, "endMs": i * 1000 + 900, "text": f"문장 {i}"} for i in range(6)]
 
@@ -61,6 +61,18 @@ class PureFunctionTests(unittest.TestCase):
         self.assertEqual(set(check_topics(bad, 7, SEGMENTS)),
                          {"TOPIC_UNKNOWN_ID", "TOPIC_NOT_ASCENDING", "TOPIC_FIRST_SEGMENT", "TOPIC_LABELS_MISMATCH"})
 
+    def test_check_t2_requires_every_packet_target_once_and_the_frozen_t1_sha(self):
+        packet = {"role": "T2", "cases": [{"videoId": 7, "targetSegmentId": "stt-index-1"},
+                                          {"videoId": 7, "targetSegmentId": "stt-index-4"}]}
+        label = lambda t: {"videoId": 7, "targetSegmentId": t}
+        ok = {"role": "T2", "annotatorId": "A", "aiDraft": True, "t1FileSha256": "ab",
+              "labels": [label("stt-index-4"), label("stt-index-1")]}
+        self.assertEqual(check_t2(ok, packet, "ab"), [])
+        bad = {"role": "T2", "annotatorId": "A", "aiDraft": True, "t1FileSha256": "cd",
+               "labels": [label("stt-index-1"), label("stt-index-1"), label("stt-index-9")]}
+        self.assertEqual(set(check_t2(bad, packet, "ab")),
+                         {"T2_T1_SHA", "T2_MISSING:stt-index-4", "T2_DUPLICATE:stt-index-1", "T2_UNPLANNED:stt-index-9"})
+
     def test_fill_t1_sha_replaces_exactly_one_placeholder(self):
         self.assertEqual(fill_t1_sha('"t1FileSha256": "<T1 파일 SHA-256>"', "ab"), '"t1FileSha256": "ab"')
         with self.assertRaises(ValueError):
@@ -68,8 +80,8 @@ class PureFunctionTests(unittest.TestCase):
 
 
 class FakeModel:
-    def __init__(self, t2_sha_override=None):
-        self.calls, self.t2_sha_override = [], t2_sha_override
+    def __init__(self, t2_sha_override=None, drop_last_t2=False):
+        self.calls, self.t2_sha_override, self.drop_last_t2 = [], t2_sha_override, drop_last_t2
 
     def __call__(self, system, user):
         self.calls.append((system, user))
@@ -84,6 +96,8 @@ class FakeModel:
         labels = [{"videoId": 7, "targetSegmentId": t, "finalDecision": "PASS", "goldContextSegmentIds": [],
                    "contextNecessary": False, "necessityRationale": "", "evidenceSegmentIds": [],
                    "priorReviewConsulted": False, "transcriptQualityNote": None} for t in ("stt-index-1", "stt-index-4")]
+        if self.drop_last_t2:
+            labels = labels[:-1]
         return json.dumps({"role": "T2", "annotatorId": "AI_M_T2_DRAFT", "aiDraft": True, "t1FileSha256": sha,
                            "labels": labels}, ensure_ascii=False), {"id": "r3"}
 
@@ -96,7 +110,8 @@ class RunLabelsTests(unittest.TestCase):
         video = {"videoId": 7, "segments": SEGMENTS}
         (self.handoff / "t1-packet.json").write_text(json.dumps(t1_packet(), ensure_ascii=False), encoding="utf-8")
         (self.handoff / "topic-packet.json").write_text(json.dumps({"role": "TOPIC", "videos": [video]}), encoding="utf-8")
-        (self.handoff / "t2-packet.json").write_text(json.dumps({"role": "T2", "videos": [video], "cases": []}), encoding="utf-8")
+        (self.handoff / "t2-packet.json").write_text(json.dumps({"role": "T2", "videos": [video], "cases": [
+            {"videoId": 7, "targetSegmentId": t} for t in ("stt-index-1", "stt-index-4")]}), encoding="utf-8")
         (self.handoff / "T1-instructions.md").write_text("메모\n---\nT1 지시", encoding="utf-8")
         (self.handoff / "Topic-instructions.md").write_text("메모\n---\nTopic 지시", encoding="utf-8")
         (self.handoff / "T2-instructions.md").write_text('메모\n---\nT2 지시 {"t1FileSha256": "<T1 파일 SHA-256>"}', encoding="utf-8")
@@ -121,6 +136,13 @@ class RunLabelsTests(unittest.TestCase):
     def test_t2_with_a_wrong_t1_sha_is_kept_raw_but_not_frozen(self):
         with self.assertRaises(ValueError):
             run_labels(self.handoff, self.out, FakeModel(t2_sha_override="0" * 64), {"model": "m"})
+        self.assertFalse((self.out / "t2-initial.json").exists())
+        self.assertTrue((self.out / "raw" / "t2.txt").exists())
+
+    def test_t2_missing_a_target_is_kept_raw_but_not_frozen(self):
+        model = FakeModel(drop_last_t2=True)
+        with self.assertRaises(ValueError):
+            run_labels(self.handoff, self.out, model, {"model": "m"})
         self.assertFalse((self.out / "t2-initial.json").exists())
         self.assertTrue((self.out / "raw" / "t2.txt").exists())
 
