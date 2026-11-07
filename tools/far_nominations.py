@@ -97,10 +97,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--label-version", required=True)
     parser.add_argument("--model", default="gpt-6-luna")
     parser.add_argument("--reasoning-effort", default="high")
+    parser.add_argument("--instructions", type=Path, default=INSTRUCTIONS)
     args = parser.parse_args(argv)
+    instructions = args.instructions.resolve()
     settings = {"model": args.model, "reasoningEffort": args.reasoning_effort, "responseFormat": "json_object",
-                "api": "chat.completions", "instructions": str(INSTRUCTIONS.relative_to(ROOT))}
-    record = nominate(args.transcript, args.video_id, args.cluster_id, args.label_version, INSTRUCTIONS, args.output,
+                "api": "chat.completions", "instructions": str(instructions.relative_to(ROOT))}
+    record = nominate(args.transcript, args.video_id, args.cluster_id, args.label_version, instructions, args.output,
                       openai_model(args.model, args.reasoning_effort), settings)
     print(json.dumps({k: record.get(k) for k in ("state", "nominations", "files")}, ensure_ascii=False))
 

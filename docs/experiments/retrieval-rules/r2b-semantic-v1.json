@@ -1,0 +1,52 @@
+{
+ "rulesVersion": "r2b-semantic-v1",
+ "questions": {
+  "H1": "Does decomposing a multi-utterance STT segment into pieces raise gold-context recall over the raw-text query?",
+  "H2": "Do per-piece candidate guarantees (RRF, TOPN_EQUAL, UNION_A3) raise recall at small K over MAX fusion?",
+  "LONG_RANGE": "How often do independently labelled long-range references (type C) occur among nominated candidates, and how well do A0, A2 and A3 recover them?"
+ },
+ "frozenBefore": "nominating, labelling or retrieving on any R2-B video; results never feed back into these rules",
+ "data": {
+  "videos": "3 new videos from channels not used in P0, P1, the Far challenge set or R2-A, chosen at video level before reading transcripts; same Groq STT path; transcripts frozen",
+  "nomination": {
+   "instructions": "docs/experiments/label-instructions/Far-nomination-v2.md",
+   "model": "gpt-6-luna, reasoning_effort high, JSON mode, tools/far_nominations.py",
+   "budget": "at most 20 candidates per video, one nominator call per video, no reruns",
+   "nominatorSees": "the frozen transcript only"
+  },
+  "labels": "T1 v2, Topic and T2 by tools/ai_labels.py on the nominated targets; labellers never see nomination reasons, expected context, eligibility, types or retrieval results, and are not told the study purpose",
+  "stopRule": "evaluate exactly this budget; report the counts that occur; never relax the rules to reach a target count"
+ },
+ "typeRules": {
+  "basis": "independent T2 gold context only; the nominator's expected context is never used for acceptance or typing",
+  "order": "applied in this order to context-necessary cases with gold not fully inside the frozen A0 set",
+  "PREVIEW": "target startMs below 180000 and every gold segment outside A0 starts at least 600000 ms after the target",
+  "A0_PAGE_BOUNDARY": "every gold segment outside A0 is within 60000 ms of the target (absolute gap between segment and target times)",
+  "LONG_RANGE_REFERENCE": "at least one gold segment outside A0 is more than 60000 ms from the target, and the case is not PREVIEW",
+  "NEAR": "context-necessary with every gold segment inside A0 (kept and reported, not a Far type)"
+ },
+ "split": {
+  "rule": "split-v2",
+  "step1": "split after ?, ., !, or the ellipsis character followed by whitespace; trim; drop empty pieces",
+  "step2": "if step1 gives fewer than 2 pieces and the text has at least 30 code points and at least 4 whitespace-separated words: k = min(4, ceil(codePoints / 30)); split the words into k contiguous chunks, sizes as equal as possible with earlier chunks one word longer when uneven",
+  "unsplit": "otherwise one piece; such a target is not H1/H2-eligible",
+  "note": "step2 is a deterministic length proxy for multiple utterances, not a detected utterance boundary"
+ },
+ "eligibility": {
+  "H1_H2": "context-necessary cases (any type, including NEAR) whose target gives at least 2 pieces under split-v2; reported with the count of eligible cases",
+  "LONG_RANGE": "cases typed LONG_RANGE_REFERENCE",
+  "both": "a case meeting both is reported in both analyses and flagged"
+ },
+ "retrieval": {
+  "base": "docs/experiments/retrieval-rules/far-challenge-r1.json (SHA-256 da6f541cf44a78a5277be399dec34d26829d1b0a2d20be1259069bf9eaf57208) for documents, models, scopes, fusion methods, ties, A3 and budgets",
+  "changes": "split-v2 replaces the r1 split; metrics add A3 top exposure",
+  "topExposure": "within the K=100 candidate list: share of gold segments in the first 5, 10 and 20 after A3 reranking, next to the same cut-offs of the A2 order",
+  "scopes": "FULL_VIDEO primary and PAST_ONLY secondary, as in r1"
+ },
+ "metrics": {
+  "nomination": "type yield = cases of each type / nominated candidates, with the valid-label denominator also shown; a hit rate of the nominator, not a recall over the video",
+  "retrieval": "per eligible set: Recall@K (all gold and outside-A0 only, N/A when empty), All-context Recall@K, gold ranks, A3 top exposure; per type and per scope; percentages always with counts",
+  "notInThisRun": "reference-label agreement with the judging model is a later, separate run"
+ },
+ "frequencyQuestion": "if few LONG_RANGE_REFERENCE cases appear, report that frequency as a finding in its own right"
+}
