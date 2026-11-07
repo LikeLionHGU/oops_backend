@@ -77,6 +77,16 @@ tasks.register('a0ProvidedContext', JavaExec) {
     }
 }
 
+tasks.register('r2aStructural', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.R2aStructuralContext'
+    doFirst {
+        def r2aArgs = providers.gradleProperty('r2aArgs').orNull
+        if (!r2aArgs) throw new GradleException('r2aArgs required: "conditions MANIFEST OUT" or "strata TRANSCRIPT VIDEO_ID OUT"')
+        args r2aArgs.split(' ')
+    }
+}
+
 // Explicit opt-in text-only model trial; never part of test/bootRun.
 tasks.register('textBoundaryTrial', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
