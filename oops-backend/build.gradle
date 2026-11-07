@@ -77,6 +77,16 @@ tasks.register('a0ProvidedContext', JavaExec) {
     }
 }
 
+tasks.register('contextExperiment', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextExperimentTrial'
+    doFirst {
+        def ctxaArgs = providers.gradleProperty('ctxaArgs').orNull
+        if (!ctxaArgs) throw new GradleException('ctxaArgs required: "prepare SPEC NEW_OUT" or "run PLAN PLAN_SHA NEW_OUT"')
+        args ctxaArgs.split(' ')
+    }
+}
+
 tasks.register('r2aStructural', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.example.oops.analyzer.R2aStructuralContext'
