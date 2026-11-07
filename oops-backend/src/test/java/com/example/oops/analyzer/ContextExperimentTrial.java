@@ -34,7 +34,8 @@ public final class ContextExperimentTrial {
                 List<TargetSpec> targets, int repeats, int maxHttpAttempts, double capUsd, String guidelinesRuntimePath,
                 Map<String, String> metadata, DiscoveryReferenceSpec discoveryReferences) {}
 
-    /** NONE (or absent) = base guidelines only, as in J1; KEYWORD = runtime lexical selection minus the target family; VECTOR = precomputed IDs. */
+    /** NONE (or absent) = base guidelines only, as in J1; KEYWORD = runtime lexical selection; VECTOR = precomputed IDs.
+     *  KEYWORD and VECTOR exclude the target family; the discovery selection is also what verification sees. */
     record DiscoveryReferenceSpec(String mode, String selectionsPath, String familiesPath) {}
 
     record SelectionFile(String format, Map<String, List<String>> selections) {}
@@ -123,12 +124,15 @@ public final class ContextExperimentTrial {
             for (var t : spec.targets()) keywordLibrary(runtime, families.getOrDefault(String.valueOf(t.videoId()), ""));
             return;
         }
+        check(spec.discoveryReferences().familiesPath() != null, "familiesPath required for VECTOR");
         var selections = selections(spec, base, hashes);
-        var library = keywordLibrary(runtime, "");
+        var families = families(spec, base, hashes);
+        Map<String, ReviewGuidelineLibrary> libraries = new HashMap<>();
         for (var t : spec.targets()) {
             String key = t.videoId() + "/" + t.targetId();
             check(selections.containsKey(key), "No vector selection for " + key);
-            library.selectFixed(TimelineEventType.SPEECH, key, selections.get(key));
+            libraries.computeIfAbsent(families.getOrDefault(String.valueOf(t.videoId()), ""), f -> keywordLibrary(runtime, f))
+                    .selectFixed(TimelineEventType.SPEECH, key, selections.get(key));
         }
     }
 
@@ -275,15 +279,14 @@ public final class ContextExperimentTrial {
         Path specBase = Path.of(plan.specPath()).getParent();
         String runtime = Files.readString(specBase.resolve(plan.spec().guidelinesRuntimePath()));
         String mode = referenceMode(plan.spec());
-        Map<String, String> families = mode.equals("KEYWORD") ? families(plan.spec(), specBase, new TreeMap<>()) : Map.of();
+        Map<String, String> families = mode.equals("NONE") ? Map.of() : families(plan.spec(), specBase, new TreeMap<>());
         Map<String, List<String>> vector = mode.equals("VECTOR") ? selections(plan.spec(), specBase, new TreeMap<>()) : Map.of();
         Map<String, ReviewGuidelineLibrary> libraries = new HashMap<>();
         for (int repeat = 0; repeat < plan.spec().repeats(); repeat++) {
             for (var t : plan.targets()) {
                 String targetKey = t.videoId() + "/" + t.targetId();
                 var library = mode.equals("NONE") ? guidelines : libraries.computeIfAbsent(
-                        mode.equals("KEYWORD") ? families.getOrDefault(String.valueOf(t.videoId()), "") : "",
-                        family -> keywordLibrary(runtime, family));
+                        families.getOrDefault(String.valueOf(t.videoId()), ""), family -> keywordLibrary(runtime, family));
                 DiscoveryReferences references = mode.equals("VECTOR") ? raw -> vector.get(targetKey) : null;
                 runner.run(inputs.contexts().get(t.videoId()), plan.spec().conditionId(), inputs.selectors().get(t.videoId()),
                         List.of(t.targetId()), repeat, library, references);

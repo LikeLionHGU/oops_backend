@@ -119,6 +119,16 @@ class DraftTests(unittest.TestCase):
             self.assertTrue(out["f0#s1"]["errors"])
             self.assertTrue((Path(tmp) / "d" / "run-record.json").exists())
 
+    def test_api_error_is_recorded_as_a_draft_error(self):
+        class Boom(FakeModel):
+            def __call__(self, system, user):
+                self.calls += 1
+                raise ConnectionError("synthetic outage")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = draft(runtime_items(2), Boom("x"), "지시", Path(tmp) / "d", max_calls=5)
+            self.assertTrue(all("synthetic outage" in r["errors"][0] for r in out.values()))
+            self.assertEqual(len((Path(tmp) / "d" / "results.jsonl").read_text().splitlines()), 2)
+
     def test_check_reason_rejects_short_long_and_missing(self):
         self.assertEqual(check_reason({"reason": GOOD}), [])
         self.assertTrue(check_reason({"reason": "짧다"}))

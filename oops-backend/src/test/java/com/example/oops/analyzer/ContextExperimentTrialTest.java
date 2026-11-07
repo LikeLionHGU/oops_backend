@@ -54,12 +54,25 @@ class ContextExperimentTrialTest {
     @Test void vectorModeRequiresASelectionForEveryPlannedTarget(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("selections.json"), JSON.writeValueAsString(Map.of("format", "casebook-vector-selections-v1",
                 "selections", Map.of("1/stt-index-0", List.of("source-1")))));
-        assertThatThrownBy(() -> ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "VECTOR", "selectionsPath", "selections.json"))))
+        Files.writeString(dir.resolve("families.json"), JSON.writeValueAsString(Map.of("1", "family-0")));
+        assertThatThrownBy(() -> ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "VECTOR",
+                "selectionsPath", "selections.json", "familiesPath", "families.json"))))
                 .hasMessageContaining("1/stt-index-2");
         Files.writeString(dir.resolve("selections.json"), JSON.writeValueAsString(Map.of("format", "casebook-vector-selections-v1",
                 "selections", Map.of("1/stt-index-0", List.of("source-1"), "1/stt-index-2", List.of()))));
         var plan = ContextExperimentTrial.prepare(dir.resolve("spec.json"));
         assertThat(plan.inputHashes()).containsKey(dir.resolve("selections.json").toRealPath().toString());
+    }
+
+    @Test void vectorModeRejectsSameFamilySelectionsAndRequiresFamilies(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("families.json"), JSON.writeValueAsString(Map.of("1", "family-0")));
+        Files.writeString(dir.resolve("selections.json"), JSON.writeValueAsString(Map.of("format", "casebook-vector-selections-v1",
+                "selections", Map.of("1/stt-index-0", List.of("source-0"), "1/stt-index-2", List.of()))));
+        assertThatThrownBy(() -> ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "VECTOR",
+                "selectionsPath", "selections.json", "familiesPath", "families.json"))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ContextExperimentTrial.prepare(refsSpec(dir, Map.of("mode", "VECTOR", "selectionsPath", "selections.json"))))
+                .hasMessageContaining("familiesPath");
     }
 
     @Test void keywordModeExcludesTheTargetFamily(@TempDir Path dir) throws Exception {

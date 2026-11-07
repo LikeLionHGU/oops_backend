@@ -59,6 +59,23 @@ class WriteReasonsTests(unittest.TestCase):
             self.assertEqual(model.calls, 1)
             self.assertTrue((Path(tmp) / "q" / "run-record.json").exists())
 
+    def test_api_error_is_recorded_error_and_the_run_continues(self):
+        class Flaky(FakeModel):
+            def __call__(self, system, user):
+                self.calls += 1
+                if self.calls == 1:
+                    raise TimeoutError("synthetic timeout")
+                return json.dumps({"reason": GOOD}), {"usage": {}}
+        model = Flaky()
+        targets = plan_targets((1, "stt-index-0", []), (1, "stt-index-1", []))
+        with tempfile.TemporaryDirectory() as tmp:
+            out = write_reasons(targets, {1: SEGMENTS}, model, "지시", Path(tmp) / "q", max_calls=5)
+            self.assertEqual(out["1/stt-index-0"], {"reason": None, "status": "ERROR"})
+            self.assertEqual(out["1/stt-index-1"]["status"], "OK")
+            lines = (Path(tmp) / "q" / "results.jsonl").read_text().splitlines()
+            self.assertEqual(len(lines), 2)
+            self.assertIn("synthetic timeout", lines[0])
+
     def test_max_calls_cap(self):
         model = FakeModel(json.dumps({"reason": GOOD}))
         targets = plan_targets((1, "stt-index-0", []), (1, "stt-index-1", []))

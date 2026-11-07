@@ -582,4 +582,21 @@ class CandidateReviewEngineTest {
         assertThat(nulled).isEqualTo(lexical);
         assertThat(lastSelections).noneMatch(t -> t.retrievalMethod().equals("FIXED_PRECOMPUTED_SELECTION"));
     }
+
+    @Test void fixedDiscoveryReferencesTravelToVerificationWithoutKeywordReselection() {
+        var f = new CandidateReviewEngineTest();
+        f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
+        f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
+        var lib = new ContextExampleSelectionTest().library(new ContextRelationRetrievalTest().archive(), 3, 3000, "");
+        String fixed = lib.selectFixed(com.example.oops.domain.TimelineEventType.SPEECH, "x", List.of("source-1")).prompt();
+        var options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
+        var result = runExperimental(f.client, f.context("그 집은 조용하다"),
+                new RunServices(null, null, lib, null, null, raw -> List.of("source-1")), options,
+                new ExperimentalBatch(List.of("stt-index-0"), List.of()));
+        var systems = ArgumentCaptor.forClass(String.class);
+        verify(f.client, times(2)).completeAsJson(systems.capture(), anyString(), any());
+        assertThat(systems.getAllValues()).allSatisfy(s -> assertThat(s).contains(fixed));
+        assertThat(result.diagnostics().candidatePipeline().contextSelections())
+                .noneMatch(t -> t.requestKey().startsWith("unit-"));
+    }
 }

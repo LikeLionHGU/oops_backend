@@ -1,11 +1,13 @@
 """Hand-made two-dimensional vectors only; no model runs."""
+import json
 import math
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from reason_vectors import chance_hit, retrieval_metrics, select_top
+from reason_vectors import attached_selections, chance_hit, retrieval_metrics, select_top
 
 
 def unit(x, y):
@@ -57,7 +59,7 @@ class RetrievalTests(unittest.TestCase):
                               self.query_meta(), META)
         self.assertEqual(m["denominator"], 1)
         self.assertEqual(m["hits"], 1)
-        self.assertEqual(m["excluded"], {"NO_OTHER_FAMILY": 1, "NULL": 1, "INVALID": 0})
+        self.assertEqual(m["excluded"], {"NO_OTHER_FAMILY": 1, "NULL": 1, "INVALID": 0, "ERROR": 0})
         self.assertAlmostEqual(m["chanceExpectedHits"], 1.0)
         self.assertEqual(m["byMechanism"]["group"]["hits"], 1)
 
@@ -70,6 +72,30 @@ class RetrievalTests(unittest.TestCase):
         m = retrieval_metrics({"6001/stt-index-0": ["a#s1"], "6002/stt-index-0": [], "6003/stt-index-0": []},
                               self.query_meta(), META)
         self.assertEqual(m["hits"], 0)
+
+    def test_pool_meta_scores_non_casebook_picks_without_changing_the_denominator(self):
+        pool = {**META, "mimi#x": {"familyId": "mimi", "mechanismIds": ["group"]}}
+        m = retrieval_metrics({"6001/stt-index-0": ["mimi#x"], "6002/stt-index-0": ["mimi#x"], "6003/stt-index-0": []},
+                              self.query_meta(), META, pool_meta=pool)
+        self.assertEqual(m["denominator"], 1)
+        self.assertEqual(m["hits"], 1)
+
+    def test_error_status_is_excluded(self):
+        m = retrieval_metrics({"6001/stt-index-0": ["b#s1"]},
+                              self.query_meta(**{"6001/stt-index-0": {"familyId": "a", "mechanismIds": ["group"], "status": "ERROR"}}), META)
+        self.assertEqual(m["excluded"]["ERROR"], 1)
+        self.assertEqual(m["denominator"], 0)
+
+
+class AttachedTests(unittest.TestCase):
+    def test_attached_selections_use_repeat_zero_and_cut_to_k(self):
+        rows = [{"videoId": 6001, "targetId": "stt-index-0", "repeat": 0, "discoveryReferenceIds": ["a", "b", "c", "d"]},
+                {"videoId": 6001, "targetId": "stt-index-0", "repeat": 1, "discoveryReferenceIds": ["z"]},
+                {"videoId": 6002, "targetId": "stt-index-0", "repeat": 0}]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "results.jsonl"
+            path.write_text("\n".join(json.dumps(r) for r in rows))
+            self.assertEqual(attached_selections(path), {"6001/stt-index-0": ["a", "b", "c"], "6002/stt-index-0": []})
 
 
 if __name__ == "__main__":

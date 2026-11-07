@@ -166,7 +166,7 @@ def run_labels(handoff: Path, out: Path, model: Model, settings: dict) -> dict:
     return record
 
 
-def openai_model(name: str, reasoning_effort: str) -> Model:
+def openai_model(name: str, reasoning_effort: str, max_retries: int | None = None) -> Model:
     from dotenv import dotenv_values
     from openai import OpenAI
 
@@ -174,7 +174,8 @@ def openai_model(name: str, reasoning_effort: str) -> Model:
     if not env.get("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY is required in the root .env")
     client = OpenAI(api_key=env["OPENAI_API_KEY"], organization=env.get("OPENAI_ORG_ID") or None,
-                    project=env.get("OPENAI_PROJECT_ID") or None, timeout=600)
+                    project=env.get("OPENAI_PROJECT_ID") or None, timeout=600,
+                    **({} if max_retries is None else {"max_retries": max_retries}))
 
     def call(system: str, user: str) -> tuple[str, dict]:
         response = client.chat.completions.create(

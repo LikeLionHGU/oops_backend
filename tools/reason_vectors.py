@@ -2,10 +2,10 @@
 
 /opt/anaconda3/envs/oops-analysis/bin/python tools/reason_vectors.py select ITEMS.json REASONS.json FAMILIES.json \
     QUERY_REASONS.json NEW_OUT_DIR --revision <40-hex bge-m3 commit>
-python3 tools/reason_vectors.py retrieval ITEMS.json FAMILIES.json TARGETS.json QUERY_REASONS.json \
-    VECTOR_SELECTIONS.json KEYWORD_RESULTS.jsonl NEW_OUT.json
+python3 tools/reason_vectors.py retrieval ITEMS.json FAMILIES.json TARGETS.json QUERY_REASONS.json RUNTIME.json \
+    VECTOR_SELECTIONS.json VECTOR_RESULTS.jsonl KEYWORD_RESULTS.jsonl NEW_OUT.json
 Local bge-m3 only (no API). Documents are confirmed reasons of runtime statements; a casebook query never sees
-documents of its own family. Keyword selections come from repeat 0 of the KEYWORD run (discoveryReferenceIds).
+documents of its own family. Both methods are scored on discoveryReferenceIds from repeat 0 of their runs.
 """
 from __future__ import annotations
 
@@ -38,21 +38,24 @@ def chance_hit(pool: list[str], hits: set[str], k: int = K) -> float:
     return 1 - comb(n - h, k) / comb(n, k)
 
 
-def retrieval_metrics(selected: dict[str, list[str]], query_meta: dict[str, dict], doc_meta: dict[str, dict]) -> dict:
-    excluded = {"NO_OTHER_FAMILY": 0, "NULL": 0, "INVALID": 0}
+def retrieval_metrics(selected: dict[str, list[str]], query_meta: dict[str, dict], doc_meta: dict[str, dict],
+                      pool_meta: dict[str, dict] | None = None) -> dict:
+    """doc_meta (casebook documents) fixes the denominator; pool_meta (what the method could pick) scores hits and chance."""
+    pool_meta = doc_meta if pool_meta is None else pool_meta
+    excluded = {"NO_OTHER_FAMILY": 0, "NULL": 0, "INVALID": 0, "ERROR": 0}
     hits = denominator = 0
     chance = 0.0
     by_mechanism: dict[str, dict] = {}
     for key, q in query_meta.items():
         mechanisms = set(q["mechanismIds"])
-        pool = [d for d, m in doc_meta.items() if m["familyId"] != q["familyId"]]
-        relevant = {d for d in pool if mechanisms & set(doc_meta[d]["mechanismIds"])}
-        if not relevant:
+        if not any(m["familyId"] != q["familyId"] and mechanisms & set(m["mechanismIds"]) for m in doc_meta.values()):
             excluded["NO_OTHER_FAMILY"] += 1
             continue
         if q["status"] != "OK":
             excluded[q["status"]] += 1
             continue
+        pool = [d for d, m in pool_meta.items() if m["familyId"] != q["familyId"]]
+        relevant = {d for d in pool if mechanisms & set(pool_meta[d]["mechanismIds"])}
         hit = any(d in relevant for d in selected.get(key, []))
         expected = chance_hit(pool, relevant)
         hits += hit
@@ -99,13 +102,19 @@ def cmd_select(args) -> None:
     print(json.dumps({"documents": len(doc_ids), "queries": len(ok), "empty": sum(not v for v in selections.values())}))
 
 
-def keyword_selections(results: Path) -> dict[str, list[str]]:
+def attached_selections(results: Path, k: int = K) -> dict[str, list[str]]:
+    """References actually sent at discovery (after budget), from repeat 0 of a run, cut to k."""
     out = {}
     for line in results.read_text(encoding="utf-8").splitlines():
         r = json.loads(line)
         if r["repeat"] == 0:
-            out[f"{r['videoId']}/{r['targetId']}"] = r.get("discoveryReferenceIds") or []
+            out[f"{r['videoId']}/{r['targetId']}"] = (r.get("discoveryReferenceIds") or [])[:k]
     return out
+
+
+def runtime_meta(runtime: dict) -> dict[str, dict]:
+    return {e["id"]: {"familyId": e["familyId"], "mechanismIds": e["mechanismIds"]}
+            for e in runtime["examples"] if "SPEECH" in e["channels"]}
 
 
 def cmd_retrieval(args) -> None:
@@ -120,11 +129,19 @@ def cmd_retrieval(args) -> None:
             item = items[t["statementId"]]
             query_meta[key] = {"familyId": families[str(t["videoId"])], "mechanismIds": item["mechanismIds"],
                                "status": queries[key]["status"]}
-    vector = _read(args.vector)["selections"]
-    result = {"format": "casebook-retrieval-v1", "vector": retrieval_metrics(vector, query_meta, doc_meta),
-              "keyword": retrieval_metrics(keyword_selections(args.keyword), query_meta, doc_meta),
-              "note": "same denominator for both; keyword picks outside the casebook count as misses; "
-                      "chanceExpectedHits = sum over queries of P(random 3 of the eligible pool include a same-mechanism other family)"}
+    planned = _read(args.vector_selections)["selections"]
+    vector = attached_selections(args.vector_results)
+    keyword = attached_selections(args.keyword_results)
+    pool = runtime_meta(_read(args.runtime))
+    budget_skips = sum(planned.get(key, [])[:K] != vector.get(key, []) for key in query_meta)
+    result = {"format": "casebook-retrieval-v2",
+              "vector": retrieval_metrics(vector, query_meta, doc_meta),
+              "keyword": retrieval_metrics(keyword, query_meta, doc_meta, pool_meta=pool),
+              "vectorPlannedVsAttachedDifferences": budget_skips,
+              "note": "both scored on references actually attached at discovery (repeat 0, first 3); same denominator "
+                      "(casebook documents); keyword is scored and given chance over every runtime SPEECH example it could pick, "
+                      "vector over the casebook documents; chanceExpectedHits = sum of P(random 3 of the method's eligible pool "
+                      "include a same-mechanism example of another family)"}
     _write_once(args.output, result)
     print(json.dumps({m: {k: result[m][k] for k in ("denominator", "hits", "chanceExpectedHits")} for m in ("vector", "keyword")}))
 
@@ -137,7 +154,8 @@ def main(argv: list[str] | None = None) -> None:
         s.add_argument(name, type=Path)
     s.add_argument("--revision", required=True)
     r = sub.add_parser("retrieval")
-    for name in ("items", "families", "targets", "queries", "vector", "keyword", "output"):
+    for name in ("items", "families", "targets", "queries", "runtime", "vector_selections", "vector_results",
+                 "keyword_results", "output"):
         r.add_argument(name, type=Path)
     args = parser.parse_args(argv)
     {"select": cmd_select, "retrieval": cmd_retrieval}[args.mode](args)

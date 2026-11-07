@@ -96,15 +96,24 @@ def draft(items: list[dict], model: Model, system: str, out: Path, max_calls: in
         raise RuntimeError(f"{len(todo)} calls needed, cap is {max_calls}")
     out.mkdir()
     results, usage = {}, []
-    for item in todo:
-        text, meta = model(system, json.dumps({"statementId": item["statementId"], "sourceText": item["sourceText"]},
-                                              ensure_ascii=False))
-        usage.append(meta.get("usage") or {})
-        try:
-            doc = parse_output(text)
-            results[item["statementId"]] = {"reason": doc.get("reason"), "errors": check_reason(doc)}
-        except ValueError as error:
-            results[item["statementId"]] = {"reason": None, "errors": [str(error)]}
+    with (out / "results.jsonl").open("x", encoding="utf-8") as log:
+        for item in todo:
+            sid = item["statementId"]
+            try:
+                text, meta = model(system, json.dumps({"statementId": sid, "sourceText": item["sourceText"]},
+                                                      ensure_ascii=False))
+            except Exception as exc:  # recorded and not retried
+                results[sid] = {"reason": None, "errors": [f"API error {type(exc).__name__}: {exc}"]}
+                meta = {}
+            else:
+                try:
+                    doc = parse_output(text)
+                    results[sid] = {"reason": doc.get("reason"), "errors": check_reason(doc)}
+                except ValueError as error:
+                    results[sid] = {"reason": None, "errors": [str(error)]}
+            usage.append(meta.get("usage") or {})
+            log.write(json.dumps({"statementId": sid, **results[sid], "usage": meta.get("usage")}, ensure_ascii=False) + "\n")
+            log.flush()
     prompt = sum(u.get("prompt_tokens", 0) for u in usage)
     output = sum(u.get("completion_tokens", 0) for u in usage)
     _write_once(out / "reasons-draft.json", results)
@@ -153,7 +162,7 @@ def cmd_draft(args) -> None:
     from ai_labels import openai_model
     items = _read(args.items)["items"]
     system = instruction_body(args.instructions.read_text(encoding="utf-8"))
-    results = draft(items, openai_model(args.model, args.reasoning_effort), system, args.output, args.max_calls)
+    results = draft(items, openai_model(args.model, args.reasoning_effort, max_retries=0), system, args.output, args.max_calls)
     print(json.dumps({"drafted": len(results), "withErrors": sum(bool(r["errors"]) for r in results.values())}))
 
 

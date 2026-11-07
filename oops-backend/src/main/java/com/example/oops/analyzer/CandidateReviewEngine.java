@@ -399,7 +399,7 @@ final class CandidateReviewEngine {
                     candidates.add(candidate);
                     freezeReference(candidate, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt,
                             routed, references == null ? List.of() : references.examples()), guidelines,
-                            frozenReferences, stats);
+                            frozenReferences, stats, services.discoveryReferences() == null);
                     if (candidate.contextExpanded()) stats.expandedCandidates++;
                     if (candidate.contextLimited()) stats.verificationLimitedCandidates++;
                     pending.merge(proposal.anchorId(), 1, Integer::sum);
@@ -432,7 +432,8 @@ final class CandidateReviewEngine {
                     candidates.add(candidate);
                     var candidateReference = candidateReferences.get(candidate.candidateId());
                     if (candidateReference == null) throw new IllegalStateException("Missing frozen candidate reference context");
-                    freezeReference(candidate, candidateReference, guidelines, frozenReferences, stats);
+                    freezeReference(candidate, candidateReference, guidelines, frozenReferences, stats,
+                            services.discoveryReferences() == null);
                 }
                 if (candidate.contextExpanded()) stats.expandedCandidates++;
                 if (candidate.contextLimited()) stats.verificationLimitedCandidates++;
@@ -723,13 +724,15 @@ final class CandidateReviewEngine {
 
     private static void freezeReference(Candidate candidate, CandidateReferenceContext context,
                                         ReviewGuidelineLibrary guidelines,
-                                        Map<String, FrozenReference> frozenReferences, Stats stats) {
+                                        Map<String, FrozenReference> frozenReferences, Stats stats,
+                                        boolean reselectUnits) {
         String reference = context.guidelinePrompt();
         String referenceKey = context.discoveryRequestKey();
         ContextMechanismRouter.LinkTrace routingLink = null;
         // Explicit v6 archive only: choose unit references once using the validated candidate,
         // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
-        if (guidelines != null && guidelines.contextUnitArchive()) {
+        // Supplied discovery references (experiments) travel to verification unchanged; no lexical re-selection.
+        if (reselectUnits && guidelines != null && guidelines.contextUnitArchive()) {
             referenceKey = "unit-" + candidate.candidateId();
             var evidenceIds = new HashSet<>(candidate.proposal().evidence().stream().map(Quote::segmentId).toList());
             routingLink = context.routed() == null ? null : context.routed().linkFor(evidenceIds);
