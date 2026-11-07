@@ -7,7 +7,8 @@
  "referenceLabels": {
   "panel": {
    "memberA": "existing gpt-6-luna drafts (labels-<ID>/t2-initial.json, tools/ai_labels.py, T1 v2, Topic, T2)",
-   "memberB": "a second OpenAI model, gpt-6 at reasoning_effort high, run by tools/ai_labels.py on the same blind handoffs into labels-gpt6-<ID>; the API model ID returned in run-record.json is reported",
+   "memberB": "a second OpenAI model, gpt-6.1-sol at reasoning_effort high, run by tools/ai_labels.py on the same blind handoffs into labels-b-<ID>; the API model ID returned in run-record.json is reported",
+   "memberBChange": "first frozen as gpt-6, which the account cannot use (model_not_found on the first call, no labels produced); replaced by gpt-6.1-sol, a different generation and tier from member A, before any member B output existed",
    "independence": "member B never sees member A's output; both see only the blind handoff"
   },
   "agreement": "per case, compare the two T2 decisions (PASS, REVIEW_REQUIRED, UNCERTAIN)",
