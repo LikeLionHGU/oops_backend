@@ -1,0 +1,53 @@
+{
+ "rulesVersion": "far-challenge-retrieval-r1",
+ "frozenBefore": "any A2/A3 run on the Far challenge set; gold context text is never used to build a query",
+ "cases": {
+  "source": "far-challenge-20261107 labels-<ID>/diagnostic-t2-initial.json",
+  "included": "exportStatus VALID and contextDistance Far-topic or Far-video (5 cases: 2001/stt-index-4, 2002/stt-index-0, 2002/stt-index-17, 2002/stt-index-1963, 2003/stt-index-245)",
+  "types": {
+   "PREVIEW": "target in the opening preview; gold context is the later full scene (2001/4, 2002/0, 2002/17)",
+   "A0_PAGE_BOUNDARY": "gold context close in time but cut off by the A0 reading page (2002/1963, 2003/245)"
+  },
+  "goldLabelSource": "AI draft T2 (gpt-6-luna), provisional reference label until human verification",
+  "noLabelChanges": true
+ },
+ "documents": {
+  "set": "every segment of the frozen transcript except the target",
+  "model": "BAAI/bge-m3 @ 5617a9f61b028005a4858fdac845db406aefb181, tools/embed_segments.py, segment raw text (target-raw-text-v1), normalized float32",
+  "scopes": {
+   "FULL_VIDEO": "primary: past and future segments (review after the whole video is uploaded)",
+   "PAST_ONLY": "secondary: only segments with startMs below the target's (live review cannot use future context); reported for every case"
+  }
+ },
+ "queries": {
+  "split": "target text split after ?, . or ! followed by whitespace; pieces trimmed; empty pieces dropped",
+  "splitFailure": "fewer than 2 pieces means the target is unsplit; every split method then equals Q0 and the case is marked unsplit",
+  "methods": {
+   "Q0_RAW": "target raw text, one query",
+   "MAX": "pieces; document score = max cosine over pieces",
+   "RRF": "pieces ranked separately; document score = sum over pieces of 1/(60 + rank), rank from 1",
+   "TOPN_EQUAL": "pieces ranked separately; take pieces' ranks 1, 2, ... in round-robin (piece order = text order), skip documents already taken, stop at K",
+   "UNION_A3": "pieces ranked separately; candidate set = union of each piece's top ceil(K / pieces), deduplicated and truncated to K in round-robin order; then always reranked by A3"
+  }
+ },
+ "ranking": {
+  "tieBreak": "score desc, then absolute time distance to the target, then transcript order (same as A2)",
+  "duplicates": "a document appears once; its best (first) position is kept"
+ },
+ "a3": {
+  "model": "BAAI/bge-reranker-v2-m3 @ 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e, max_length 1024, raw logit",
+  "candidates": "each method's own top-K candidate list at K",
+  "query": "Q0_RAW: target raw text; split methods: score = max reranker logit over pieces",
+  "tieBreak": "same as A2"
+ },
+ "budgets": [20, 50, 100],
+ "metrics": {
+  "a0Included": "whether every gold context segment is in the frozen A0 provided set",
+  "recallAtK": "gold segments in top K / gold segments, per case, averaged; also counted over gold segments outside A0 only (N/A when none, excluded and counted)",
+  "allContextRecallAtK": "cases with every gold segment in top K / cases",
+  "goldRanks": "rank of each gold segment in the full A2 ranking and in the A3 list when present",
+  "reporting": "per case, per type (PREVIEW, A0_PAGE_BOUNDARY), per scope (FULL_VIDEO, PAST_ONLY), per method and K; no single pooled Far number without the type split",
+  "notInThisRun": "reference-label agreement needs the judging model with each selected context; it is a later, separate run"
+ },
+ "sampleSizeNote": "five cases describe failure mechanisms; they cannot establish a general advantage of any method"
+}
