@@ -15,6 +15,46 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Synthetic rules only: no assertion of actual human validation or model accuracy. */
 class ReviewGuidelineLibraryTest {
+    @Test void selectFixedRendersGivenExamplesInOrder() {
+        var f = new ContextExampleSelectionTest();
+        var l = f.library(f.archive(4), 3, 3000, "");
+        var s = l.selectFixed(SPEECH, "discovery-1", List.of("source-2", "source-1"));
+        assertThat(s.trace().exampleIds()).containsExactly("source-2", "source-1");
+        assertThat(s.trace().retrievalMethod()).isEqualTo("FIXED_PRECOMPUTED_SELECTION");
+        assertThat(s.trace().requestKey()).isEqualTo("discovery-1");
+        assertThat(s.prompt()).contains("reviewGuidelines", "referenceContexts", "생활조건을 열등하게 비교");
+    }
+    @Test void selectFixedWithEmptyListKeepsBasePatternsOnly() {
+        var f = new ContextExampleSelectionTest();
+        var l = f.library(f.archive(4), 3, 3000, "");
+        var s = l.selectFixed(SPEECH, "discovery-1", List.of());
+        assertThat(s.trace().exampleIds()).isEmpty();
+        assertThat(s.prompt()).contains("reviewGuidelines").doesNotContain("생활조건을 열등하게 비교");
+    }
+    @Test void selectFixedRejectsUnknownOrExcludedOrWrongChannelIds() throws Exception {
+        var f = new ContextExampleSelectionTest();
+        var l = f.library(f.archive(4), 3, 3000, "family-1");
+        assertThatThrownBy(() -> l.selectFixed(SPEECH, "k", List.of("missing"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> l.selectFixed(SPEECH, "k", List.of("source-1"))).isInstanceOf(IllegalArgumentException.class);
+        var tree = JSON.readTree(JSON.writeValueAsString(new ContextRelationRetrievalTest().archive()));
+        ((tools.jackson.databind.node.ObjectNode) tree.get("examples").get(0)).set("channels", JSON.valueToTree(List.of("CAPTION")));
+        var captionOnly = library(JSON.writeValueAsBytes(tree), 6000);
+        assertThat(captionOnly.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
+        assertThatThrownBy(() -> captionOnly.selectFixed(SPEECH, "k", List.of("source-0"))).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void selectFixedSkipsExamplesOverTheExampleBudget() {
+        var f = new ContextExampleSelectionTest();
+        var l = f.library(f.archive(4), 3, 256, "");
+        var s = l.selectFixed(SPEECH, "k", List.of("source-0", "source-1"));
+        assertThat(s.trace().exampleIds()).containsExactly("source-0");
+        assertThat(s.trace().budgetSkipped()).isEqualTo(1);
+    }
+    @Test void selectFixedCapsAtMaxExamples() {
+        var f = new ContextExampleSelectionTest();
+        var l = f.library(f.archive(4), 3, 3000, "");
+        assertThat(l.selectFixed(SPEECH, "k", List.of("source-3", "source-2", "source-1", "source-0")).trace().exampleIds())
+                .containsExactly("source-3", "source-2", "source-1");
+    }
     @Test void structuredCatalogFailureKeepsOtherwiseValidArchive() {
         var archive = new ContextRelationRetrievalTest().archive();
         var resources = mock(ResourceLoader.class);

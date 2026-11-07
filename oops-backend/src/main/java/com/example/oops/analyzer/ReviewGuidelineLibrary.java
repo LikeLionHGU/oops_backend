@@ -487,6 +487,38 @@ public class ReviewGuidelineLibrary {
                         structuredSearch == null ? null : structuredSearch.trace(
                                 structuredSearch.queryProfiles(channel, raw), ranked, selected),supplementTrace));
     }
+    /** Experiment seam: render references chosen offline (e.g. by reason vectors), in the given order, under the same budgets. */
+    Selection selectFixed(TimelineEventType channel, String requestKey, List<String> exampleIds) {
+        var base = examples(channel);
+        if (!splitArchive() || base.isEmpty() || selector == null) {
+            var t = trace(channel);
+            return new Selection(prompt(channel), new SelectionTrace(requestKey, t.state(), "LEGACY_OR_BASE_ONLY",
+                    t.availableExampleCount(), 0, 0, t.payloadCodePoints(), t.payloadCodePoints(), List.of(), t.guidelineIds()));
+        }
+        Map<String, ContextExample> byId = new HashMap<>();
+        archive.examples().forEach(e -> byId.put(e.id(), e));
+        var patterns = patternRows(base);
+        List<ContextExample> selected = new ArrayList<>();
+        int skipped = 0;
+        for (String id : exampleIds) {
+            var e = byId.get(id);
+            if (e == null || !e.channels().contains(channel.name()) || excludedFamilies.contains(e.familyId()))
+                throw new IllegalArgumentException("Fixed reference is not an eligible " + channel + " example: " + id);
+            if (selected.contains(e) || selected.size() >= maxExamples) continue;
+            var proposed = new ArrayList<>(selected); proposed.add(e);
+            var contexts = proposed.stream().map(x -> new SelectedExample(x.mechanismIds(), x.context())).toList();
+            if (codePoints(JSON.writeValueAsString(contexts)) > exampleBudget || codePoints(payload(patterns, contexts)) > budget) {
+                skipped++; continue;
+            }
+            selected.add(e);
+        }
+        String payload = payload(patterns, selected.stream().map(e -> new SelectedExample(e.mechanismIds(), e.context())).toList());
+        return new Selection("\n" + referenceContract() + "\ncontextReference=" + payload,
+                new SelectionTrace(requestKey, state, "FIXED_PRECOMPUTED_SELECTION", trace(channel).availableExampleCount(),
+                        exampleIds.size(), skipped, codePoints(payload), codePoints(payload(patterns, List.of())),
+                        selected.stream().map(ContextExample::id).toList(), patterns.stream().map(p -> p.get("id")).toList(),
+                        null, null, null, null));
+    }
     private static String payload(Object patterns, Object contexts) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("reviewGuidelines", patterns); values.put("referenceContexts", contexts);
