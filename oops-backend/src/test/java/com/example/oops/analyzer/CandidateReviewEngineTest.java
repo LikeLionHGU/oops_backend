@@ -550,4 +550,36 @@ class CandidateReviewEngineTest {
         assertThat(VERIFICATION_PROMPT).doesNotContain("지역 가치 절하·특정 대상 조롱", "매장·시설 부재");
         assertThat(POLICY + DISCOVERY_PROMPT + VERIFICATION_PROMPT).doesNotContain("롯데리아", "영양", "피식대학");
     }
+
+    private String discoverySystem(RunServices services) {
+        var f = new CandidateReviewEngineTest();
+        f.discovery(List.of("stt-index-0"));
+        var options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
+        var bound = new RunServices(services.visual(), services.caseLibrary(), services.guidelines(), services.requestTrace(),
+                services.router(), services.discoveryReferences());
+        var result = runExperimental(f.client, f.context("그 집은 조용하다"), bound, options,
+                new ExperimentalBatch(List.of("stt-index-0"), List.of()));
+        var systems = ArgumentCaptor.forClass(String.class);
+        verify(f.client).completeAsJson(systems.capture(), anyString(), eq(Discovery.class));
+        lastSelections = result.diagnostics().candidatePipeline().contextSelections();
+        return systems.getValue();
+    }
+    private List<ReviewGuidelineLibrary.SelectionTrace> lastSelections;
+
+    @Test void discoveryReferencesReplaceLexicalSelectionInDiscoveryOnly() {
+        var lib = new ContextExampleSelectionTest().library(new ContextExampleSelectionTest().archive(4), 3, 3000, "");
+        String system = discoverySystem(new RunServices(null, null, lib, null, null, raw -> List.of("source-1")));
+        assertThat(system).contains("referenceContexts", "생활조건을 열등하게 비교");
+        var discovery = lastSelections.stream().filter(t -> t.requestKey().equals("discovery-1")).findFirst().orElseThrow();
+        assertThat(discovery.retrievalMethod()).isEqualTo("FIXED_PRECOMPUTED_SELECTION");
+        assertThat(discovery.exampleIds()).containsExactly("source-1");
+    }
+
+    @Test void nullDiscoveryReferencesKeepTheExistingPath() {
+        var f = new ContextExampleSelectionTest();
+        String lexical = discoverySystem(new RunServices(null, null, f.library(f.archive(4), 3, 3000, ""), null, null));
+        String nulled = discoverySystem(new RunServices(null, null, f.library(f.archive(4), 3, 3000, ""), null, null, null));
+        assertThat(nulled).isEqualTo(lexical);
+        assertThat(lastSelections).noneMatch(t -> t.retrievalMethod().equals("FIXED_PRECOMPUTED_SELECTION"));
+    }
 }

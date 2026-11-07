@@ -126,7 +126,13 @@ final class CandidateReviewEngine {
         }
     }
     record RunServices(VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
-                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, ContextMechanismRouter router) {}
+                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, ContextMechanismRouter router,
+                       DiscoveryReferences discoveryReferences) {
+        RunServices(VisualContextReviewer visual, ReviewCaseLibrary caseLibrary, ReviewGuidelineLibrary guidelines,
+                    com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, ContextMechanismRouter router) {
+            this(visual, caseLibrary, guidelines, requestTrace, router, null);
+        }
+    }
 
     static TextReviewEngine.Result run(OpenAiClient client, AnalysisContext context, int maxCandidates) {
         return run(client, context, maxCandidates, null);
@@ -287,8 +293,9 @@ final class CandidateReviewEngine {
             String discoveryRequestKey = "discovery-" + (stats.discoveryCalls + 1);
             var routed = routing == null ? null : routing.route(guidelines, raw, discoveryRequestKey, context, requestTrace);
             if (routed != null && stats.mechanismRouting.size() < MAX_TRACES) stats.mechanismRouting.add(routed.trace());
-            String guidelinePrompt = stats.reference(guidelines, raw, discoveryRequestKey,
-                    routed == null ? Set.of() : routed.keys());
+            String guidelinePrompt = services.discoveryReferences() != null && guidelines != null
+                    ? stats.fixedReference(guidelines, services.discoveryReferences().exampleIds(raw), discoveryRequestKey)
+                    : stats.reference(guidelines, raw, discoveryRequestKey, routed == null ? Set.of() : routed.keys());
             var references = caseLibrary == null ? null : caseLibrary.select(raw, sourceFingerprint);
             if (references != null && stats.retrievalTraces.size() < MAX_TRACES) stats.retrievalTraces.add(references.trace());
             stats.discoveryCalls++;
@@ -1205,6 +1212,11 @@ final class CandidateReviewEngine {
             if (library == null) return "";
             var selection = keys.isEmpty() ? library.select(TimelineEventType.SPEECH, raw, requestKey)
                     : library.select(TimelineEventType.SPEECH, raw, requestKey,List.of(),keys);
+            if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
+            return selection.prompt();
+        }
+        String fixedReference(ReviewGuidelineLibrary library, List<String> ids, String requestKey) {
+            var selection = library.selectFixed(TimelineEventType.SPEECH, requestKey, ids);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();
         }
