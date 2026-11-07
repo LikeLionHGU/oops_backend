@@ -1,0 +1,43 @@
+{
+ "rulesVersion": "r2a-structural-v1",
+ "question": "Can structural expansion of the A0 reading page, without semantic retrieval, recover gold context that A0 misses?",
+ "frozenBefore": "drawing, labelling or computing any R2-A condition on new data",
+ "pagePlan": "DialogueReadingPage revision 2026-10-25-reading-page-1 on the frozen transcript (primaries plus backward prefix context only; no forward context)",
+ "conditions": {
+  "S0_A0": "A0-T context: the target's page window (prefix context plus every page primary) minus the target",
+  "S1_PAGE_OVERLAP": "S0 plus a forward suffix mirroring the prefix rule: segments after the page's last primary, in order, while the gap to the previous segment is at most 5000 ms, segment endMs minus the last primary's endMs is at most 10000 ms, and added text is at most 1000 code points",
+  "S2_NEIGHBOR_GUARANTEE": "S0 plus the 5 segments before and the 5 segments after the target in transcript order, regardless of gaps or page",
+  "S3_BOUNDARY_EXPANSION": "if the target is one of the last 3 primaries of its page: S0 plus the 10 segments after the page's last primary; if it is one of the first 3 primaries: S0 plus the 10 segments before the page's first window segment; otherwise S0. A target that is both gets both"
+ },
+ "segmentOrder": "ReviewInput order (startMs, endMs, id); speech review targets only, as in the page plan",
+ "independentData": {
+  "videos": "3 new videos never used in P0, P1 or the Far challenge set, chosen at video level before reading transcripts; same Groq STT path; transcripts frozen",
+  "sampling": {
+   "rule": "r2a-sampling-v1",
+   "eligible": "planned page primaries whose text has at least 2 Hangul, Latin or digit characters",
+   "strata": {
+    "EDGE": "eligible targets among the first 3 or last 3 primaries of their page",
+    "INTERIOR": "all other eligible targets"
+   },
+   "perVideo": {"EDGE": 20, "INTERIOR": 10},
+   "randomness": "Python random.Random(seed), seed = int(sha256(transcriptSha256 + ':r2a-sampling-v1').hexdigest()[:16], 16); random.sample over each stratum's IDs in transcript order, EDGE first; drawn targets sorted by transcript order",
+   "shortStratum": "if a stratum has fewer eligible targets than its quota, take all and report the shortfall; no top-up from the other stratum",
+   "noReplacement": "no target is redrawn, swapped or dropped after drawing"
+  },
+  "labels": "T1 v2, Topic and T2 by tools/ai_labels.py (separate gpt-6-luna calls, T2 coverage check); labellers are not told about R2-A or page structure; AI drafts are provisional reference labels",
+  "stopRule": "evaluate exactly this budget and report the number of context-necessary and A0-missed cases as found; never relax the rule to reach a target count"
+ },
+ "developmentData": {
+  "cases": "all already-labelled context-necessary cases: P0 dev (T2 revised), P1 general 1001-1003, Far challenge 2001-2003 (Near and Far)",
+  "status": "development and diagnosis only; the 5 Far challenge cases shaped R2-A, so their results are never reported as independent performance"
+ },
+ "metrics": {
+  "allContextCoverage": "context-necessary cases whose gold context is entirely inside the condition's context / context-necessary cases",
+  "recoveredFromA0Miss": "cases not fully covered by S0 but fully covered by the condition / cases not fully covered by S0",
+  "meanGoldFractionCovered": "per case share of gold segments inside the context, averaged",
+  "cost": "per case added segments and added text code points over S0, mean and max; cases whose expanded window would exceed the page input limit (24000 minus 256 code points by DialogueReadingPage.inputCodePoints) are counted, not dropped",
+  "breakdown": "per condition, per stratum (EDGE, INTERIOR), per video and per Far type (A preview, B page boundary, C long-range reference) of the S0 miss",
+  "notInThisRun": "reference-label agreement with the judging model on each condition is a later, separate run"
+ },
+ "expectedYield": "random P1 targets needed context 3/90; EDGE targets may yield few A0 misses; a small count is a valid result"
+}
