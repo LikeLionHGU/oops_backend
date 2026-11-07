@@ -1,0 +1,59 @@
+{
+ "rulesVersion": "j1-baseline-v1",
+ "questions": {
+  "Q1": "How well does the service judge under the production condition (A0-T) agree with human-reviewed reference labels: misses, false alarms, abstentions?",
+  "Q2": "Of the A0-T errors, how many are explained by missing context (A4-T Oracle correct) and how many remain with full context (A4-T also wrong)?",
+  "auxiliary": "T0 versus A0-T shows what the A0 context adds"
+ },
+ "frozenBefore": "reading any transcript text of a J1 video, labelling, human review or running the service judge; results never feed back into these rules",
+ "data": {
+  "videos": "3 new long Korean multi-speaker videos from channels not used in P0, P1, the Far challenge set, R2-A or R2-B, chosen at video level before reading transcripts; same Groq STT path (tools/service_stt_transcript.py); transcripts frozen",
+  "localVideoIds": "5001, 5002, 5003",
+  "labelVersion": "j1-baseline-20261107",
+  "layers": {
+   "RISK_NOMINATED": {
+    "instructions": "docs/experiments/label-instructions/Risk-nomination-v1.md (SHA-256 6fcbbfdcfbf65f9c0327629172305b3fe40b9c8da08add2c354c6b62b949f769)",
+    "tool": "tools/far_nominations.py --role RISK_NOMINATOR, gpt-6-luna, reasoning_effort high, JSON mode",
+    "budget": "at most 20 per video, one call per video, no reruns; the nominator sees the frozen transcript only"
+   },
+   "RANDOM": {
+    "rule": "j1-random-v1 in tools/j1_targets.py: segments with at least 2 Hangul, Latin or digit characters, in transcript order, split into 20 contiguous blocks (block i = floor(i*n/20) .. floor((i+1)*n/20)-1), one pick per block with random.Random(int(sha256(transcriptFileSha256 + ':j1-random-v1')[:16], 16)).randrange",
+    "overlap": "a random pick that is also nominated stays in RISK_NOMINATED and is dropped from RANDOM without refill; the overlap count is reported"
+   }
+  },
+  "stopRule": "evaluate exactly this budget (at most 120 cases); report the counts that occur; never relax the rules to reach a target count; never redraw, swap or drop a target"
+ },
+ "referenceLabels": {
+  "aiDraft": "tools/ai_labels.py with T1 v2 (SHA-256 542d826fd9814a24caef67d09721eb4d49cc7cb689baca6bc546e655f4346da1), Topic and T2; labellers never see layers, nomination reasons or the study purpose",
+  "humanReviewScope": "j1-review-sample-v1 in tools/j1_targets.py: every case whose AI T2 is REVIEW_REQUIRED or UNCERTAIN, every invalid AI label, every RISK_NOMINATED case, and per video 10 RANDOM cases with AI PASS drawn by random.Random(int(sha256(transcriptFileSha256 + ':j1-review-sample-v1')[:16], 16)).sample over those cases in transcript order",
+  "blindStep": "the reviewer sees the review sheet (target, transcript window of 120 s either side, full transcript on request) and never the AI decision, AI context, layer or nomination reason; records humanDecision PASS | REVIEW_REQUIRED | UNCERTAIN, contextSegmentIds and evidenceSegmentIds",
+  "adjudication": "where the blind human decision differs from the AI T2 decision, the reviewer then reads the AI rationale and sets the final label with a written reason; blind human label, AI draft and final label are all kept",
+  "notReviewed": "RANDOM cases with AI PASS outside the review sample keep the AI label, are marked AI_ONLY_PASS and are reported apart from the primary metrics",
+  "freeze": "final labels are frozen before the service judge runs and are never changed after seeing its output"
+ },
+ "conditions": {
+  "T0": "target only: empty context (new TARGET_ONLY selector, to be added to ContextExperimentTrial before the run); named T0 to avoid the P0 meaning of C0",
+  "A0_T": "production reading page (DialoguePageContextSelector, revision 2026-10-25-reading-page-1)",
+  "A4_T": "final-label context plus evidence minus target (OracleContextSelector); diagnostic, not a production condition",
+  "runner": "ContextExperimentRunner with runExperimental; visual stage, router and casebook null",
+  "repeats": 3,
+  "costCapUsd": 15,
+  "costCheck": "measure the cost on the first 5 cases of video 5001 under all three conditions; if the projected total exceeds the cap, stop and ask before continuing"
+ },
+ "metrics": {
+  "binary": "final REVIEW_REQUIRED -> RISK, PASS -> NO_RISK; final UNCERTAIN cases are left out of the primary metrics and counted",
+  "serverMapping": "REVIEW_REQUIRED -> RISK; PASS and NO_CANDIDATE -> NO_RISK; UNCERTAIN -> ABSTAIN; NOT_RETURNED, CALL_FAILED, REJECTED, CONFLICT, NOT_SELECTED -> NOT_EVALUATED; ABSTAIN and NOT_EVALUATED count as wrong",
+  "perCondition": "miss rate (RISK judged NO_RISK), false-alarm rate (NO_RISK judged RISK), abstain rate, not-evaluated rate, coverage, selective accuracy; per-case accuracy over repeats first; video-cluster percentile bootstrap 95% CI with a fixed seed; paired condition differences on the same resamples",
+  "layers": "RISK_NOMINATED and RANDOM always reported apart; any pooled figure is labelled a risk-oversampled sample, not a production average",
+  "errorBreakdown": "each A0-T error case (majority of repeats wrong) is MISSING_CONTEXT when A4-T is right on the majority of repeats, otherwise JUDGMENT_ERROR",
+  "judgmentErrorCategories": {
+   "RISK_INTERPRETATION": "the model read the meaning or intent of the utterance differently from the final label (joke, quotation, irony, target of the remark)",
+   "GUIDELINE_BOUNDARY": "the model and the final label agree on the meaning but place it on different sides of the review threshold",
+   "STT_QUALITY": "a transcription error changes the meaning the model judged",
+   "OTHER": "none of the above; the reason is written down"
+  },
+  "categoryAssignment": "the human reviewer assigns one category per JUDGMENT_ERROR case after the run, reading the model output; categories are descriptive and never change labels or metrics",
+  "emptyDenominators": "N/A with counts; percentages always with counts",
+  "humanAiAgreement": "blind human decision versus AI T2 decision on the reviewed cases, reported with counts"
+ }
+}

@@ -30,6 +30,14 @@ class CheckNominationsTests(unittest.TestCase):
                           "NOMINATION_SELF_CONTEXT:stt-index-6", "NOMINATION_DUPLICATE:stt-index-6",
                           "NOMINATION_REASON:stt-index-6", "NOMINATION_NO_CONTEXT:stt-index-9"})
 
+    def test_risk_role_allows_empty_context_and_checks_its_own_header(self):
+        risk = doc(("stt-index-6", []), role="RISK_NOMINATOR", annotatorId="AI_M_RISK_NOMINATOR")
+        self.assertEqual(check_nominations(risk, SEGMENTS, 20, role="RISK_NOMINATOR"), [])
+        self.assertIn("NOMINATION_HEADER", check_nominations(risk, SEGMENTS, 20))
+        self.assertIn("NOMINATION_SELF_CONTEXT:stt-index-6",
+                      check_nominations(doc(("stt-index-6", ["stt-index-6"]), role="RISK_NOMINATOR"), SEGMENTS, 20,
+                                        role="RISK_NOMINATOR"))
+
 
 class NominateTests(unittest.TestCase):
     def setUp(self):
@@ -45,14 +53,15 @@ class NominateTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_with(self, output):
+    def run_with(self, output, role="FAR_NOMINATOR"):
         calls = []
 
         def model(system, user):
             calls.append((system, json.loads(user)))
             return json.dumps(output, ensure_ascii=False), {"id": "n1", "model": "m", "usage": {"prompt_tokens": 5}}
 
-        return nominate(self.transcript, 2001, "youtube-vid", "far-v", self.instructions, self.out, model, {"model": "m"}), calls
+        return nominate(self.transcript, 2001, "youtube-vid", "far-v", self.instructions, self.out, model, {"model": "m"},
+                        role=role), calls
 
     def test_freezes_nominations_and_builds_a_manifest_in_transcript_order(self):
         record, calls = self.run_with(doc(("stt-index-7", ["stt-index-1"]), ("stt-index-5", ["stt-index-0"])))
@@ -78,6 +87,11 @@ class NominateTests(unittest.TestCase):
         record, _ = self.run_with(doc())
         self.assertEqual((record["state"], record["nominations"]), ("COMPLETE_NO_CANDIDATES", 0))
         self.assertFalse((self.out / "manifest.json").exists())
+
+    def test_risk_role_sends_its_role_and_records_it(self):
+        record, calls = self.run_with(doc(("stt-index-3", []), role="RISK_NOMINATOR"), role="RISK_NOMINATOR")
+        self.assertEqual(calls[0][1]["role"], "RISK_NOMINATOR")
+        self.assertEqual((record["role"], record["state"]), ("RISK_NOMINATOR", "COMPLETE"))
 
 
 if __name__ == "__main__":

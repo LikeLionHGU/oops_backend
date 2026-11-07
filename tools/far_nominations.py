@@ -1,4 +1,4 @@
-"""Ask the nominator AI for Far challenge candidates in one frozen transcript, freeze them and write a manifest.
+"""Ask the nominator AI for Far challenge (or, with --role RISK_NOMINATOR, review-risk) candidates in one frozen transcript, freeze them and write a manifest.
 
 The nominator sees only the transcript. Its reasons and expected context IDs stay in nominations.json and are never
 given to the labellers; the manifest carries the target IDs only. Paid OpenAI call; run it yourself.
@@ -20,11 +20,12 @@ from ai_labels import _json_bytes, _write_once, instruction_body, openai_model, 
 ROOT = Path(__file__).resolve().parents[1]
 INSTRUCTIONS = ROOT / "docs/experiments/label-instructions/Far-nomination-v1.md"
 MAX_NOMINATIONS = 20
+ROLES = ("FAR_NOMINATOR", "RISK_NOMINATOR")
 
 
-def check_nominations(doc: dict, segments: list[dict], max_count: int) -> list[str]:
+def check_nominations(doc: dict, segments: list[dict], max_count: int, role: str = "FAR_NOMINATOR") -> list[str]:
     errors = []
-    if doc.get("role") != "FAR_NOMINATOR" or not doc.get("annotatorId") or doc.get("aiDraft") is not True:
+    if doc.get("role") != role or not doc.get("annotatorId") or doc.get("aiDraft") is not True:
         errors.append("NOMINATION_HEADER")
     nominations = doc.get("nominations", [])
     if len(nominations) > max_count:
@@ -39,7 +40,7 @@ def check_nominations(doc: dict, segments: list[dict], max_count: int) -> list[s
             errors.append(f"NOMINATION_UNKNOWN_ID:{target}")
         if target in context:
             errors.append(f"NOMINATION_SELF_CONTEXT:{target}")
-        if not context:
+        if not context and role == "FAR_NOMINATOR":
             errors.append(f"NOMINATION_NO_CONTEXT:{target}")
         if not str(n.get("reason") or "").strip():
             errors.append(f"NOMINATION_REASON:{target}")
@@ -47,13 +48,13 @@ def check_nominations(doc: dict, segments: list[dict], max_count: int) -> list[s
 
 
 def nominate(transcript: Path, video_id: int, cluster_id: str, label_version: str, instructions: Path, out: Path,
-             model, settings: dict) -> dict:
+             model, settings: dict, role: str = "FAR_NOMINATOR") -> dict:
     out.mkdir()
     (out / "raw").mkdir()
     segments = json.loads(transcript.read_text(encoding="utf-8"))["segments"]
-    packet_bytes = _json_bytes({"role": "FAR_NOMINATOR", "videos": [{"videoId": video_id, "segments": segments}]})
+    packet_bytes = _json_bytes({"role": role, "videos": [{"videoId": video_id, "segments": segments}]})
     system = instruction_body(instructions.read_text(encoding="utf-8"))
-    record = {"schemaVersion": "far-nominations-run-1", "aiDraft": True, "isGold": False, "videoId": video_id,
+    record = {"schemaVersion": "far-nominations-run-1", "aiDraft": True, "isGold": False, "role": role, "videoId": video_id,
               "clusterId": cluster_id, "settings": settings, "maxNominations": MAX_NOMINATIONS,
               "transcriptSha256": hashlib.sha256(transcript.read_bytes()).hexdigest(),
               "instructionsFileSha256": hashlib.sha256(instructions.read_bytes()).hexdigest(),
@@ -66,7 +67,7 @@ def nominate(transcript: Path, video_id: int, cluster_id: str, label_version: st
                           "systemFingerprint": meta.get("system_fingerprint"),
                           "elapsedSec": round(time.monotonic() - started, 3)}
         doc = parse_output(text)
-        if errors := check_nominations(doc, segments, MAX_NOMINATIONS):
+        if errors := check_nominations(doc, segments, MAX_NOMINATIONS, role):
             raise ValueError(f"Nomination check failed: {errors}")
         record["files"]["nominations.json"] = _write_once(out / "nominations.json", _json_bytes(doc))
         record["nominations"] = len(doc["nominations"])
@@ -98,12 +99,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--model", default="gpt-6-luna")
     parser.add_argument("--reasoning-effort", default="high")
     parser.add_argument("--instructions", type=Path, default=INSTRUCTIONS)
+    parser.add_argument("--role", choices=ROLES, default="FAR_NOMINATOR")
     args = parser.parse_args(argv)
     instructions = args.instructions.resolve()
     settings = {"model": args.model, "reasoningEffort": args.reasoning_effort, "responseFormat": "json_object",
-                "api": "chat.completions", "instructions": str(instructions.relative_to(ROOT))}
+                "api": "chat.completions", "instructions": str(instructions.relative_to(ROOT)), "role": args.role}
     record = nominate(args.transcript, args.video_id, args.cluster_id, args.label_version, instructions, args.output,
-                      openai_model(args.model, args.reasoning_effort), settings)
+                      openai_model(args.model, args.reasoning_effort), settings, args.role)
     print(json.dumps({k: record.get(k) for k in ("state", "nominations", "files")}, ensure_ascii=False))
 
 
