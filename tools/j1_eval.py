@@ -1,7 +1,7 @@
 """Score the J1 service runs against the frozen v2 reference labels (j1-baseline-v1 metrics).
 
 python3 tools/j1_eval.py EXPERIMENT_DIR NEW_OUTPUT.json
-Reads final-labels-v2.json, panel-comparison.json (layers) and service/main-{t0,a0t,a4t}-run/results.jsonl.
+Reads final-labels-v2.json, panel-comparison.json (layers) and service/main-t0-run-r2, main-a0t-run and main-a4t-run results.jsonl.
 Results are agreement with an AI-panel reference with a light human check, not accuracy against human ground truth.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ import json
 import random
 from pathlib import Path
 
-CONDITIONS = {"T0": "main-t0-run", "A0-T": "main-a0t-run", "A4-T": "main-a4t-run"}
+CONDITIONS = {"T0": "main-t0-run-r2", "A0-T": "main-a0t-run", "A4-T": "main-a4t-run"}
 PAIRS = [("A0-T", "T0"), ("A4-T", "A0-T")]
 RESAMPLES = 2000
 SEED = 20261107
