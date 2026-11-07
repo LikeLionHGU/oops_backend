@@ -44,6 +44,14 @@ class FrozenTranscriptTests(unittest.TestCase):
         self.assertEqual(report["beyondMedia"], ["stt-index-2"])
         self.assertFalse(report["valid"])
 
+    def test_whole_second_media_duration_allows_sub_second_overrun(self):
+        frozen = {"segments": [{"id": "stt-index-0", "startMs": 0, "endMs": 10_187, "text": "가"}]}
+        report = check_structure(frozen, media_duration_ms=10_000)
+        self.assertEqual((report["beyondMedia"], report["valid"]), ([], True))
+        self.assertEqual(report["tailWithoutSpeechMs"], -187)
+        frozen["segments"][0]["endMs"] = 11_000
+        self.assertEqual(check_structure(frozen, media_duration_ms=10_000)["beyondMedia"], ["stt-index-0"])
+
     def test_empty_stt_is_rejected(self):
         with self.assertRaises(ValueError):
             to_frozen_transcript(stt((0, 1000, "  ")))

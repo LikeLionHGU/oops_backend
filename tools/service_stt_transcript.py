@@ -33,13 +33,16 @@ def to_frozen_transcript(stt_result: dict) -> dict:
     return {"segments": [{"id": f"stt-index-{i}", **s} for i, s in enumerate(lines)]}
 
 
+MEDIA_DURATION_ROUNDING_MS = 1000
+
+
 def check_structure(frozen: dict, media_duration_ms: int) -> dict:
     segments = frozen["segments"]
     ids = [s["id"] for s in segments]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     invalid = [s["id"] for s in segments if s["startMs"] < 0 or s["endMs"] < s["startMs"]]
     non_sequential = [s["id"] for n, s in enumerate(segments) if s["id"] != f"stt-index-{n}"]
-    beyond = [s["id"] for s in segments if s["endMs"] > media_duration_ms]
+    beyond = [s["id"] for s in segments if s["endMs"] >= media_duration_ms + MEDIA_DURATION_ROUNDING_MS]
     overlaps = sum(1 for a, b in zip(segments, segments[1:]) if b["startMs"] < a["endMs"])
     last_end = max(s["endMs"] for s in segments)
     return {"segments": len(segments), "textCharacters": sum(len(s["text"]) for s in segments),
