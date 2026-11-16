@@ -108,7 +108,7 @@ public class AnalysisService {
     /** 검수 리포트. 명세 §5 */
     public AnalysisReportResponse getReport(Long videoId) {
         Video video = videoService.getEntity(videoId);
-        AnalysisJob job = latestJob(videoId);
+        AnalysisJob job = latestJobOf(videoId);
 
         if (job.getStatus() != AnalysisStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.ANALYSIS_NOT_COMPLETED,
@@ -244,6 +244,10 @@ public class AnalysisService {
 
     private AnalysisJob latestJob(Long videoId) {
         videoService.getEntity(videoId); // 영상 존재 확인 → VIDEO_NOT_FOUND
+        return latestJobOf(videoId);
+    }
+
+    private AnalysisJob latestJobOf(Long videoId) {
         return jobRepository.findTopByVideoIdOrderByIdDesc(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_ANALYSIS_STATE,
                         "아직 분석이 시작되지 않았습니다."));
