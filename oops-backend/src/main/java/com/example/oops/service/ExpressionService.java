@@ -15,21 +15,14 @@ import java.util.*;
 public class ExpressionService {
     private final ExpressionDictionary dictionary;
     private final ExpressionOccurrenceRepository repository;
-    @Transactional
-    public void replace(Video video, List<TranscriptSegment> segments) {
-        replace(video, segments, false);
-    }
     /** Snapshot IDs must not change when generated database IDs become available. */
     @Transactional
     public void replaceSnapshot(Video video, List<TranscriptSegment> segments) {
-        replace(video, segments, true);
-    }
-    private void replace(Video video, List<TranscriptSegment> segments, boolean snapshotIds) {
         repository.deleteByVideoId(video.getId());
         List<ExpressionOccurrence> hits = new ArrayList<>();
         for (int i=0; i<segments.size(); i++) {
             var segment=segments.get(i);
-            String id=ReviewInput.id(TimelineEventType.SPEECH, snapshotIds ? null : segment.getId(), i);
+            String id=ReviewInput.id(TimelineEventType.SPEECH, null, i);
             dictionary.detect(segment.getText()).forEach(h -> hits.add(new ExpressionOccurrence(video, segment, id, h)));
         }
         repository.saveAll(hits);

@@ -25,7 +25,7 @@ class ExpressionServiceTest {
             assertThat(h.getSegmentId()).isEqualTo("stt-index-0");
             return hits;
         });
-        service.replace(video, List.of(segment));
+        service.replaceSnapshot(video, List.of(segment));
         var order=inOrder(repo);
         order.verify(repo).deleteByVideoId(video.getId());
         order.verify(repo).saveAll(anyList());
