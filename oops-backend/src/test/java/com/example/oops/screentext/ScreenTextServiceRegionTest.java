@@ -23,7 +23,8 @@ class ScreenTextServiceRegionTest {
         var second = new AnalysisServerClient.OcrResponse.Item(0, 1000, "메뉴 9000원", 0.9, "/test/frame.jpg",
                 0.2, 0.2, 0.2, 0.1, "region-1", 1, 0);
         when(storage.frameDir(video.getId())).thenReturn(java.nio.file.Path.of("/test/frames/1"));
-        when(client.ocr(video, "/test/frames/1/jobs/11")).thenReturn(Optional.of(new AnalysisServerClient.OcrResponse(List.of(first, second), "regions-v1")));
+        when(client.ocr(video, "/test/frames/1/jobs/11")).thenReturn(Optional.of(new AnalysisServerClient.OcrResponse(List.of(first, second), "regions-v1",
+                new AnalysisServerClient.OcrProcessing("SUCCESS", 1, 1, 0))));
         when(storage.toStorageKey(java.nio.file.Path.of("/test/frame.jpg"))).thenReturn("frames/test.jpg");
         var texts = service.extract(video, 11L);
         assertThat(texts).extracting(ScreenText::getText).containsExactly(" 자막 ", "메뉴 9000원");

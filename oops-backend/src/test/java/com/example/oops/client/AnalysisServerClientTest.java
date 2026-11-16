@@ -76,7 +76,7 @@ class AnalysisServerClientTest {
             server.verify();
         }
     }
-    @Test void malformedOrMissingOcrPayloadIsFailedAndLegacyPayloadIsPartial() {
+    @Test void malformedOrMissingOcrPayloadIsFailed() {
         for (String body : java.util.List.of("{}", "{\"items\":null}",
                 "{\"items\":[],\"processing\":{\"status\":\"SUCCESS\",\"totalFrames\":2,\"successfulFrames\":1,\"failedFrames\":1}}",
                 "{\"items\":[],\"formatVersion\":\"regions-v1\"}")) {
@@ -92,20 +92,17 @@ class AnalysisServerClientTest {
             when(video.getStorageKey()).thenReturn("fixture");
             var client = new AnalysisServerClient(builder.build(), RestClient.create(),
                     new AnalysisServerProperties(null, null, 4.0), storage);
-            var result = client.ocr(video);
-            boolean legacy = body.contains("formatVersion");
-            assertThat(result.isPresent()).isEqualTo(legacy);
-            assertThat(client.lastOcrAssessment().orElseThrow().status())
-                    .isEqualTo(legacy ? AnalyzerStatus.PARTIAL : AnalyzerStatus.FAILED);
+            assertThat(client.ocr(video)).isEmpty();
+            assertThat(client.lastOcrAssessment().orElseThrow().status()).isEqualTo(AnalyzerStatus.FAILED);
             server.verify();
         }
     }
-    @Test void validAndLegacyFrameStatesAreNotConfused() {
+    @Test void frameStatesAreValidated() {
         assertThat(AnalysisServerClient.assessOcr(new AnalysisServerClient.OcrProcessing("SUCCESS", 2, 2, 0)).status())
                 .isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(AnalysisServerClient.assessOcr(new AnalysisServerClient.OcrProcessing("PARTIAL", 2, 1, 1)).status())
                 .isEqualTo(AnalyzerStatus.PARTIAL);
-        assertThat(AnalysisServerClient.assessOcr(null).status()).isEqualTo(AnalyzerStatus.PARTIAL);
+        assertThatThrownBy(() -> AnalysisServerClient.assessOcr(null)).isInstanceOf(IllegalArgumentException.class);
         for (var p : java.util.List.of(new AnalysisServerClient.OcrProcessing("SUCCESS", 2, 1, 1),
                 new AnalysisServerClient.OcrProcessing("SUCCESS", 2, 2, 1),
                 new AnalysisServerClient.OcrProcessing("FAILED", 2, 0, 2),

@@ -179,9 +179,7 @@ public class AnalysisServerClient {
     }
 
     static OcrAssessment assessOcr(OcrProcessing p) {
-        if (p == null) return new OcrAssessment(AnalyzerStatus.PARTIAL,
-                "이전 분석 서버 응답에는 프레임별 처리 상태가 없어 OCR 수행 완전성을 확인하지 못했습니다.");
-        if (p.totalFrames() == null || p.successfulFrames() == null || p.failedFrames() == null
+        if (p == null || p.totalFrames() == null || p.successfulFrames() == null || p.failedFrames() == null
                 || p.totalFrames() <= 0 || p.successfulFrames() <= 0 || p.failedFrames() < 0
                 || (long) p.successfulFrames() + p.failedFrames() != p.totalFrames()
                 || !(p.failedFrames() == 0 ? "SUCCESS" : "PARTIAL").equals(p.status()))
@@ -238,14 +236,8 @@ public class AnalysisServerClient {
 
     public record OcrProcessing(String status, Integer totalFrames, Integer successfulFrames, Integer failedFrames) {}
     public record OcrResponse(List<Item> items, String formatVersion, OcrProcessing processing) {
-        public OcrResponse(List<Item> items) { this(items, null, null); }
-        public OcrResponse(List<Item> items, String formatVersion) { this(items, formatVersion, null); }
         public record Item(long startMs, long endMs, String text, Double confidence, String framePath,
                            Double boxX, Double boxY, Double boxWidth, Double boxHeight,
-                           String trackId, Integer observations, Integer slotTextChanges) {
-            public Item(long startMs, long endMs, String text, Double confidence, String framePath) {
-                this(startMs, endMs, text, confidence, framePath, null, null, null, null, null, null, null);
-            }
-        }
+                           String trackId, Integer observations, Integer slotTextChanges) {}
     }
 }

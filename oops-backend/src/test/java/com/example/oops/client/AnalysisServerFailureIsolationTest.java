@@ -25,7 +25,7 @@ class AnalysisServerFailureIsolationTest {
         var client=new AnalysisServerClient(rest, rest, new AnalysisServerProperties(null,null,null), storage);
         server.expect(requestTo("http://worker/transcribe")).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
                 .contentType(MediaType.APPLICATION_JSON).body("{\"detail\":\"STT unavailable\"}"));
-        server.expect(requestTo("http://worker/ocr")).andRespond(withSuccess("{\"items\":[]}",MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://worker/ocr")).andRespond(withSuccess("{\"items\":[],\"formatVersion\":\"regions-v1\",\"processing\":{\"status\":\"SUCCESS\",\"totalFrames\":1,\"successfulFrames\":1,\"failedFrames\":0}}",MediaType.APPLICATION_JSON));
         assertThat(client.transcribe(video)).isEmpty();
         assertThat(client.lastFailureDetail()).hasValue("STT unavailable");
         assertThat(client.ocr(video)).isPresent();
