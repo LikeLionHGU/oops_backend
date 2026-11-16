@@ -62,7 +62,7 @@ class CandidateRepairBudgetPipelineTest {
             return Optional.of(new VerificationResult(results));
         });
 
-        var result = run(client, context, 4);
+        var result = CandidateRuns.run(client, context, 4);
         var pipeline = result.diagnostics().candidatePipeline();
 
         assertThat(repairedAnchors).containsExactly("stt-index-0", "stt-index-2");

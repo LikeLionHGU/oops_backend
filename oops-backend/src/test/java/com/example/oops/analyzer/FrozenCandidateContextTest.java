@@ -22,7 +22,8 @@ class FrozenCandidateContextTest {
                 Optional.of(new VerificationResult(List.of(new Verification("candidate-1", repaired)))));
         var helper = new ContextExampleSelectionTest();
         var library = helper.library(helper.archive(2), 1, 3000, "");
-        var result = run(f.client, f.context("그 집은 조용하다"), 24, null, null, library);
+        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var systems = ArgumentCaptor.forClass(String.class);
         var requests = ArgumentCaptor.forClass(String.class);
         verify(f.client, times(2)).completeAsJson(systems.capture(), requests.capture(), eq(VerificationResult.class));
@@ -85,7 +86,7 @@ class FrozenCandidateContextTest {
             }
             return Optional.of(new VerificationResult(results));
         });
-        var pipeline = run(f.client, context, 24).diagnostics().candidatePipeline();
+        var pipeline = CandidateRuns.run(f.client, context, 24).diagnostics().candidatePipeline();
         assertThat(pipeline.candidates()).hasSize(2);
         assertThat(pipeline.verificationCalls()).isEqualTo(2);
         assertThat(pipeline.candidates().stream().map(c -> c.inputSnapshot().rawSha256()).distinct()).hasSize(2);

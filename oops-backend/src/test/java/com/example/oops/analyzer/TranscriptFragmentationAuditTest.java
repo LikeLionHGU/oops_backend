@@ -70,7 +70,8 @@ class TranscriptFragmentationAuditTest {
                     assertThat(system).contains(unit.path("normalContrasts").get(0).path("text").asText());
                     return Optional.of(new CandidateReviewEngine.Discovery(ids(source.segments()),List.of(),List.of(),false));
                 });
-        var result=CandidateReviewEngine.run(f.client,context,24,null,null,library);
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.diagnostics().candidatePipeline().discoveryCalls()).isOne();
         assertThat(result.diagnostics().candidatePipeline().contextSelections().get(0).exampleIds())
                 .containsExactly("podcast-dev#podcast-childhood-confrontation");
@@ -103,7 +104,7 @@ class TranscriptFragmentationAuditTest {
                     assertThat(request.has("expectedDecision")).isFalse();
                     return Optional.empty(); // Intentionally no fake semantic verdict.
                 });
-        var result=CandidateReviewEngine.run(f.client,context,24);
+        var result=CandidateRuns.run(f.client, context, 24);
         assertThat(result.diagnostics().candidatePipeline().invalidProposals()).isZero();
         assertThat(result.findings()).isEmpty();
         org.mockito.Mockito.verify(f.client).completeAsJson(org.mockito.ArgumentMatchers.anyString(),

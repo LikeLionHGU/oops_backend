@@ -80,7 +80,7 @@ class LinkedContrastContractTest {
                                 fixture.assessment("stt-index-0", "PASS", "그 집"))))),
                         Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                                 fixture.linkedPass("stt-index-0", "그 집", "stt-index-1", "직접 만들었어"))))));
-        var result = run(fixture.client, context, 24);
+        var result = CandidateRuns.run(fixture.client, context, 24);
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
         assertThat(result.diagnostics().segments()).anySatisfy(s ->
@@ -93,7 +93,7 @@ class LinkedContrastContractTest {
                 new Proposal("stt-index-0", "TARGET_TREATMENT", "선택지 연결 확인",
                         List.of(new Quote("stt-index-0", "그 집"), new Quote("stt-index-1", "직접 만들었어"))));
         fixture.verification(new Verification("candidate-1", fixture.assessment("stt-index-0", "PASS", "그 집")));
-        var result = run(fixture.client, context, 24);
+        var result = CandidateRuns.run(fixture.client, context, 24);
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
         assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isOne();

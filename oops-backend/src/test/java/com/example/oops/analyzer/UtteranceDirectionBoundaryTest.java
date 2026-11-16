@@ -57,7 +57,7 @@ class UtteranceDirectionBoundaryTest {
                 return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                         f.linkedPass(ids.get(0),boundary.speech().get(0),ids.get(1),boundary.speech().get(1))))));
             });
-            var result=run(f.client,context,24);
+            var result=CandidateRuns.run(f.client, context, 24);
             assertThat(result.status().name()).isEqualTo("SUCCESS");
             verify(f.client,times(1)).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
             assertThat(context.reviewInput().segments().stream().filter(s -> s.type()==com.example.oops.domain.TimelineEventType.SPEECH)

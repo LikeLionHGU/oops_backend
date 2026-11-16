@@ -124,8 +124,8 @@ class LocalDevelopmentBoundaryRetrievalTest {
         // Stop at the request boundary. No fabricated PASS/REVIEW response and no provider.
         when(fixture.client.completeAsJson(anyString(), anyString(), eq(CandidateReviewEngine.VerificationResult.class)))
                 .thenReturn(Optional.empty());
-        CandidateReviewEngine.run(fixture.client,
-                new AnalysisContext(fixture.video, ContentGenre.GENERAL, lines, List.of()), 24, null, null, library);
+        CandidateReviewEngine.run(fixture.client, new AnalysisContext(fixture.video, ContentGenre.GENERAL, lines, List.of()), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var system = ArgumentCaptor.forClass(String.class);
         var input = ArgumentCaptor.forClass(String.class);
         verify(fixture.client, times(1)).completeAsJson(system.capture(), input.capture(),

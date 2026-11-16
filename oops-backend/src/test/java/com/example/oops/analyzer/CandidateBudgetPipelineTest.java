@@ -49,7 +49,7 @@ class CandidateBudgetPipelineTest {
             return Optional.of(new VerificationResult(results));
         });
 
-        var result = run(client, context, 2);
+        var result = CandidateRuns.run(client, context, 2);
         var pipeline = result.diagnostics().candidatePipeline();
 
         assertThat(pipeline.budgetSkipped()).isEqualTo(3);

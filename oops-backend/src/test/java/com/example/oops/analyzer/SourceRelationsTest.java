@@ -24,7 +24,8 @@ class SourceRelationsTest {
     private TextReviewEngine.LlmDecision pass() {
         return f.linkedPass(IDS.get(2),context.transcript().get(2).getText(),IDS.get(0),context.transcript().get(0).getText());
     }
-    private TextReviewEngine.Result runRelation() { return run(f.client,context,24,null,null,null,null,0,true); }
+    private TextReviewEngine.Result runRelation() { return CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false)); }
 
     @Test void relationRolesAndRawReachVerifierWithoutHypothesisOrForcedWarning() {
         f.discovery(IDS,proposal(roles())); f.verification(new Verification("candidate-1",pass()));
@@ -51,7 +52,8 @@ class SourceRelationsTest {
                 Optional.of(new VerificationResult(List.of(new Verification("candidate-1",pass())))));
         var helper=new ContextExampleSelectionTest();
         var library=helper.library(helper.archive(2),1,3000,"");
-        var result=run(f.client,context,24,null,null,library,null,0,true);
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var requests=ArgumentCaptor.forClass(String.class); var systems=ArgumentCaptor.forClass(String.class);
         verify(f.client,times(2)).completeAsJson(systems.capture(),requests.capture(),eq(VerificationResult.class));
         var a=JSON.readTree(requests.getAllValues().get(0)); var b=JSON.readTree(requests.getAllValues().get(1));
@@ -67,7 +69,8 @@ class SourceRelationsTest {
             var fixture=new CandidateReviewEngineTest();
             fixture.discovery(IDS,enabled?new Proposal(IDS.get(2),"TARGET_TREATMENT","결론",List.of(new Quote(IDS.get(2),null)))
                     :proposal(roles()));
-            var result=run(fixture.client,context,24,null,null,null,null,0,enabled);
+            var result=CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, enabled, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
             assertThat(result.diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo("PROPOSAL_RELATION_MODE");
             assertThat(result.unassessedSegmentIds()).isNotEmpty();
@@ -77,14 +80,16 @@ class SourceRelationsTest {
         assertThat(runRelation().diagnostics().candidatePipeline().invalidProposals()).isEqualTo(1);
         var malformed=new CandidateReviewEngineTest();
         malformed.discovery(IDS,new Proposal("untrusted-anchor","untrusted-axis","혼입 결론",p.evidence(),roles()));
-        var trace=run(malformed.client,context,24,null,null,null,null,0,true).diagnostics().candidatePipeline().candidates().get(0);
+        var trace=CandidateReviewEngine.run(malformed.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false)).diagnostics().candidatePipeline().candidates().get(0);
         assertThat(trace.anchorId()).isNull(); assertThat(trace.axis()).isNull();
         assertThat(JSON.writeValueAsString(trace)).doesNotContain("untrusted-anchor","untrusted-axis","혼입 결론");
         var repairedLegacy=new CandidateReviewEngineTest();
         repairedLegacy.discovery(IDS,new Proposal(IDS.get(2),"TARGET_TREATMENT","기존 탐색 가설",List.of()));
         when(repairedLegacy.client.completeAsJson(anyString(),anyString(),eq(ProposalRepairResult.class)))
                 .thenReturn(Optional.of(new ProposalRepairResult(proposal(roles()))));
-        var legacyResult=run(repairedLegacy.client,context,24,null,null,null,null,0);
+        var legacyResult=CandidateReviewEngine.run(repairedLegacy.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(legacyResult.diagnostics().candidatePipeline().repairs().get(0).finalFailureCode()).isEqualTo("PROPOSAL_REPAIR_SCOPE_CHANGED");
         verify(repairedLegacy.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
     }
@@ -96,7 +101,8 @@ class SourceRelationsTest {
                 new SourceRelations(List.of(),List.of(),List.of(),List.of(IDS.get(0)),List.of()));
         for(var roles:bad) {
             var fixture=new CandidateReviewEngineTest(); fixture.discovery(IDS,proposal(roles));
-            var result=run(fixture.client,context,24,null,null,null,null,0,true);
+            var result=CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(result.diagnostics().candidatePipeline().invalidProposals()).isEqualTo(1);
             assertThat(result.diagnostics().candidatePipeline().discoveryRepairCalls()).isZero();
             assertThat(result.findings()).isEmpty();
@@ -138,7 +144,8 @@ class SourceRelationsTest {
         var ids=java.util.stream.IntStream.range(0,9).mapToObj(i->"stt-index-"+i).toList();
         var relations=new SourceRelations(ids.subList(0,8),List.of(),List.of(),List.of(ids.get(8)),List.of());
         fixture.discovery(ids,new Proposal(ids.get(8),"TARGET_TREATMENT",null,List.of(new Quote(ids.get(8),null)),relations));
-        var result=run(fixture.client,c,24,null,null,null,null,0,true);
+        var result=CandidateReviewEngine.run(fixture.client, c, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo("PROPOSAL_EVIDENCE_OVER_BUDGET");
         verify(fixture.client,never()).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
         f.discovery(IDS,new Proposal(IDS.get(2),"TARGET_TREATMENT",null,List.of(new Quote("invented",null)),roles()));
@@ -149,7 +156,8 @@ class SourceRelationsTest {
             var fixture=new CandidateReviewEngineTest();
             when(fixture.client.completeAsJson(anyString(),anyString(),eq(Discovery.class)))
                     .thenReturn(absent?Optional.empty():Optional.of(new Discovery(IDS,null,List.of(),false)));
-            var result=run(fixture.client,context,24,null,null,null,null,0,true);
+            var result=CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(result.unassessedSegmentIds()).containsAll(IDS);
             var trace=result.diagnostics().candidatePipeline().candidates().get(0);
             assertThat(trace.state()).isEqualTo("INVALID_DISCOVERY");
@@ -172,7 +180,8 @@ class SourceRelationsTest {
         });
         fixture.verification(new Verification("candidate-1",
                 fixture.linkedPass("stt-index-10", "대화 10", "stt-index-20", "대화 20")));
-        var result=run(fixture.client,c,24,null,null,null,null,0,true);
+        var result=CandidateReviewEngine.run(fixture.client, c, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.diagnostics().candidatePipeline().candidates()).singleElement()
                 .extracting(CandidateReviewDiagnostics.Trace::state).isEqualTo("PASS");
         verify(fixture.client).completeAsJson(anyString(),anyString(),eq(VerificationResult.class));
@@ -229,7 +238,8 @@ class SourceRelationsTest {
                     :fixture.assessment(p.anchorId(),"PASS",item.speech().get(anchor));
             // Deliberately mocked PASS even for development positives: this tests wire preservation, not labels.
             fixture.verification(new Verification("candidate-1",decision));
-            var result=run(fixture.client,inputContext,24,null,null,null,null,0,true);
+            var result=CandidateReviewEngine.run(fixture.client, inputContext, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             var requests=ArgumentCaptor.forClass(String.class);
             verify(fixture.client).completeAsJson(anyString(),requests.capture(),eq(VerificationResult.class));
             var body=JSON.readTree(requests.getValue());

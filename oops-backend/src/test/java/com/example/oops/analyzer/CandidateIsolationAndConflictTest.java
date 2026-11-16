@@ -14,7 +14,7 @@ class CandidateIsolationAndConflictTest {
         f.discovery(List.of("stt-index-0","stt-index-1"),f.proposal("stt-index-0","그 집"),
                 new Proposal("stt-index-1","INVALID_AXIS","잘못된 후보",List.of(new Quote("stt-index-1","다른 대화"))));
         f.verification(new Verification("candidate-1",f.assessment("stt-index-0","PASS","그 집")));
-        var result=run(f.client,context,24);
+        var result=CandidateRuns.run(f.client, context, 24);
         assertThat(result.status().name()).isEqualTo("PARTIAL");
         assertThat(result.unassessedSegmentIds()).containsExactly("stt-index-1");
         assertThat(result.diagnostics().segments()).anySatisfy(t -> {
@@ -34,10 +34,10 @@ class CandidateIsolationAndConflictTest {
         var malformed=new Proposal("stt-index-1","TARGET_TREATMENT","구형 가설",List.of(new Quote("stt-index-1","그 집")),
                 new SourceRelations(List.of(),List.of(),List.of(),List.of(),List.of()));
         f.discovery(ids,malformed);
-        var result=run(f.client,f.context("일반 설명","그 집은 조용하다"),24);
+        var result=CandidateRuns.run(f.client, f.context("일반 설명","그 집은 조용하다"), 24);
         assertThat(result.unassessedSegmentIds()).containsExactly("stt-index-1");
         reset(f.client);when(f.client.completeAsJson(anyString(),anyString(),eq(Discovery.class))).thenReturn(Optional.empty());
-        assertThat(run(f.client,f.context("일반 설명","그 집은 조용하다"),24).unassessedSegmentIds())
+        assertThat(CandidateRuns.run(f.client, f.context("일반 설명","그 집은 조용하다"), 24).unassessedSegmentIds())
                 .containsExactlyInAnyOrderElementsOf(ids);
     }
     @Test void sameEvidenceDivergenceIsDiagnosticOnlyAndDoesNotSuppressWarning() {
@@ -46,7 +46,7 @@ class CandidateIsolationAndConflictTest {
         f.discovery(List.of("stt-index-0"),p,new Proposal(p.anchorId(),p.axis(),"표현이 다른 검토 가설",p.evidence()));
         f.verification(new Verification("candidate-1",f.assessment(p.anchorId(),"PASS","그 집")),
                 new Verification("candidate-2",f.assessment(p.anchorId(),"REVIEW_REQUIRED","그 집")));
-        var result=run(f.client,context,24);
+        var result=CandidateRuns.run(f.client, context, 24);
         assertThat(result.findings()).hasSize(1);assertThat(result.status().name()).isEqualTo("SUCCESS");
         assertThat(result.diagnostics().candidatePipeline().decisionConflicts()).singleElement().satisfies(t -> {
             assertThat(t.kind()).isEqualTo("SAME_EVIDENCE_POTENTIAL_DISAGREEMENT");

@@ -32,7 +32,7 @@ class CandidateReferenceRepairTest {
                             .doesNotContain("invented-id", "없는 근거");
                     return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", good))));
                 });
-        var result = run(f.client, f.context("그 집은 조용하다"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24);
         assertThat(result.findings()).isEmpty();
         assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         var d = result.diagnostics().candidatePipeline();
@@ -48,7 +48,7 @@ class CandidateReferenceRepairTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", badId(f.assessment("stt-index-0", "PASS", "그 집"))));
-        var result = run(f.client, f.context("그 집은 조용하다"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24);
         assertThat(result.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairs()).singleElement()
@@ -62,7 +62,7 @@ class CandidateReferenceRepairTest {
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", badId(good))))),
                         Optional.of(new VerificationResult(List.of(new Verification("candidate-1", good)))));
-        var result = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
         assertThat(result.findings()).hasSize(1);
         assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isZero();
         assertThat(result.diagnostics().candidatePipeline().repairs()).singleElement()
@@ -77,7 +77,7 @@ class CandidateReferenceRepairTest {
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", badId(good))))),
                         Optional.of(new VerificationResult(List.of(new Verification("candidate-1", badId(good))))));
-        var result = run(f.client, f.context("그 집은 조용하다"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24);
         assertThat(result.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairs()).singleElement().satisfies(t -> {
@@ -89,13 +89,13 @@ class CandidateReferenceRepairTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "허구 인용")));
-        var r = run(f.client, f.context("그 집은 조용하다"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24);
         assertThat(r.diagnostics().candidatePipeline().repairCalls()).isZero();
         verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
         reset(f.client);
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class))).thenThrow(new IllegalStateException());
-        assertThat(run(f.client, f.context("그 집은 조용하다"), 24).diagnostics().candidatePipeline().repairCalls()).isZero();
+        assertThat(CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24).diagnostics().candidatePipeline().repairCalls()).isZero();
     }
     @Test void videoRepairBudgetIsTwoEvenWithThreeBrokenCandidates() {
         var f = new CandidateReviewEngineTest();
@@ -108,7 +108,7 @@ class CandidateReferenceRepairTest {
                     badId(f.assessment(n.get("anchorId").asText(), "PASS", "그 집"))));
             return Optional.of(new VerificationResult(responses));
         });
-        var r = run(f.client, f.context("그 집 첫째", "그 집 둘째", "그 집 셋째"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 첫째", "그 집 둘째", "그 집 셋째"), 24);
         var d = r.diagnostics().candidatePipeline();
         assertThat(d.repairCalls()).isEqualTo(2); assertThat(d.verificationFailed()).isEqualTo(3);
         assertThat(d.repairs()).hasSize(3).last().extracting(CandidateReviewDiagnostics.RepairTrace::state)
@@ -160,7 +160,8 @@ class CandidateReferenceRepairTest {
             }
             return Optional.of(new VerificationResult(results));
         });
-        var r = run(f.client, f.context(first, second), 24, null, null, helper.library(distinctExamples(), 1, 3000, ""));
+        var r = CandidateReviewEngine.run(f.client, f.context(first, second), new CandidateReviewEngine.RunServices(null, null, helper.library(distinctExamples(), 1, 3000, ""), null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var d = r.diagnostics().candidatePipeline();
         assertThat(d.verificationCalls()).isOne();
         assertThat(d.contextSelections()).singleElement().satisfies(s -> {

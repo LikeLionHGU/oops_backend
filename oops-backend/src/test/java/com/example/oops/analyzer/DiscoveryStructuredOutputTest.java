@@ -43,7 +43,7 @@ class DiscoveryStructuredOutputTest {
                 .andRespond(withSuccess(response(emptyDiscovery("[\"stt-index-0\"]","false"),"stop",null),MediaType.APPLICATION_JSON));
         var client=new OpenAiClient(builder.build(),properties(),true); client.beginVideo(1L);
         try {
-            var r=CandidateReviewEngine.run(client,new CandidateReviewEngineTest().context("이 상품은 파란색입니다"),24);
+            var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("이 상품은 파란색입니다"), 24);
             assertThat(r.status().name()).isEqualTo("SUCCESS"); assertThat(r.findings()).isEmpty(); assertThat(r.unassessedSegmentIds()).isEmpty();
             assertThat(client.videoUsage().calls()).isOne();
         } finally { client.endVideo(); }
@@ -56,7 +56,7 @@ class DiscoveryStructuredOutputTest {
                     .andRespond(withSuccess(response(emptyDiscovery("[\"stt-index-0\"]",value),"stop",null),MediaType.APPLICATION_JSON));
             var client=new OpenAiClient(builder.build(),properties(),true); client.beginVideo(1L);
             try {
-                var r=CandidateReviewEngine.run(client,new CandidateReviewEngineTest().context("이 상품은 파란색입니다"),24);
+                var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("이 상품은 파란색입니다"), 24);
                 assertThat(r.status().name()).isEqualTo("FAILED"); assertThat(r.unassessedSegmentIds()).containsExactly("stt-index-0");
                 assertThat(r.diagnostics().candidatePipeline().candidates()).anySatisfy(c -> {
                     assertThat(c.state()).isEqualTo("INVALID_DISCOVERY"); assertThat(c.failureCode()).isEqualTo("DISCOVERY_TRUNCATED_REQUIRED");
@@ -72,7 +72,7 @@ class DiscoveryStructuredOutputTest {
                 .andRespond(withSuccess(response(emptyDiscovery("[\"made-up-id\"]","false"),"stop",null),MediaType.APPLICATION_JSON));
         var client=new OpenAiClient(builder.build(),properties(),true); client.beginVideo(1L);
         try {
-            var r=CandidateReviewEngine.run(client,new CandidateReviewEngineTest().context("정상적인 상품 안내"),24);
+            var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("정상적인 상품 안내"), 24);
             assertThat(r.status().name()).isEqualTo("FAILED"); assertThat(r.unassessedSegmentIds()).isNotEmpty();
         } finally { client.endVideo(); }
         server.verify();
@@ -192,7 +192,7 @@ class DiscoveryStructuredOutputTest {
         server.expect(requestTo("https://example.invalid/chat/completions"))
                 .andRespond(withSuccess(response(content,"stop",null),MediaType.APPLICATION_JSON));
         var client=new OpenAiClient(builder.build(),properties(),true);
-        var r=CandidateReviewEngine.run(client,new CandidateReviewEngineTest().context("첫 발언","두 번째 발언"),24);
+        var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("첫 발언","두 번째 발언"), 24);
         assertThat(r.status().name()).isEqualTo("FAILED");
         assertThat(r.unassessedSegmentIds()).contains("stt-index-0","stt-index-1");
         assertThat(r.diagnostics().candidatePipeline().candidates()).anySatisfy(c ->
@@ -218,7 +218,7 @@ class DiscoveryStructuredOutputTest {
                 .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.primaryId.enum.length()").value(primary.size()))
                 .andExpect(jsonPath("$.response_format.json_schema.schema.$defs.rawId.enum.length()").value(DialogueReadingPage.raw(batches.get(1)).size()))
                 .andRespond(withSuccess(response(invalid,"stop",null),MediaType.APPLICATION_JSON));
-        var r=CandidateReviewEngine.run(new OpenAiClient(builder.build(),properties(),true),context,24);
+        var r=CandidateRuns.run(new OpenAiClient(builder.build(),properties(),true), context, 24);
         assertThat(r.status().name()).isEqualTo("PARTIAL");
         assertThat(r.unassessedSegmentIds()).contains(primary.get(0));
         assertThat(r.diagnostics().candidatePipeline().candidates()).anySatisfy(c ->

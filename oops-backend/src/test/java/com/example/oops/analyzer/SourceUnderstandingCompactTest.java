@@ -132,7 +132,8 @@ class SourceUnderstandingCompactTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",inputs.size()==1
                     ?new CandidateReferenceRepairTest().badId(d):d,null,inputs.size()==1?reading():old.reading()))));
         });
-        var result=run(f.client,old.context,24,null,null,null,null,0,false,null,new VerificationFeatures(false,false,true,RELATIONS_V3));
+        var result=CandidateReviewEngine.run(f.client, old.context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true,RELATIONS_V3), false));
         assertThat(inputs).hasSize(2);assertThat(inputs.get(0).path("raw")).isEqualTo(inputs.get(1).path("raw"));
         assertThat(inputs.get(0).path("candidates")).isEqualTo(inputs.get(1).path("candidates"));
         assertThat(result.status().name()).isEqualTo("PARTIAL");
@@ -143,7 +144,8 @@ class SourceUnderstandingCompactTest {
     @Test void missingCanonicalReadingStaysPartialWithoutAdditionalRepairOrSilentLegacyFallback() {
         f.discovery(List.of(old.before,old.anchor),old.candidate().proposal());
         f.verification(new Verification("candidate-1",f.assessment(old.anchor,"PASS","그 표현의 뜻을 설명합니다."),null,old.reading()));
-        var result=run(f.client,old.context,24,null,null,null,null,0,false,null,new VerificationFeatures(false,false,true,RELATIONS_V3));
+        var result=CandidateReviewEngine.run(f.client, old.context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true,RELATIONS_V3), false));
         assertThat(result.status().name()).isEqualTo("PARTIAL");assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isZero();
         assertThat(result.diagnostics().candidatePipeline().evidenceCounts().get(0).sourceUnderstanding().contractFailure())

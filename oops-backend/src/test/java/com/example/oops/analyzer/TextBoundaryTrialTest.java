@@ -32,7 +32,7 @@ class TextBoundaryTrialTest {
             var f=new CandidateReviewEngineTest();
             List<String> ids=new ArrayList<>(); for(int i=0;i<c.speech().size();i++) ids.add("stt-index-"+i);
             f.discovery(ids);
-            var result=CandidateReviewEngine.run(f.client,f.context(c.speech().toArray(String[]::new)),24);
+            var result=CandidateRuns.run(f.client, f.context(c.speech().toArray(String[]::new)), 24);
             assertThat(result.unassessedSegmentIds()).isEmpty();
             var request=org.mockito.ArgumentCaptor.forClass(String.class);
             verify(f.client).completeAsJson(anyString(),request.capture(),eq(CandidateReviewEngine.Discovery.class));

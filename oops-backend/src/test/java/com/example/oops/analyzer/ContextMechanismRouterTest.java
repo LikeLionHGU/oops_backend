@@ -142,7 +142,8 @@ class ContextMechanismRouterTest {
         var router = router(true,12);
         when(client.completeRoutingAsJson(anyString(),anyString(),eq(Response.class)))
                 .thenReturn(Optional.of(response("graphic-body-metaphor","stt-index-0")));
-        var result = run(f.client,f.context("다른 화제","그 집은 조용하다"),24,null,null,library,null,0,false,router);
+        var result = CandidateReviewEngine.run(f.client, f.context("다른 화제","그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, null, library, null, router),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(result.findings()).isEmpty();
         verify(library).select(any(),anyCollection(),eq("unit-candidate-1"),anyCollection());
@@ -160,10 +161,12 @@ class ContextMechanismRouterTest {
         var context = f.context("그 집은 조용하다");
         f.discovery(List.of("stt-index-0"),f.proposal("stt-index-0","그 집"));
         f.verification(new Verification("candidate-1",f.assessment("stt-index-0","PASS","그 집")));
-        var baseline = run(f.client,context,24,null,null,units,null,0,false);
+        var baseline = CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, units, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         when(client.completeRoutingAsJson(anyString(),anyString(),eq(Response.class))).thenThrow(new IllegalStateException());
         for (boolean enabled : List.of(false,true)) {
-            var result = run(f.client,context,24,null,null,units,null,0,false,router(enabled,12));
+            var result = CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, units, null, router(enabled,12)),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(result.status()).isEqualTo(baseline.status());
             assertThat(result.findings()).isEmpty();
             assertThat(result.diagnostics().candidatePipeline().contextSelections())
@@ -184,7 +187,8 @@ class ContextMechanismRouterTest {
             List<String> ids = new ArrayList<>(); json.path("primaryIds").forEach(id -> ids.add(id.asText()));
             return Optional.of(new Discovery(ids,List.of(),List.of(),false));
         });
-        var result = run(f.client,context,24,null,null,units,null,0,false,router(true,1));
+        var result = CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, units, null, router(true,1)),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var diagnostics = result.diagnostics().candidatePipeline();
         assertThat(diagnostics.discoveryCalls()).isEqualTo(batches);
         assertThat(diagnostics.exploredSegments()).isEqualTo(150);

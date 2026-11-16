@@ -18,7 +18,7 @@ class CandidateReviewEngineTest {
         var c = new AnalysisContext(video, ContentGenre.GENERAL,
                 List.of(new TranscriptSegment(video, 0, 1000, "정상 대화")), List.of(),
                 ReviewInput.from(List.of(new TranscriptSegment(video, 0, 1000, "정상 대화")), List.of()), () -> true);
-        assertThatThrownBy(() -> run(client, c, 24)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        assertThatThrownBy(() -> CandidateRuns.run(client, c, 24)).isInstanceOf(java.util.concurrent.CancellationException.class);
         verifyNoInteractions(client);
     }
     @Test void cancellationDuringDiscoveryPreventsTheFollowingVerificationRequest() {
@@ -31,7 +31,7 @@ class CandidateReviewEngineTest {
             stopped.set(true);
             return Optional.of(new Discovery(List.of("stt-index-0"), List.of(proposal("stt-index-0", "그 집")), List.of(), false));
         });
-        assertThatThrownBy(() -> run(client, c, 24)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        assertThatThrownBy(() -> CandidateRuns.run(client, c, 24)).isInstanceOf(java.util.concurrent.CancellationException.class);
         verify(client, times(1)).completeAsJson(anyString(), anyString(), eq(Discovery.class));
         verify(client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
@@ -53,7 +53,7 @@ class CandidateReviewEngineTest {
                     ? List.of(proposal("stt-index-21", "그 집")) : List.of(), List.of(), false));
         });
         verification(new Verification("candidate-1", assessment("stt-index-21", "PASS", "그 집")));
-        var result = run(client, c, 24);
+        var result = CandidateRuns.run(client, c, 24);
         var prompt = ArgumentCaptor.forClass(String.class);
         verify(client).completeAsJson(eq(VERIFICATION_PROMPT), prompt.capture(), eq(VerificationResult.class));
         assertThat(prompt.getValue()).contains("대화의 마지막 연결 발언");
@@ -78,7 +78,7 @@ class CandidateReviewEngineTest {
         assertThat(validate(candidate, d, c.reviewInput()).observation().details().target()).isEqualTo("방문한 마을");
         discovery(List.of("stt-index-0", "stt-index-1"), p);
         verification(new Verification("candidate-1", d));
-        var findings = run(client, c, 24).findings();
+        var findings = CandidateRuns.run(client, c, 24).findings();
         assertThat(findings).singleElement().extracting(RiskFinding::getTarget).isEqualTo("방문한 마을");
         assertThat(findings.get(0).validatedSupports()).singleElement().satisfies(s -> {
             assertThat(s.anchorId()).isEqualTo("stt-index-1");
@@ -142,7 +142,7 @@ class CandidateReviewEngineTest {
                 discovery(List.of("stt-index-0"), proposal("stt-index-0", "그 집"), second);
                 verification(v, v);
             } else when(client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class))).thenReturn(Optional.empty());
-            var r = run(client, context("그 집 이용자들이 수준이 낮아"), 24);
+            var r = CandidateRuns.run(client, context("그 집 이용자들이 수준이 낮아"), 24);
             assertThat(r.diagnostics().candidatePipeline().candidates().get(0).failureCode()).isEqualTo(kind);
             assertThat(r.findings()).isEmpty();
         }
@@ -158,7 +158,7 @@ class CandidateReviewEngineTest {
                         new LlmEvidence("stt-index-99", "허용되지 않은 줄", "CONTEXT")),
                 null, null, null, null);
         verification(new Verification("candidate-1", outside));
-        var r = run(client, context("그 집 이용자들"), 24);
+        var r = CandidateRuns.run(client, context("그 집 이용자들"), 24);
         var code = r.diagnostics().candidatePipeline().candidates().get(0).failureCode();
         assertThat(code).startsWith("DECISION_"); // UNKNOWN_EVIDENCE_ID / EVIDENCE_OUTSIDE_WINDOW family
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
@@ -202,7 +202,7 @@ class CandidateReviewEngineTest {
     }
     @Test void noCandidatesMeansExploredNotPassAndMakesNoVerificationCalls() {
         discovery(List.of("stt-index-0"));
-        var r = run(client, context("맛이 별로다"), 24);
+        var r = CandidateRuns.run(client, context("맛이 별로다"), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(r.findings()).isEmpty();
         assertThat(r.evaluations().get(0).observations()).isEmpty();
@@ -223,7 +223,7 @@ class CandidateReviewEngineTest {
         discovery(List.of("stt-index-0"), proposal("stt-index-0", "그 집"));
         verification(new Verification("candidate-1", assessment("stt-index-0", "REVIEW_REQUIRED", "그 집")));
         var c = context("그 집 이용자들은 수준이 낮다");
-        var r = run(client, c, 24);
+        var r = CandidateRuns.run(client, c, 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(r.findings()).hasSize(1);
         assertThat(r.findings().get(0).getStartMs()).isZero();
@@ -234,7 +234,7 @@ class CandidateReviewEngineTest {
     @Test void verifierCanRejectProposalInsteadOfAgreeing() {
         discovery(List.of("stt-index-0"), proposal("stt-index-0", "그 집"));
         verification(new Verification("candidate-1", assessment("stt-index-0", "PASS", "그 집")));
-        var r = run(client, context("그 집 음식은 내 취향이 아니다"), 24);
+        var r = CandidateRuns.run(client, context("그 집 음식은 내 취향이 아니다"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(r.diagnostics().candidatePipeline().rejected()).isOne();
@@ -244,7 +244,7 @@ class CandidateReviewEngineTest {
                 Optional.of(new Discovery(List.of("invented"), List.of(), List.of(), false)),
                 Optional.of(new Discovery(List.of("stt-index-0"), List.of(), List.of(), null)))) {
             when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(response);
-            var r = run(client, context("일반 대화"), 24);
+            var r = CandidateRuns.run(client, context("일반 대화"), 24);
             assertThat(r.status()).isEqualTo(AnalyzerStatus.FAILED);
             assertThat(r.unassessedSegmentIds()).containsExactly("stt-index-0");
             assertThat(r.notice()).isNotBlank();
@@ -252,14 +252,14 @@ class CandidateReviewEngineTest {
     }
     @Test void missingReviewedIdsProducePartialEvenWithEmptyCandidates() {
         discovery(List.of("stt-index-0"));
-        var r = run(client, context("첫 발언", "다음 발언"), 24);
+        var r = CandidateRuns.run(client, context("첫 발언", "다음 발언"), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(r.unassessedSegmentIds()).containsExactly("stt-index-1");
     }
     @Test void uncertainDiscoveryRetainsMissingInformationWithoutCard() {
         when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(new Discovery(
                 List.of("stt-index-0"), List.of(), List.of(new UncertainSegment("stt-index-0", List.of("깨진 전사의 실제 단어"))), false)));
-        var r = run(client, context("전사가 깨짐"), 24);
+        var r = CandidateRuns.run(client, context("전사가 깨짐"), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().segments().get(0).decisions().get(0).missingInformation()).containsExactly("깨진 전사의 실제 단어");
@@ -269,7 +269,7 @@ class CandidateReviewEngineTest {
                 new Proposal("stt-index-0", "UNKNOWN", "실제 문제를 설명하는 이유", List.of(new Quote("stt-index-0", "그 집"))),
                 new Proposal("stt-index-0", "TARGET_TREATMENT", "실제 문제를 설명하는 이유", List.of(new Quote("ocr-index-0", "화면에만 있는 글자"))))) {
             discovery(List.of("stt-index-0"), p);
-            var r = run(client, context("그 집 음식 이야기"), 24);
+            var r = CandidateRuns.run(client, context("그 집 음식 이야기"), 24);
             assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
             assertThat(r.findings()).isEmpty();
         }
@@ -282,7 +282,7 @@ class CandidateReviewEngineTest {
                 Optional.of(new VerificationResult(List.of(item, item))),
                 Optional.of(new VerificationResult(List.of(new Verification("invented", item.assessment())))))) {
             when(client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class))).thenReturn(response);
-            var r = run(client, context("그 집 음식 이야기"), 24);
+            var r = CandidateRuns.run(client, context("그 집 음식 이야기"), 24);
             assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
             assertThat(r.diagnostics().candidatePipeline().verificationFailed()).isOne();
         }
@@ -294,7 +294,7 @@ class CandidateReviewEngineTest {
         // Wrong anchor (stt-index-1 != candidate anchor stt-index-0): rejected as ASSESSMENT_SHAPE.
         for (var item : List.of(assessment("stt-index-1", "PASS", "그 집"))) {
             verification(new Verification("candidate-1", item));
-            var r = run(client, context("그 집 음식 이야기", "다른 줄"), 24);
+            var r = CandidateRuns.run(client, context("그 집 음식 이야기", "다른 줄"), 24);
             assertThat(r.findings()).isEmpty();
             assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         }
@@ -302,14 +302,14 @@ class CandidateReviewEngineTest {
     @Test void uncertaintyFromVerificationIsRetainedWithoutPublishing() {
         discovery(List.of("stt-index-0"), proposal("stt-index-0", "그 집"));
         verification(new Verification("candidate-1", assessment("stt-index-0", "UNCERTAIN", "그 집")));
-        var r = run(client, context("그 집 음식 이야기"), 24);
+        var r = CandidateRuns.run(client, context("그 집 음식 이야기"), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(r.diagnostics().segments().get(0).state()).isEqualTo(ReviewDiagnostics.State.UNCERTAIN);
     }
     @Test void candidateBudgetIsExplicitAndValidFindingsSurvive() {
         discovery(List.of("stt-index-0", "stt-index-1"), proposal("stt-index-0", "그 집"), proposal("stt-index-1", "그 집"));
         verification(new Verification("candidate-1", assessment("stt-index-0", "REVIEW_REQUIRED", "그 집")));
-        var r = run(client, context("그 집 수준이 낮다", "그 집 이용자를 조롱한다"), 1);
+        var r = CandidateRuns.run(client, context("그 집 수준이 낮다", "그 집 이용자를 조롱한다"), 1);
         assertThat(r.findings()).hasSize(1);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(r.diagnostics().candidatePipeline().budgetSkipped()).isOne();
@@ -319,7 +319,7 @@ class CandidateReviewEngineTest {
         var p = proposal("stt-index-0", "그 집");
         discovery(List.of("stt-index-0"), p, p);
         verification(new Verification("candidate-1", assessment("stt-index-0", "PASS", "그 집")));
-        var r = run(client, context("그 집 음식 이야기"), 24);
+        var r = CandidateRuns.run(client, context("그 집 음식 이야기"), 24);
         assertThat(r.diagnostics().candidatePipeline().duplicates()).isOne();
         assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
     }
@@ -327,7 +327,7 @@ class CandidateReviewEngineTest {
         var c = context("그 집 수준이 낮다", "관련 상황", "이야기 마무리");
         discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"), proposal("stt-index-0", "그 집"));
         verification(new Verification("candidate-1", assessment("stt-index-0", "PASS", "그 집")));
-        run(client, c, 24);
+        CandidateRuns.run(client, c, 24);
         var prompt = ArgumentCaptor.forClass(String.class);
         verify(client).completeAsJson(eq(DISCOVERY_PROMPT), prompt.capture(), eq(Discovery.class));
         assertThat(prompt.getValue()).doesNotContain("ocr-index", "화면에만", "confidence");
@@ -341,7 +341,7 @@ class CandidateReviewEngineTest {
     @Test void truncationNeverLooksLikeCompleteCoverage() {
         when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(new Discovery(
                 List.of("stt-index-0"), List.of(), List.of(), true)));
-        var r = run(client, context("보통 발언"), 24);
+        var r = CandidateRuns.run(client, context("보통 발언"), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         assertThat(r.notice()).contains("후보 잘림 1배치");
     }
@@ -361,7 +361,7 @@ class CandidateReviewEngineTest {
                     assessment(node.get("anchorId").asText(), "PASS", "그 집")));
             return Optional.of(new VerificationResult(verified));
         });
-        var r = run(client, context(lines), 24);
+        var r = CandidateRuns.run(client, context(lines), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(r.diagnostics().candidatePipeline().verificationCalls()).isEqualTo(2);
     }
@@ -373,7 +373,7 @@ class CandidateReviewEngineTest {
                 "음식의 감각을 구체적인 인간 신체 훼손 이미지로 설명하여 표현 수위 검토가 필요합니다.",
                 "GRAPHIC_METAPHOR", null, .8, null, null, List.of(), List.of(new LlmEvidence("stt-index-0", quote, "PRIMARY")),
                 null, null, null, "맛을 강조하는 과장 비유지만 사람의 살을 뜯는 구체적 이미지라는 별도 검토 이유가 남습니다.")));
-        var r = run(client, context(quote), 24);
+        var r = CandidateRuns.run(client, context(quote), 24);
         assertThat(r.findings()).hasSize(1);
         assertThat(r.findings().get(0).getTarget()).isNull();
         assertThat(r.findings().get(0).getScore()).isEqualTo(ReviewScorePolicy.cap(RiskCategory.GRAPHIC_METAPHOR, .8));
@@ -393,11 +393,11 @@ class CandidateReviewEngineTest {
                 null, null, null, null, null, List.of(), List.of(new LlmEvidence("stt-index-0", "그 집", "PRIMARY"),
                 new LlmEvidence("stt-index-1", "먼 구간", "CONTEXT")), null, null, null, null);
         verification(new Verification("candidate-1", invalid));
-        assertThat(run(client, c, 24).status()).isEqualTo(AnalyzerStatus.PARTIAL);
+        assertThat(CandidateRuns.run(client, c, 24).status()).isEqualTo(AnalyzerStatus.PARTIAL);
     }
     @Test void runtimeExceptionsBecomeExplicitIncompleteCoverage() {
         when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenThrow(new IllegalStateException("offline"));
-        assertThat(run(client, context("보통 대화"), 24).status()).isEqualTo(AnalyzerStatus.FAILED);
+        assertThat(CandidateRuns.run(client, context("보통 대화"), 24).status()).isEqualTo(AnalyzerStatus.FAILED);
     }
     @Test void characterRoutingIsDerivedMetadataAndDoesNotChangeStoredFinding() {
         assertThat(ReviewPerspective.from(RiskCategory.UNFAMILIAR_CONTEXT)).isEqualTo(ReviewPerspective.COMMUNITY_CONTEXT);
@@ -406,7 +406,7 @@ class CandidateReviewEngineTest {
         assertThat(ReviewPerspective.from(RiskCategory.CAPTION_MISMATCH)).isNull();
     }
     @Test void oversizedRawIsNotSilentlyTruncatedOrSentWithoutABound() {
-        var r = run(client, context("가".repeat(12001)), 24);
+        var r = CandidateRuns.run(client, context("가".repeat(12001)), 24);
         assertThat(r.status()).isEqualTo(AnalyzerStatus.FAILED);
         assertThat(r.unassessedSegmentIds()).containsExactly("stt-index-0");
         verifyNoInteractions(client);
@@ -422,7 +422,7 @@ class CandidateReviewEngineTest {
                 new LlmDecision(good.segmentId(), good.decision(), good.evidenceText(), good.reason(), good.category(),
                         good.target(), .6, null, null, List.of(), good.evidence(), good.targetType(), good.targetRelation(), good.targetReason(), null))) {
             verification(new Verification("candidate-1", bad));
-            var r = run(client, context("그 집 음식 이야기"), 24);
+            var r = CandidateRuns.run(client, context("그 집 음식 이야기"), 24);
             assertThat(r.findings()).isEmpty();
             assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
         }
@@ -438,7 +438,7 @@ class CandidateReviewEngineTest {
                         new LlmEvidence("stt-index-0", "B마을", "TARGET")),
                 "REGION", "CONTEXTUAL", "앞 발언의 B마을이 다음 동네 평가의 지시 대상이라는 연결을 제공합니다.",
                 "매장이 없어 아쉽다는 리뷰일 수 있지만 동네가 볼품없다는 가치 평가는 부재 사실만 설명하는 것과 다릅니다.")));
-        var r = run(client, context("B마을에는 가게가 없네", "그래서 볼품없는 동네라고 하는 거야"), 24);
+        var r = CandidateRuns.run(client, context("B마을에는 가게가 없네", "그래서 볼품없는 동네라고 하는 거야"), 24);
         assertThat(r.findings()).hasSize(1);
         assertThat(r.findings().get(0).getTarget()).isEqualTo("B마을");
         assertThat(r.findings().get(0).getCategory()).isEqualTo(RiskCategory.BELITTLEMENT);
@@ -450,7 +450,7 @@ class CandidateReviewEngineTest {
                 "매장 부재로 이동해야 하는 개인 불편을 설명하며 지역의 열등함이나 주민 조롱으로 연결하는 표현은 없습니다.",
                 null, null, null, null, null, List.of(), List.of(new LlmEvidence("stt-index-0", "매장이 없어서", "PRIMARY")),
                 null, null, null, "실제 이동의 불편을 설명하는 지역 정보로 읽힙니다.")));
-        assertThat(run(client, context("매장이 없어서 옆 마을로 가야 하니 불편하다"), 24).findings()).isEmpty();
+        assertThat(CandidateRuns.run(client, context("매장이 없어서 옆 마을로 가야 하니 불편하다"), 24).findings()).isEmpty();
     }
     @Test void linkedTargetPassCanGroundNormalReadingOnUnproposedLineInSameWindow() {
         var c = context("이 동네에 가게가 없네", "그래서 아쉬워", "집에서 직접 만들어 먹어요");
@@ -483,7 +483,7 @@ class CandidateReviewEngineTest {
             return Optional.of(new Discovery(ids, ids.contains("stt-index-10") ? List.of(proposal("stt-index-10", "그 집")) : List.of(), List.of(), false));
         });
         verification(new Verification("candidate-1", assessment("stt-index-10", "PASS", "그 집")));
-        var r = run(client, c, 24);
+        var r = CandidateRuns.run(client, c, 24);
         var prompt = ArgumentCaptor.forClass(String.class);
         verify(client).completeAsJson(eq(VERIFICATION_PROMPT), prompt.capture(), eq(VerificationResult.class));
         assertThat(prompt.getValue()).contains("주변 설명의 맥락을 보충하는 뒤 발언");
@@ -520,7 +520,7 @@ class CandidateReviewEngineTest {
                 .thenReturn(Optional.of(new Discovery(List.of("stt-index-0"), List.of(over), List.of(), false)));
         when(client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                 .thenReturn(Optional.of(new ProposalRepairResult(over)));
-        var pipeline = run(client, c, 24).diagnostics().candidatePipeline();
+        var pipeline = CandidateRuns.run(client, c, 24).diagnostics().candidatePipeline();
         assertThat(pipeline.invalidProposals()).isPositive();
         assertThat(pipeline.candidates()).anySatisfy(t -> {
             assertThat(t.state()).isEqualTo("INVALID_PROPOSAL");
@@ -536,7 +536,7 @@ class CandidateReviewEngineTest {
                 .thenReturn(Optional.of(new Discovery(List.of("stt-index-0"), List.of(empty), List.of(), false)));
         when(client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                 .thenReturn(Optional.of(new ProposalRepairResult(empty)));
-        var pipeline = run(client, c, 24).diagnostics().candidatePipeline();
+        var pipeline = CandidateRuns.run(client, c, 24).diagnostics().candidatePipeline();
         assertThat(pipeline.candidates()).anySatisfy(t -> {
             assertThat(t.state()).isEqualTo("INVALID_PROPOSAL");
             assertThat(t.failureCode()).isEqualTo("PROPOSAL_EVIDENCE_EMPTY");

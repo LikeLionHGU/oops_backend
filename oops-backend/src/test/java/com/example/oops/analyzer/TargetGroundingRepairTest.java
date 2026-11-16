@@ -38,7 +38,7 @@ class TargetGroundingRepairTest {
                     assertThat((String) invocation.getArgument(1)).contains("TARGET_EVIDENCE_REQUIRED");
                     return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", good))));
                 });
-        var result = run(f.client, input, 24);
+        var result = CandidateRuns.run(f.client, input, 24);
         assertThat(result.findings()).hasSize(1);
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
         assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isZero();
@@ -66,7 +66,7 @@ class TargetGroundingRepairTest {
                         return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                                 f.assessment("stt-index-0", decision, "그 집")))));
                     });
-            var result = run(f.client, input, 24);
+            var result = CandidateRuns.run(f.client, input, 24);
             assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
             assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isZero();
             assertThat(result.findings()).hasSize(decision.equals("REVIEW_REQUIRED") ? 1 : 0);
@@ -76,7 +76,7 @@ class TargetGroundingRepairTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), new Proposal(null, "TARGET_TREATMENT", "문맥 검토 가설",
                 List.of(new Quote("stt-index-0", "그 집"))));
-        var r = run(f.client, f.context("그 집 메뉴 이야기"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 메뉴 이야기"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement().satisfies(t -> {
             assertThat(t.anchorId()).isNull();
@@ -103,7 +103,7 @@ class TargetGroundingRepairTest {
                     return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                             f.assessment("stt-index-0", "PASS", "그 집")))));
                 });
-        var r = run(f.client, f.context("그 집 메뉴는 내 취향이 아니야"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 메뉴는 내 취향이 아니야"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement().satisfies(t -> {
             assertThat(t.initialFailureCode()).isEqualTo("TARGET_EVIDENCE_REQUIRED");
@@ -121,7 +121,7 @@ class TargetGroundingRepairTest {
             when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                     .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", bad)))),
                             Optional.of(new VerificationResult(List.of(new Verification("candidate-1", recover ? good : bad)))));
-            var r = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+            var r = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
             assertThat(r.findings()).hasSize(recover ? 1 : 0);
             assertThat(r.diagnostics().candidatePipeline().repairCalls()).isOne();
             assertThat(r.diagnostics().candidatePipeline().verificationFailed()).isEqualTo(recover ? 0 : 1);
@@ -138,7 +138,7 @@ class TargetGroundingRepairTest {
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", bad)))),
                         Optional.of(new VerificationResult(List.of(new Verification("candidate-1", bad)))));
-        var r = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement()
                 .extracting(CandidateReviewDiagnostics.RepairTrace::finalFailureCode).isEqualTo("TARGET_EVIDENCE_REQUIRED");
@@ -149,7 +149,7 @@ class TargetGroundingRepairTest {
         f.discovery(List.of("stt-index-0", "stt-index-1"),
                 new Proposal("stt-index-1", "TARGET_TREATMENT", "허용되지 않은 ID를 든 가설",
                         List.of(new Quote("stt-index-1", "메뉴"), new Quote("stt-index-99", "없는 줄"))));
-        var r = run(f.client, f.context("그 집 메뉴가 다양하지 않네", "오늘은 정해진 메뉴만 판매합니다"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 메뉴가 다양하지 않네", "오늘은 정해진 메뉴만 판매합니다"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement().satisfies(t -> {
             assertThat(t.anchorId()).isEqualTo("stt-index-1");
@@ -161,7 +161,7 @@ class TargetGroundingRepairTest {
     @Test void normalReviewAndSalesConditionsDoNotCreateRuleBasedCandidates() {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"));
-        var r = run(f.client, f.context("음식이 별로고 돈이 아까웠다", "메뉴에 특색이 없다", "오늘은 정해진 메뉴만 판매합니다"), 24);
+        var r = CandidateRuns.run(f.client, f.context("음식이 별로고 돈이 아까웠다", "메뉴에 특색이 없다", "오늘은 정해진 메뉴만 판매합니다"), 24);
         assertThat(r.findings()).isEmpty();
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
         assertThat(DISCOVERY_PROMPT).contains("평가와 뒤따르는 설명")
@@ -185,7 +185,8 @@ class TargetGroundingRepairTest {
                             repair ? good : missingTargetEvidence(f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집")),
                             List.of(new VisualContextReviewer.Observation("scene-0", "상점이 보인다")), "원문과 제공한 화면을 대조한다"));
                 });
-        var r = run(f.client, v.context(), 24, v.reviewer);
+        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().repairCalls()).isEqualTo(2);
         assertThat(r.diagnostics().candidatePipeline().verificationCalls()).isEqualTo(4);
@@ -210,7 +211,8 @@ class TargetGroundingRepairTest {
         when(f.client.completeWithImagesAsJson(anyString(), anyString(), anyList(), eq(VisualContextReviewer.Response.class)))
                 .thenReturn(Optional.of(new VisualContextReviewer.Response("candidate-3", bad,
                         List.of(new VisualContextReviewer.Observation("scene-0", "상점이 보인다")), "실제 화면과 발언 대조")));
-        var r = run(f.client, v.context(), 24, v.reviewer);
+        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var d = r.diagnostics().candidatePipeline();
         assertThat(r.findings()).isEmpty();
         assertThat(d.repairCalls()).isEqualTo(2);

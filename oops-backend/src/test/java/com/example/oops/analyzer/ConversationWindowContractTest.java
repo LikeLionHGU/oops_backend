@@ -25,7 +25,7 @@ class ConversationWindowContractTest {
             return Optional.of(new Discovery(ids, List.of(p), List.of(), false));
         });
         f.verification(new Verification("candidate-1", f.assessment(p.anchorId(), "PASS", "그 집")));
-        var result = run(f.client, new AnalysisContext(f.video, ContentGenre.GENERAL, lines, List.of()), 24);
+        var result = CandidateRuns.run(f.client, new AnalysisContext(f.video, ContentGenre.GENERAL, lines, List.of()), 24);
         var trace = result.diagnostics().candidatePipeline().candidates().get(0);
         assertThat(trace.contextSegmentIds()).hasSize(19).contains("stt-index-0", "stt-index-18");
         assertThat(trace.contextLimited()).isFalse();

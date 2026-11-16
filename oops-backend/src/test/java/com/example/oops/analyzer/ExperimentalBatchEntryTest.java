@@ -137,7 +137,7 @@ class ExperimentalBatchEntryTest {
     @Test void productionDiagnosticsStayFreeOfRepairUsage() {
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
-        var pipeline = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), 24).diagnostics().candidatePipeline();
+        var pipeline = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24).diagnostics().candidatePipeline();
         assertThat(pipeline.repairUsage()).isNull();
         assertThat(JsonMapper.builder().build().writeValueAsString(pipeline)).doesNotContain("repairUsage");
     }
@@ -199,7 +199,7 @@ class ExperimentalBatchEntryTest {
 
     @Test void productionRunRequestsStayFreeOfExperimentalRendering() {
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"));
-        CandidateReviewEngine.run(f.client, farContext(), 24);
+        CandidateRuns.run(f.client, farContext(), 24);
         var system = org.mockito.ArgumentCaptor.forClass(String.class);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(f.client, atLeastOnce()).completeAsJson(system.capture(), input.capture(), eq(Discovery.class));

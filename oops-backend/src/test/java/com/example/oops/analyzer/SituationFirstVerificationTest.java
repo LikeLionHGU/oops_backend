@@ -36,7 +36,8 @@ class SituationFirstVerificationTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
-        var result = run(f.client, f.context("그 집은 조용하다"), 24, null, null, null, null, 0, false, null, false, enabled);
+        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,enabled,false), false));
         assertThat(result.status().name()).isEqualTo("SUCCESS");
         assertThat(result.diagnostics().candidatePipeline().revision())
                 .isEqualTo(REVISION + (enabled ? "+" + SituationFirstVerification.VERSION : ""));
@@ -73,7 +74,8 @@ class SituationFirstVerificationTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", inputs.size() == 1
                     ? new CandidateReferenceRepairTest().badId(good) : good))));
         });
-        var result = run(f.client, f.context("그 집은 조용하다"), 24, null, null, null, null, 0, false, null, false, true);
+        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,true,false), false));
         assertThat(result.status().name()).isEqualTo("SUCCESS");
         assertThat(inputs).hasSize(2);
         assertThat(inputs.get(0).path("raw")).isEqualTo(inputs.get(1).path("raw"));
@@ -105,7 +107,8 @@ class SituationFirstVerificationTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", f.expression("SEXUAL"),
                     f.basis("TARGET_TREATMENT")))));
         });
-        var result = run(f.f.client, f.context, 24, null, null, null, null, 0, false, null, true, true);
+        var result = CandidateReviewEngine.run(f.f.client, f.context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(true,true,false), false));
         assertThat(result.status().name()).isEqualTo("PARTIAL");
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().candidates()).anySatisfy(t ->

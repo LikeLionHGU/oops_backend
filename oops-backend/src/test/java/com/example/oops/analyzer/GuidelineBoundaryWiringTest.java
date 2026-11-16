@@ -84,7 +84,8 @@ class GuidelineBoundaryWiringTest {
                 return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                         fixture.assessment("stt-index-0", "PASS", item.speech().get(0))))));
             });
-            var result = run(fixture.client, context, 24, null, null, after, null, 0);
+            var result = CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, null, after, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(systems).hasSize(1).allSatisfy(system -> assertThat(system).contains(BOUNDARY));
             assertThat(systems.get(0).substring(systems.get(0).indexOf("contextReference=")))
                     .isEqualTo(discoverySystems.get(0).substring(discoverySystems.get(0).indexOf("contextReference=")));

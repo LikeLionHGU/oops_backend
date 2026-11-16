@@ -123,7 +123,7 @@ class TargetContractDiagnosticsTest {
                                     new LlmEvidence("stt-index-0", null, "PRIMARY"),
                                     new LlmEvidence("stt-index-0", null, "TARGET")))))));
                 });
-        var result = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
         var counts = result.diagnostics().candidatePipeline().evidenceCounts();
         assertThat(counts).hasSize(2);
         assertThat(counts.get(0).targetContract().failureDetail()).isEqualTo("TARGET_ROLE_MISSING");

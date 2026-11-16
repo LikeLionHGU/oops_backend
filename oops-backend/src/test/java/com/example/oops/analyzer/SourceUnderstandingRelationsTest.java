@@ -155,7 +155,8 @@ class SourceUnderstandingRelationsTest {
     @Test void missingV2RelationsRemainPartialWithoutFallbackAndWithoutNewRepairCall() {
         f.discovery(List.of(before,anchor),candidate().proposal());
         f.verification(new Verification("candidate-1",f.assessment(anchor,"PASS","그 표현의 뜻을 설명합니다."),null,new SourceUnderstanding(reading().acts())));
-        var result=run(f.client,context,24,null,null,null,null,0,false,null,new VerificationFeatures(false,false,true,RELATIONS_V2));
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true,RELATIONS_V2), false));
         assertThat(result.status().name()).isEqualTo("PARTIAL");assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isZero();
         assertThat(result.diagnostics().candidatePipeline().evidenceCounts().get(0).sourceUnderstanding().contractFailure())
@@ -170,7 +171,8 @@ class SourceUnderstandingRelationsTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",inputs.size()==1
                     ?new CandidateReferenceRepairTest().badId(good):good,null,inputs.size()==1?reading():new SourceUnderstanding(reading().acts())))));
         });
-        var result=run(f.client,context,24,null,null,null,null,0,false,null,new VerificationFeatures(false,false,true,RELATIONS_V2));
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true,RELATIONS_V2), false));
         assertThat(inputs).hasSize(2);assertThat(inputs.get(0).path("raw")).isEqualTo(inputs.get(1).path("raw"));
         assertThat(inputs.get(0).path("candidates")).isEqualTo(inputs.get(1).path("candidates"));
         assertThat(result.status().name()).isEqualTo("PARTIAL");

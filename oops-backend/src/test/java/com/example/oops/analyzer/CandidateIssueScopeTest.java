@@ -32,7 +32,7 @@ class CandidateIssueScopeTest {
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"), proposal);
         f.verification(new Verification("candidate-1", f.linkedPass("stt-index-1", "개인 정보를 묻는 문장입니다.",
                 "stt-index-0", "그 문구가 무슨 뜻인가요?")));
-        var result = run(f.client, context, 24);
+        var result = CandidateRuns.run(f.client, context, 24);
         var input = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(f.client).completeAsJson(eq(VERIFICATION_PROMPT), input.capture(), eq(VerificationResult.class));
         assertThat(input.getValue()).contains("그 문구가 무슨 뜻인가요?", "다른 이야기로 넘어갈게요.",

@@ -98,7 +98,8 @@ class FinalReviewBasisContractTest {
         assertThatThrownBy(() -> FinalReviewBasisContract.prompt(FinalReviewBasisContract.prompt(verificationPrompt(0))+frozenReference))
                 .isInstanceOf(IllegalArgumentException.class);
     }
-    TextReviewEngine.Result runEnabled(AnalysisContext c) { return run(f.client,c,24,null,null,null,null,0,false,null,true); }
+    TextReviewEngine.Result runEnabled(AnalysisContext c) { return CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(true,false,false), false)); }
     @Test void enabledPipelinePublishesIndependentExpressionAndRecordsBothAxes() {
         var c=f.context(text);f.discovery(List.of(id),proposal("TARGET_TREATMENT"));
         when(f.client.completeAsJson(anyString(),anyString(),eq(VerificationResult.class))).thenAnswer(call -> {
@@ -164,7 +165,8 @@ class FinalReviewBasisContractTest {
             assertThat(body.at("/candidates/0/sourceRelations")).isEqualTo(JSON.valueToTree(roles));
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",expression("SEXUAL"),basis("EXPRESSION_CONTENT")))));
         });
-        assertThat(run(f.client,f.context(text),24,null,null,null,null,0,true,null,true).status().name()).isEqualTo("SUCCESS");
+        assertThat(CandidateReviewEngine.run(f.client, f.context(text), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(true,false,false), false)).status().name()).isEqualTo("SUCCESS");
     }
     @Test void analyzerOptInActuallyReachesNewEngineContract() {
         f.discovery(List.of(id),proposal("TARGET_TREATMENT"));
@@ -181,7 +183,8 @@ class FinalReviewBasisContractTest {
                 requests.add(JSON.readTree((String)call.getArgument(1)));
                 return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",x.assessment(id,"PASS",text)))));
             });
-            assertThat(run(x.client,x.context(text),24,null,null,null,null,0,false,null,enabled).status().name()).isEqualTo("SUCCESS");
+            assertThat(CandidateReviewEngine.run(x.client, x.context(text), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(enabled,false,false), false)).status().name()).isEqualTo("SUCCESS");
         }
         ((tools.jackson.databind.node.ObjectNode)requests.get(1)).remove("verificationContract");
         assertThat(requests.get(1)).isEqualTo(requests.get(0));

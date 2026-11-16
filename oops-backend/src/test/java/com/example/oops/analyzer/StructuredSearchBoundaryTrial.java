@@ -201,8 +201,9 @@ public final class StructuredSearchBoundaryTrial {
             if(outputComparison(p)) {
                 var c=p.conditions().stream().filter(x -> x.id().equals("normal-underwear-product")).findFirst().orElseThrow();
                 strictClient.beginVideo(0L);strictClient.beginAnalyzer("schema-preflight");
-                var probe=CandidateReviewEngine.run(strictClient,MechanismRoutingTrial.context(
-                        new MechanismRoutingTrial.Condition(c.id(),c.labelStatus(),c.raw())),24,null,null,on,null,0,false,null);
+                var probe=CandidateReviewEngine.run(strictClient, MechanismRoutingTrial.context(
+                        new MechanismRoutingTrial.Condition(c.id(),c.labelStatus(),c.raw())), new CandidateReviewEngine.RunServices(null, null, on, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
                 var usage=strictClient.videoUsage();cost+=usage.costUsd();
                 boolean ready=probe.status().name().equals("SUCCESS") && probe.findings().isEmpty() && probe.unassessedSegmentIds().isEmpty()
                         && strictClient.failureCount()==0 && usage.calls()==strictClient.calls.size() && !budget.exhausted;
@@ -218,8 +219,8 @@ public final class StructuredSearchBoundaryTrial {
                 client.calls.clear(); client.beginVideo(0L); client.beginAnalyzer("structured-search-boundary");
                 long started = System.nanoTime();
                 var condition = new MechanismRoutingTrial.Condition(c.id(),c.labelStatus(),c.raw());
-                var result = CandidateReviewEngine.run(client,MechanismRoutingTrial.context(condition),24,
-                        null,null,searchEnabled(p,arm)?on:off,null,0,false,null);
+                var result = CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), new CandidateReviewEngine.RunServices(null, null, searchEnabled(p,arm)?on:off, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
                 var usage = client.videoUsage(); cost+=usage.costUsd();
                 var row = new LinkedHashMap<String,Object>(); row.put("caseId",c.id()); row.put("arm",arm); row.put("repeat",repeat);
                 row.put("labelStatus",c.labelStatus()); row.put("expectedDecision",c.expectedDecision()); row.put("status",result.status());

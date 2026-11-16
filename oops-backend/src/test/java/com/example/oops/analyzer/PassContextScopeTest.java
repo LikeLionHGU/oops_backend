@@ -57,7 +57,7 @@ class PassContextScopeTest {
     @Test void productionUsesNewScopeWithoutRepairOrExtraDiscovery() {
         f.discovery(List.of("stt-index-0","stt-index-1","stt-index-2"),proposal);
         f.verification(new Verification("candidate-1",pass("stt-index-0")));
-        var result=run(f.client,context,24);
+        var result=CandidateRuns.run(f.client, context, 24);
         assertThat(result.status().name()).isEqualTo("SUCCESS");assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isZero();
         var input=org.mockito.ArgumentCaptor.forClass(String.class);
@@ -75,7 +75,7 @@ class PassContextScopeTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",requests.size()==1
                     ?f.assessment("stt-index-1","PASS","その言葉は引用です"):pass("stt-index-0")))));
         });
-        var result=run(f.client,context,24);
+        var result=CandidateRuns.run(f.client, context, 24);
         assertThat(result.status().name()).isEqualTo("SUCCESS");assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
         assertThat(requests).hasSize(2);assertThat(requests.get(0).path("raw")).isEqualTo(requests.get(1).path("raw"));

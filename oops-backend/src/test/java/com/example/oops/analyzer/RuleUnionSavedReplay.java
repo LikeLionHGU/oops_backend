@@ -90,8 +90,8 @@ public final class RuleUnionSavedReplay {
         check(matches.size()==1 && Set.of("OFF","ON").contains(row.path("arm").asText()),"Known frozen case/arm required");
         var tape=new Tape(row.path("calls"));var library=new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(plan.runtimeText()),
                 true,"classpath:frozen.json",6000,3,3000,"",true);library.load();
-        var result=CandidateReviewEngine.run(tape.client(),MechanismRoutingTrial.context(matches.get(0)),24,null,null,library,null,0,
-                false,null,new CandidateReviewEngine.VerificationFeatures(false,false,false),"ON".equals(row.path("arm").asText()));
+        var result=CandidateReviewEngine.run(tape.client(), MechanismRoutingTrial.context(matches.get(0)), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), "ON".equals(row.path("arm").asText())));
         Map<String,Object> out=new LinkedHashMap<>();out.put("caseId",row.path("caseId").asText());out.put("arm",row.path("arm").asText());
         out.put("repeat",row.path("repeat").asInt());out.put("oldStatus",row.path("status").asText());out.put("status",result.status());
         out.put("completeRequestCoverage",tape.missing==0);out.put("missingRequests",tape.missing);out.put("consumedSavedCalls",tape.consumed);

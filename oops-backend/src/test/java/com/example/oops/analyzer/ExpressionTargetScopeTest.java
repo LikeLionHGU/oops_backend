@@ -20,7 +20,8 @@ class ExpressionTargetScopeTest {
                 List.of(new LlmEvidence("stt-index-0", raw, "PRIMARY")), null, null, null,
                 "맛을 과장하는 농담일 수 있으나 구체적인 신체 훼손 이미지가 별도로 남습니다.");
         f.verification(new Verification("candidate-1", d));
-        var result = run(f.client, c, 24, null, null, null, null, 0);
+        var result = CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.findings()).hasSize(1);
         assertThat(result.findings().get(0).getTarget()).isNull();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isZero();

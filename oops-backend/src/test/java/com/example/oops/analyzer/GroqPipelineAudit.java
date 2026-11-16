@@ -96,8 +96,8 @@ public final class GroqPipelineAudit {
             for (var c : cases) {
                 client.calls.clear(); client.beginVideo(0L); client.beginAnalyzer("groq-paired-text-audit");
                 var condition = new MechanismRoutingTrial.Condition(c.id(), c.labelStatus(), c.raw());
-                var result = CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), 24,
-                        null, null, library, null, 0, false, null);
+                var result = CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
                 var usage = client.videoUsage(); cost += usage.costUsd();
                 var row = new LinkedHashMap<String,Object>(); row.put("id", c.id()); row.put("labelStatus", c.labelStatus());
                 row.put("status", result.status()); row.put("diagnostics", result.diagnostics()); row.put("evaluations", result.evaluations());

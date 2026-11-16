@@ -52,7 +52,7 @@ class EvidenceCountDiagnosticsTest {
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", evidence(d, repeated))))))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", d)))));
-        var result = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
         assertThat(result.diagnostics().candidatePipeline().evidenceCounts()).hasSize(2);
         var counts = result.diagnostics().candidatePipeline().evidenceCounts();
         assertThat(counts.get(0).evidenceCount()).isEqualTo(9);
@@ -63,7 +63,7 @@ class EvidenceCountDiagnosticsTest {
     }
     @Test void oldDiagnosticJsonWithoutCountMetadataRemainsReadable() {
         var f = new CandidateReviewEngineTest(); f.discovery(List.of("stt-index-0"));
-        var result = run(f.client, f.context("정상 대화"), 24);
+        var result = CandidateRuns.run(f.client, f.context("정상 대화"), 24);
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
         var tree = mapper.valueToTree(result.diagnostics().candidatePipeline());
         ((tools.jackson.databind.node.ObjectNode) tree).remove("evidenceCounts");

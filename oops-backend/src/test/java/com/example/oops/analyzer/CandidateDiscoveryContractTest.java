@@ -24,7 +24,7 @@ class CandidateDiscoveryContractTest {
             return Optional.of(new ProposalRepairResult(repaired));
         });
         f.verification(new Verification("candidate-1", f.linkedPass(broken.anchorId(), "내 취향은 아니야", "stt-index-0", "그 집")));
-        var r = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().discoveryRepairCalls()).isOne();
         assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isZero();
@@ -43,7 +43,7 @@ class CandidateDiscoveryContractTest {
                     List.of(new Quote("stt-index-0", "그 집")));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                     .thenReturn(Optional.of(new ProposalRepairResult(response)));
-            var r = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
+            var r = CandidateRuns.run(f.client, f.context("그 집 메뉴", "내 취향은 아니야"), 24);
             assertThat(r.findings()).isEmpty();
             assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isOne();
             assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement()
@@ -61,7 +61,7 @@ class CandidateDiscoveryContractTest {
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"), first, second);
         when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                 .thenReturn(Optional.of(new ProposalRepairResult(null)));
-        var d = run(f.client, f.context("그 집 메뉴", "내 취향은 아니야", "다른 것도 있어"), 24)
+        var d = CandidateRuns.run(f.client, f.context("그 집 메뉴", "내 취향은 아니야", "다른 것도 있어"), 24)
                 .diagnostics().candidatePipeline();
         assertThat(d.discoveryRepairCalls()).isOne();
         assertThat(d.invalidProposals()).isEqualTo(2);
@@ -89,7 +89,7 @@ class CandidateDiscoveryContractTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", f.linkedPass(p.anchorId(), lines[10], "stt-index-20", lines[20])))));
         });
         var c = f.context(lines);
-        var r = run(f.client, c, 24);
+        var r = CandidateRuns.run(f.client, c, 24);
         assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isZero();
         assertThat(r.diagnostics().candidatePipeline().discoveryRepairCalls()).isZero();
         assertThat(r.findings()).isEmpty(); // More context never forces a warning.
@@ -104,7 +104,7 @@ class CandidateDiscoveryContractTest {
             return Optional.of(new ProposalRepairResult(good));
         });
         f.verification(new Verification("candidate-1", f.assessment(good.anchorId(), "PASS", "그 집")));
-        var r = run(f.client, f.context("그 집 메뉴는 내 취향이 아니야"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 메뉴는 내 취향이 아니야"), 24);
         var d = r.diagnostics().candidatePipeline();
         assertThat(r.findings()).isEmpty();
         assertThat(d.discoveryRepairCalls()).isOne(); assertThat(d.discoveryCalls()).isEqualTo(2);
@@ -119,7 +119,7 @@ class CandidateDiscoveryContractTest {
             f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "고정 후보 가설", List.of()));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                     .thenReturn(Optional.of(new ProposalRepairResult(returned)));
-            var r = run(f.client, f.context("그 집 이야기"), 24);
+            var r = CandidateRuns.run(f.client, f.context("그 집 이야기"), 24);
             assertThat(r.findings()).isEmpty();
             assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement().satisfies(t -> {
                 assertThat(t.state()).isEqualTo("FAILED");
@@ -137,7 +137,7 @@ class CandidateDiscoveryContractTest {
         var timed = new java.util.ArrayList<com.example.oops.domain.TranscriptSegment>();
         for (int i=0;i<lines.length;i++) timed.add(new com.example.oops.domain.TranscriptSegment(
                 f.video, i*2000L+(i>=30?20000:0), i*2000L+(i>=30?20000:0)+1500,lines[i]));
-        var r = run(f.client, new AnalysisContext(f.video,com.example.oops.domain.ContentGenre.GENERAL,timed,List.of()), 24);
+        var r = CandidateRuns.run(f.client, new AnalysisContext(f.video,com.example.oops.domain.ContentGenre.GENERAL,timed,List.of()), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isGreaterThanOrEqualTo(1);
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
@@ -148,7 +148,7 @@ class CandidateDiscoveryContractTest {
             var f = new CandidateReviewEngineTest();
             f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "고정 후보 가설", List.of()));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class))).thenReturn(Optional.of(response));
-            var r = run(f.client, f.context("그 집 이야기"), 24);
+            var r = CandidateRuns.run(f.client, f.context("그 집 이야기"), 24);
             assertThat(r.findings()).isEmpty();
             assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isOne();
             assertThat(r.diagnostics().candidatePipeline().repairs()).singleElement()
@@ -161,7 +161,7 @@ class CandidateDiscoveryContractTest {
         var f = new CandidateReviewEngineTest();
         var quotes = new ArrayList<Quote>(); for (int i = 0; i < 9; i++) quotes.add(new Quote("invented", "허구"));
         f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "비판 가설", quotes));
-        var r = run(f.client, f.context("그 집 이야기"), 24);
+        var r = CandidateRuns.run(f.client, f.context("그 집 이야기"), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().discoveryRepairCalls()).isZero();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement()
@@ -175,7 +175,7 @@ class CandidateDiscoveryContractTest {
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-20", lines[20])));
         batchDiscovery(f, p);
         f.verification(new Verification("candidate-1", f.linkedPass(p.anchorId(), lines[10], "stt-index-20", lines[20])));
-        var r = run(f.client, f.context(lines), 24);
+        var r = CandidateRuns.run(f.client, f.context(lines), 24);
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().candidates()).singleElement()
                 .extracting(CandidateReviewDiagnostics.Trace::state).isEqualTo("PASS");
@@ -195,7 +195,7 @@ class CandidateDiscoveryContractTest {
                     helper.missingTargetEvidence(f.assessment(c.get("anchorId").asText(), "REVIEW_REQUIRED", "그 집"))));
             return Optional.of(new VerificationResult(responses));
         });
-        var d = run(f.client, f.context("그 집 이야기", "그 집 이용자", "그 집 선택지"), 24).diagnostics().candidatePipeline();
+        var d = CandidateRuns.run(f.client, f.context("그 집 이야기", "그 집 이용자", "그 집 선택지"), 24).diagnostics().candidatePipeline();
         assertThat(d.discoveryRepairCalls()).isOne(); assertThat(d.repairCalls()).isOne();
         assertThat(d.repairs()).hasSize(3).last().extracting(CandidateReviewDiagnostics.RepairTrace::state).isEqualTo("NOT_ATTEMPTED_BUDGET");
     }

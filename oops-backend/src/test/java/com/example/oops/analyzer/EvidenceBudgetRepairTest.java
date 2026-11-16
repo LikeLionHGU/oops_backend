@@ -58,7 +58,7 @@ class EvidenceBudgetRepairTest {
                     return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                             f.assessment("stt-index-0", decision, "그 집")))));
                 });
-            var result = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+            var result = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
             assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
             assertThat(result.findings()).hasSize("PASS".equals(decision) ? 0 : 1);
         }
@@ -69,7 +69,7 @@ class EvidenceBudgetRepairTest {
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
             .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1", withEvidence(good, overflow(good, 9)))))));
-        var result = run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아"), 24);
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
         assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isOne();
@@ -90,7 +90,7 @@ class EvidenceBudgetRepairTest {
                 }
                 return Optional.of(new VerificationResult(decisions));
             });
-        var result = run(f.client, f.context("그 집 이용자는 수준이 낮아", "그 집 생활은 한심해", "그 집 사람들은 뒤떨어졌어"), 24);
+        var result = CandidateRuns.run(f.client, f.context("그 집 이용자는 수준이 낮아", "그 집 생활은 한심해", "그 집 사람들은 뒤떨어졌어"), 24);
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isEqualTo(2);
         assertThat(result.diagnostics().candidatePipeline().verificationFailed()).isOne();
         assertThat(result.findings()).hasSize(2);

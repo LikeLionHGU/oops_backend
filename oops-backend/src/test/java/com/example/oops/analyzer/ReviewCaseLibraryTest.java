@@ -119,7 +119,8 @@ class ReviewCaseLibraryTest {
         var l = library(List.of(example("past-normal", "PASS")));
         fixture.discovery(List.of("stt-index-0"), fixture.proposal("stt-index-0", "그 집"));
         fixture.verification(new Verification("candidate-1", fixture.assessment("stt-index-0", "PASS", "그 집")));
-        var r = run(fixture.client, fixture.context("그 집 음식 맛이 별로야"), 24, null, l);
+        var r = CandidateReviewEngine.run(fixture.client, fixture.context("그 집 음식 맛이 별로야"), new CandidateReviewEngine.RunServices(null, l, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.findings()).isEmpty(); assertThat(r.diagnostics().candidatePipeline().caseRetrieval()).singleElement()
                 .extracting(Trace::state).isEqualTo("SELECTED");
         ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class), user = ArgumentCaptor.forClass(String.class);
@@ -134,7 +135,8 @@ class ReviewCaseLibraryTest {
     @Test void unavailableArchiveKeepsBaseRequestAndCoverageWithoutInventingPartialFailure() {
         var l = load("bad-json".getBytes(StandardCharsets.UTF_8), true, 2, 2400, "");
         fixture.discovery(List.of("stt-index-0"));
-        var r = run(fixture.client, fixture.context("음식 맛"), 24, null, l);
+        var r = CandidateReviewEngine.run(fixture.client, fixture.context("음식 맛"), new CandidateReviewEngine.RunServices(null, l, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.status()).isEqualTo(com.example.oops.domain.AnalyzerStatus.SUCCESS);
         assertThat(r.diagnostics().candidatePipeline().caseRetrieval().get(0).state()).isEqualTo("ARCHIVE_UNAVAILABLE_OR_INVALID");
         verify(fixture.client).completeAsJson(eq(DISCOVERY_PROMPT), argThat(s -> !s.contains("referenceCases")), eq(Discovery.class));
@@ -145,7 +147,8 @@ class ReviewCaseLibraryTest {
         var l = library(List.of(example("past", "PASS")));
         fixture.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "과거 사례 ID를 잘못 복사한 후보",
                 List.of(new Quote("stt-index-0", "음식 맛이 별로야"), new Quote("past-index-0", "이 음식 맛은 괜찮다"))));
-        var r = run(fixture.client, fixture.context("음식 맛이 별로야"), 24, null, l);
+        var r = CandidateReviewEngine.run(fixture.client, fixture.context("음식 맛이 별로야"), new CandidateReviewEngine.RunServices(null, l, null, null, null),
+                new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.findings()).isEmpty(); assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isOne();
         verify(fixture.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
