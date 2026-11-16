@@ -353,9 +353,7 @@ public class AnalysisPipeline {
     private AnalysisStage stageOf(ContentAnalyzer analyzer) {
         return switch (analyzer.key()) {
             case "screen-text", "screen-text-review" -> AnalysisStage.OCR;
-            case "caption-mismatch", "context-check" -> AnalysisStage.MULTIMODAL;
-            case "entity-check", "monetization" -> AnalysisStage.TEXT_RISK;
-            case "pose" -> AnalysisStage.SCENE_DETECTION;
+            case "context-check" -> AnalysisStage.MULTIMODAL;
             default -> AnalysisStage.TEXT_RISK;
         };
     }
