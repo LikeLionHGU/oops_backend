@@ -815,17 +815,6 @@ tasks.register('ruleUnionSavedReplay', JavaExec) {
     }
 }
 
-tasks.register('contextReferenceAudit', JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.example.oops.analyzer.ContextReferenceAudit'
-    doFirst {
-        def input = providers.gradleProperty('replayInput').orNull
-        def archive = providers.gradleProperty('guidelineArchive').orNull
-        if (!input || !archive) throw new GradleException('Set replayInput and guidelineArchive local paths')
-        args input, archive
-    }
-}
-
 // Offline intake gate: production local selector only, never a provider call.
 tasks.register('casebookIntakeAudit', JavaExec) {
     dependsOn testClasses
