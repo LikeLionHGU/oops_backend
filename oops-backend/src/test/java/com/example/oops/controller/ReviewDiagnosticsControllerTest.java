@@ -12,14 +12,10 @@ import static org.mockito.Mockito.*;
 class ReviewDiagnosticsControllerTest {
     private final VideoRepository videos = mock(VideoRepository.class);
     private final ReviewDiagnosticsStore store = new ReviewDiagnosticsStore(true);
-    private final com.example.oops.repository.TranscriptSegmentRepository transcripts = mock(com.example.oops.repository.TranscriptSegmentRepository.class);
-    private final com.example.oops.transcript.SttReviewPlanner planner = new com.example.oops.transcript.SttReviewPlanner();
     private ApplicationContextRunner runner() {
         return new ApplicationContextRunner().withUserConfiguration(ReviewDiagnosticsController.class)
                 .withBean(VideoRepository.class, () -> videos)
-                .withBean(ReviewDiagnosticsStore.class, () -> store)
-                .withBean(com.example.oops.repository.TranscriptSegmentRepository.class, () -> transcripts)
-                .withBean(com.example.oops.transcript.SttReviewPlanner.class, () -> planner);
+                .withBean(ReviewDiagnosticsStore.class, () -> store);
     }
     @Test void defaultAndExplicitFalseDoNotExposeController() {
         runner().run(ctx -> assertThat(ctx).doesNotHaveBean(ReviewDiagnosticsController.class));
@@ -37,21 +33,7 @@ class ReviewDiagnosticsControllerTest {
     }
     @Test void missingVideoCannotExposeRetainedSnapshot() {
         store.recordAfterCommit(5L, 11L, "test", List.of());
-        var controller = new ReviewDiagnosticsController(videos, store, transcripts, planner);
+        var controller = new ReviewDiagnosticsController(videos, store);
         assertThatThrownBy(() -> controller.diagnostics("5")).isInstanceOf(BusinessException.class);
-    }
-    @Test void planningUnavailableIsNotAnErrorFreeTranscriptVerdict() {
-        when(videos.findById(5L)).thenReturn(java.util.Optional.of(mock(com.example.oops.domain.Video.class)));
-        when(transcripts.findByVideoIdOrderByStartMsAsc(5L)).thenReturn(List.of());
-        var controller = new ReviewDiagnosticsController(videos, store, transcripts, planner);
-        var result = controller.sttReviewPlan("5").data();
-        assertThat(result.state()).isEqualTo("DIAGNOSTICS_UNAVAILABLE");
-        assertThat(result.additionalCalls()).isZero(); assertThat(result.executionEnabled()).isFalse();
-        verify(transcripts, never()).deleteByVideoId(anyLong());
-    }
-    @Test void missingVideoCannotExposeAudioPlan() {
-        var controller = new ReviewDiagnosticsController(videos, store, transcripts, planner);
-        assertThatThrownBy(() -> controller.sttReviewPlan("5")).isInstanceOf(BusinessException.class);
-        verifyNoInteractions(transcripts);
     }
 }

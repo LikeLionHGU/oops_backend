@@ -125,10 +125,10 @@ if (-not (Test-Path ".env")) {
     Fail ".env 파일이 없습니다. .env.example 을 복사해서 키를 넣으세요."
     exit 1
 }
-if (Select-String -Path ".env" -Pattern "^OPENAI_API_KEY=.+" -Quiet) {
-    Ok "OPENAI_API_KEY 설정됨"
+if (Select-String -Path ".env" -Pattern "^GROQ_API_KEY=.+" -Quiet) {
+    Ok "GROQ_API_KEY 설정됨"
 } else {
-    Warn "OPENAI_API_KEY 가 비어 있습니다. STT 가 동작하지 않습니다."
+    Warn "GROQ_API_KEY 가 비어 있습니다. STT 가 동작하지 않습니다."
 }
 
 if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {

@@ -24,10 +24,8 @@ public class TranscriptService {
 
         log.info("[transcript] videoId={} provider={}", video.getId(), provider.getClass().getSimpleName());
 
-        List<TranscriptSegment> segments = provider.fetch(video).stream()
+        return provider.fetch(video).stream()
                 .map(line -> new TranscriptSegment(video, line.startMs(), line.endMs(), line.text()))
                 .toList();
-
-        return segments;
     }
 }

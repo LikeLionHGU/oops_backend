@@ -19,16 +19,10 @@ async def inline_ocr_for_worker_unit_test(payload, request):
         raise HTTPException(503, str(exc))
 
 
-@pytest.mark.parametrize(("model", "groq_key", "openai_key", "expected"), [
-    ("whisper-large-v3", "groq-fixture", "", True),
-    ("whisper-large-v3", "", "openai-fixture", False),
-    ("whisper-1", "groq-fixture", "openai-fixture", True),
-    ("whisper-1", "groq-fixture", "", False),
-])
-def test_health_checks_key_for_the_selected_stt_provider(monkeypatch, model, groq_key, openai_key, expected):
+@pytest.mark.parametrize(("groq_key", "expected"), [("groq-fixture", True), ("", False)])
+def test_health_checks_groq_key(monkeypatch, groq_key, expected):
     monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(
-        stt_model=None, whisper_model=model, groq_api_key=groq_key, openai_api_key=openai_key,
-        analysis_profile="default", effective_ocr_timeout_sec=540, max_ocr_frames=300))
+        groq_api_key=groq_key, analysis_profile="default", effective_ocr_timeout_sec=540, max_ocr_frames=300))
     monkeypatch.setattr(main.ocr, "is_available", lambda: False)
     assert main.health()["sttAvailable"] is expected
 
@@ -105,7 +99,7 @@ def test_split_failure_does_not_return_a_partial_chunk_list(tmp_path, monkeypatc
             return SimpleNamespace(returncode=0)
         if mode == "empty": target.touch()
         return SimpleNamespace(returncode=1 if mode == "command_failure" else 0)
-    monkeypatch.setattr(stt.subprocess, "run", split)
+    monkeypatch.setattr(media.subprocess, "run", split)
     with pytest.raises(media.MediaError, match="2/2"):
         stt._split_audio(tmp_path / "input.mp3", tmp_path, 601)
 
@@ -114,7 +108,7 @@ def test_successful_split_preserves_all_offsets(tmp_path, monkeypatch):
     def split(command, **kwargs):
         Path(command[-1]).write_bytes(b"fixture")
         return SimpleNamespace(returncode=0)
-    monkeypatch.setattr(stt.subprocess, "run", split)
+    monkeypatch.setattr(media.subprocess, "run", split)
     assert [offset for offset, path in stt._split_audio(tmp_path / "input.mp3", tmp_path, 1201)] == [0, 600000, 1200000]
 
 
@@ -124,14 +118,14 @@ def test_failed_chunk_prevents_any_transcription_api_call(tmp_path, monkeypatch)
     create = Mock()
     monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(
         audio=SimpleNamespace(transcriptions=SimpleNamespace(create=create))))
-    monkeypatch.setattr(stt, "get_settings", lambda: SimpleNamespace(stt_model=None, whisper_model="whisper-1",
-        openai_api_key="offline-fixture", openai_org_id="", openai_project_id=""))
+    monkeypatch.setattr(stt, "get_settings", lambda: SimpleNamespace(stt_model="whisper-large-v3",
+        groq_api_key="offline-fixture"))
     monkeypatch.setattr(stt, "extract_audio", lambda video: tmp_path / "input.mp3")
     def split(command, **kwargs):
         target = Path(command[-1])
         if target.name == "audio_000.mp3": target.write_bytes(b"valid fixture")
         return SimpleNamespace(returncode=0 if target.exists() else 1)
-    monkeypatch.setattr(stt.subprocess, "run", split)
+    monkeypatch.setattr(media.subprocess, "run", split)
     with pytest.raises(media.MediaError):
         stt.transcribe(SimpleNamespace(workdir=tmp_path, duration_sec=601))
     create.assert_not_called()

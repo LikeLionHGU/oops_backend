@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Python 분석 서버의 /transcribe (OpenAI Whisper) 를 호출해 타임스탬프 대본을 만든다.
- * @Order(1) 이라 DummyTranscriptProvider 보다 먼저 선택된다.
+ * Python 분석 서버의 /transcribe (Groq whisper-large-v3) 를 호출해 타임스탬프 대본을 만든다.
+ * StoredTranscriptProvider(@Order(0)) 다음, DummyTranscriptProvider 보다 먼저 선택된다.
  */
 @Slf4j
 @Order(1)

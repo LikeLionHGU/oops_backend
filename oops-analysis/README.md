@@ -48,19 +48,11 @@ Windows는 `.venv\Scripts\Activate.ps1`로 환경을 활성화한 뒤 같은 Pyt
 
 ## STT 모델과 동일 기능 계약
 
-| 선택 | 키 | 시간 응답 |
-|---|---|---|
-| 기본 `whisper-large-v3` · Groq | `GROQ_API_KEY` | `verbose_json`, 구간 시작·끝 |
-| `STT_MODEL=whisper-1` · OpenAI | `OPENAI_API_KEY` | 같은 구간 시간 요청 |
-| `STT_MODEL=gpt-4o-transcribe-diarize` · 선택 실험 | `OPENAI_API_KEY` | `diarized_json`, 구간·화자 |
+전사는 Groq `whisper-large-v3` 하나만 지원한다(`GROQ_API_KEY` 필요, `STT_MODEL` 기본값). 다른 모델명이나 키 누락은 실패하며 다른 제공자로 자동 전환하지 않는다. OpenAI whisper-1·diarize 경로는 2026-11-16 제거했다.
 
-선택 순서는 `STT_MODEL` → `WHISPER_MODEL` → 코드 기본 `whisper-large-v3`다. 환경변수나 기존 `.env`에 모델을 명시하면 그 값이 기본값보다 우선한다. 지원하지 않는 모델명이나 키 누락은 실패하며 다른 제공자로 자동 전환하지 않는다.
+16kHz mono·64kbps MP3 변환, 600초 분할, `timestamp_granularities=["segment"]` 요청, 원본 기준 밀리초 변환을 사용한다. 단어별 시간은 요청하지 않는다.
 
-Groq와 OpenAI Whisper는 동일한 16kHz mono·64kbps MP3 변환, 600초 분할, `timestamp_granularities=["segment"]` 요청, 원본 기준 밀리초 변환을 사용한다. 단어별 시간은 요청하지 않는다. 모델에 따라 전사 문구·구간 경계는 달라질 수 있다.
-
-응답에는 `segments[].startMs/endMs/text`, `model`, `timestampSource`가 포함된다. Groq의 시간 출처는 `groq_segment`, OpenAI Whisper는 `whisper_segment`다. 유효한 구간 시간 없이 텍스트만 오면 성공 대본으로 처리하지 않는다. 전사 내용을 문맥으로 조용히 교정하지 않는다.
-
-Diarize의 청크별 화자 ID는 전역 인물 ID가 아니다. Python 화자 응답을 Spring의 화자별 판정에 연결하는 기능은 후속이다.
+응답에는 `segments[].startMs/endMs/text`, `language`, `model`이 포함된다. 유효한 구간 시간 없이 텍스트만 오면 성공 대본으로 처리하지 않는다. 전사 내용을 문맥으로 조용히 교정하지 않는다.
 
 ## 엔드포인트
 

@@ -232,8 +232,7 @@ public class AnalysisServerClient {
     public record ProbeResponse(Integer durationSec, String title,
                                 Integer maxDurationSec, Boolean withinLimit) {}
 
-    public record TranscribeResponse(String language, String title, Integer durationSec,
-                                     List<Segment> segments) {
+    public record TranscribeResponse(String title, Integer durationSec, List<Segment> segments) {
         public record Segment(long startMs, long endMs, String text) {}
     }
 

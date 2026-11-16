@@ -8,14 +8,8 @@ from pydantic import Field, model_validator
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    openai_api_key: str = ""
     groq_api_key: str = ""
-    # 지원 크레딧이 특정 조직에 붙어 있을 때만 채운다 (org-...)
-    openai_org_id: str = ""
-    openai_project_id: str = ""
-    whisper_model: str = "whisper-large-v3"
-    # 명시적 모델 재정의. 비어 있으면 기본 WHISPER_MODEL을 사용한다.
-    stt_model: str | None = None
+    stt_model: str = "whisper-large-v3"
     work_dir: str = "./workdir"
     # Spring 의 storage.location 과 같은 디렉터리. 서버 배포 환경에서는 절대 경로로 지정한다.
     media_storage_root: str = "../oops-backend/uploads"
