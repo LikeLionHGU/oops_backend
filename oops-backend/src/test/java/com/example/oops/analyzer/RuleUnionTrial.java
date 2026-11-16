@@ -91,7 +91,7 @@ public final class RuleUnionTrial {
                     check(library.relationArchive(),"Ready runtime required");
                     client.calls.clear();client.beginVideo(0L);client.beginAnalyzer("rule-union-comparison");
                     long started=System.nanoTime();
-                    var result=CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                    var result=CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), "ON".equals(arm)));
                     var usage=client.videoUsage();cost+=usage.costUsd();
                     var row=new LinkedHashMap<String,Object>();

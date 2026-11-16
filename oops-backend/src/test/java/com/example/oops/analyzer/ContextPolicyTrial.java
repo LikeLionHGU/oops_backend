@@ -45,7 +45,7 @@ public final class ContextPolicyTrial {
             return Optional.of(new Discovery(primary,primary.contains(anchor)?List.of(proposal):List.of(),List.of(),false));
         });
         when(fixture.client.completeAsJson(anyString(),anyString(),eq(VerificationResult.class))).thenReturn(Optional.empty());
-        CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, null, library, null, null),
+        CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var systems=ArgumentCaptor.forClass(String.class);var inputs=ArgumentCaptor.forClass(String.class);
         verify(fixture.client,times(1)).completeAsJson(systems.capture(),inputs.capture(),eq(VerificationResult.class));

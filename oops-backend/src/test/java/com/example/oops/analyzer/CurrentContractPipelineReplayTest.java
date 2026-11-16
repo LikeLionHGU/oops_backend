@@ -91,7 +91,7 @@ class CurrentContractPipelineReplayTest {
         });
 
         var reviewed = CandidateReviewEngine.run(client, context,
-                new RunServices(null, null, null, null, null),
+                new RunServices(null, null, null, null),
                 new RunOptions(24, 0, false, new VerificationFeatures(false, false, false), false));
 
         assertThat(reviewed.status()).isEqualTo(AnalyzerStatus.SUCCESS);

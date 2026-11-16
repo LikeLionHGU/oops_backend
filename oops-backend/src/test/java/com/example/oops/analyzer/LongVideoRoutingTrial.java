@@ -138,7 +138,7 @@ public final class LongVideoRoutingTrial {
         for(int repeat=1;repeat<=2;repeat++) for(var s:p.sources()) for(String arm:repeat==1?List.of("OFF","ON"):List.of("ON","OFF")) {
             client.calls.clear(); client.beginVideo(0L); client.beginAnalyzer("v7-v4-v6-routing-trial"); long start=System.nanoTime();
             var condition=new MechanismRoutingTrial.Condition(s.caseId(),s.labelStatus(),s.raw());
-            var result=CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), new CandidateReviewEngine.RunServices(null, null, library, null, arm.equals("ON")?router:null),
+            var result=CandidateReviewEngine.run(client, MechanismRoutingTrial.context(condition), new CandidateReviewEngine.RunServices(null, library, null, arm.equals("ON")?router:null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             var usage=client.videoUsage(); cost+=usage.costUsd();
             var row=new LinkedHashMap<String,Object>(); row.put("caseId",s.caseId()); row.put("sourceVideoId",s.videoId()); row.put("rawSha256",s.rawSha256());

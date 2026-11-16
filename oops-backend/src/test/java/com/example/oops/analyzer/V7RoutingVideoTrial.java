@@ -119,7 +119,7 @@ public final class V7RoutingVideoTrial {
         List<Map<String,Object>> rows=new ArrayList<>(); double cost=0; save(output,p,args[2],rows,budget,cost,"RUNNING");
         for(int repeat=1;repeat<=2;repeat++) for(var c:p.conditions()) for(String arm:repeat==1?List.of("OFF","ON"):List.of("ON","OFF")) {
             client.calls.clear(); client.beginVideo(0L); client.beginAnalyzer("v7-v1-v2-routing-trial"); long start=System.nanoTime();
-            var result=CandidateReviewEngine.run(client, MechanismRoutingTrial.context(c), new CandidateReviewEngine.RunServices(null, null, library, null, arm.equals("ON")?router:null),
+            var result=CandidateReviewEngine.run(client, MechanismRoutingTrial.context(c), new CandidateReviewEngine.RunServices(null, library, null, arm.equals("ON")?router:null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             var usage=client.videoUsage(); cost+=usage.costUsd();
             var row=new LinkedHashMap<String,Object>(); row.put("caseId",c.id()); row.put("labelStatus",c.labelStatus()); row.put("arm",arm); row.put("repeat",repeat);

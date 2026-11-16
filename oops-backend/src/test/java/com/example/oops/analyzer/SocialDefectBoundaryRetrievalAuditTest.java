@@ -169,7 +169,7 @@ class SocialDefectBoundaryRetrievalAuditTest {
 
         var context = new AnalysisContext(Video.builder().filename("private-evaluation-input").build(),
                 ContentGenre.GENERAL, List.of(), List.of(), new ReviewInput(raw));
-        var services = new CandidateReviewEngine.RunServices(null, null, library, null, null);
+        var services = new CandidateReviewEngine.RunServices(null, library, null, null);
         var options = new CandidateReviewEngine.RunOptions(24, 0, false,
                 new CandidateReviewEngine.VerificationFeatures(false, false, false), false);
         var result = CandidateReviewEngine.run(client, context, services, options);

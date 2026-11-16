@@ -122,7 +122,7 @@ class ContextExampleSelectionTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new CandidateReviewEngine.Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
-        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, null, library(archive(4), 0, 3000, ""), null, null),
+        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, library(archive(4), 0, 3000, ""), null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.diagnostics().candidatePipeline().exploredSegments()).isEqualTo(1);
         assertThat(result.diagnostics().candidatePipeline().contextSelections()).hasSize(1)

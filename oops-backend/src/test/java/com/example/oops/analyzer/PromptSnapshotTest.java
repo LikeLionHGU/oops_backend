@@ -46,8 +46,7 @@ class PromptSnapshotTest {
         int promptIndex = 0;
         for (String system : List.of(CandidateReviewEngine.DISCOVERY_PROMPT, CandidateReviewEngine.VERIFICATION_PROMPT,
                 CandidateReviewEngine.DISCOVERY_REPAIR_PROMPT,
-                VisualContextReviewer.PROMPT,
-                CandidateReviewEngine.DISCOVERY_PROMPT + "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT)) {
+                VisualContextReviewer.PROMPT)) {
             promptIndex++;
             String snapshot = "```text\n" + (system + "\n" + OpenAiClient.JSON_OUTPUT_INSTRUCTION).stripTrailing() + "\n```";
             assertThat(document.contains(snapshot)).as("documented system prompt %s", promptIndex)

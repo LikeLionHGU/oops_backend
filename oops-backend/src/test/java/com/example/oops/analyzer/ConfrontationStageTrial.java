@@ -82,7 +82,7 @@ public final class ConfrontationStageTrial {
     static TextReviewEngine.Result pipeline(OpenAiClient client,Condition c,ReviewGuidelineLibrary library) {
         var context=new AnalysisContext(Video.builder().filename("stage-diagnostic").build(),ContentGenre.TALK_PODCAST,
                 List.of(),List.of(),new ReviewInput(c.raw()));
-        return CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,null,library,null,null),
+        return CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,library,null,null),
                 new CandidateReviewEngine.RunOptions(24,0,false,new CandidateReviewEngine.VerificationFeatures(false,false,false),false));
     }
     static byte[] body(byte[] bytes,String uri) {

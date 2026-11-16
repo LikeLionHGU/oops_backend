@@ -8,7 +8,7 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
         int expandedCandidates, int verificationLimitedCandidates,
         boolean truncated, List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-        List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+        ReviewGuidelineLibrary.Trace guidelineReference,
         List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
         int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
@@ -25,13 +25,13 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
             int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
             int expandedCandidates, int verificationLimitedCandidates, boolean truncated,
             List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-            List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+            ReviewGuidelineLibrary.Trace guidelineReference,
             List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
             int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts, List<ContextMechanismRouter.Trace> mechanismRouting,
             List<DecisionConflictTrace> decisionConflicts) {
         this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,rejected,uncertain,
                 verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,expandedCandidates,verificationLimitedCandidates,
-                truncated,candidates,visualCandidates,caseRetrieval,guidelineReference,contextSelections,repairCalls,repairs,
+                truncated,candidates,visualCandidates,guidelineReference,contextSelections,repairCalls,repairs,
                 discoveryRepairCalls,evidenceCounts,mechanismRouting,decisionConflicts,null);
     }
     public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
@@ -39,12 +39,12 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
             int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
             int expandedCandidates, int verificationLimitedCandidates, boolean truncated,
             List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-            List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+            ReviewGuidelineLibrary.Trace guidelineReference,
             List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
             int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts,List<ContextMechanismRouter.Trace> mechanismRouting) {
         this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,rejected,uncertain,
                 verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,expandedCandidates,verificationLimitedCandidates,
-                truncated,candidates,visualCandidates,caseRetrieval,guidelineReference,contextSelections,repairCalls,repairs,
+                truncated,candidates,visualCandidates,guidelineReference,contextSelections,repairCalls,repairs,
                 discoveryRepairCalls,evidenceCounts,mechanismRouting,List.of());
     }
     public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
@@ -52,17 +52,16 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
             int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
             int expandedCandidates, int verificationLimitedCandidates, boolean truncated,
             List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-            List<ReviewCaseLibrary.Trace> caseRetrieval, ReviewGuidelineLibrary.Trace guidelineReference,
+            ReviewGuidelineLibrary.Trace guidelineReference,
             List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
             int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts) {
         this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,
                 rejected,uncertain,verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,
-                expandedCandidates,verificationLimitedCandidates,truncated,candidates,visualCandidates,caseRetrieval,
+                expandedCandidates,verificationLimitedCandidates,truncated,candidates,visualCandidates,
                 guidelineReference,contextSelections,repairCalls,repairs,discoveryRepairCalls,evidenceCounts,List.of());
     }
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
-        caseRetrieval = List.copyOf(caseRetrieval);
         contextSelections = List.copyOf(contextSelections);
         repairs = List.copyOf(repairs);
         evidenceCounts = evidenceCounts == null ? List.of() : List.copyOf(evidenceCounts);

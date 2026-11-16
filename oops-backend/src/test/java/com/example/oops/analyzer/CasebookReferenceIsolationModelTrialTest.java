@@ -78,7 +78,7 @@ class CasebookReferenceIsolationModelTrialTest {
         var truncatedOverall = new TextReviewEngine.Result(List.of(), List.of(), AnalyzerStatus.SUCCESS, null,
                 List.of(), List.of(), new ReviewDiagnostics("test", AnalyzerStatus.SUCCESS, 1, true,
                 Map.of(), List.of(), null, new CandidateReviewDiagnostics("test", 1, 0, 1, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, false, List.of(), List.of(), List.of(), null,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, false, List.of(), List.of(), null,
                 List.of(), 0, List.of(), 0, List.of())));
         assertThat(CasebookReferenceIsolationModelTrial.isComparable(truncatedOverall, "NO_CANDIDATE")).isFalse();
     }
@@ -161,7 +161,7 @@ class CasebookReferenceIsolationModelTrialTest {
             int repairCalls, boolean truncated, List<String> unassessed, List<String> conflicts) {
         var candidatePipeline = new CandidateReviewDiagnostics("test", 1, 0, 1, 0, 0,
                 invalidProposals, 0, 0, verificationFailed, budgetSkipped, limitedBatches,
-                truncatedBatches, 0, 0, truncated, List.of(), List.of(), List.of(), null,
+                truncatedBatches, 0, 0, truncated, List.of(), List.of(), null,
                 List.of(), repairCalls, List.of(), 0, List.of());
         var diagnostics = new ReviewDiagnostics("test", status, 1, false, Map.of(), List.of(), null, candidatePipeline);
         return new TextReviewEngine.Result(List.of(), List.of(), status, null, unassessed, conflicts, diagnostics);
@@ -175,7 +175,7 @@ class CasebookReferenceIsolationModelTrialTest {
                 current.invalidProposals(), current.rejected(), current.uncertain(), current.verificationFailed(),
                 current.budgetSkipped(), current.limitedBatches(), current.truncatedBatches(),
                 current.expandedCandidates(), current.verificationLimitedCandidates(), current.truncated(),
-                current.candidates(), current.visualCandidates(), current.caseRetrieval(), current.guidelineReference(),
+                current.candidates(), current.visualCandidates(), current.guidelineReference(),
                 current.contextSelections(), current.repairCalls(), current.repairs(), 1, current.evidenceCounts(),
                 current.mechanismRouting(), current.decisionConflicts());
         var diagnostics = result.diagnostics().withCandidatePipeline(withDiscoveryRepair);

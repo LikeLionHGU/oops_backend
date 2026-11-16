@@ -145,7 +145,7 @@ public final class CasebookReferenceIsolationPreflight {
         var context = new AnalysisContext(Video.builder().filename("private-d05-reference-preflight").build(),
                 ContentGenre.GENERAL, List.of(), List.of(), review);
         var result = CandidateReviewEngine.run(client, context,
-                new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false,
                         new CandidateReviewEngine.VerificationFeatures(false, false, false), false));
         check(client.providerCalls == 0, "Provider call attempted during offline capture");

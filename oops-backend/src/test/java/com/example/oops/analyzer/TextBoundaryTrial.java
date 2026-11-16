@@ -90,7 +90,7 @@ public final class TextBoundaryTrial {
             var video=Video.builder().filename("text-only-fixture").build();
             List<TranscriptSegment> lines=new ArrayList<>();
             for(int i=0;i<c.speech().size();i++) lines.add(new TranscriptSegment(video,i*2000L,i*2000L+1500,c.speech().get(i)));
-            var result=CandidateReviewEngine.run(client, new AnalysisContext(video,ContentGenre.GENERAL,lines,List.of()), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+            var result=CandidateReviewEngine.run(client, new AnalysisContext(video,ContentGenre.GENERAL,lines,List.of()), new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             var usage=client.videoUsage(); usageCost+=usage.costUsd();
             Map<String,Object> row=new LinkedHashMap<>(); row.put("caseId",c.id()); row.put("repeat",repeat);

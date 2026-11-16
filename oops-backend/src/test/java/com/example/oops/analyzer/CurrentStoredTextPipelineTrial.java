@@ -67,7 +67,7 @@ public final class CurrentStoredTextPipelineTrial {
                 client.calls.clear();client.beginVideo(0L);client.beginAnalyzer("stored-text-pipeline");
                 long start=System.nanoTime();
                 // No seeded candidate, hypothesis, expected label or forced finding is passed to the engine.
-                var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,null,library,null,null),
+                var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,library,null,null),
                         new CandidateReviewEngine.RunOptions(24,0,false,new CandidateReviewEngine.VerificationFeatures(false,false,false),false));
                 var usage=client.videoUsage();cost+=usage.costUsd();
                 var row=new LinkedHashMap<String,Object>();row.put("caseId",request.caseId());row.put("expectedDecision",request.expectedDecision());

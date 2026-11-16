@@ -9,24 +9,22 @@ final class CandidateReviewRequestFactory {
 
     private CandidateReviewRequestFactory() {}
 
-    record DiscoveryRequest(String system, String input, boolean hasReferences) {}
+    record DiscoveryRequest(String system, String input) {}
 
     static DiscoveryRequest discovery(String revision, boolean sourceRelationsEnabled, String guidelinePrompt,
                                       List<String> primaryIds, List<ReviewInput.Segment> raw,
                                       List<ReviewUnit> units, List<ReviewUnit> targetUnits,
-                                      boolean contextLimited, List<ReviewCaseLibrary.Example> references) {
+                                      boolean contextLimited) {
         return discovery(revision, sourceRelationsEnabled, guidelinePrompt, primaryIds, raw, units, targetUnits,
-                contextLimited, references, null);
+                contextLimited, null);
     }
 
     static DiscoveryRequest discovery(String revision, boolean sourceRelationsEnabled,
                                       String guidelinePrompt, List<String> primaryIds, List<ReviewInput.Segment> raw,
                                       List<ReviewUnit> units, List<ReviewUnit> targetUnits,
-                                      boolean contextLimited, List<ReviewCaseLibrary.Example> references,
-                                      ExperimentalBatchRendering rendering) {
-        boolean hasReferences = references != null && !references.isEmpty();
+                                      boolean contextLimited, ExperimentalBatchRendering rendering) {
         String system = (sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : CandidateReviewEngine.DISCOVERY_PROMPT)
-                + guidelinePrompt + (hasReferences ? "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT : "");
+                + guidelinePrompt;
         // Keep the original map construction and insertion sequence byte-for-byte compatible
         // with CandidateReviewEngine before extraction; only ownership moves to this factory.
         Map<String, Object> request = new LinkedHashMap<>(Map.of(
@@ -40,8 +38,7 @@ final class CandidateReviewRequestFactory {
             request.put("experimentalBatch", ExperimentalBatchRendering.VERSION);
             system = rendering.system(system);
         }
-        if (hasReferences) request.put("referenceCases", references);
-        return new DiscoveryRequest(system, JSON.writeValueAsString(request), hasReferences);
+        return new DiscoveryRequest(system, JSON.writeValueAsString(request));
     }
 
     static String verificationSystem(CandidateReviewEngine.Candidate candidate, int evidenceLimit,

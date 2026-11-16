@@ -117,7 +117,7 @@ public final class UtteranceDirectionTrial {
             return Optional.of(new Discovery(ids,List.of(proposal),List.of(),false));
         });
         when(f.client.completeAsJson(anyString(),anyString(),eq(VerificationResult.class))).thenReturn(Optional.empty());
-        CandidateReviewEngine.run(f.client, new AnalysisContext(video,ContentGenre.GENERAL,transcript,List.of()), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+        CandidateReviewEngine.run(f.client, new AnalysisContext(video,ContentGenre.GENERAL,transcript,List.of()), new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var systems=ArgumentCaptor.forClass(String.class);var inputs=ArgumentCaptor.forClass(String.class);
         verify(f.client,times(1)).completeAsJson(systems.capture(),inputs.capture(),eq(VerificationResult.class));

@@ -98,7 +98,7 @@ class FinalReviewBasisContractTest {
         assertThatThrownBy(() -> FinalReviewBasisContract.prompt(FinalReviewBasisContract.prompt(verificationPrompt(0))+frozenReference))
                 .isInstanceOf(IllegalArgumentException.class);
     }
-    TextReviewEngine.Result runEnabled(AnalysisContext c) { return CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+    TextReviewEngine.Result runEnabled(AnalysisContext c) { return CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(true,false,false), false)); }
     @Test void enabledPipelinePublishesIndependentExpressionAndRecordsBothAxes() {
         var c=f.context(text);f.discovery(List.of(id),proposal("TARGET_TREATMENT"));
@@ -165,7 +165,7 @@ class FinalReviewBasisContractTest {
             assertThat(body.at("/candidates/0/sourceRelations")).isEqualTo(JSON.valueToTree(roles));
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",expression("SEXUAL"),basis("EXPRESSION_CONTENT")))));
         });
-        assertThat(CandidateReviewEngine.run(f.client, f.context(text), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+        assertThat(CandidateReviewEngine.run(f.client, f.context(text), new CandidateReviewEngine.RunServices(null, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(true,false,false), false)).status().name()).isEqualTo("SUCCESS");
     }
     @Test void analyzerOptInActuallyReachesNewEngineContract() {
@@ -183,7 +183,7 @@ class FinalReviewBasisContractTest {
                 requests.add(JSON.readTree((String)call.getArgument(1)));
                 return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",x.assessment(id,"PASS",text)))));
             });
-            assertThat(CandidateReviewEngine.run(x.client, x.context(text), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+            assertThat(CandidateReviewEngine.run(x.client, x.context(text), new CandidateReviewEngine.RunServices(null, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(enabled,false,false), false)).status().name()).isEqualTo("SUCCESS");
         }
         ((tools.jackson.databind.node.ObjectNode)requests.get(1)).remove("verificationContract");

@@ -45,7 +45,7 @@ class CurrentStoredPipelineReplayTest {
                 assertThat(JSON.readTree((String)call.getArgument(1))).isEqualTo(recorded.get("input"));
                 return Optional.of(JSON.treeToValue(recorded.get("output"),(Class<?>)call.getArgument(2)));
             });
-            var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,null,library,null,null),
+            var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,library,null,null),
                     new CandidateReviewEngine.RunOptions(24,0,false,new CandidateReviewEngine.VerificationFeatures(false,false,false),false));
             assertThat(index.get()).isEqualTo(row.get("calls").size());
             // Historical PARTIAL included bounded-context caveats. Replay the exact same

@@ -43,7 +43,7 @@ class ContextJudgmentPolicyTest {
             f.discovery(ids,new Proposal(ids.get(2),"TARGET_TREATMENT",null,
                     ids.stream().map(id->new Quote(id,null)).toList(),roles));
             f.verification(new Verification("candidate-1",f.linkedPass(ids.get(2),speech.get(2),ids.get(0),speech.get(0))));
-            var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+            var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             var systems=ArgumentCaptor.forClass(String.class);var inputs=ArgumentCaptor.forClass(String.class);
             verify(f.client,times(2)).completeAsJson(systems.capture(),inputs.capture(),any());

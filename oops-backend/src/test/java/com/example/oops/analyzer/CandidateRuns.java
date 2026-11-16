@@ -5,7 +5,7 @@ import com.example.oops.client.OpenAiClient;
 /** Test shorthand for the production entry point with no optional services. */
 final class CandidateRuns {
     static final CandidateReviewEngine.RunServices NO_SERVICES =
-            new CandidateReviewEngine.RunServices(null, null, null, null, null);
+            new CandidateReviewEngine.RunServices(null, null, null, null);
     private CandidateRuns() {}
 
     static CandidateReviewEngine.RunOptions options(int maxCandidates) {

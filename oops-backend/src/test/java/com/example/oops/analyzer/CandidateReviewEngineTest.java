@@ -555,7 +555,7 @@ class CandidateReviewEngineTest {
         var f = new CandidateReviewEngineTest();
         f.discovery(List.of("stt-index-0"));
         var options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
-        var bound = new RunServices(services.visual(), services.caseLibrary(), services.guidelines(), services.requestTrace(),
+        var bound = new RunServices(services.visual(), services.guidelines(), services.requestTrace(),
                 services.router(), services.discoveryReferences());
         var result = runExperimental(f.client, f.context("그 집은 조용하다"), bound, options,
                 new ExperimentalBatch(List.of("stt-index-0"), List.of()));
@@ -568,7 +568,7 @@ class CandidateReviewEngineTest {
 
     @Test void discoveryReferencesReplaceLexicalSelectionInDiscoveryOnly() {
         var lib = new ContextExampleSelectionTest().library(new ContextExampleSelectionTest().archive(4), 3, 3000, "");
-        String system = discoverySystem(new RunServices(null, null, lib, null, null, raw -> List.of("source-1")));
+        String system = discoverySystem(new RunServices(null, lib, null, null, raw -> List.of("source-1")));
         assertThat(system).contains("referenceContexts", "생활조건을 열등하게 비교");
         var discovery = lastSelections.stream().filter(t -> t.requestKey().equals("discovery-1")).findFirst().orElseThrow();
         assertThat(discovery.retrievalMethod()).isEqualTo("FIXED_PRECOMPUTED_SELECTION");
@@ -577,8 +577,8 @@ class CandidateReviewEngineTest {
 
     @Test void nullDiscoveryReferencesKeepTheExistingPath() {
         var f = new ContextExampleSelectionTest();
-        String lexical = discoverySystem(new RunServices(null, null, f.library(f.archive(4), 3, 3000, ""), null, null));
-        String nulled = discoverySystem(new RunServices(null, null, f.library(f.archive(4), 3, 3000, ""), null, null, null));
+        String lexical = discoverySystem(new RunServices(null, f.library(f.archive(4), 3, 3000, ""), null, null));
+        String nulled = discoverySystem(new RunServices(null, f.library(f.archive(4), 3, 3000, ""), null, null, null));
         assertThat(nulled).isEqualTo(lexical);
         assertThat(lastSelections).noneMatch(t -> t.retrievalMethod().equals("FIXED_PRECOMPUTED_SELECTION"));
     }
@@ -591,7 +591,7 @@ class CandidateReviewEngineTest {
         String fixed = lib.selectFixed(com.example.oops.domain.TimelineEventType.SPEECH, "x", List.of("source-1")).prompt();
         var options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
         var result = runExperimental(f.client, f.context("그 집은 조용하다"),
-                new RunServices(null, null, lib, null, null, raw -> List.of("source-1")), options,
+                new RunServices(null, lib, null, null, raw -> List.of("source-1")), options,
                 new ExperimentalBatch(List.of("stt-index-0"), List.of()));
         var systems = ArgumentCaptor.forClass(String.class);
         verify(f.client, times(2)).completeAsJson(systems.capture(), anyString(), any());

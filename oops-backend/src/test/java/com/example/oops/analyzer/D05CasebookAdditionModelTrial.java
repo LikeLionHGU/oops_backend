@@ -343,7 +343,7 @@ public final class D05CasebookAdditionModelTrial {
                             ContentGenre.GENERAL, List.of(), List.of(), sample.review());
                     long started = System.nanoTime();
                     var analyzed = CandidateReviewEngine.run(client, context,
-                            new CandidateReviewEngine.RunServices(null, null, library, null, null),
+                            new CandidateReviewEngine.RunServices(null, library, null, null),
                             new CandidateReviewEngine.RunOptions(24, 0, false,
                                     new CandidateReviewEngine.VerificationFeatures(false, false, false), false));
                     var usage = client.videoUsage(); totalUsageUsd += usage.costUsd();

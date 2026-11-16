@@ -80,7 +80,7 @@ class C0GuidelineIsolationTest {
                 "가게에 대한 평가가 이용자나 사장을 낮추는 쪽으로 이어지는지 원문으로 확인합니다.",
                 List.of(new Quote("stt-index-3", "그 집"))));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-3", "PASS", "그 집")));
-        runExperimental(f.client, context, new RunServices(null, null, guidelines, null, null),
+        runExperimental(f.client, context, new RunServices(null, guidelines, null, null),
                 new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false),
                 new ExperimentalBatch(List.of("stt-index-3"), contextIds));
         var systems = org.mockito.ArgumentCaptor.forClass(String.class);

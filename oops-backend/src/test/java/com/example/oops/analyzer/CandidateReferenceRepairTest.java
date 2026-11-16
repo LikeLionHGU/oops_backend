@@ -160,7 +160,7 @@ class CandidateReferenceRepairTest {
             }
             return Optional.of(new VerificationResult(results));
         });
-        var r = CandidateReviewEngine.run(f.client, f.context(first, second), new CandidateReviewEngine.RunServices(null, null, helper.library(distinctExamples(), 1, 3000, ""), null, null),
+        var r = CandidateReviewEngine.run(f.client, f.context(first, second), new CandidateReviewEngine.RunServices(null, helper.library(distinctExamples(), 1, 3000, ""), null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var d = r.diagnostics().candidatePipeline();
         assertThat(d.verificationCalls()).isOne();

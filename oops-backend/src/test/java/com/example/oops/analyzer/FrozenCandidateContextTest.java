@@ -22,7 +22,7 @@ class FrozenCandidateContextTest {
                 Optional.of(new VerificationResult(List.of(new Verification("candidate-1", repaired)))));
         var helper = new ContextExampleSelectionTest();
         var library = helper.library(helper.archive(2), 1, 3000, "");
-        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, null, library, null, null),
+        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var systems = ArgumentCaptor.forClass(String.class);
         var requests = ArgumentCaptor.forClass(String.class);

@@ -25,7 +25,7 @@ class VisualContextReviewerTest {
                         List.of(fixture.proposal("stt-index-0", "그 집")))));
         frames(); response("PASS", "scene-0");
         var references = new ReviewGuidelineLibraryTest();
-        CandidateReviewEngine.run(ai, context(), new CandidateReviewEngine.RunServices(reviewer, null, references.library(references.enrichedArchive()), null, null),
+        CandidateReviewEngine.run(ai, context(), new CandidateReviewEngine.RunServices(reviewer, references.library(references.enrichedArchive()), null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var system = ArgumentCaptor.forClass(String.class);
         verify(ai).completeWithImagesAsJson(system.capture(), anyString(), anyList(), any());
@@ -154,7 +154,7 @@ class VisualContextReviewerTest {
         when(ai.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(
                 new Discovery(List.of("stt-index-0"), List.of(), List.of(), false, List.of(fixture.proposal("stt-index-0", "그 집")))));
         frames(); response("REVIEW_REQUIRED", "scene-0");
-        var r = CandidateReviewEngine.run(ai, context(), new CandidateReviewEngine.RunServices(reviewer, null, null, null, null),
+        var r = CandidateReviewEngine.run(ai, context(), new CandidateReviewEngine.RunServices(reviewer, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.findings()).hasSize(1);
         assertThat(r.findings().get(0).getReason()).contains("선택적 장면 검증", "상점 건물");
@@ -167,7 +167,7 @@ class VisualContextReviewerTest {
         when(ai.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenReturn(Optional.of(
                 new Discovery(List.of("stt-index-0"), List.of(), List.of(), false, List.of(p1, p2))));
         frames(); response("PASS", "scene-0");
-        var r = CandidateReviewEngine.run(ai, context(), new CandidateReviewEngine.RunServices(new VisualContextReviewer(media, ai, true, 1), null, null, null, null),
+        var r = CandidateReviewEngine.run(ai, context(), new CandidateReviewEngine.RunServices(new VisualContextReviewer(media, ai, true, 1), null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.diagnostics().candidatePipeline().budgetSkipped()).isOne();
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);

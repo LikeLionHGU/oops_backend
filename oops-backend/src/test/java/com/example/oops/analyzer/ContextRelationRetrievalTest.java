@@ -150,7 +150,7 @@ class ContextRelationRetrievalTest {
         f.discovery(ids,new Proposal(ids.get(1),"TARGET_TREATMENT",null,
                 ids.stream().map(id -> new Quote(id,null)).toList(),roles));
         f.verification(new Verification("candidate-1",f.linkedPass(ids.get(1),EVALUATION,ids.get(0),SITUATION)));
-        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, library, null, null),
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, library, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var rolesCaptor=ArgumentCaptor.forClass(ContextRelationRetrieval.Query.class);
         verify(library).select(eq(TimelineEventType.SPEECH),anyCollection(),startsWith("unit-"),anyCollection(),anySet(),rolesCaptor.capture());

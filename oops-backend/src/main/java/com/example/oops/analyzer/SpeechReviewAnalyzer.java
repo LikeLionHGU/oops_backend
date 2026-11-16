@@ -157,7 +157,6 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         this.evidenceLimit = limit;
     }
     private VisualContextReviewer visualReviewer;
-    private ReviewCaseLibrary caseLibrary;
     private ReviewGuidelineLibrary guidelineLibrary;
     private ContextMechanismRouter mechanismRouter;
     void setMechanismRouter(ContextMechanismRouter router) { this.mechanismRouter = router; }
@@ -187,25 +186,17 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         this(client, enabled, candidateEnabled, maxCandidates);
         this.visualReviewer = visualReviewer;
     }
-    public SpeechReviewAnalyzer(OpenAiClient client,
-            boolean enabled,
-            boolean candidateEnabled,
-            int maxCandidates,
-            VisualContextReviewer visualReviewer, ReviewCaseLibrary caseLibrary) {
-        this(client, enabled, candidateEnabled, maxCandidates, visualReviewer);
-        this.caseLibrary = caseLibrary;
-    }
     private final ThreadLocal<TextReviewEngine.Result> lastResult = new ThreadLocal<>();
 
     /** Single production injection path. Legacy constructors/setters remain for offline comparisons. */
     @org.springframework.beans.factory.annotation.Autowired
     public SpeechReviewAnalyzer(OpenAiClient client,
             com.example.oops.config.SpeechReviewProperties settings,
-            VisualContextReviewer visualReviewer, ReviewCaseLibrary caseLibrary,
+            VisualContextReviewer visualReviewer,
             ReviewGuidelineLibrary guidelineLibrary, ContextMechanismRouter mechanismRouter,
             com.example.oops.service.ReviewRequestTraceStore requestTraces) {
         this(client, settings.dialogueReviewEnabled(), settings.candidateReviewEnabled(),
-                settings.candidateReviewMaxCandidates(), visualReviewer, caseLibrary);
+                settings.candidateReviewMaxCandidates(), visualReviewer);
         setEvidenceLimit(settings.candidateReviewEvidenceLimit());
         setSourceRelationsEnabled(settings.candidateSourceRelationsEnabled());
         setFinalReviewBasisEnabled(settings.finalReviewBasisEnabled());
@@ -252,7 +243,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
-            var services = new CandidateReviewEngine.RunServices(visualReviewer, caseLibrary, guidelineLibrary, trace, mechanismRouter);
+            var services = new CandidateReviewEngine.RunServices(visualReviewer, guidelineLibrary, trace, mechanismRouter);
             var features = new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,
                     situationFirstEnabled, sourceUnderstandingEnabled, sourceUnderstandingVersion);
             var options = new CandidateReviewEngine.RunOptions(maxCandidates, evidenceLimit,

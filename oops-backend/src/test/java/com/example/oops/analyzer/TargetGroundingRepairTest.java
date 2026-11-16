@@ -185,7 +185,7 @@ class TargetGroundingRepairTest {
                             repair ? good : missingTargetEvidence(f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집")),
                             List.of(new VisualContextReviewer.Observation("scene-0", "상점이 보인다")), "원문과 제공한 화면을 대조한다"));
                 });
-        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null, null),
+        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().repairCalls()).isEqualTo(2);
@@ -211,7 +211,7 @@ class TargetGroundingRepairTest {
         when(f.client.completeWithImagesAsJson(anyString(), anyString(), anyList(), eq(VisualContextReviewer.Response.class)))
                 .thenReturn(Optional.of(new VisualContextReviewer.Response("candidate-3", bad,
                         List.of(new VisualContextReviewer.Observation("scene-0", "상점이 보인다")), "실제 화면과 발언 대조")));
-        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null, null),
+        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var d = r.diagnostics().candidatePipeline();
         assertThat(r.findings()).isEmpty();

@@ -19,7 +19,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(1L)) {
-            var result = CandidateReviewEngine.run(f.client, f.context("그 집 메뉴", "그 집 선택지"), new CandidateReviewEngine.RunServices(null, null, null, trace, null),
+            var result = CandidateReviewEngine.run(f.client, f.context("그 집 메뉴", "그 집 선택지"), new CandidateReviewEngine.RunServices(null, null, trace, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(result.findings()).isEmpty();
             assertThat(result.diagnostics().candidatePipeline().verificationCalls()).isOne();
@@ -44,7 +44,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(2L)) {
-            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, null, trace, null),
+            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, trace, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         }
         assertThat(store.find(2L).orElseThrow().requests()).extracting(ReviewRequestTraceStore.Entry::stage)
@@ -62,7 +62,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(3L)) {
-            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, null, trace, null),
+            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, trace, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         }
         var repair = store.find(3L).orElseThrow().requests().stream()
@@ -87,7 +87,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(4L)) {
-            CandidateReviewEngine.run(f.client, f.context("그 집 메뉴 평가", "대화의 후속 문맥"), new CandidateReviewEngine.RunServices(null, null, null, trace, null),
+            CandidateReviewEngine.run(f.client, f.context("그 집 메뉴 평가", "대화의 후속 문맥"), new CandidateReviewEngine.RunServices(null, null, trace, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         }
         var repair = store.find(4L).orElseThrow().requests().stream()

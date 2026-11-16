@@ -60,7 +60,7 @@ final class ContextExperimentRunner {
             return record(conditionId, repeat, context, target, selection, BUDGET_INFEASIBLE, null, null, null, List.of(), List.of(), 0,
                     List.of());
         var trace = ReviewRequestTraceStore.experimentalSession();
-        var services = new CandidateReviewEngine.RunServices(null, null, library, trace, null, references);
+        var services = new CandidateReviewEngine.RunServices(null, library, trace, null, references);
         var result = CandidateReviewEngine.runExperimental(client, context, services, options, batch);
         trace.close();
         var pipeline = result.diagnostics().candidatePipeline();

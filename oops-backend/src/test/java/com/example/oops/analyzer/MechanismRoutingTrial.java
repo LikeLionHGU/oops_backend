@@ -162,7 +162,7 @@ public final class MechanismRoutingTrial {
             for (String arm : repeat==1 ? List.of("OFF","ON") : List.of("ON","OFF")) {
                 client.calls.clear(); client.beginVideo(0L); client.beginAnalyzer("mechanism-routing-trial");
                 long start = System.nanoTime();
-                var result = CandidateReviewEngine.run(client, context(c), new CandidateReviewEngine.RunServices(null, null, library, null, arm.equals("ON")?router:null),
+                var result = CandidateReviewEngine.run(client, context(c), new CandidateReviewEngine.RunServices(null, library, null, arm.equals("ON")?router:null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
                 var usage = client.videoUsage(); cost += usage.costUsd();
                 var row = new LinkedHashMap<String,Object>();

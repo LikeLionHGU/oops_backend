@@ -101,7 +101,7 @@ class SourceUnderstandingContractTest {
     }
 
     TextReviewEngine.Result runEnabled() {
-        return CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null, null),
+        return CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true), false));
     }
     void discover() { f.discovery(List.of(id,"stt-index-1"),f.proposal(id,text)); }
@@ -176,7 +176,7 @@ class SourceUnderstandingContractTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",b.expression("SEXUAL"),
                     b.basis("EXPRESSION_CONTENT"),new SourceUnderstanding(List.of(new SourceUnderstanding.ActReading(b.id,"OTHER",List.of())))))));
         });
-        var result=CandidateReviewEngine.run(b.f.client, b.f.context(b.text), new CandidateReviewEngine.RunServices(null, null, null, null, null),
+        var result=CandidateReviewEngine.run(b.f.client, b.f.context(b.text), new CandidateReviewEngine.RunServices(null, null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new VerificationFeatures(true,true,true), false));
         assertThat(result.status().name()).isEqualTo("SUCCESS");assertThat(result.findings()).hasSize(1);
         assertThat(result.diagnostics().candidatePipeline().evidenceCounts().get(0).sourceUnderstanding().provided()).isTrue();

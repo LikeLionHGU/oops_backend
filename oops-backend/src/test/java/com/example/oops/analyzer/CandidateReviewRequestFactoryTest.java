@@ -10,22 +10,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CandidateReviewRequestFactoryTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    @Test void discoveryAssemblyPreservesSharedPromptAndAddsOnlyTheSelectedApprovedCasePayload() {
+    @Test void discoveryAssemblyPreservesSharedPromptAndInputShape() {
         var fixture = new CandidateReviewEngineTest();
         var context = fixture.context("현재 영상 원문");
         var batch = DialogueReadingPage.plan(context.reviewInput()).get(0);
         var raw = DialogueReadingPage.raw(batch);
         var units = CandidateContextWindow.conversationUnits(batch);
-        var example = new ReviewCaseLibrary.Example("approved-case", "사례 표현", "상황 흐름",
-                "비판 가설", "정상 해석", "원문 근거", "REVIEW_REQUIRED", List.of());
 
         var built = CandidateReviewRequestFactory.discovery(CandidateReviewEngine.REVISION, false,
                 "\nselected-guideline", batch.primary().stream().map(ReviewInput.Segment::id).toList(),
-                raw, units, units, batch.contextLimited(), List.of(example));
+                raw, units, units, batch.contextLimited());
 
-        assertThat(built.system()).isEqualTo(CandidateReviewEngine.DISCOVERY_PROMPT + "\nselected-guideline\n"
-                + CandidateReviewEngine.CASE_REFERENCE_CONTRACT);
-        assertThat(built.hasReferences()).isTrue();
+        assertThat(built.system()).isEqualTo(CandidateReviewEngine.DISCOVERY_PROMPT + "\nselected-guideline");
         var legacyShape = new LinkedHashMap<>(Map.of(
                 "promptRevision", CandidateReviewEngine.REVISION,
                 "primaryIds", batch.primary().stream().map(ReviewInput.Segment::id).toList(),
@@ -34,10 +30,8 @@ class CandidateReviewRequestFactoryTest {
                 "targetWindows", CandidateReviewEngine.compactWindows(units),
                 "contextLimited", batch.contextLimited()));
         legacyShape.put("readingPage", DialogueReadingPage.metadata());
-        legacyShape.put("referenceCases", List.of(example));
         assertThat(built.input()).isEqualTo(JSON.writeValueAsString(legacyShape));
         var input = JSON.readTree(built.input());
-        assertThat(input.path("referenceCases").get(0).path("caseId").asText()).isEqualTo("approved-case");
         assertThat(input.path("raw").get(0).path("text").asText()).isEqualTo("현재 영상 원문");
         assertThat(built.input().codePointCount(0, built.input().length())).isLessThan(DialogueReadingPage.MAX_INPUT_CODE_POINTS);
         assertThat(built.system().codePointCount(0, built.system().length())).isLessThan(20_000);

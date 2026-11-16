@@ -55,7 +55,6 @@ class SpeechReviewPropertiesTest {
         runner.withBean(com.example.oops.client.OpenAiClient.class,
                         () -> org.mockito.Mockito.mock(com.example.oops.client.OpenAiClient.class))
                 .withBean(VisualContextReviewer.class, () -> org.mockito.Mockito.mock(VisualContextReviewer.class))
-                .withBean(ReviewCaseLibrary.class, () -> org.mockito.Mockito.mock(ReviewCaseLibrary.class))
                 .withBean(ReviewGuidelineLibrary.class, () -> org.mockito.Mockito.mock(ReviewGuidelineLibrary.class))
                 .withBean(ContextMechanismRouter.class, () -> org.mockito.Mockito.mock(ContextMechanismRouter.class))
                 .withBean(com.example.oops.service.ReviewRequestTraceStore.class,
