@@ -62,9 +62,6 @@ public class FindingFusionService {
         MERGE_GROUP.put(RiskCategory.STRONG_NEGATIVE_REVIEW, "NEGATIVE_REVIEW");
         MERGE_GROUP.put(RiskCategory.GRAPHIC_METAPHOR, "GRAPHIC_METAPHOR");
 
-        MERGE_GROUP.put(RiskCategory.AD_DEMONETIZED, "AD");
-        MERGE_GROUP.put(RiskCategory.AD_LIMITED, "AD");
-
         MERGE_GROUP.put(RiskCategory.FACT_ERROR, "FACT");
         MERGE_GROUP.put(RiskCategory.MISINFORMATION, "FACT");
         MERGE_GROUP.put(RiskCategory.UNVERIFIED_CLAIM, "FACT");
@@ -82,10 +79,6 @@ public class FindingFusionService {
     private static final Map<RiskCategory, Integer> CATEGORY_WEIGHT = new EnumMap<>(RiskCategory.class);
 
     static {
-        // 수익과 직결되므로 가장 위에 보여준다
-        CATEGORY_WEIGHT.put(RiskCategory.AD_DEMONETIZED, 120);
-        CATEGORY_WEIGHT.put(RiskCategory.AD_LIMITED, 110);
-
         CATEGORY_WEIGHT.put(RiskCategory.HATE_SPEECH, 100);
         CATEGORY_WEIGHT.put(RiskCategory.DISCRIMINATION, 95);
         CATEGORY_WEIGHT.put(RiskCategory.PRIVACY, 90);
@@ -99,15 +92,11 @@ public class FindingFusionService {
         CATEGORY_WEIGHT.put(RiskCategory.MISINFORMATION, 72);
         CATEGORY_WEIGHT.put(RiskCategory.UNVERIFIED_CLAIM, 68);
         CATEGORY_WEIGHT.put(RiskCategory.UNFAMILIAR_CONTEXT, 85);
-        CATEGORY_WEIGHT.put(RiskCategory.CAPTION_MISMATCH, 82);
         CATEGORY_WEIGHT.put(RiskCategory.GENERALIZATION, 65);
         CATEGORY_WEIGHT.put(RiskCategory.VIOLENCE, 60);
         CATEGORY_WEIGHT.put(RiskCategory.SEXUAL, 55);
         CATEGORY_WEIGHT.put(RiskCategory.PROFANITY, 50);
-        CATEGORY_WEIGHT.put(RiskCategory.GESTURE, 45);
         CATEGORY_WEIGHT.put(RiskCategory.SCREEN_TEXT, 40);
-        CATEGORY_WEIGHT.put(RiskCategory.ADVERTISING, 30);
-        CATEGORY_WEIGHT.put(RiskCategory.COMMENT_BACKLASH, 25);
     }
 
     public List<RiskFinding> fuse(List<RiskFinding> candidates) {
