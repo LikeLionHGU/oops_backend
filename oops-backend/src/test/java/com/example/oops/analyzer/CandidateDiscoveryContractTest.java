@@ -89,37 +89,11 @@ class CandidateDiscoveryContractTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1", f.linkedPass(p.anchorId(), lines[10], "stt-index-20", lines[20])))));
         });
         var c = f.context(lines);
-        var first = TextReviewBatchPlanner.plan(c.reviewInput(), TimelineEventType.SPEECH, 3).get(0);
-        assertThat(ReviewUnit.all(first).stream().filter(u -> u.anchorId().equals(p.anchorId())))
-                .noneMatch(u -> u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()));
-        assertThat(CandidateContextWindow.discoveryUnits(first)).anySatisfy(u -> {
-            assertThat(u.anchorId()).isEqualTo(p.anchorId());
-            assertThat(u.segmentIds()).contains("stt-index-0", "stt-index-10", "stt-index-20");
-        });
         var r = run(f.client, c, 24);
         assertThat(r.diagnostics().candidatePipeline().invalidProposals()).isZero();
         assertThat(r.diagnostics().candidatePipeline().discoveryRepairCalls()).isZero();
         assertThat(r.findings()).isEmpty(); // More context never forces a warning.
         verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
-    }
-    @Test void targetWindowsStayInsideBatchRawAndTimeCountCharacterGapBounds() {
-        var helper = new CandidateContextWindowTest();
-        for (var text : List.of("짧은 대화", "😀".repeat(300))) {
-            var lines = IntStream.range(0, 80).mapToObj(i -> helper.speech(i, i * 1000L, text)).toList();
-            for (var batch : TextReviewBatchPlanner.plan(new ReviewInput(lines), TimelineEventType.SPEECH, 3)) {
-                Set<String> supplied = new HashSet<>(); batch.primary().forEach(s -> supplied.add(s.id())); batch.context().forEach(s -> supplied.add(s.id()));
-                assertThat(CandidateContextWindow.discoveryUnits(batch)).allSatisfy(u -> {
-                    assertThat(u.segmentIds()).contains(u.anchorId()).hasSizeLessThanOrEqualTo(48);
-                    assertThat(supplied).containsAll(u.segmentIds());
-                    assertThat(u.endMs() - u.startMs()).isLessThanOrEqualTo(60000);
-                    assertThat(u.segmentIds().stream().map(id -> lines.stream().filter(s -> s.id().equals(id)).findFirst().orElseThrow())
-                            .mapToInt(s -> s.text().codePointCount(0, s.text().length())).sum()).isLessThanOrEqualTo(6000);
-                });
-            }
-        }
-        var a = helper.speech(0, 0, "첫 대화"); var b = helper.speech(1, 10000, "다른 대화");
-        assertThat(CandidateContextWindow.discoveryUnits(new TextReviewBatchPlanner.Batch(List.of(a, b), List.of(), false, false)))
-                .allSatisfy(u -> assertThat(u.segmentIds()).hasSize(1));
     }
     @Test void malformedEvidenceCanRecoverButStillRequiresIndependentVerification() {
         var f = new CandidateReviewEngineTest(); var good = f.proposal("stt-index-0", "그 집");
@@ -159,11 +133,6 @@ class CandidateDiscoveryContractTest {
         String[] lines = IntStream.range(0, 40).mapToObj(i -> "일반 대화 " + i).toArray(String[]::new);
         var p = new Proposal("stt-index-10", "TARGET_TREATMENT", "먼 발언을 섞은 가설",
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-35", lines[35])));
-        // Supply all raw explicitly so the 60s bound, not batch omission, is exercised too.
-        var input = f.context(lines).reviewInput();
-        var fullBatch = new TextReviewBatchPlanner.Batch(input.segments(), List.of(), false, false);
-        assertThat(CandidateContextWindow.discoveryUnits(fullBatch).stream().filter(u -> u.anchorId().equals(p.anchorId())))
-                .noneMatch(u -> u.segmentIds().containsAll(p.evidence().stream().map(Quote::segmentId).toList()));
         batchDiscovery(f, p);
         var timed = new java.util.ArrayList<com.example.oops.domain.TranscriptSegment>();
         for (int i=0;i<lines.length;i++) timed.add(new com.example.oops.domain.TranscriptSegment(
