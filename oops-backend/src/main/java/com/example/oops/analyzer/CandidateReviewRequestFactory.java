@@ -15,26 +15,17 @@ final class CandidateReviewRequestFactory {
                                       List<String> primaryIds, List<ReviewInput.Segment> raw,
                                       List<ReviewUnit> units, List<ReviewUnit> targetUnits,
                                       boolean contextLimited, List<ReviewCaseLibrary.Example> references) {
-        return discovery(revision, sourceRelationsEnabled, false, guidelinePrompt, primaryIds, raw, units, targetUnits,
-                contextLimited, references);
-    }
-
-    static DiscoveryRequest discovery(String revision, boolean sourceRelationsEnabled, boolean recallFirst,
-                                      String guidelinePrompt, List<String> primaryIds, List<ReviewInput.Segment> raw,
-                                      List<ReviewUnit> units, List<ReviewUnit> targetUnits,
-                                      boolean contextLimited, List<ReviewCaseLibrary.Example> references) {
-        return discovery(revision, sourceRelationsEnabled, recallFirst, guidelinePrompt, primaryIds, raw, units, targetUnits,
+        return discovery(revision, sourceRelationsEnabled, guidelinePrompt, primaryIds, raw, units, targetUnits,
                 contextLimited, references, null);
     }
 
-    static DiscoveryRequest discovery(String revision, boolean sourceRelationsEnabled, boolean recallFirst,
+    static DiscoveryRequest discovery(String revision, boolean sourceRelationsEnabled,
                                       String guidelinePrompt, List<String> primaryIds, List<ReviewInput.Segment> raw,
                                       List<ReviewUnit> units, List<ReviewUnit> targetUnits,
                                       boolean contextLimited, List<ReviewCaseLibrary.Example> references,
                                       ExperimentalBatchRendering rendering) {
         boolean hasReferences = references != null && !references.isEmpty();
-        String baseline = recallFirst ? CandidateReviewPrompts.RECALL_DISCOVERY_PROMPT : CandidateReviewEngine.DISCOVERY_PROMPT;
-        String system = (sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : baseline)
+        String system = (sourceRelationsEnabled ? SourceRelationPrompts.DISCOVERY : CandidateReviewEngine.DISCOVERY_PROMPT)
                 + guidelinePrompt + (hasReferences ? "\n" + CandidateReviewEngine.CASE_REFERENCE_CONTRACT : "");
         // Keep the original map construction and insertion sequence byte-for-byte compatible
         // with CandidateReviewEngine before extraction; only ownership moves to this factory.

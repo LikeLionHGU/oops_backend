@@ -9,7 +9,6 @@ import static com.example.oops.analyzer.ReviewEvaluation.*;
 /** Speech-only candidate exploration then independent, candidate-scoped verification. */
 final class CandidateReviewEngine {
     static final String REVISION = "2026-11-05-shared-reading-page-52-generic-policy";
-    static final String RECALL_DISCOVERY_REVISION = "2026-11-05-recall-first-discovery-1";
     static final String RELATION_REVISION = "2026-11-05-source-relations-reading-page-52-generic-policy";
     static final String POLICY = CandidateReviewPrompts.POLICY;
     static final String DISCOVERY_PROMPT = CandidateReviewPrompts.DISCOVERY_PROMPT;
@@ -110,14 +109,8 @@ final class CandidateReviewEngine {
         VerificationScope(String reference,String rawSha256) { this(reference,rawSha256,""); }
     }
     record RunOptions(int maxCandidates, int evidenceLimit, boolean sourceRelationsEnabled,
-                      VerificationFeatures features, boolean ruleUnionEnabled, boolean recallFirstDiscovery) {
-        RunOptions(int maxCandidates, int evidenceLimit, boolean sourceRelationsEnabled,
-                   VerificationFeatures features, boolean ruleUnionEnabled) {
-            this(maxCandidates, evidenceLimit, sourceRelationsEnabled, features, ruleUnionEnabled, false);
-        }
+                      VerificationFeatures features, boolean ruleUnionEnabled) {
         RunOptions {
-            if (recallFirstDiscovery && sourceRelationsEnabled)
-                throw new IllegalArgumentException("Recall-first discovery requires the baseline discovery contract");
             Objects.requireNonNull(features, "Verification features required");
             if (evidenceLimit < 0) throw new IllegalArgumentException("Evidence limit must be nonnegative");
             if (maxCandidates < 1 || maxCandidates > 200) throw new IllegalArgumentException("Candidate budget must be 1..200");
@@ -254,9 +247,6 @@ final class CandidateReviewEngine {
         var stats = new Stats();
         var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
-        if(options.recallFirstDiscovery()) stats.revision += "+"+RECALL_DISCOVERY_REVISION;
-        String discoveryRepairPrompt = options.recallFirstDiscovery()
-                ? CandidateReviewPrompts.RECALL_DISCOVERY_REPAIR_PROMPT : DISCOVERY_REPAIR_PROMPT;
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
         if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.version(features.understandingVersion());
         else if(features.situationFirst()) stats.revision += "+"+SituationFirstVerification.VERSION;
@@ -301,7 +291,7 @@ final class CandidateReviewEngine {
             stats.discoveryCalls++;
             Discovery response;
             var builtDiscovery = CandidateReviewRequestFactory.discovery(modelPromptRevision, sourceRelationsEnabled,
-                    options.recallFirstDiscovery(), guidelinePrompt, primaryIds, raw, units, targetUnits, batch.contextLimited(),
+                    guidelinePrompt, primaryIds, raw, units, targetUnits, batch.contextLimited(),
                     references == null ? List.of() : references.examples(), stats.rendering);
             String discoverySystem = builtDiscovery.system();
             String discoveryInput = builtDiscovery.input();
@@ -374,7 +364,7 @@ final class CandidateReviewEngine {
                                 && stats.repairCalls + stats.discoveryRepairCalls < MAX_CONTRACT_REPAIRS) {
                             var repaired = repairProposal(client, id, proposal, batch, allowedUnits,
                                     response.reviewedSegmentIds(), input, guidelinePrompt, stats, failure, !needsVisual,
-                                    context, requestTrace, discoveryRepairPrompt);
+                                    context, requestTrace, DISCOVERY_REPAIR_PROMPT);
                             if (repaired != null) { candidate = repaired; proposal = repaired.proposal(); }
                         } else stats.repair(new CandidateReviewDiagnostics.RepairTrace(
                                 id, failure, "NOT_ATTEMPTED_BUDGET", failure));
