@@ -88,16 +88,16 @@ def transcribe(video: PreparedVideo) -> dict:
     from openai import OpenAI
 
     started = time.time()
-    client = OpenAI(**_client_options(settings))
-    audio = extract_audio(video)
-
     segments: list[dict] = []
     language = None
-    for offset_ms, chunk in _split_audio(audio, video.workdir, video.duration_sec):
-        with open(chunk, "rb") as f:
-            result = client.audio.transcriptions.create(file=f, **options)
-        language = language or getattr(result, "language", None)
-        segments.extend(_normalize_segments(result, offset_ms))
+    # Own the connection for the entire job, including preparation failures.
+    with OpenAI(**_client_options(settings)) as client:
+        audio = extract_audio(video)
+        for offset_ms, chunk in _split_audio(audio, video.workdir, video.duration_sec):
+            with open(chunk, "rb") as f:
+                result = client.audio.transcriptions.create(file=f, **options)
+            language = language or getattr(result, "language", None)
+            segments.extend(_normalize_segments(result, offset_ms))
 
     log.info("[stt] model=%s segments=%d language=%s | 소요 %.1f초", model, len(segments), language,
              time.time() - started)

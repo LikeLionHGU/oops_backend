@@ -77,3 +77,63 @@ def test_text_without_segments_is_not_a_successful_timestamped_transcript():
 
 def test_silent_audio_may_return_empty_segments():
     assert stt._normalize_segments({"text": "", "segments": []}, 0) == []
+
+
+@pytest.mark.parametrize("failure", [None, "extract", "split", "open", "request", "normalize", "cancel"])
+def test_transcribe_closes_client_and_open_audio_on_every_exit(monkeypatch, tmp_path, failure):
+    """No media process or provider call; exercise the real adapter's ownership boundary."""
+    class Cancelled(BaseException):
+        pass
+
+    settings = SimpleNamespace(stt_model="whisper-large-v3", groq_api_key="offline-test-key")
+    client = OpenAI(api_key="offline-test-key", http_client=httpx.Client(
+        transport=httpx.MockTransport(lambda request: pytest.fail("network must not be used"))))
+    opened = []
+    monkeypatch.setattr(stt, "get_settings", lambda: settings)
+    monkeypatch.setattr("openai.OpenAI", lambda **kwargs: client)
+
+    def extract(video):
+        if failure == "extract":
+            raise MediaError("injected extract failure")
+        return tmp_path / "audio.mp3"
+
+    def split(*args):
+        if failure == "split":
+            raise MediaError("injected split failure")
+        return [(0, "first"), (600_000, "second")]
+
+    def open_audio(*args):
+        if failure == "open":
+            raise OSError("injected open failure")
+        audio = io.BytesIO(b"offline audio")
+        opened.append(audio)
+        return audio
+
+    def create(**kwargs):
+        assert not kwargs["file"].closed
+        if failure == "cancel":
+            raise Cancelled()
+        if failure == "request":
+            raise RuntimeError("injected request failure")
+        return SimpleNamespace(language="ko", text="원문", segments=[
+            {"start": None if failure == "normalize" else 0.5, "end": 1.5, "text": "원문"}])
+
+    monkeypatch.setattr(stt, "extract_audio", extract)
+    monkeypatch.setattr(stt, "_split_audio", split)
+    monkeypatch.setattr(stt, "open", open_audio, raising=False)
+    monkeypatch.setattr(client.audio.transcriptions, "create", create)
+    video = SimpleNamespace(workdir=tmp_path, duration_sec=601)
+    try:
+        if failure:
+            error = Cancelled if failure == "cancel" else (MediaError, OSError, RuntimeError)
+            with pytest.raises(error):
+                stt.transcribe(video)
+        else:
+            result = stt.transcribe(video)
+            assert result == {"language": "ko", "model": "whisper-large-v3", "segments": [
+                {"startMs": 500, "endMs": 1500, "text": "원문"},
+                {"startMs": 600500, "endMs": 601500, "text": "원문"}]}
+        assert all(audio.closed for audio in opened)
+        assert client.is_closed()
+    finally:
+        client.close()

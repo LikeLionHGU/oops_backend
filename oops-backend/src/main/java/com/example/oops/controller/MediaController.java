@@ -176,13 +176,17 @@ public class MediaController {
         @Override
         public java.io.InputStream getInputStream() throws IOException {
             java.io.InputStream in = region.getResource().getInputStream();
-            long skipped = 0;
-            while (skipped < region.getPosition()) {
-                long n = in.skip(region.getPosition() - skipped);
-                if (n <= 0) break;
-                skipped += n;
+            try {
+                in.skipNBytes(region.getPosition());
+                return new LimitedInputStream(in, region.getCount());
+            } catch (IOException | RuntimeException | Error failure) {
+                // Ownership only transfers after positioning succeeds.
+                try { in.close(); }
+                catch (IOException | RuntimeException | Error closeFailure) {
+                    if (closeFailure != failure) failure.addSuppressed(closeFailure);
+                }
+                throw failure;
             }
-            return new LimitedInputStream(in, region.getCount());
         }
 
         @Override

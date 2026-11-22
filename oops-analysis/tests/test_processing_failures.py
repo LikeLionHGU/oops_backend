@@ -113,11 +113,13 @@ def test_successful_split_preserves_all_offsets(tmp_path, monkeypatch):
 
 
 def test_failed_chunk_prevents_any_transcription_api_call(tmp_path, monkeypatch):
-    from unittest.mock import Mock
+    from unittest.mock import Mock, MagicMock
     import openai
     create = Mock()
-    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(
-        audio=SimpleNamespace(transcriptions=SimpleNamespace(create=create))))
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.audio.transcriptions.create = create
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: client)
     monkeypatch.setattr(stt, "get_settings", lambda: SimpleNamespace(stt_model="whisper-large-v3",
         groq_api_key="offline-fixture"))
     monkeypatch.setattr(stt, "extract_audio", lambda video: tmp_path / "input.mp3")
@@ -129,6 +131,7 @@ def test_failed_chunk_prevents_any_transcription_api_call(tmp_path, monkeypatch)
     with pytest.raises(media.MediaError):
         stt.transcribe(SimpleNamespace(workdir=tmp_path, duration_sec=601))
     create.assert_not_called()
+    client.__exit__.assert_called_once()
 
 
 @pytest.mark.parametrize("results, expected", [([None, None], "SUCCESS"), ([None, "fail"], "PARTIAL"),
