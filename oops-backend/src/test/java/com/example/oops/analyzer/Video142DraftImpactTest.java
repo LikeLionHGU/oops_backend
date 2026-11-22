@@ -9,6 +9,7 @@ import static com.example.oops.analyzer.ReviewGuidelineLibrary.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Local draft impact only; never publishes or sends provider requests. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class Video142DraftImpactTest {
     @Test void compareApprovedDevelopmentBoundaryAgainstFrozenInputs(@TempDir Path temp)throws Exception{
         Path root=Path.of("../datasets/controversy"),runtime=root.resolve("guidelines/runtime.json"),

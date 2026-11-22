@@ -15,7 +15,7 @@ class ContextPolicyTrialTest {
         assertThat(ContextPolicyTrial.specs().stream().map(ContextPolicyTrial.Spec::id).distinct()).hasSize(12);
     }
     @Test void reconstructedRequestKeepsLabelsOutAndUsesProductionValidator() {
-        var f=new CandidateReviewEngineTest();var context=f.context("이 가게를 소개해요","저는 다른 메뉴가 좋아요","그렇군요");
+        var f=new CandidateReviewFixture();var context=f.context("이 가게를 소개해요","저는 다른 메뉴가 좋아요","그렇군요");
         var spec=new ContextPolicyTrial.Spec("synthetic",0,1,"TARGET_TREATMENT",List.of(0,1),"PENDING_HUMAN_REVIEW",null);
         var task=ContextPolicyTrial.capture(spec,context,null);var body=JSON.readTree(task.input());
         assertThat(body.has("expected")).isFalse();assertThat(body.has("labelStatus")).isFalse();

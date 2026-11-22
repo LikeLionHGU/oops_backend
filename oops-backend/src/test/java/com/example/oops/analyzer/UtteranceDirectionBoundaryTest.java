@@ -2,6 +2,7 @@ package com.example.oops.analyzer;
 
 import org.junit.jupiter.api.Test;
 import java.util.*;
+import static com.example.oops.analyzer.UtteranceDirectionFixtures.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static com.example.oops.analyzer.CandidateReviewEngine.*;
 import static org.assertj.core.api.Assertions.*;
@@ -10,8 +11,6 @@ import static org.mockito.Mockito.*;
 
 /** Free source-preservation tests only. A mock verifier cannot establish semantic accuracy. */
 class UtteranceDirectionBoundaryTest {
-    record Boundary(String id,String relationDraft,String unsupportedInference,List<String> speech) {}
-    record Suite(String schemaVersion,String labelStatus,List<Boundary> cases) {}
     Suite fixture() throws Exception {
         try(var in=getClass().getResourceAsStream("/utterance-direction-boundaries.json")) {
             return JSON.readValue(Objects.requireNonNull(in).readAllBytes(),Suite.class);
@@ -30,7 +29,7 @@ class UtteranceDirectionBoundaryTest {
     }
     @Test void sourceWordingOrderTimesAndIdsSurviveDiscoveryAndVerificationWithoutAnnotationLeakage() throws Exception {
         for(var boundary:fixture().cases()) {
-            var f=new CandidateReviewEngineTest();var context=f.context(boundary.speech().toArray(String[]::new));
+            var f=new CandidateReviewFixture();var context=f.context(boundary.speech().toArray(String[]::new));
             var ids=java.util.stream.IntStream.range(0,boundary.speech().size()).mapToObj(i -> "stt-index-"+i).toList();
             // Intentionally wrong hypothesis/quotes: they must not overwrite actual raw evidence.
             var proposal=new Proposal(ids.get(0),"TARGET_TREATMENT",boundary.unsupportedInference(),

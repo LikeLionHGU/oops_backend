@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 /** Contract/scope regression with synthetic outputs, not evidence of model accuracy. */
 class FinalReviewBasisContractTest {
     final String id="stt-index-0",text="신체 공개 묘사 자체를 검토하는 합성 원문입니다.";
-    final CandidateReviewEngineTest f=new CandidateReviewEngineTest();
+    final CandidateReviewFixture f=new CandidateReviewFixture();
     final AnalysisContext context=f.context(text,"추가 문맥입니다.");
     Proposal proposal(String axis) { return new Proposal(id,axis,"원문의 표현과 대상 연결을 확인합니다.",List.of(new Quote(id,text))); }
     Candidate candidate(String axis) { return new Candidate("c",proposal(axis),context.reviewInput().segments(),false,false); }
@@ -98,7 +98,7 @@ class FinalReviewBasisContractTest {
         assertThatThrownBy(() -> FinalReviewBasisContract.prompt(FinalReviewBasisContract.prompt(verificationPrompt(0))+frozenReference))
                 .isInstanceOf(IllegalArgumentException.class);
     }
-    TextReviewEngine.Result runEnabled(AnalysisContext c) { return CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null, null),
+    TextReviewEngine.Result runEnabled(AnalysisContext c) { return CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(true,false,false), false)); }
     @Test void enabledPipelinePublishesIndependentExpressionAndRecordsBothAxes() {
         var c=f.context(text);f.discovery(List.of(id),proposal("TARGET_TREATMENT"));
@@ -165,7 +165,7 @@ class FinalReviewBasisContractTest {
             assertThat(body.at("/candidates/0/sourceRelations")).isEqualTo(JSON.valueToTree(roles));
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",expression("SEXUAL"),basis("EXPRESSION_CONTENT")))));
         });
-        assertThat(CandidateReviewEngine.run(f.client, f.context(text), new CandidateReviewEngine.RunServices(null, null, null, null),
+        assertThat(CandidateReviewEngine.run(f.client, f.context(text), new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(true,false,false), false)).status().name()).isEqualTo("SUCCESS");
     }
     @Test void analyzerOptInActuallyReachesNewEngineContract() {
@@ -178,12 +178,12 @@ class FinalReviewBasisContractTest {
     @Test void optInDoesNotChangeRawWindowReferencesOrDiscoveryAxis() {
         var requests=new ArrayList<tools.jackson.databind.JsonNode>();
         for(boolean enabled:List.of(false,true)) {
-            var x=new CandidateReviewEngineTest();x.discovery(List.of(id),proposal("TARGET_TREATMENT"));
+            var x=new CandidateReviewFixture();x.discovery(List.of(id),proposal("TARGET_TREATMENT"));
             when(x.client.completeAsJson(anyString(),anyString(),eq(VerificationResult.class))).thenAnswer(call -> {
                 requests.add(JSON.readTree((String)call.getArgument(1)));
                 return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",x.assessment(id,"PASS",text)))));
             });
-            assertThat(CandidateReviewEngine.run(x.client, x.context(text), new CandidateReviewEngine.RunServices(null, null, null, null),
+            assertThat(CandidateReviewEngine.run(x.client, x.context(text), new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(enabled,false,false), false)).status().name()).isEqualTo("SUCCESS");
         }
         ((tools.jackson.databind.node.ObjectNode)requests.get(1)).remove("verificationContract");

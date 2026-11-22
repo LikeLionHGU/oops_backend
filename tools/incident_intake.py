@@ -74,10 +74,11 @@ def implementation_hashes():
         "oops-backend/src/main/java/com/example/oops/analyzer/ContextReferenceBalance.java",
         "oops-backend/src/main/java/com/example/oops/analyzer/StructuredContextSearch.java",
         "oops-backend/src/main/java/com/example/oops/analyzer/CandidateReviewEngine.java",
-        "oops-backend/src/test/java/com/example/oops/analyzer/IncidentSelectorImpactAudit.java",
-        "oops-backend/src/test/java/com/example/oops/analyzer/CasebookImpactAudit.java",
+        "oops-backend/src/experiment/java/com/example/oops/analyzer/IncidentSelectorImpactAudit.java",
+        "oops-backend/src/experiment/java/com/example/oops/analyzer/CasebookImpactAudit.java",
         "oops-backend/src/main/resources/application.yml",
         "oops-backend/build.gradle",
+        "oops-backend/gradle/experiments.gradle",
     )
     return {name: digest(read_bytes(ROOT / name)) for name in names}
 

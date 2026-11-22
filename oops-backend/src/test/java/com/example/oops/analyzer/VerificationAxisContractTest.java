@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Diagnostic characterization, not synthetic controversy gold or a desired long-term contract. */
 class VerificationAxisContractTest {
     @Test void discoveryAxisStillBlocksTargetlessSexualContentEvenWhenVerificationTreatsExpressionItself() {
-        var f=new CandidateReviewEngineTest();String text="신체를 보여주겠다는 표현 자체를 이야기합니다.";
+        var f=new CandidateReviewFixture();String text="신체를 보여주겠다는 표현 자체를 이야기합니다.";
         var context=f.context(text);String id="stt-index-0";
         var assessment=new LlmDecision(id,"REVIEW_REQUIRED",text,
                 "노골적인 신체 공개 표현을 소재로 삼는 내용 자체를 검토하는 합성 응답입니다.",

@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 /** Routing/contract tests with synthetic raw and mocked responses, not controversy accuracy. */
 class CandidateDiscoveryContractTest {
     @Test void missingAnchorQuoteCanRecoverThenIndependentlyPass() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var broken = new Proposal("stt-index-1", "TARGET_TREATMENT", "두 문장의 연결 확인",
                 List.of(new Quote("stt-index-0", "그 집")));
         f.discovery(List.of("stt-index-0", "stt-index-1"), broken);
@@ -34,7 +34,7 @@ class CandidateDiscoveryContractTest {
         // Quotes are server-filled; the guard is that the anchor line must appear in evidence. A repair
         // that still omits the anchor's own id stays FAILED and does not loop.
         for (String evidenceId : List.of("stt-index-0", "stt-index-1")) {
-            var f = new CandidateReviewEngineTest();
+            var f = new CandidateReviewFixture();
             var broken = new Proposal("stt-index-1", "TARGET_TREATMENT", "두 문장의 연결 확인",
                     List.of(new Quote("stt-index-0", "그 집")));
             f.discovery(List.of("stt-index-0", "stt-index-1"), broken);
@@ -53,7 +53,7 @@ class CandidateDiscoveryContractTest {
         }
     }
     @Test void multipleMissingAnchorsStillShareOneDiscoveryRepairBudget() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var first = new Proposal("stt-index-1", "TARGET_TREATMENT", "첫 연결 확인",
                 List.of(new Quote("stt-index-0", "그 집")));
         var second = new Proposal("stt-index-2", "TARGET_TREATMENT", "다음 연결 확인",
@@ -69,7 +69,7 @@ class CandidateDiscoveryContractTest {
                 .isEqualTo("NOT_ATTEMPTED_BUDGET");
         verify(f.client, times(1)).completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class));
     }
-    void batchDiscovery(CandidateReviewEngineTest f, Proposal p) {
+    void batchDiscovery(CandidateReviewFixture f, Proposal p) {
         when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(invocation -> {
             var tree = JsonMapper.builder().build().readTree((String) invocation.getArgument(1));
             List<String> ids = new ArrayList<>(); tree.get("primaryIds").forEach(n -> ids.add(n.asText()));
@@ -77,7 +77,7 @@ class CandidateDiscoveryContractTest {
         });
     }
     @Test void fortySecondChainIsAdvertisedBeforeValidationAndAllQuotesReachVerifier() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         String[] lines = IntStream.range(0, 21).mapToObj(i -> "그 집 선택지 " + i).toArray(String[]::new);
         var p = new Proposal("stt-index-10", "TARGET_TREATMENT", "앞 상황과 후속 평가의 연결 검토",
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-20", lines[20])));
@@ -96,7 +96,7 @@ class CandidateDiscoveryContractTest {
         verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void malformedEvidenceCanRecoverButStillRequiresIndependentVerification() {
-        var f = new CandidateReviewEngineTest(); var good = f.proposal("stt-index-0", "그 집");
+        var f = new CandidateReviewFixture(); var good = f.proposal("stt-index-0", "그 집");
         f.discovery(List.of(good.anchorId()), new Proposal(good.anchorId(), good.axis(), good.reason(), List.of()));
         when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class))).thenAnswer(invocation -> {
             assertThat((String) invocation.getArgument(0)).contains(DISCOVERY_REPAIR_PROMPT);
@@ -115,7 +115,7 @@ class CandidateDiscoveryContractTest {
     @Test void repairCannotChangeAxisOrUseUnprovidedId() {
         for (var returned : List.of(new Proposal("stt-index-0", "EXPRESSION_CONTENT", "축 변경 가설", List.of(new Quote("stt-index-0", "그 집"))),
                 new Proposal("stt-index-0", "TARGET_TREATMENT", "미제공 ID 가설", List.of(new Quote("stt-index-0", "그 집"), new Quote("stt-index-99", "없는 줄"))))) {
-            var f = new CandidateReviewEngineTest();
+            var f = new CandidateReviewFixture();
             f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "고정 후보 가설", List.of()));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class)))
                     .thenReturn(Optional.of(new ProposalRepairResult(returned)));
@@ -129,7 +129,7 @@ class CandidateDiscoveryContractTest {
         }
     }
     @Test void readingPageCannotJoinAcrossHardGap() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         String[] lines = IntStream.range(0, 40).mapToObj(i -> "일반 대화 " + i).toArray(String[]::new);
         var p = new Proposal("stt-index-10", "TARGET_TREATMENT", "먼 발언을 섞은 가설",
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-35", lines[35])));
@@ -145,7 +145,7 @@ class CandidateDiscoveryContractTest {
     @Test void failedRepairIsOnceAndCannotChangeAnchorOrPublish() {
         for (var response : List.of(new ProposalRepairResult(null), new ProposalRepairResult(
                 new Proposal("other-anchor", "TARGET_TREATMENT", "다른 후보", List.of(new Quote("other-anchor", "다른 원문")))))) {
-            var f = new CandidateReviewEngineTest();
+            var f = new CandidateReviewFixture();
             f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "고정 후보 가설", List.of()));
             when(f.client.completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class))).thenReturn(Optional.of(response));
             var r = CandidateRuns.run(f.client, f.context("그 집 이야기"), 24);
@@ -158,7 +158,7 @@ class CandidateDiscoveryContractTest {
         }
     }
     @Test void oversizedEvidenceWithInventedIdDoesNotBecomeAnEligibleShapeRepair() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var quotes = new ArrayList<Quote>(); for (int i = 0; i < 9; i++) quotes.add(new Quote("invented", "허구"));
         f.discovery(List.of("stt-index-0"), new Proposal("stt-index-0", "TARGET_TREATMENT", "비판 가설", quotes));
         var r = CandidateRuns.run(f.client, f.context("그 집 이야기"), 24);
@@ -169,7 +169,7 @@ class CandidateDiscoveryContractTest {
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(ProposalRepairResult.class));
     }
     @Test void expressionAxisCanUseTheSameAdvertisedConversationWindow() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         String[] lines = IntStream.range(0, 21).mapToObj(i -> "일반 대화 " + i).toArray(String[]::new);
         var p = new Proposal("stt-index-10", "EXPRESSION_CONTENT", "표현 내용 가설",
                 List.of(new Quote("stt-index-0", lines[0]), new Quote("stt-index-10", lines[10]), new Quote("stt-index-20", lines[20])));
@@ -182,7 +182,7 @@ class CandidateDiscoveryContractTest {
         verify(f.client).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void nullRepairDoesNotLoopAndDiscoveryAndVerificationShareTotalBudget() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var ids = List.of("stt-index-0", "stt-index-1", "stt-index-2");
         var broken = new Proposal(ids.get(0), "TARGET_TREATMENT", "최초 형식 오류 가설", List.of());
         f.discovery(ids, broken, f.proposal(ids.get(1), "그 집"), f.proposal(ids.get(2), "그 집"));

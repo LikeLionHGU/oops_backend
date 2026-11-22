@@ -47,7 +47,7 @@ class TranscriptFragmentationAuditTest {
         var library=new ReviewGuidelineLibrary(new org.springframework.core.io.DefaultResourceLoader(),true,
                 runtime.toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
         library.load();
-        var f=new CandidateReviewEngineTest();
+        var f=new CandidateReviewFixture();
         var transcript=source.segments().stream().map(s -> new com.example.oops.domain.TranscriptSegment(
                 f.video,s.startMs(),s.endMs(),s.text())).toList();
         var context=new AnalysisContext(f.video,com.example.oops.domain.ContentGenre.TALK_PODCAST,transcript,List.of());
@@ -70,7 +70,7 @@ class TranscriptFragmentationAuditTest {
                     assertThat(system).contains(unit.path("normalContrasts").get(0).path("text").asText());
                     return Optional.of(new CandidateReviewEngine.Discovery(ids(source.segments()),List.of(),List.of(),false));
                 });
-        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, library, null, null),
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, library, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.diagnostics().candidatePipeline().discoveryCalls()).isOne();
         assertThat(result.diagnostics().candidatePipeline().contextSelections().get(0).exampleIds())
@@ -84,7 +84,7 @@ class TranscriptFragmentationAuditTest {
         var file=ROOT.resolve("experiments/podcast-meaning-edit-20261025/import-request-corrected-meaning.json");
         assumeTrue(Files.exists(file));
         var source=input(file);
-        var f=new CandidateReviewEngineTest();
+        var f=new CandidateReviewFixture();
         var evidence=List.of(2,14,28,29,45,46,49,57).stream().map(i ->
                 new CandidateReviewEngine.Quote(source.segments().get(i).id(),source.segments().get(i).text())).toList();
         var proposal=new CandidateReviewEngine.Proposal("stt-index-29","EXPRESSION_CONTENT",

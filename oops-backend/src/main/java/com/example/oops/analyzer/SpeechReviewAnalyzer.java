@@ -158,8 +158,6 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     }
     private VisualContextReviewer visualReviewer;
     private ReviewGuidelineLibrary guidelineLibrary;
-    private ContextMechanismRouter mechanismRouter;
-    void setMechanismRouter(ContextMechanismRouter router) { this.mechanismRouter = router; }
     private com.example.oops.service.ReviewRequestTraceStore requestTraces;
     void setRequestTraces(com.example.oops.service.ReviewRequestTraceStore store) { this.requestTraces = store; }
     void setGuidelineLibrary(ReviewGuidelineLibrary library) { this.guidelineLibrary = library; }
@@ -193,7 +191,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     public SpeechReviewAnalyzer(OpenAiClient client,
             com.example.oops.config.SpeechReviewProperties settings,
             VisualContextReviewer visualReviewer,
-            ReviewGuidelineLibrary guidelineLibrary, ContextMechanismRouter mechanismRouter,
+            ReviewGuidelineLibrary guidelineLibrary,
             com.example.oops.service.ReviewRequestTraceStore requestTraces) {
         this(client, settings.dialogueReviewEnabled(), settings.candidateReviewEnabled(),
                 settings.candidateReviewMaxCandidates(), visualReviewer);
@@ -205,7 +203,6 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         setSourceUnderstandingVersion(settings.sourceUnderstandingContract());
         setRuleUnionEnabled(settings.ruleCandidateUnionEnabled());
         setGuidelineLibrary(guidelineLibrary);
-        setMechanismRouter(mechanismRouter);
         setRequestTraces(requestTraces);
     }
 
@@ -243,7 +240,7 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
 
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
-            var services = new CandidateReviewEngine.RunServices(visualReviewer, guidelineLibrary, trace, mechanismRouter);
+            var services = new CandidateReviewEngine.RunServices(visualReviewer, guidelineLibrary, trace);
             var features = new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,
                     situationFirstEnabled, sourceUnderstandingEnabled, sourceUnderstandingVersion);
             var options = new CandidateReviewEngine.RunOptions(maxCandidates, evidenceLimit,

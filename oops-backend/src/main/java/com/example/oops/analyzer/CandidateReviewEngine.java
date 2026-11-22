@@ -96,10 +96,9 @@ final class CandidateReviewEngine {
                      boolean contextExpanded, boolean contextLimited) {
         Candidate { raw = List.copyOf(raw); }
     }
-    /** Frozen routing data, not evidence or an instruction to retain the discovery verdict. */
-    private record FrozenReference(String discoveryRequestKey, String prompt, ContextMechanismRouter.LinkTrace routingLink) {}
-    private record CandidateReferenceContext(String discoveryRequestKey, String guidelinePrompt,
-                                             ContextMechanismRouter.Result routed) {}
+    /** Frozen reference data, not evidence or an instruction to retain the discovery verdict. */
+    private record FrozenReference(String discoveryRequestKey, String prompt) {}
+    private record CandidateReferenceContext(String discoveryRequestKey, String guidelinePrompt) {}
     private record BudgetedCandidate(Candidate candidate, boolean visual) {}
     private record VerificationScope(String reference, String rawSha256,String isolatedRule) {
         VerificationScope(String reference,String rawSha256) { this(reference,rawSha256,""); }
@@ -115,11 +114,11 @@ final class CandidateReviewEngine {
         }
     }
     record RunServices(VisualContextReviewer visual, ReviewGuidelineLibrary guidelines,
-                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, ContextMechanismRouter router,
+                       com.example.oops.service.ReviewRequestTraceStore.Session requestTrace,
                        DiscoveryReferences discoveryReferences) {
         RunServices(VisualContextReviewer visual, ReviewGuidelineLibrary guidelines,
-                    com.example.oops.service.ReviewRequestTraceStore.Session requestTrace, ContextMechanismRouter router) {
-            this(visual, guidelines, requestTrace, router, null);
+                    com.example.oops.service.ReviewRequestTraceStore.Session requestTrace) {
+            this(visual, guidelines, requestTrace, null);
         }
     }
 
@@ -170,10 +169,8 @@ final class CandidateReviewEngine {
         VisualContextReviewer visual=services.visual();
         ReviewGuidelineLibrary guidelines=services.guidelines();
         var requestTrace=services.requestTrace();
-        ContextMechanismRouter router=services.router();
         boolean finalReviewBasisEnabled = features.finalBasis();
         var stats = new Stats();
-        var routing = router == null ? null : router.session();
         stats.revision = sourceRelationsEnabled ? RELATION_REVISION : REVISION;
         if(finalReviewBasisEnabled) stats.revision += "+"+FinalReviewBasisContract.VERSION;
         if(features.sourceUnderstanding()) stats.revision += "+"+SourceUnderstandingContract.version(features.understandingVersion());
@@ -208,11 +205,9 @@ final class CandidateReviewEngine {
             List<ReviewUnit> targetUnits = units;
             List<ReviewInput.Segment> raw = raw(batch);
             String discoveryRequestKey = "discovery-" + (stats.discoveryCalls + 1);
-            var routed = routing == null ? null : routing.route(guidelines, raw, discoveryRequestKey, context, requestTrace);
-            if (routed != null && stats.mechanismRouting.size() < MAX_TRACES) stats.mechanismRouting.add(routed.trace());
             String guidelinePrompt = services.discoveryReferences() != null && guidelines != null
                     ? stats.fixedReference(guidelines, services.discoveryReferences().exampleIds(raw), discoveryRequestKey)
-                    : stats.reference(guidelines, raw, discoveryRequestKey, routed == null ? Set.of() : routed.keys());
+                    : stats.reference(guidelines, raw, discoveryRequestKey);
             stats.discoveryCalls++;
             Discovery response;
             var builtDiscovery = CandidateReviewRequestFactory.discovery(modelPromptRevision, sourceRelationsEnabled,
@@ -311,16 +306,14 @@ final class CandidateReviewEngine {
                 if (needsVisual) visualCandidates.add(candidate);
                 else if (ruleUnionEnabled) {
                     candidates.add(candidate);
-                    freezeReference(candidate, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt,
-                            routed), guidelines,
+                    freezeReference(candidate, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt), guidelines,
                             frozenReferences, stats, services.discoveryReferences() == null);
                     if (candidate.contextExpanded()) stats.expandedCandidates++;
                     if (candidate.contextLimited()) stats.verificationLimitedCandidates++;
                     pending.merge(proposal.anchorId(), 1, Integer::sum);
                 } else {
                     candidates.add(candidate);
-                    candidateReferences.put(id, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt,
-                            routed));
+                    candidateReferences.put(id, new CandidateReferenceContext(discoveryRequestKey, guidelinePrompt));
                 }
             }
         }
@@ -381,7 +374,7 @@ final class CandidateReviewEngine {
                 }
                 for(var prepared:union.rules()) {
                     var c=prepared.candidate(); candidates.add(c);ruleRequests.put(c.candidateId(),prepared);
-                    frozenReferences.put(c.candidateId(),new FrozenReference(c.candidateId(),prepared.system(),null));
+                    frozenReferences.put(c.candidateId(),new FrozenReference(c.candidateId(),prepared.system()));
                     stats.snapshots.put(c.candidateId(),new CandidateReviewDiagnostics.InputSnapshot(c.candidateId(),
                             ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(compact(c.raw()))),prepared.referenceSha256(),
                             ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal()))));
@@ -642,18 +635,15 @@ final class CandidateReviewEngine {
                                         boolean reselectUnits) {
         String reference = context.guidelinePrompt();
         String referenceKey = context.discoveryRequestKey();
-        ContextMechanismRouter.LinkTrace routingLink = null;
         // Explicit v6 archive only: choose unit references once using the validated candidate,
         // then freeze exactly that payload for verification/repair. v1-v5 behavior stays unchanged.
         // Supplied discovery references (experiments) travel to verification unchanged; no lexical re-selection.
         if (reselectUnits && guidelines != null && guidelines.contextUnitArchive()) {
             referenceKey = "unit-" + candidate.candidateId();
             var evidenceIds = new HashSet<>(candidate.proposal().evidence().stream().map(Quote::segmentId).toList());
-            routingLink = context.routed() == null ? null : context.routed().linkFor(evidenceIds);
-            reference = stats.candidateReference(guidelines, candidate, referenceKey,
-                    context.routed() == null ? Set.of() : context.routed().keysFor(evidenceIds));
+            reference = stats.candidateReference(guidelines, candidate, referenceKey);
         }
-        var frozen = new FrozenReference(referenceKey, reference, routingLink);
+        var frozen = new FrozenReference(referenceKey, reference);
         frozenReferences.put(candidate.candidateId(), frozen);
         stats.snapshot(candidate, frozen);
     }
@@ -1050,7 +1040,6 @@ final class CandidateReviewEngine {
         final CandidateTraceBuffer traces = new CandidateTraceBuffer(MAX_TRACES);
         final List<VisualContextReviewer.Trace> visualTraces = new ArrayList<>();
         final List<ReviewGuidelineLibrary.SelectionTrace> contextSelections = new ArrayList<>();
-        final List<ContextMechanismRouter.Trace> mechanismRouting = new ArrayList<>();
         final List<CandidateReviewDiagnostics.RepairTrace> repairs = new ArrayList<>();
         int repairsRecovered, repairsFailed, repairsNotAttempted;
         void repair(CandidateReviewDiagnostics.RepairTrace trace) {
@@ -1069,7 +1058,7 @@ final class CandidateReviewEngine {
             snapshots.put(c.candidateId(), new CandidateReviewDiagnostics.InputSnapshot(reference.discoveryRequestKey(),
                     ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(compact(c.raw()))),
                     ReviewGuidelineLibrary.retrievalHash(reference.prompt()),
-                    ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal())),reference.routingLink()));
+                    ReviewGuidelineLibrary.retrievalHash(JSON.writeValueAsString(c.proposal()))));
         }
         void evidenceCount(Candidate c, String attempt, TextReviewEngine.LlmDecision d, int limit, String failure,
                            boolean finalReviewBasisEnabled,ReviewBasis basis,boolean understandingEnabled,SourceUnderstanding understanding,SourceUnderstandingContract.Version version) {
@@ -1122,10 +1111,9 @@ final class CandidateReviewEngine {
                     evidenceCount, outOfWindow, anchorQuotePresent,null,
                     "PROPOSAL_WINDOW_MISMATCH".equals(failure) ? inspectWindows(p,units) : null));
         }
-        String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey, Set<String> keys) {
+        String reference(ReviewGuidelineLibrary library, Collection<ReviewInput.Segment> raw, String requestKey) {
             if (library == null) return "";
-            var selection = keys.isEmpty() ? library.select(TimelineEventType.SPEECH, raw, requestKey)
-                    : library.select(TimelineEventType.SPEECH, raw, requestKey,List.of(),keys);
+            var selection = library.select(TimelineEventType.SPEECH, raw, requestKey);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();
         }
@@ -1135,9 +1123,6 @@ final class CandidateReviewEngine {
             return selection.prompt();
         }
         String candidateReference(ReviewGuidelineLibrary library, Candidate c, String requestKey) {
-            return candidateReference(library,c,requestKey,Set.of());
-        }
-        String candidateReference(ReviewGuidelineLibrary library, Candidate c, String requestKey, Set<String> keys) {
             if (library == null) return "";
             // Already-validated proposal quotes are routing text, not the model's reason or an inferred correction.
             var focus = c.proposal().evidence().stream().distinct().map(q -> {
@@ -1147,9 +1132,8 @@ final class CandidateReviewEngine {
                     .thenComparingLong(ReviewInput.Segment::endMs).thenComparing(ReviewInput.Segment::id)
                     .thenComparing(ReviewInput.Segment::text)).toList();
             var selection = library.relationArchive()
-                    ? library.select(TimelineEventType.SPEECH,c.raw(),requestKey,focus,keys,ContextRelationRetrieval.from(c))
-                    : keys.isEmpty() ? library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus)
-                    : library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus, keys);
+                    ? library.select(TimelineEventType.SPEECH,c.raw(),requestKey,focus,Set.of(),ContextRelationRetrieval.from(c))
+                    : library.select(TimelineEventType.SPEECH, c.raw(), requestKey, focus);
             if (contextSelections.size() < MAX_TRACES) contextSelections.add(selection.trace());
             return selection.prompt();
         }
@@ -1178,7 +1162,7 @@ final class CandidateReviewEngine {
             return new CandidateReviewDiagnostics(revision, discoveryCalls, verificationCalls, explored, proposed, duplicates,
                     invalidProposals, rejected, uncertain, verificationFailed, budgetSkipped, limitedBatches, truncatedBatches,
                     expandedCandidates, verificationLimitedCandidates, traces.truncated(), traces.snapshot(), visualTraces,
-                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, mechanismRouting,conflicts.traces(),
+                    guidelineReference, contextSelections, repairCalls, repairs, discoveryRepairCalls, evidenceCounts, conflicts.traces(),
                     rendering == null ? null : new CandidateReviewDiagnostics.RepairUsage(MAX_DISCOVERY_REPAIRS, MAX_CONTRACT_REPAIRS,
                             discoveryRepairCalls, repairCalls, repairsRecovered, repairsFailed, repairsNotAttempted));
         }

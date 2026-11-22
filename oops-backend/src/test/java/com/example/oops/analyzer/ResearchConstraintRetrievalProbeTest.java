@@ -10,6 +10,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Local retrieval observation only: approved synthetic inputs, no model, no accuracy claim. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ResearchConstraintRetrievalProbeTest {
     @Test void inspectCurrentReferenceSelectionForTwoApprovedSyntheticControls() throws Exception {
         var path = Path.of("../datasets/controversy/guidelines/runtime.json");

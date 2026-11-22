@@ -13,7 +13,7 @@ class FrozenCandidateContextTest {
     private final JsonMapper json = JsonMapper.builder().build();
 
     @Test void repairReusesFrozenRawProposalAndReferencesAndRecordsChangedDecision() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var original = new CandidateReferenceRepairTest().badId(f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집"));
         var repaired = f.assessment("stt-index-0", "PASS", "그 집");
@@ -22,7 +22,7 @@ class FrozenCandidateContextTest {
                 Optional.of(new VerificationResult(List.of(new Verification("candidate-1", repaired)))));
         var helper = new ContextExampleSelectionTest();
         var library = helper.library(helper.archive(2), 1, 3000, "");
-        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, library, null, null),
+        var result = CandidateReviewEngine.run(f.client, f.context("그 집은 조용하다"), new CandidateReviewEngine.RunServices(null, library, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var systems = ArgumentCaptor.forClass(String.class);
         var requests = ArgumentCaptor.forClass(String.class);
@@ -62,7 +62,7 @@ class FrozenCandidateContextTest {
     }
 
     @Test void differentCandidateWindowsAreNeverUnionedIntoOneVerificationInput() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         List<com.example.oops.domain.TranscriptSegment> lines = new ArrayList<>();
         for (int i = 0; i < 40; i++) lines.add(new com.example.oops.domain.TranscriptSegment(
                 f.video, i * 4000L, i * 4000L + 1500, "그 집 대화 " + i));
@@ -93,8 +93,8 @@ class FrozenCandidateContextTest {
     }
 
     @Test void candidateDoesNotKeepAMutableRawListFromTheCaller() {
-        var raw = new ArrayList<>(new CandidateReviewEngineTest().context("그 집").reviewInput().segments());
-        var c = new Candidate("c", new CandidateReviewEngineTest().proposal("stt-index-0", "그 집"), raw, false, false);
+        var raw = new ArrayList<>(new CandidateReviewFixture().context("그 집").reviewInput().segments());
+        var c = new Candidate("c", new CandidateReviewFixture().proposal("stt-index-0", "그 집"), raw, false, false);
         raw.clear();
         assertThat(c.raw()).isNotEmpty();
         assertThatThrownBy(() -> c.raw().clear()).isInstanceOf(UnsupportedOperationException.class);

@@ -37,13 +37,13 @@ class ContextJudgmentPolicyTest {
                 List.of("그 배우와 닮았다는 이야기였어요","제가 언제 사칭했어요","뻔뻔하네"),
                 List.of("저는 집에서는 씻지 않아요","내 몸에서 나오는 것은 깨끗하다고 생각해요","그래서 그렇게 말했어요"),
                 List.of("가해자가 피해자를 도구처럼 취급했다고 합니다","그런 행위와 조직의 대응을 비판합니다","피해자 보호가 필요합니다"))) {
-            var f=new CandidateReviewEngineTest();var context=f.context(speech.toArray(String[]::new));
+            var f=new CandidateReviewFixture();var context=f.context(speech.toArray(String[]::new));
             var ids=List.of("stt-index-0","stt-index-1","stt-index-2");
             var roles=new SourceRelations(List.of(ids.get(0)),List.of(),List.of(ids.get(1)),List.of(ids.get(2)),List.of());
             f.discovery(ids,new Proposal(ids.get(2),"TARGET_TREATMENT",null,
                     ids.stream().map(id->new Quote(id,null)).toList(),roles));
             f.verification(new Verification("candidate-1",f.linkedPass(ids.get(2),speech.get(2),ids.get(0),speech.get(0))));
-            var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
+            var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             var systems=ArgumentCaptor.forClass(String.class);var inputs=ArgumentCaptor.forClass(String.class);
             verify(f.client,times(2)).completeAsJson(systems.capture(),inputs.capture(),any());

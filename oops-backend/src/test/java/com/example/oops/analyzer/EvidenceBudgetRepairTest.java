@@ -23,7 +23,7 @@ class EvidenceBudgetRepairTest {
         return result;
     }
     @Test void smallActualQuoteOverflowIsNeverAcceptedOrTruncated() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var input = f.context("그 집 이용자는 수준이 낮아");
         var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var candidate = new Candidate("candidate-1", f.proposal("stt-index-0", "그 집"), input.reviewInput().segments(), false, false);
@@ -34,7 +34,7 @@ class EvidenceBudgetRepairTest {
         assertThat(validate(candidate, withEvidence(good, overflow(good, 13)), input.reviewInput()).failureCode()).isEqualTo("ASSESSMENT_SHAPE");
     }
     @Test void invalidQuoteOrRoleOverflowCannotUseBudgetRepairRoute() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var input = f.context("그 집 이용자는 수준이 낮아");
         var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var candidate = new Candidate("candidate-1", f.proposal("stt-index-0", "그 집"), input.reviewInput().segments(), false, false);
@@ -46,7 +46,7 @@ class EvidenceBudgetRepairTest {
     }
     @Test void budgetRepairRejudgesOnceAndDoesNotForceWarning() {
         for (String decision : List.of("PASS", "REVIEW_REQUIRED")) {
-            var f = new CandidateReviewEngineTest();
+            var f = new CandidateReviewFixture();
             var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
             var extra = withEvidence(good, overflow(good, 9));
             f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
@@ -64,7 +64,7 @@ class EvidenceBudgetRepairTest {
         }
     }
     @Test void repeatedOverflowStaysUnverifiedWithoutAnotherRetry() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
@@ -76,7 +76,7 @@ class EvidenceBudgetRepairTest {
         verify(f.client, times(2)).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void threeOverflowsShareExistingTwoRepairBudget() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"),
                 f.proposal("stt-index-0", "그 집"), f.proposal("stt-index-1", "그 집"), f.proposal("stt-index-2", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))

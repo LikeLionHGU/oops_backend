@@ -9,7 +9,7 @@ class UtteranceDirectionTrialTest {
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path temporary;
     byte[] runtime() { return JSON.writeValueAsBytes(new ContextRelationRetrievalTest().archive()); }
     UtteranceDirectionTrial.Plan plan() throws Exception {
-        var library=new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(new String(runtime(),java.nio.charset.StandardCharsets.UTF_8)),
+        var library=new ReviewGuidelineLibrary(TrialSupport.resources(new String(runtime(),java.nio.charset.StandardCharsets.UTF_8)),
                 true,"classpath:frozen.json",6000,3,3000,"",true);library.load();
         var calls=new ArrayList<Object>();
         for(int i=0;i<2;i++) {

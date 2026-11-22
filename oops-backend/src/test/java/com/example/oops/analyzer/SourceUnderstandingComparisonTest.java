@@ -15,7 +15,7 @@ class SourceUnderstandingComparisonTest {
     CandidateReviewEngine.VerificationResult response(UtteranceDirectionTrial.Task t,boolean enabled) {
         var input=JSON.readTree(t.input());var c=input.at("/candidates/0");String id=c.path("anchorId").asText();
         String text=null;for(var s:input.path("raw")) if(id.equals(s.path("id").asText())) text=s.path("text").asText();
-        var d=new CandidateReviewEngineTest().assessment(id,"PASS",text);
+        var d=new CandidateReviewFixture().assessment(id,"PASS",text);
         var reading=enabled?new SourceUnderstanding(List.of(new SourceUnderstanding.ActReading(id,"OTHER",List.of()))):null;
         return new CandidateReviewEngine.VerificationResult(List.of(new CandidateReviewEngine.Verification(c.path("candidateId").asText(),d,null,reading)));
     }

@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 
 /** Experiment A runner and write-once result store. Mocked model; shape only, not accuracy. */
 class ContextExperimentRunnerTest {
-    private final CandidateReviewEngineTest f = new CandidateReviewEngineTest();
+    private final CandidateReviewFixture f = new CandidateReviewFixture();
     private final RunOptions options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
 
     private void discoveryReturnsNoCandidateForEachPrimary() {

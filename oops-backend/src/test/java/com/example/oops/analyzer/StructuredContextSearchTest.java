@@ -101,11 +101,11 @@ class StructuredContextSearchTest {
                 .map(ContextExample::familyId).collect(java.util.stream.Collectors.joining(","));
         assertThat(library(text, true, 3, 3000, excluded)
                 .select(SPEECH, input, "q").trace().exampleIds()).doesNotContain("leemiju-mijupichu#s1-sexual", "kimwonhun-nego#s1-sexual");
-        var historical = ContextRankReadinessAudit.library(text);
+        var historical = TrialSupport.readyLibrary(text);
         assertThat(off.select(SPEECH, input, "q")).isEqualTo(historical.select(SPEECH, input, "q"));
     }
     private ReviewGuidelineLibrary library(String text, boolean enabled, int count, int budget, String excluded) {
-        var l = new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(text), true, "classpath:frozen.json", 6000,
+        var l = new ReviewGuidelineLibrary(TrialSupport.resources(text), true, "classpath:frozen.json", 6000,
                 count, budget, excluded, enabled);
         l.load(); assertThat(l.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE"); return l;
     }

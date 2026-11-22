@@ -29,7 +29,7 @@ class RepairPromptContractTest {
         assertThat(verificationPrompt(0)).contains("고정 개수 상한은 없다").doesNotContain(marker);
     }
     @Test void actualRepairRequestUsesConfiguredLimitRatherThanCompatibilityDefaultEight() {
-        var f=new CandidateReviewEngineTest();
+        var f=new CandidateReviewFixture();
         var good=f.assessment("stt-index-0","REVIEW_REQUIRED","그 집");
         var evidence=new ArrayList<>(good.evidence());
         while(evidence.size()<4) evidence.add(new TextReviewEngine.LlmEvidence("stt-index-0","그 집","CONTEXT"));
@@ -42,7 +42,7 @@ class RepairPromptContractTest {
                     assertThat((String)call.getArgument(0)).contains("합쳐 최대 3개", "객체 수가 3개").doesNotContain("TARGET.quote", "객체 수가 8개");
                     return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",f.assessment("stt-index-0","PASS","그 집")))));
                 });
-        var result=CandidateReviewEngine.run(f.client, f.context("그 집 이용자는 수준이 낮아"), new CandidateReviewEngine.RunServices(null, null, null, null),
+        var result=CandidateReviewEngine.run(f.client, f.context("그 집 이용자는 수준이 낮아"), new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 3, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isOne();
         assertThat(result.findings()).isEmpty();

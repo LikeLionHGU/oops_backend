@@ -144,13 +144,13 @@ class ContextRelationRetrievalTest {
     }
     @Test void actualEngineUsesV7OverloadBeforeFreezingWithoutExtraModelCalls() {
         var library=spy(fixture.library(archive(),2,3000,""));
-        var f=new CandidateReviewEngineTest(); var context=f.context(SITUATION,EVALUATION);
+        var f=new CandidateReviewFixture(); var context=f.context(SITUATION,EVALUATION);
         var ids=List.of("stt-index-0","stt-index-1");
         var roles=new SourceRelations(List.of(ids.get(0)),List.of(),List.of(),List.of(ids.get(1)),List.of());
         f.discovery(ids,new Proposal(ids.get(1),"TARGET_TREATMENT",null,
                 ids.stream().map(id -> new Quote(id,null)).toList(),roles));
         f.verification(new Verification("candidate-1",f.linkedPass(ids.get(1),EVALUATION,ids.get(0),SITUATION)));
-        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, library, null, null),
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, library, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var rolesCaptor=ArgumentCaptor.forClass(ContextRelationRetrieval.Query.class);
         verify(library).select(eq(TimelineEventType.SPEECH),anyCollection(),startsWith("unit-"),anyCollection(),anySet(),rolesCaptor.capture());

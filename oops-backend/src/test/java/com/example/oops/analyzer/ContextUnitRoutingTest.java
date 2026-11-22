@@ -78,7 +78,7 @@ class ContextUnitRoutingTest {
         var f = new ContextExampleSelectionTest();
         for (var archive : List.of(units(), f.archive(2))) {
             var library = spy(f.library(archive, 2, 3000, ""));
-            var context = new CandidateReviewEngineTest().context("검색용으로 고정한 별도 문구", "후속 설명");
+            var context = new CandidateReviewFixture().context("검색용으로 고정한 별도 문구", "후속 설명");
             var spec = new ContextPolicyTrial.Spec("synthetic", 0, 0, "TARGET_TREATMENT", List.of(0, 1),
                     "SYNTHETIC_PROPOSED_LABEL_NOT_GOLD", null);
             ContextPolicyTrial.capture(spec, context, library);

@@ -15,7 +15,7 @@ class EvidenceCountDiagnosticsTest {
                 d.targetType(), d.targetRelation(), d.targetReason(), d.alternativeInterpretation(), d.targetMention());
     }
     @Test void thirteenPermittedEvidenceObjectsPassWithLimitDisabledAndCountsAreRetained() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         String[] lines = new String[12]; lines[0] = "그 집 이용자는 수준이 낮아";
         for (int i = 1; i < lines.length; i++) lines[i] = "합성 문맥 " + i;
         var c = f.context(lines);
@@ -44,7 +44,7 @@ class EvidenceCountDiagnosticsTest {
         });
     }
     @Test void initialAndRepairCountAreRecordedBeforeValidation() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var d = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var repeated = new ArrayList<>(d.evidence());
         for (int i = 0; i < 7; i++) repeated.add(new LlmEvidence("stt-index-0", "그 집", "CONTEXT"));
@@ -62,7 +62,7 @@ class EvidenceCountDiagnosticsTest {
         assertThat(counts.get(1).evidenceCount()).isEqualTo(2);
     }
     @Test void oldDiagnosticJsonWithoutCountMetadataRemainsReadable() {
-        var f = new CandidateReviewEngineTest(); f.discovery(List.of("stt-index-0"));
+        var f = new CandidateReviewFixture(); f.discovery(List.of("stt-index-0"));
         var result = CandidateRuns.run(f.client, f.context("정상 대화"), 24);
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
         var tree = mapper.valueToTree(result.diagnostics().candidatePipeline());
@@ -71,7 +71,7 @@ class EvidenceCountDiagnosticsTest {
         assertThat(restored.evidenceCounts()).isEmpty();
     }
     @Test void disabledLimitDoesNotChangeOriginalEvidenceChecks() {
-        var f = new CandidateReviewEngineTest(); var c = f.context("그 집 이용자는 수준이 낮아");
+        var f = new CandidateReviewFixture(); var c = f.context("그 집 이용자는 수준이 낮아");
         var d = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var candidate = new Candidate("candidate-1", f.proposal("stt-index-0", "그 집"), c.reviewInput().segments(), false, false);
         var duplicate = new ArrayList<>(d.evidence()); duplicate.add(d.evidence().get(0));

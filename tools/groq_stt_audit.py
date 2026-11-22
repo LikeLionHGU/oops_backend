@@ -171,7 +171,7 @@ def summarize(output: Path) -> None:
                "implementationHashes": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in (
                    "oops-analysis/app/stt.py", "oops-backend/src/main/java/com/example/oops/analyzer/CandidateReviewEngine.java",
                    "oops-backend/src/main/java/com/example/oops/analyzer/ReviewGuidelineLibrary.java",
-                   "oops-backend/src/test/java/com/example/oops/analyzer/GroqPipelineAudit.java")},
+                   "oops-backend/src/experiment/java/com/example/oops/analyzer/GroqPipelineAudit.java")},
                "normalContrastProposals": inputs["normalContrastProposals"]}
     with (output / "summary.json").open("x") as stream:
         json.dump(summary, stream, ensure_ascii=False, indent=2)

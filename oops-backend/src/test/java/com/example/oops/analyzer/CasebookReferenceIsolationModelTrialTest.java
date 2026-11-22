@@ -177,7 +177,7 @@ class CasebookReferenceIsolationModelTrialTest {
                 current.expandedCandidates(), current.verificationLimitedCandidates(), current.truncated(),
                 current.candidates(), current.visualCandidates(), current.guidelineReference(),
                 current.contextSelections(), current.repairCalls(), current.repairs(), 1, current.evidenceCounts(),
-                current.mechanismRouting(), current.decisionConflicts());
+                current.decisionConflicts());
         var diagnostics = result.diagnostics().withCandidatePipeline(withDiscoveryRepair);
         return new TextReviewEngine.Result(result.findings(), result.evaluations(), result.status(), result.notice(),
                 result.unassessedSegmentIds(), result.conflictingSegmentIds(), diagnostics);

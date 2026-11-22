@@ -39,7 +39,7 @@ class CandidateHypothesisTrialTest {
         var suite=TextBoundaryTrial.readSuite(Path.of("src/test/resources/evals/text-boundaries-37.json"));
         var t=CandidateHypothesisTrial.tasks(plan(),suite).get(0);
         assertThat(CandidateHypothesisTrial.validate(t,null).failureCode()).isEqualTo("TRIAL_RESPONSE_SHAPE");
-        var d=new CandidateReviewEngineTest().assessment("stt-index-0","PASS","原文");
+        var d=new CandidateReviewFixture().assessment("stt-index-0","PASS","原文");
         var result=new CandidateReviewEngine.VerificationResult(java.util.List.of(new CandidateReviewEngine.Verification("candidate-1",d)));
         assertThat(CandidateHypothesisTrial.validate(t,result).observation()).isNotNull();
         var wrong=new CandidateReviewEngine.VerificationResult(java.util.List.of(new CandidateReviewEngine.Verification("unknown",d)));

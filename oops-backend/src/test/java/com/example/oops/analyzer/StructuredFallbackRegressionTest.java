@@ -12,6 +12,7 @@ import static org.mockito.Mockito.*;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 
 /** Local deterministic fallback regression; no model call or accuracy assertion. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class StructuredFallbackRegressionTest {
     @Test void allFixedInputsMatchExplicitLexicalModeAfterCatalogFailure() throws Exception {
         Path runtime=Path.of("../datasets/controversy/guidelines/runtime.json"),

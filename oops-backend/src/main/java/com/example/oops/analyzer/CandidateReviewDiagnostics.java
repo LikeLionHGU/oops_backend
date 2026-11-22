@@ -12,8 +12,6 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
         List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
         int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
-        List<ContextMechanismRouter.Trace> mechanismRouting,
-        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
         List<DecisionConflictTrace> decisionConflicts,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         RepairUsage repairUsage) {
@@ -27,25 +25,12 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
             List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
             ReviewGuidelineLibrary.Trace guidelineReference,
             List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
-            int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts, List<ContextMechanismRouter.Trace> mechanismRouting,
+            int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts,
             List<DecisionConflictTrace> decisionConflicts) {
         this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,rejected,uncertain,
                 verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,expandedCandidates,verificationLimitedCandidates,
                 truncated,candidates,visualCandidates,guidelineReference,contextSelections,repairCalls,repairs,
-                discoveryRepairCalls,evidenceCounts,mechanismRouting,decisionConflicts,null);
-    }
-    public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
-            int exploredSegments, int proposed, int duplicates, int invalidProposals,
-            int rejected, int uncertain, int verificationFailed, int budgetSkipped, int limitedBatches, int truncatedBatches,
-            int expandedCandidates, int verificationLimitedCandidates, boolean truncated,
-            List<Trace> candidates, List<VisualContextReviewer.Trace> visualCandidates,
-            ReviewGuidelineLibrary.Trace guidelineReference,
-            List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
-            int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts,List<ContextMechanismRouter.Trace> mechanismRouting) {
-        this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,rejected,uncertain,
-                verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,expandedCandidates,verificationLimitedCandidates,
-                truncated,candidates,visualCandidates,guidelineReference,contextSelections,repairCalls,repairs,
-                discoveryRepairCalls,evidenceCounts,mechanismRouting,List.of());
+                discoveryRepairCalls,evidenceCounts,decisionConflicts,null);
     }
     public CandidateReviewDiagnostics(String revision, int discoveryCalls, int verificationCalls,
             int exploredSegments, int proposed, int duplicates, int invalidProposals,
@@ -55,17 +40,16 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
             ReviewGuidelineLibrary.Trace guidelineReference,
             List<ReviewGuidelineLibrary.SelectionTrace> contextSelections, int repairCalls, List<RepairTrace> repairs,
             int discoveryRepairCalls, List<EvidenceCountTrace> evidenceCounts) {
-        this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,
-                rejected,uncertain,verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,
-                expandedCandidates,verificationLimitedCandidates,truncated,candidates,visualCandidates,
-                guidelineReference,contextSelections,repairCalls,repairs,discoveryRepairCalls,evidenceCounts,List.of());
+        this(revision,discoveryCalls,verificationCalls,exploredSegments,proposed,duplicates,invalidProposals,rejected,uncertain,
+                verificationFailed,budgetSkipped,limitedBatches,truncatedBatches,expandedCandidates,verificationLimitedCandidates,
+                truncated,candidates,visualCandidates,guidelineReference,contextSelections,repairCalls,repairs,
+                discoveryRepairCalls,evidenceCounts,List.of());
     }
     public CandidateReviewDiagnostics {
         candidates = List.copyOf(candidates); visualCandidates = List.copyOf(visualCandidates);
         contextSelections = List.copyOf(contextSelections);
         repairs = List.copyOf(repairs);
         evidenceCounts = evidenceCounts == null ? List.of() : List.copyOf(evidenceCounts);
-        mechanismRouting = mechanismRouting == null ? List.of() : List.copyOf(mechanismRouting);
         decisionConflicts = decisionConflicts == null ? List.of() : List.copyOf(decisionConflicts);
     }
     public record DecisionConflictTrace(String anchorId,String axis,String stage,List<String> candidateIds,List<String> decisions,
@@ -110,11 +94,7 @@ public record CandidateReviewDiagnostics(String revision, int discoveryCalls, in
     }
     /** No transcript, hypothesis text, or reference content is persisted in this metadata. */
     public record InputSnapshot(String discoveryRequestKey, String rawSha256, String referenceSha256,
-                                String proposalSha256,
-                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-                                ContextMechanismRouter.LinkTrace routingLink) {
-        public InputSnapshot(String key,String raw,String reference,String proposal) { this(key,raw,reference,proposal,null); }
-    }
+                                String proposalSha256) {}
     /** Structural permissions only; no raw quotes and no inferred topic relation. */
     public record WindowMatchTrace(String detail, int anchorWindowCount, int matchingWindowCount,
                                    int evidenceOutsideAllWindows, int minimumMissingEvidence) {}

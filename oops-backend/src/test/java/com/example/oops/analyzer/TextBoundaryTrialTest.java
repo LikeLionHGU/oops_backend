@@ -29,7 +29,7 @@ class TextBoundaryTrialTest {
     @Test void normalFixtureLabelsDoNotEnterDiscoveryInput() throws Exception {
         var suite=TextBoundaryTrial.readSuite(Path.of("src/test/resources/evals/text-boundaries-37.json"));
         for(var c:suite.cases()) if(c.expected().equals("PASS")) {
-            var f=new CandidateReviewEngineTest();
+            var f=new CandidateReviewFixture();
             List<String> ids=new ArrayList<>(); for(int i=0;i<c.speech().size();i++) ids.add("stt-index-"+i);
             f.discovery(ids);
             var result=CandidateRuns.run(f.client, f.context(c.speech().toArray(String[]::new)), 24);

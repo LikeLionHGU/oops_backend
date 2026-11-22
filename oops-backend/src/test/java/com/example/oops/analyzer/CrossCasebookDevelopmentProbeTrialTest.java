@@ -30,9 +30,9 @@ class CrossCasebookDevelopmentProbeTrialTest {
         assertThat(runtimeSnapshots.keySet()).containsExactlyInAnyOrder("BASELINE_64", "CANDIDATE_65");
         assertThat(plan.sourceHashes().keySet()).contains("transcript:DEV-01", "transcript:DEV-02", "transcript:DEV-03");
         assertThat(plan.implementationHashes().keySet()).contains(
-                "src/test/java/com/example/oops/analyzer/CasebookReferenceIsolationPreflight.java",
-                "src/test/java/com/example/oops/analyzer/MechanismRoutingTrial.java",
-                "src/test/java/com/example/oops/analyzer/DefaultVerificationTrial.java");
+                "src/experiment/java/com/example/oops/analyzer/CasebookReferenceIsolationPreflight.java",
+                "src/experiment/java/com/example/oops/analyzer/TrialSupport.java",
+                "src/experiment/java/com/example/oops/analyzer/DefaultVerificationTrial.java");
     }
 
     @Test void changedMaterializedTextCannotPassTheFrozenSourceSelector() throws Exception {

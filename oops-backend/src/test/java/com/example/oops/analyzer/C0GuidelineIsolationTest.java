@@ -18,6 +18,7 @@ import static org.mockito.Mockito.*;
  * C0 = the production base criteria with zero reference cases. Uses the private local runtime
  * archive; skipped explicitly when it is absent. Not an accuracy check.
  */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class C0GuidelineIsolationTest {
     private static final Path RUNTIME = Path.of("../datasets/controversy/guidelines/runtime.json");
     private static final int PROBES = 8;
@@ -49,7 +50,7 @@ class C0GuidelineIsolationTest {
         Assumptions.assumeTrue(Files.isRegularFile(RUNTIME), "Private runtime archive not present");
         String runtime = Files.readString(RUNTIME);
         var c0 = ConstraintBaselineTrial.baseOnly(runtime);
-        var production = new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(runtime), true, "classpath:frozen.json",
+        var production = new ReviewGuidelineLibrary(TrialSupport.resources(runtime), true, "classpath:frozen.json",
                 6000, 3, 3000, "", true, true);
         production.load();
         int productionCases = 0;
@@ -70,7 +71,7 @@ class C0GuidelineIsolationTest {
 
     /** Every contextReference payload sent in one experimental run, discovery and verification alike. */
     private static List<String> sentReferences(ReviewGuidelineLibrary guidelines, List<String> contextIds) {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var lines = List.of("그건 사실이 아니었어", "다른 이야기", "아무 말", "그 집은 정말 별로다", "다음 주제");
         long[] starts = {0, 2_000, 4_000, 480_000, 482_000};
         List<TranscriptSegment> segments = new ArrayList<>();
@@ -80,7 +81,7 @@ class C0GuidelineIsolationTest {
                 "가게에 대한 평가가 이용자나 사장을 낮추는 쪽으로 이어지는지 원문으로 확인합니다.",
                 List.of(new Quote("stt-index-3", "그 집"))));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-3", "PASS", "그 집")));
-        runExperimental(f.client, context, new RunServices(null, guidelines, null, null),
+        runExperimental(f.client, context, new RunServices(null, guidelines, null),
                 new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false),
                 new ExperimentalBatch(List.of("stt-index-3"), contextIds));
         var systems = org.mockito.ArgumentCaptor.forClass(String.class);

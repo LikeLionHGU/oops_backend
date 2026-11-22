@@ -39,7 +39,7 @@ class VerificationContractComparisonTest {
     @Test void preparationKeepsSameCandidateAndLabelMetadataOutOfTheModelInput() {
         var ids = new ArrayList<>(BanterPolicyTrial.REAL_IDS);
         BanterPolicyTrial.SYNTHETIC_IDS.forEach(id -> ids.add("synthetic-" + id));
-        var fixture = new CandidateReviewEngineTest();
+        var fixture = new CandidateReviewFixture();
         var captured = ContextPolicyTrial.capture(new ContextPolicyTrial.Spec("synthetic", 0, 1,
                 "TARGET_TREATMENT", List.of(0, 1), "SYNTHETIC_PROPOSED_LABEL_NOT_GOLD", null),
                 fixture.context("상황 설명", "평가 표현"), null);

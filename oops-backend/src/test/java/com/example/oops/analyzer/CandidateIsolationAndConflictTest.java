@@ -10,7 +10,7 @@ import static org.mockito.Mockito.*;
 
 class CandidateIsolationAndConflictTest {
     @Test void malformedKnownAnchorDoesNotEraseCompletedNeighbor() {
-        var f=new CandidateReviewEngineTest();var context=f.context("그 집 음식은 취향이야","다른 대화");
+        var f=new CandidateReviewFixture();var context=f.context("그 집 음식은 취향이야","다른 대화");
         f.discovery(List.of("stt-index-0","stt-index-1"),f.proposal("stt-index-0","그 집"),
                 new Proposal("stt-index-1","INVALID_AXIS","잘못된 후보",List.of(new Quote("stt-index-1","다른 대화"))));
         f.verification(new Verification("candidate-1",f.assessment("stt-index-0","PASS","그 집")));
@@ -30,7 +30,7 @@ class CandidateIsolationAndConflictTest {
         }
     }
     @Test void relationModeFailureIsLocalizedButMissingEnvelopeIsNot() {
-        var f=new CandidateReviewEngineTest();var ids=List.of("stt-index-0","stt-index-1");
+        var f=new CandidateReviewFixture();var ids=List.of("stt-index-0","stt-index-1");
         var malformed=new Proposal("stt-index-1","TARGET_TREATMENT","구형 가설",List.of(new Quote("stt-index-1","그 집")),
                 new SourceRelations(List.of(),List.of(),List.of(),List.of(),List.of()));
         f.discovery(ids,malformed);
@@ -41,7 +41,7 @@ class CandidateIsolationAndConflictTest {
                 .containsExactlyInAnyOrderElementsOf(ids);
     }
     @Test void sameEvidenceDivergenceIsDiagnosticOnlyAndDoesNotSuppressWarning() {
-        var f=new CandidateReviewEngineTest();var context=f.context("그 집 이용자는 수준이 낮아");
+        var f=new CandidateReviewFixture();var context=f.context("그 집 이용자는 수준이 낮아");
         var p=f.proposal("stt-index-0","그 집");
         f.discovery(List.of("stt-index-0"),p,new Proposal(p.anchorId(),p.axis(),"표현이 다른 검토 가설",p.evidence()));
         f.verification(new Verification("candidate-1",f.assessment(p.anchorId(),"PASS","그 집")),
@@ -56,7 +56,7 @@ class CandidateIsolationAndConflictTest {
         });
     }
     @Test void differentEvidenceWindowAxisOrStageIsNotDeclaredSameIssue() {
-        var f=new CandidateReviewEngineTest();var context=f.context("그 집 설명","그 집 추가 설명");
+        var f=new CandidateReviewFixture();var context=f.context("그 집 설명","그 집 추가 설명");
         var p=f.proposal("stt-index-0","그 집");
         var base=new Candidate("c1",p,context.reviewInput().segments(),false,false);
         var pass=validate(base,f.assessment(p.anchorId(),"PASS","그 집"),context.reviewInput(),0).observation();

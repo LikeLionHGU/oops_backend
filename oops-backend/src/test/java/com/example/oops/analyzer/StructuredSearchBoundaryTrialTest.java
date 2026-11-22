@@ -30,7 +30,7 @@ class StructuredSearchBoundaryTrialTest {
     @Test void metadataDoesNotEnterRawModelInputAndAllNewDraftsExerciseConceptSearch() throws Exception {
         var p=plan(); var search=StructuredContextSearch.load();
         for(var c:p.conditions()) {
-            var context=MechanismRoutingTrial.context(new MechanismRoutingTrial.Condition(c.id(),c.labelStatus(),c.raw()));
+            var context=TrialSupport.context(new TrialSupport.Condition(c.id(),c.labelStatus(),c.raw()));
             String input=JSON.writeValueAsString(context.reviewInput());
             assertThat(input).doesNotContain("expectedDecision","labelStatus","SYNTHETIC_DRAFT",c.boundary());
             if(c.id().startsWith("normal-")) assertThat(search.queryProfiles(SPEECH,c.raw())).as(c.id()).isNotEmpty();

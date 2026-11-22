@@ -142,9 +142,6 @@ oops:
     guidelines-example-max-code-points: 3000 # 예시만의 상한. 잘라내지 않고 예시 전체를 제외.
     structured-context-search-enabled: ${STRUCTURED_CONTEXT_SEARCH_ENABLED:true} # v7 로컬 개념 검색 보완. 판정·외부 호출 없음, false로 이전 문자 검색 재현.
     guidelines-excluded-families: ${REVIEW_GUIDELINES_EXCLUDED_FAMILIES:} # 독립 평가 시 사건 family를 제외. 공통 기준은 유지.
-    mechanism-routing-enabled: ${CONTEXT_MECHANISM_ROUTING_ENABLED:false} # v6/v7에서만 배치별 검색 키 분류. 기본은 추가 과금 없이 기존 경로 유지.
-    mechanism-routing-location: ${CONTEXT_MECHANISM_ROUTING_LOCATION:file:../datasets/controversy/definitions/context-routing.json}
-    mechanism-routing-max-calls: ${CONTEXT_MECHANISM_ROUTING_MAX_CALLS:12} # 영상당 상한. 초과 배치도 어휘 검색·본 분석은 계속.
     candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
     rule-candidate-union-enabled: ${RULE_CANDIDATE_UNION_ENABLED:false} # 실험: 규칙+AI 후보 합집합. 기본 OFF, 활성화 시 검증 호출/결과가 달라질 수 있음.
     candidate-source-relations-enabled: ${CANDIDATE_SOURCE_RELATIONS_ENABLED:false} # 실험 38: 결론형 가설 대신 원문 역할 ID 전달. 모델 비교 전 기본 OFF.

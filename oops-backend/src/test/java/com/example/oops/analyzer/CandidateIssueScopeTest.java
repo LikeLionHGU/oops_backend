@@ -24,7 +24,7 @@ class CandidateIssueScopeTest {
     }
 
     @Test void rawContextAndCandidateHypothesisRemainIntactWithoutExtraCalls() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var context = f.context("그 문구가 무슨 뜻인가요?", "개인 정보를 묻는 문장입니다.", "다른 이야기로 넘어갈게요.");
         var proposal = new Proposal("stt-index-1", "TARGET_TREATMENT", "검증할 가설",
                 List.of(new Quote("stt-index-1", "개인 정보를 묻는 문장입니다."),

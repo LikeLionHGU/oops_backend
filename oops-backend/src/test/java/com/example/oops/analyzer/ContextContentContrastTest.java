@@ -3,6 +3,7 @@ package com.example.oops.analyzer;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import java.util.*;
+import static com.example.oops.analyzer.ContextContrastPlan.fixture;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.*;
 
@@ -34,12 +35,6 @@ class ContextContentContrastTest {
             SourceFirstReviewBoundary.readingInput(r.path("input"));
         }
         assertThat(ContextContrastPlan.build()).isEqualTo(plan);
-    }
-    static JsonNode fixture() throws Exception {
-        try (var in = ContextContentContrastTest.class.getResourceAsStream("/evals/context-content-contrasts-v1.json")) {
-            if (in == null) throw new IllegalStateException("Missing approved contrast fixture");
-            return JSON.readTree(in.readAllBytes());
-        }
     }
     static JsonNode sourceOnly(JsonNode item) {
         return JSON.createObjectNode().set("dialogue", item.path("dialogue").deepCopy());

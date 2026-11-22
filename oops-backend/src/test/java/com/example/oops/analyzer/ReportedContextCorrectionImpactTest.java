@@ -5,28 +5,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.*;
 import java.util.*;
+import static com.example.oops.analyzer.ReportedContextFixture.corrected;
 import static com.example.oops.analyzer.ReviewGuidelineLibrary.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Research-only local comparison. Never modifies source/runtime or sends data to a provider. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ReportedContextCorrectionImpactTest {
-    static Archive corrected(Archive archive,tools.jackson.databind.JsonNode p){
-        var details=p.path("proposal");String id=p.path("statementId").asString();
-        var examples=new ArrayList<ContextExample>();int changed=0;
-        for(var ex:archive.examples()){
-            if(!id.equals(ex.id())){examples.add(ex);continue;}
-            var context=new Comparison("REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT",
-                    List.of(details.path("reportedContext").path("summary").asString()),
-                    List.of(details.path("reviewHypothesis").asString()),
-                    java.util.stream.StreamSupport.stream(details.path("unknowns").spliterator(),false).map(x->x.asString()).toList(),
-                    List.of(),List.of(details.path("normalContrast").asString()));
-            examples.add(new ContextExample(ex.id(),ex.familyId(),ex.mechanismIds(),ex.channels(),context,ex.retrievalView(),ex.routingKeys(),ex.relationProfile(),ex.sourceGroupId()));changed++;
-        }
-        assertThat(changed).isOne();
-        var candidate=new Archive(archive.schemaVersion(),archive.version(),archive.status(),archive.humanValidated(),archive.usage(),
-                archive.sourceBundleSha256(),archive.refreshOrDeleteBy(),archive.sourceCases(),archive.guidelines(),archive.contextDictionarySha256(),examples);
-        assertThat(ReviewGuidelineLibrary.valid(candidate)).isTrue();return candidate;
-    }
     @Test void replayFrozenRetrievalWithReportedContextCorrection(@TempDir Path tmp)throws Exception {
         Path root=Path.of("../datasets/controversy"),runtime=root.resolve("guidelines/runtime.json"),
                 proposal=ResearchCaseAliases.datasetFile("correctionProposalPath"),

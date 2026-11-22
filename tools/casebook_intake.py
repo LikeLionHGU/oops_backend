@@ -52,12 +52,13 @@ def implementation_hashes():
                "ContextReferenceBalance", "StructuredContextSearch", "ReviewJudgmentPolicy", "CandidateReviewPrompts",
                "ContextualComparisonPolicy", "SourceRelationPrompts", "CandidateReviewEngine", "TextReviewEngine")]
     names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
-              ("ContextMechanismRouter", "AnalysisContext")]
+              ("AnalysisContext",)]
     names += ["oops-backend/src/main/java/com/example/oops/domain/AnalysisCoverage.java",
               "oops-backend/src/main/java/com/example/oops/service/AnalysisPipeline.java",
               "oops-backend/src/main/java/com/example/oops/service/ReviewRequestTraceStore.java"]
-    names += ["oops-backend/src/test/java/com/example/oops/analyzer/CasebookIntakeAudit.java",
-              "oops-backend/src/test/java/com/example/oops/analyzer/CasebookImpactAudit.java", "oops-backend/build.gradle"]
+    names += ["oops-backend/src/experiment/java/com/example/oops/analyzer/CasebookIntakeAudit.java",
+              "oops-backend/src/experiment/java/com/example/oops/analyzer/CasebookImpactAudit.java", "oops-backend/build.gradle",
+              "oops-backend/gradle/experiments.gradle"]
     names += ["tools/audit_evaluation_suites.py", "tools/evaluation-suites.json",
               "oops-backend/src/test/resources/evals/context-content-contrasts-v1.json"]
     return {name: digest(read_bytes(repo / name)) for name in names}

@@ -251,22 +251,6 @@ public class OpenAiClient {
         return executeJson(body, type);
     }
 
-    /** Optional search routing: one attempt, bounded output, same usage accounting.
-     * Its failure must not mark an otherwise successful mandatory review as failed. */
-    public <T> Optional<T> completeRoutingAsJson(String systemPrompt, String userPrompt, Class<T> type) {
-        if (!isEnabled() || Thread.currentThread().isInterrupted()) return Optional.empty();
-        int priorCount = failureCount.get()[0];
-        FailureState priorFailure = failureState.get();
-        try {
-            var body = requestBody(systemPrompt, userPrompt);
-            body.put("max_completion_tokens", 1024);
-            return executeJson(body, type, 1);
-        } finally {
-            failureCount.get()[0] = priorCount;
-            if (priorFailure == null) failureState.remove(); else failureState.set(priorFailure);
-        }
-    }
-
     public record ImageInput(String id, long timestampMs, String jpegBase64) {}
 
     /** Inline JPEG only: never send local paths or fetch arbitrary external image URLs. */

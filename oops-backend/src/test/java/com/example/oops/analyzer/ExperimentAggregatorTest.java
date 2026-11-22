@@ -51,6 +51,21 @@ class ExperimentAggregatorTest {
         assertThatThrownBy(() -> ExperimentAggregator.outcome("SOMETHING_NEW")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void truncatedTraceCannotBeReportedAsACompleteComparison() {
+        var records = new ArrayList<>(all("A1-T", "REVIEW_REQUIRED", "PASS", "PASS", "PASS"));
+        var first = records.get(0);
+        records.set(0, new ContextExperimentRunner.TargetRecord(first.runId(), first.conditionId(), first.repeat(),
+                first.videoId(), first.targetId(), first.selectorId(), first.selectionStatus(), first.contextSegmentIds(),
+                first.targetState(), first.resultStatus(), first.pipelineRevision(), first.repairUsage(), first.failureCodes(),
+                first.requests(), 1, first.discoveryReferenceIds()));
+        assertThatThrownBy(() -> aggregator(allFeasible).summarize(records, "A1-T", OPERATIONAL))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Incomplete request trace");
+        var paired = new ArrayList<>(records);
+        paired.addAll(all("BASE", "REVIEW_REQUIRED", "PASS", "PASS", "PASS"));
+        assertThatThrownBy(() -> aggregator(allFeasible).compare(paired, "A1-T", "BASE", CONTROLLED))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Incomplete request trace");
+    }
+
     @Test void primaryEstimateWeightsClustersEquallyAndSecondaryWeightsCases() {
         var records = all("A1-T", "REVIEW_REQUIRED", "PASS", "NO_CANDIDATE", "PASS");
         var s = aggregator(allFeasible).summarize(records, "A1-T", CONTROLLED);

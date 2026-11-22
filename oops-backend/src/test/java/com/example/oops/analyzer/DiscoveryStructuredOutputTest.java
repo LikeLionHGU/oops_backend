@@ -43,7 +43,7 @@ class DiscoveryStructuredOutputTest {
                 .andRespond(withSuccess(response(emptyDiscovery("[\"stt-index-0\"]","false"),"stop",null),MediaType.APPLICATION_JSON));
         var client=new OpenAiClient(builder.build(),properties(),true); client.beginVideo(1L);
         try {
-            var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("이 상품은 파란색입니다"), 24);
+            var r=CandidateRuns.run(client, new CandidateReviewFixture().context("이 상품은 파란색입니다"), 24);
             assertThat(r.status().name()).isEqualTo("SUCCESS"); assertThat(r.findings()).isEmpty(); assertThat(r.unassessedSegmentIds()).isEmpty();
             assertThat(client.videoUsage().calls()).isOne();
         } finally { client.endVideo(); }
@@ -56,7 +56,7 @@ class DiscoveryStructuredOutputTest {
                     .andRespond(withSuccess(response(emptyDiscovery("[\"stt-index-0\"]",value),"stop",null),MediaType.APPLICATION_JSON));
             var client=new OpenAiClient(builder.build(),properties(),true); client.beginVideo(1L);
             try {
-                var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("이 상품은 파란색입니다"), 24);
+                var r=CandidateRuns.run(client, new CandidateReviewFixture().context("이 상품은 파란색입니다"), 24);
                 assertThat(r.status().name()).isEqualTo("FAILED"); assertThat(r.unassessedSegmentIds()).containsExactly("stt-index-0");
                 assertThat(r.diagnostics().candidatePipeline().candidates()).anySatisfy(c -> {
                     assertThat(c.state()).isEqualTo("INVALID_DISCOVERY"); assertThat(c.failureCode()).isEqualTo("DISCOVERY_TRUNCATED_REQUIRED");
@@ -72,7 +72,7 @@ class DiscoveryStructuredOutputTest {
                 .andRespond(withSuccess(response(emptyDiscovery("[\"made-up-id\"]","false"),"stop",null),MediaType.APPLICATION_JSON));
         var client=new OpenAiClient(builder.build(),properties(),true); client.beginVideo(1L);
         try {
-            var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("정상적인 상품 안내"), 24);
+            var r=CandidateRuns.run(client, new CandidateReviewFixture().context("정상적인 상품 안내"), 24);
             assertThat(r.status().name()).isEqualTo("FAILED"); assertThat(r.unassessedSegmentIds()).isNotEmpty();
         } finally { client.endVideo(); }
         server.verify();
@@ -145,8 +145,8 @@ class DiscoveryStructuredOutputTest {
     }
     @Test void testOnlyControlChangesJustEnumBindingAndPreservesActualHttpAndReplay() {
         var builder=RestClient.builder().baseUrl("https://example.invalid");var server=MockRestServiceServer.bindTo(builder).build();
-        var control=new MechanismRoutingTrial.Client(builder.build(),properties(),true,false);
-        var scoped=new MechanismRoutingTrial.Client(RestClient.create(),properties(),true);
+        var control=new TrialSupport.Client(builder.build(),properties(),true,false);
+        var scoped=new TrialSupport.Client(RestClient.create(),properties(),true);
         String input=request("s");
         var scopedBody=JSON.valueToTree(scoped.replayRequestBody("JSON",input,CandidateReviewEngine.Discovery.class));
         var controlBody=JSON.valueToTree(control.replayRequestBody("JSON",input,CandidateReviewEngine.Discovery.class));
@@ -192,7 +192,7 @@ class DiscoveryStructuredOutputTest {
         server.expect(requestTo("https://example.invalid/chat/completions"))
                 .andRespond(withSuccess(response(content,"stop",null),MediaType.APPLICATION_JSON));
         var client=new OpenAiClient(builder.build(),properties(),true);
-        var r=CandidateRuns.run(client, new CandidateReviewEngineTest().context("첫 발언","두 번째 발언"), 24);
+        var r=CandidateRuns.run(client, new CandidateReviewFixture().context("첫 발언","두 번째 발언"), 24);
         assertThat(r.status().name()).isEqualTo("FAILED");
         assertThat(r.unassessedSegmentIds()).contains("stt-index-0","stt-index-1");
         assertThat(r.diagnostics().candidatePipeline().candidates()).anySatisfy(c ->
@@ -200,7 +200,7 @@ class DiscoveryStructuredOutputTest {
         server.verify();
     }
     @Test void overlappingBatchContextIsAvailableAsEvidenceButCannotBecomeUncertaintyReview() {
-        var context=new CandidateReviewEngineTest().context(java.util.stream.IntStream.range(0,80)
+        var context=new CandidateReviewFixture().context(java.util.stream.IntStream.range(0,80)
                 .mapToObj(i -> "발언 "+i).toArray(String[]::new));
         var batches=DialogueReadingPage.plan(context.reviewInput());
         assertThat(batches).hasSize(2);

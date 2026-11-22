@@ -23,7 +23,7 @@ class TargetContractDiagnosticsTest {
     }
 
     @Test void directPronounKeepsLiteralTargetAndExplanationWithoutInventingSeparateContext() {
-        var f=new CandidateReviewEngineTest();
+        var f=new CandidateReviewFixture();
         var input=f.context("지금 당신이 입은 속옷 색을 알고 싶어요.", "제게 한번 보여 주세요.").reviewInput();
         var proposal=new Proposal("stt-index-1","TARGET_TREATMENT","직접 요청의 대상 확인",
                 List.of(new Quote("stt-index-0",null),new Quote("stt-index-1",null)));
@@ -40,7 +40,7 @@ class TargetContractDiagnosticsTest {
     }
 
     @Test void canonicalFieldNamesDoNotBypassRawGroundingOrMissingTargetRole() {
-        var f=new CandidateReviewEngineTest();
+        var f=new CandidateReviewFixture();
         var input=f.context("지금 당신이 입은 속옷 색을 알고 싶어요.","제게 한번 보여 주세요.").reviewInput();
         var candidate=new Candidate("c",new Proposal("stt-index-1","TARGET_TREATMENT","합성 대상 연결",
                 List.of(new Quote("stt-index-0",null),new Quote("stt-index-1",null))),input.segments(),false,false);
@@ -81,7 +81,7 @@ class TargetContractDiagnosticsTest {
     }
 
     @Test void detailedConditionsRetainHistoricFailureCodesAndNeverAutoCorrectOutput() {
-        var f = new CandidateReviewEngineTest(); var input = f.context("그 집 이용자는 수준이 낮아");
+        var f = new CandidateReviewFixture(); var input = f.context("그 집 이용자는 수준이 낮아");
         var d = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var c = new Candidate("c", f.proposal("stt-index-0", "그 집"), input.reviewInput().segments(), false, false);
         Map<String, LlmDecision> cases = new LinkedHashMap<>();
@@ -108,7 +108,7 @@ class TargetContractDiagnosticsTest {
     }
 
     @Test void initialAndRepairDiagnosticsUseServerFilledRawAndSendOnlyTheFailedCondition() {
-        var f = new CandidateReviewEngineTest(); var d = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
+        var f = new CandidateReviewFixture(); var d = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         var bad = fields(d, d.target(), "그 집", d.targetReason(), "EXPLICIT",
                 List.of(new LlmEvidence("stt-index-0", null, "PRIMARY")));
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));

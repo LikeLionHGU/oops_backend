@@ -11,7 +11,7 @@ class CandidateReviewRequestFactoryTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Test void discoveryAssemblyPreservesSharedPromptAndInputShape() {
-        var fixture = new CandidateReviewEngineTest();
+        var fixture = new CandidateReviewFixture();
         var context = fixture.context("현재 영상 원문");
         var batch = DialogueReadingPage.plan(context.reviewInput()).get(0);
         var raw = DialogueReadingPage.raw(batch);
@@ -38,7 +38,7 @@ class CandidateReviewRequestFactoryTest {
     }
 
     @Test void verificationAssemblyKeepsTheExistingBaselinePromptAndCandidateScopedInput() {
-        var fixture = new CandidateReviewEngineTest();
+        var fixture = new CandidateReviewFixture();
         var context = fixture.context("anchor text", "permitted context");
         var speechRaw = context.reviewInput().segments().stream()
                 .filter(segment -> segment.type() == com.example.oops.domain.TimelineEventType.SPEECH).toList();

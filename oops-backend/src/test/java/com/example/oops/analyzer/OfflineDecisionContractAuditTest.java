@@ -49,7 +49,7 @@ class OfflineDecisionContractAuditTest {
         var input=(ObjectNode)JSON.readTree(r.input());
         ((ObjectNode)input.path("candidates").get(0)).set("proposedEvidence",JSON.valueToTree(List.of(new Quote("stt-index-1",null))));
         var task=new UtteranceDirectionTrial.Task("provenance","DRAFT",null,null,null,"unused","unused",input.toString());
-        var response=output(new CandidateReviewEngineTest().assessment("stt-index-1","PASS","줄임말을 풀이합니다."));
+        var response=output(new CandidateReviewFixture().assessment("stt-index-1","PASS","줄임말을 풀이합니다."));
         var provenance=OfflineDecisionContractAudit.targetProvenance(task,response);
         assertThat(provenance.get("allowedButNotProposedIds")).isEqualTo(List.of("stt-index-0"));
         assertThat(provenance).containsEntry("semanticCorrectnessEstablished",false);
@@ -79,7 +79,7 @@ class OfflineDecisionContractAuditTest {
     }
 
     private VerificationFactorialPlan.Request probeRequest(String axis, int anchor, String... lines) {
-        var input=new CandidateReviewEngineTest().context(lines).reviewInput();
+        var input=new CandidateReviewFixture().context(lines).reviewInput();
         var speech=input.segments().stream().filter(s -> s.type()==com.example.oops.domain.TimelineEventType.SPEECH).toList();
         var ids=speech.stream().map(ReviewInput.Segment::id).toList();
         String body=JSON.writeValueAsString(Map.of("raw",speech,"candidates",List.of(Map.of(
@@ -90,7 +90,7 @@ class OfflineDecisionContractAuditTest {
     }
 
     private ObjectNode targetProbeOutput(String anchor,String targetText,int contextIndex) {
-        var f=new CandidateReviewEngineTest();var response=output(f.assessment(anchor,"REVIEW_REQUIRED",targetText));
+        var f=new CandidateReviewFixture();var response=output(f.assessment(anchor,"REVIEW_REQUIRED",targetText));
         var d=assessment(response);d.put("category","SEXUAL");d.put("target","질문을 받은 상대");
         d.put("targetMention","당신");d.put("targetType","PERSON");d.put("targetRelation","EXPLICIT");
         d.put("targetReason","원문 당신이 요청을 받는 대상을 가리킨다는 합성 계약 예시다.");
@@ -123,7 +123,7 @@ class OfflineDecisionContractAuditTest {
 
     @Test void syntheticContrastPresenceProbeNeverCertifiesMeaningOrFillsSavedPass() {
         var request=probeRequest("TARGET_TREATMENT",0,"그 집 가게가 없어요.","제가 직접 만들었어요.");
-        var f=new CandidateReviewEngineTest();var response=output(f.linkedPass("stt-index-0","그 집 가게가 없어요.","stt-index-1","제가 직접 만들었어요."));
+        var f=new CandidateReviewFixture();var response=output(f.linkedPass("stt-index-0","그 집 가게가 없어요.","stt-index-1","제가 직접 만들었어요."));
         assessment(response).putNull("alternativeInterpretation");var before=response.deepCopy();
         var original=VerificationFactorialPlan.assess(request,JSON.treeToValue(response,VerificationResult.class));
         assertThat(original).containsEntry("accepted",false).containsEntry("failureCode","LINKED_PASS_CONTRAST_REQUIRED");
@@ -156,7 +156,7 @@ class OfflineDecisionContractAuditTest {
     }
 
     private ContextPolicyTrial.Task task(String expected, String labelStatus) {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         return ContextPolicyTrial.capture(new ContextPolicyTrial.Spec("synthetic-test", 0, 1,
                 "TARGET_TREATMENT", List.of(0, 1), labelStatus, expected),
                 f.context("가: 얼굴 이야기는 그만해 줘.", "나: 네 얼굴이 역겨워서 다들 피하는 거야."), null);
@@ -167,7 +167,7 @@ class OfflineDecisionContractAuditTest {
     }
 
     private ObjectNode passOutput() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         return output(f.linkedPass("stt-index-1", "나: 네 얼굴이 역겨워서 다들 피하는 거야.",
                 "stt-index-0", "가: 얼굴 이야기는 그만해 줘."));
     }
@@ -200,7 +200,7 @@ class OfflineDecisionContractAuditTest {
     }
 
     @Test void targetRelationFailureRemainsSeparateFromTheReviewDecision() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var response = output(f.assessment("stt-index-1", "REVIEW_REQUIRED", "나: 네 얼굴이 역겨워서 다들 피하는 거야."));
         var d = assessment(response);
         d.put("reason", "외모 이야기를 중단해 달라는 요청 뒤 상대의 외모를 직접 폄하한다.");

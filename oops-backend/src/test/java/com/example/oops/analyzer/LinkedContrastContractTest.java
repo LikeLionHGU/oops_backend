@@ -11,7 +11,7 @@ import java.util.Optional;
 
 /** Contract tests, not a claim of model accuracy or deterministic decisions. */
 class LinkedContrastContractTest {
-    private final CandidateReviewEngineTest fixture = new CandidateReviewEngineTest();
+    private final CandidateReviewFixture fixture = new CandidateReviewFixture();
 
     private LlmDecision pass(String alternative, String contextQuote) {
         var evidence = contextQuote == null

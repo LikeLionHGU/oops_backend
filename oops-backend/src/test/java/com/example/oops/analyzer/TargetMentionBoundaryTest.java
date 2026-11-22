@@ -17,7 +17,7 @@ class TargetMentionBoundaryTest {
         assertThat(TargetMentionBoundary.sameSurfaceReferent(null,"메뉴")).isFalse();
     }
     @Test void actualValidationAcceptsParticleButStillRejectsReferentInferenceWithoutContext() {
-        var f=new CandidateReviewEngineTest();var c=f.context("여기는 메뉴가 의미가 없어");
+        var f=new CandidateReviewFixture();var c=f.context("여기는 메뉴가 의미가 없어");
         var tree=(tools.jackson.databind.node.ObjectNode)JSON.valueToTree(f.assessment("stt-index-0","REVIEW_REQUIRED","여기는 메뉴가 의미가 없어"));
         tree.put("target","여기");tree.put("targetMention","여기는");tree.put("targetType","BUSINESS");
         tree.put("targetRelation","EXPLICIT");tree.put("targetReason","원문에서 여기는이라는 표현을 직접 사용합니다");
@@ -47,7 +47,7 @@ class TargetMentionBoundaryTest {
         assertThat(TargetMentionBoundary.matches("너","")).isFalse();
     }
     @Test void actualTargetInspectionRejectsSubstringButPreservesInflectedReferent() {
-        var f=new CandidateReviewEngineTest();var c=f.context("너무 좋다");
+        var f=new CandidateReviewFixture();var c=f.context("너무 좋다");
         var tree=(tools.jackson.databind.node.ObjectNode)JSON.valueToTree(f.assessment("stt-index-0","REVIEW_REQUIRED","너무 좋다"));
         tree.put("target","너");tree.put("targetMention","너");tree.put("targetType","PERSON");
         tree.put("targetReason","인용에서 직접 상대를 지칭합니다");

@@ -10,7 +10,7 @@ import static org.mockito.Mockito.*;
 
 /** Mock/contract tests only. Valid act labels do not establish semantic truth or model accuracy. */
 class SourceUnderstandingContractTest {
-    final CandidateReviewEngineTest f = new CandidateReviewEngineTest();
+    final CandidateReviewFixture f = new CandidateReviewFixture();
     final String id = "stt-index-0", text = "그 집";
     final AnalysisContext context = f.context("그 집은 조용하다", "추가 설명입니다.");
     Candidate candidate() { return new Candidate("c", f.proposal(id,text), context.reviewInput().segments().stream()
@@ -101,7 +101,7 @@ class SourceUnderstandingContractTest {
     }
 
     TextReviewEngine.Result runEnabled() {
-        return CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
+        return CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true), false));
     }
     void discover() { f.discovery(List.of(id,"stt-index-1"),f.proposal(id,text)); }
@@ -176,7 +176,7 @@ class SourceUnderstandingContractTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",b.expression("SEXUAL"),
                     b.basis("EXPRESSION_CONTENT"),new SourceUnderstanding(List.of(new SourceUnderstanding.ActReading(b.id,"OTHER",List.of())))))));
         });
-        var result=CandidateReviewEngine.run(b.f.client, b.f.context(b.text), new CandidateReviewEngine.RunServices(null, null, null, null),
+        var result=CandidateReviewEngine.run(b.f.client, b.f.context(b.text), new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, true, new VerificationFeatures(true,true,true), false));
         assertThat(result.status().name()).isEqualTo("SUCCESS");assertThat(result.findings()).hasSize(1);
         assertThat(result.diagnostics().candidatePipeline().evidenceCounts().get(0).sourceUnderstanding().provided()).isTrue();

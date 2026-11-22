@@ -40,7 +40,7 @@ class GuidelineBoundaryWiringTest {
         var cases = TextBoundaryTrial.readSuite(Path.of("src/test/resources/evals/text-boundaries-37.json")).cases();
         List<Map<String,Object>> rows = new ArrayList<>();
         for (var item : cases) {
-            var fixture = new CandidateReviewEngineTest();
+            var fixture = new CandidateReviewFixture();
             var context = fixture.context(item.speech().toArray(String[]::new));
             int batchIndex = 0;
             for (var batch : TextReviewBatchPlanner.plan(context.reviewInput(), TimelineEventType.SPEECH, 3)) {
@@ -84,7 +84,7 @@ class GuidelineBoundaryWiringTest {
                 return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                         fixture.assessment("stt-index-0", "PASS", item.speech().get(0))))));
             });
-            var result = CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, after, null, null),
+            var result = CandidateReviewEngine.run(fixture.client, context, new CandidateReviewEngine.RunServices(null, after, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(systems).hasSize(1).allSatisfy(system -> assertThat(system).contains(BOUNDARY));
             assertThat(systems.get(0).substring(systems.get(0).indexOf("contextReference=")))
@@ -102,12 +102,12 @@ class GuidelineBoundaryWiringTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(Files.exists(active));
         String text=Files.readString(active);
         org.junit.jupiter.api.Assumptions.assumeTrue(JSON.readTree(text).path("schemaVersion").asText().equals("review-guidelines-7"));
-        var promoted=ContextRankReadinessAudit.library(text);
+        var promoted=TrialSupport.readyLibrary(text);
         var expected=Map.of("P-B-development-excerpt","pisik-yeongyang#u-life-choice",
                 "P-C-development-excerpt","pisik-yeongyang#u-menu","P-D-development-excerpt","pisik-yeongyang#u-graphic");
         for(var item:TextBoundaryTrial.readSuite(Path.of("src/test/resources/evals/text-boundaries-37.json")).cases()) {
             if(!expected.containsKey(item.id())) continue;
-            var context=new CandidateReviewEngineTest().context(item.speech().toArray(String[]::new));
+            var context=new CandidateReviewFixture().context(item.speech().toArray(String[]::new));
             var selected=promoted.select(TimelineEventType.SPEECH,context.reviewInput().segments(),item.id());
             assertThat(selected.trace().exampleIds()).contains(expected.get(item.id()));
             assertThat(selected.trace().payloadCodePoints()).isLessThanOrEqualTo(6000);

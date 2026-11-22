@@ -9,7 +9,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class PassContextScopeTest {
-    final CandidateReviewEngineTest f=new CandidateReviewEngineTest();
+    final CandidateReviewFixture f=new CandidateReviewFixture();
     final AnalysisContext context=f.context("その表現の意味を説明します", "その言葉は引用です", "説明の続きです");
     final Proposal proposal=new Proposal("stt-index-1","TARGET_TREATMENT","引用を現在の要求として検討する仮説",
             List.of(new Quote("stt-index-1","その言葉は引用です"),new Quote("stt-index-2","説明の続きです")));

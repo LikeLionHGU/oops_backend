@@ -17,13 +17,13 @@ class CandidateRunOptionsTest {
         assertThat(new RunOptions(24,0,false,baseline,false).evidenceLimit()).isZero();
     }
     @Test void recordEntryAndHistoricalEntrySendIdenticalDiscoveryAndVerificationRequests() {
-        var f=new CandidateReviewEngineTest();
+        var f=new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"),f.proposal("stt-index-0","그 집"));
         f.verification(new Verification("candidate-1",f.assessment("stt-index-0","PASS","그 집")));
         var context=f.context("그 집 이용자는 수준이 낮아");
-        var old=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
+        var old=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
-        var current=run(f.client,context,new RunServices(null,null,null,null),
+        var current=run(f.client,context,new RunServices(null,null,null),
                 new RunOptions(24,0,false,new VerificationFeatures(false,false,false),false));
         assertThat(current.findings()).hasSize(old.findings().size());
         var systems=ArgumentCaptor.forClass(String.class);

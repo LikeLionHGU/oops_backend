@@ -85,7 +85,7 @@ class ContextFitAdoptionGateTest {
                 "CandidateReviewEngine.java","ReviewJudgmentPolicy.java"))
             hashes.put("production."+file,ReferenceOnlyTrial.sha(Files.readAllBytes(Path.of("src/main/java/com/example/oops/analyzer").resolve(file))));
         for(String file:List.of("ContextFitRankingPreview.java","ContextFitAdoptionGateTest.java"))
-            hashes.put(file,ReferenceOnlyTrial.sha(Files.readAllBytes(Path.of("src/test/java/com/example/oops/analyzer").resolve(file))));
+            hashes.put(file,ReferenceOnlyTrial.sha(Files.readAllBytes(ExperimentSources.analyzerFile(file))));
         var history=new ArrayList<Map<String,Object>>();
         for(var item:List.of(Map.entry("quotation-ocr-followup-20261022-cZy7vL",98),
                 Map.entry("quotation-ocr-followup-20261022-cZy7vL",99),Map.entry("ocr-casebook-repeat-20261022-3nphCI",109))) {

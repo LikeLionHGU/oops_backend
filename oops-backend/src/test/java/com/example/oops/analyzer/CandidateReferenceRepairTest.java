@@ -21,7 +21,7 @@ class CandidateReferenceRepairTest {
                 d.targetType(), d.targetRelation(), d.targetReason(), d.alternativeInterpretation(), d.targetMention());
     }
     @Test void unknownIdIsReassessedOnceAndCanRecoverToPassWithoutCopyingInvalidOutput() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var good = f.assessment("stt-index-0", "PASS", "그 집");
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
@@ -45,7 +45,7 @@ class CandidateReferenceRepairTest {
         assertThat(d.candidates()).singleElement().extracting(CandidateReviewDiagnostics.Trace::state).isEqualTo("PASS");
     }
     @Test void secondInvalidResponseStaysIncompleteAndDoesNotLoop() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", badId(f.assessment("stt-index-0", "PASS", "그 집"))));
         var result = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24);
@@ -56,7 +56,7 @@ class CandidateReferenceRepairTest {
         verify(f.client, times(2)).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void recoveredReviewStillRequiresTargetQuoteAndPublicationValidation() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
@@ -71,7 +71,7 @@ class CandidateReferenceRepairTest {
     @Test void repairThatStillCitesUnknownIdStaysFailed() {
         // Quotes are server-filled (Approach A), so a repair cannot fabricate a quote; the remaining
         // guard is the evidence id. A repair whose answer still cites an unknown id stays rejected.
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var good = f.assessment("stt-index-0", "PASS", "그 집");
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
@@ -86,7 +86,7 @@ class CandidateReferenceRepairTest {
         });
     }
     @Test void fabricatedQuoteIsNotAutoRepairedAndProviderFailureDoesNotLoop() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "허구 인용")));
         var r = CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24);
@@ -98,7 +98,7 @@ class CandidateReferenceRepairTest {
         assertThat(CandidateRuns.run(f.client, f.context("그 집은 조용하다"), 24).diagnostics().candidatePipeline().repairCalls()).isZero();
     }
     @Test void videoRepairBudgetIsTwoEvenWithThreeBrokenCandidates() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var ids = List.of("stt-index-0", "stt-index-1", "stt-index-2");
         f.discovery(ids, ids.stream().map(id -> f.proposal(id, "그 집")).toArray(Proposal[]::new));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class))).thenAnswer(invocation -> {
@@ -139,7 +139,7 @@ class CandidateReferenceRepairTest {
                 .containsExactly("source-1");
     }
     @Test void verificationReusesDiscoveryReferencesInsteadOfRerankingEachCandidate() {
-        var f = new CandidateReviewEngineTest(); var helper = new ContextExampleSelectionTest();
+        var f = new CandidateReviewFixture(); var helper = new ContextExampleSelectionTest();
         String first = "공공시설이 없는 생활조건", second = "메뉴 선택권을 무시하는 설명";
         String[] discoverySystem = new String[1];
         when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class))).thenAnswer(invocation -> {
@@ -160,7 +160,7 @@ class CandidateReferenceRepairTest {
             }
             return Optional.of(new VerificationResult(results));
         });
-        var r = CandidateReviewEngine.run(f.client, f.context(first, second), new CandidateReviewEngine.RunServices(null, helper.library(distinctExamples(), 1, 3000, ""), null, null),
+        var r = CandidateReviewEngine.run(f.client, f.context(first, second), new CandidateReviewEngine.RunServices(null, helper.library(distinctExamples(), 1, 3000, ""), null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var d = r.diagnostics().candidatePipeline();
         assertThat(d.verificationCalls()).isOne();

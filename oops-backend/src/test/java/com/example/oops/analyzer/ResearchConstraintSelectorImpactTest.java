@@ -15,6 +15,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 /** Isolated synthetic retrieval experiment. Never publishes, sends data, or measures model accuracy. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class ResearchConstraintSelectorImpactTest {
     @Test void compareSyntheticBoundaryWithCurrentRuntimeAndFixedInputs(@TempDir Path tmp) throws Exception {
         Path root=Path.of("../datasets/controversy");
@@ -119,7 +120,7 @@ class ResearchConstraintSelectorImpactTest {
         try(var mock=mockStatic(StructuredContextSearch.class,org.mockito.Mockito.CALLS_REAL_METHODS)){
             mock.when(StructuredContextSearch::load).thenReturn(catalog);library.load();
         }
-        var fixture=new CandidateReviewEngineTest();var systems=new ArrayList<String>();
+        var fixture=new CandidateReviewFixture();var systems=new ArrayList<String>();
         when(fixture.client.completeAsJson(anyString(),anyString(),eq(CandidateReviewEngine.Discovery.class))).thenAnswer(inv->{
             systems.add(inv.getArgument(0));var input=JSON.readTree((String)inv.getArgument(1));var ids=new ArrayList<String>();
             input.path("primaryIds").forEach(n->ids.add(n.asString()));
@@ -130,7 +131,7 @@ class ResearchConstraintSelectorImpactTest {
         when(fixture.client.completeAsJson(anyString(),anyString(),eq(CandidateReviewEngine.VerificationResult.class))).thenAnswer(inv->{
             systems.add(inv.getArgument(0));return Optional.empty();
         });
-        CandidateReviewEngine.run(fixture.client, fixture.context(first,second), new CandidateReviewEngine.RunServices(null, library, null, null),
+        CandidateReviewEngine.run(fixture.client, fixture.context(first,second), new CandidateReviewEngine.RunServices(null, library, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         return systems;
     }

@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.*;
  * chat requests (two messages, json_object) report prompt_tokens equal to o200k_base content
  * tokens plus a constant 10 framing tokens. Private stored run; skipped when absent.
  */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class TokenizerAgreementTest {
     private static final Path RUN = Path.of("../datasets/controversy/experiments/candidate-issue-scope-comparison-results-20261018");
     private static final int TWO_MESSAGE_FRAMING_TOKENS = 10;

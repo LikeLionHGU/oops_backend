@@ -10,7 +10,7 @@ import static org.mockito.Mockito.*;
 
 class ExpressionTargetScopeTest {
     @Test void graphicMetaphorWithoutAttackTargetSurvivesIncorrectDiscoveryAxis() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         String raw = "살을 벗겨 먹는 것처럼 표현한다";
         var c = f.context(raw);
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", raw));
@@ -20,7 +20,7 @@ class ExpressionTargetScopeTest {
                 List.of(new LlmEvidence("stt-index-0", raw, "PRIMARY")), null, null, null,
                 "맛을 과장하는 농담일 수 있으나 구체적인 신체 훼손 이미지가 별도로 남습니다.");
         f.verification(new Verification("candidate-1", d));
-        var result = CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null, null),
+        var result = CandidateReviewEngine.run(f.client, c, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(result.findings()).hasSize(1);
         assertThat(result.findings().get(0).getTarget()).isNull();
@@ -29,7 +29,7 @@ class ExpressionTargetScopeTest {
         verify(f.client, times(1)).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void targetCriticismStillRequiresGroundedTargetAndNoCategoryCanInventSource() {
-        var f = new CandidateReviewEngineTest(); var c = f.context("그 가게의 이용자는 한심하다");
+        var f = new CandidateReviewFixture(); var c = f.context("그 가게의 이용자는 한심하다");
         var p = f.proposal("stt-index-0", "그 가게");
         var candidate = new Candidate("candidate-1", p, c.reviewInput().segments(), false, false);
         for (var category : List.of("MOCKERY", "BELITTLEMENT", "STRONG_NEGATIVE_REVIEW")) {

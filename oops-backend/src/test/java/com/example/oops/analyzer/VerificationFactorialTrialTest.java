@@ -58,7 +58,7 @@ class VerificationFactorialTrialTest {
         assertThat(unwritable.attempts).isZero();assertThat(unwritable.reserved).isZero();
     }
     @Test void unlabeledDraftsAndRejectedWarningsCannotBecomeCorrectPasses() {
-        var d=new CandidateReviewEngineTest().assessment("x","REVIEW_REQUIRED","합성 원문");
+        var d=new CandidateReviewFixture().assessment("x","REVIEW_REQUIRED","합성 원문");
         var response=new CandidateReviewEngine.VerificationResult(List.of(new CandidateReviewEngine.Verification("c",d)));
         var draft=new Request("normal",Arm.BASELINE,"DRAFT",null,"system","{}");
         assertThat(score(draft,response,Map.of("accepted",true))).containsEntry("decisionMatchesUserBoundary",null).containsEntry("acceptedMatchingDecision",null);
@@ -67,10 +67,10 @@ class VerificationFactorialTrialTest {
                 .containsEntry("acceptedMatchingDecision",false);
         assertThat(score(pass,null,Map.of("accepted",false))).containsEntry("returnedDecision",null).containsEntry("acceptedMatchingDecision",false);
     }
-    MechanismRoutingTrial.Client offlineClient() {
+    TrialSupport.Client offlineClient() {
         var props=new OpenAiProperties("offline-test-key",null,null,"https://api.openai.com/v1","gpt-6-luna","none",Duration.ofSeconds(1),
                 new OpenAiProperties.Pricing(.10,.01,.50,null,null));
-        return spy(new MechanismRoutingTrial.Client(RestClient.create(),props));
+        return spy(new TrialSupport.Client(RestClient.create(),props));
     }
     @Test void providerFailurePreservesPartialRowAndStopsAfterOneMockedCall() throws Exception {
         var p=plan();var client=offlineClient();var budget=new Budget(temporary);

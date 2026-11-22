@@ -1,0 +1,814 @@
+// Opt-in tools only. No task here is a dependency of test, check, bootRun or bootJar.
+// Offline, no provider calls: A0-T context per label target for deriving Near.
+tasks.register('a0ProvidedContext', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.A0ProvidedContext'
+    doFirst {
+        def manifest = providers.gradleProperty('labelManifest').orNull
+        def output = providers.gradleProperty('a0Output').orNull
+        if (!manifest || !output) throw new GradleException('labelManifest and a0Output required')
+        args manifest, output
+    }
+}
+
+tasks.register('contextExperiment', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextExperimentTrial'
+    doFirst {
+        def ctxaArgs = providers.gradleProperty('ctxaArgs').orNull
+        if (!ctxaArgs) throw new GradleException('ctxaArgs required: "prepare SPEC NEW_OUT" or "run PLAN PLAN_SHA NEW_OUT"')
+        args ctxaArgs.split(' ')
+    }
+}
+
+tasks.register('r2aStructural', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.R2aStructuralContext'
+    doFirst {
+        def r2aArgs = providers.gradleProperty('r2aArgs').orNull
+        if (!r2aArgs) throw new GradleException('r2aArgs required: "conditions MANIFEST OUT" or "strata TRANSCRIPT VIDEO_ID OUT"')
+        args r2aArgs.split(' ')
+    }
+}
+
+// Explicit opt-in text-only model trial; never part of test/bootRun.
+tasks.register('textBoundaryTrial', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.TextBoundaryTrial'
+    doFirst {
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved=true, trialOutput and trialBudget required')
+        args 'src/test/resources/evals/text-boundaries-37.json', '../datasets/controversy/guidelines/runtime.json', output, budget
+    }
+}
+
+// Explicit paid opt-in: fixed verification requests; never part of test/bootRun.
+tasks.register('candidateHypothesisTrial', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CandidateHypothesisTrial'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!plan || !output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved, trialPlan, trialOutput, trialBudget required')
+        args plan, output, budget
+    }
+}
+
+// Explicit paid opt-in; B/D original candidate groups remain intact.
+tasks.register('bdHypothesisTrial', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.BdHypothesisTrial'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!plan || !output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved, trialPlan, trialOutput, trialBudget required')
+        args plan, output, budget
+    }
+}
+
+// Stored-STT preparation plus separately authorized paid comparison; never a server endpoint.
+tasks.register('contextPolicyTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextPolicyTrial'
+    doFirst {
+        def mode = providers.gradleProperty('trialMode').orNull
+        def input = providers.gradleProperty('trialInput').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!mode || !input || !output) throw new GradleException('Set trialMode, trialInput, trialOutput; run is paid and needs approval')
+        args mode, input, output
+    }
+}
+
+// Comparison 41: preparation is offline; run requires explicit consent and a frozen-plan hash.
+tasks.register('banterPolicyTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.BanterPolicyTrial'
+    doFirst {
+        def mode = providers.gradleProperty('trialMode').orNull
+        def input = providers.gradleProperty('trialInput').orNull
+        def control = providers.gradleProperty('trialControl').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!(mode in ['prepare', 'run']) || !input || !control || !output)
+            throw new GradleException('Set trialMode, trialInput, trialControl (packet or approved SHA), trialOutput')
+        if (mode == 'run' && providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Paid run requires explicit trialLiveApproved=true and user consent')
+        args mode, input, control, output
+    }
+}
+
+// Read-only saved-response replay; never sends an API request or repairs model responses.
+tasks.register('auditDecisionContracts', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.OfflineDecisionContractAudit'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def results = providers.gradleProperty('trialResults').orNull
+        def report = providers.gradleProperty('auditOutput').orNull
+        if (!plan || !results || !report)
+            throw new GradleException('Set trialPlan, trialResults and a new private auditOutput')
+        args plan, results, report
+    }
+}
+
+// Comparison 42: output instruction pairs only; no live runner is selected by this task.
+tasks.register('prepareVerificationContractComparison', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.VerificationContractComparison'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!plan || !output) throw new GradleException('Set trialPlan and a new private trialOutput file')
+        args plan, output
+    }
+}
+
+// Paired Groq/OpenAI transcript excerpts and normal drafts, with offline retrieval mode.
+tasks.register('groqPipelineAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.GroqPipelineAudit'
+    doFirst {
+        def values = ['auditMode', 'auditInput', 'auditRuntime', 'auditOutput'].collect {
+            providers.gradleProperty(it).orNull
+        }
+        if (values.any { !it }) throw new GradleException('Explicit Groq audit mode, input, runtime and new private output required')
+        args values
+    }
+}
+
+// Frozen text-only structured search OFF/ON trial; prepare is free, run requires fresh consent/hash.
+tasks.register('structuredSearchBoundaryTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.StructuredSearchBoundaryTrial'
+    doFirst {
+        def values = ['boundaryMode', 'boundaryInput', 'boundarySecond', 'boundaryThird', 'boundaryOutput'].collect {
+            providers.gradleProperty(it).orNull
+        }
+        if (values.any { !it }) throw new GradleException('Explicit boundary mode, input, second, third and NEW private output required')
+        args values
+    }
+}
+
+// Freshly approved, isolated source-relation extraction; never part of runtime analysis.
+tasks.register('sourceRelationExtractionTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SourceRelationExtractionTrial'
+    doFirst {
+        def mode = providers.gradleProperty('relationTrialMode').orNull
+        if (mode == 'prepare') {
+            def input = providers.gradleProperty('relationTrialInput').orElse(
+                    '../datasets/controversy/evaluation/active-approved-dialogue-r01-v2-20261017/inputs.json').get()
+            def labels = providers.gradleProperty('relationTrialLabels').orElse(
+                    '../datasets/controversy/evaluation/active-approved-dialogue-r01-v2-20261017/labels.json').get()
+            def planDir = providers.gradleProperty('relationTrialPlanDir').orNull
+            if (!planDir) throw new GradleException('Set relationTrialPlanDir to a new private experiment directory')
+            args 'prepare', input, labels, planDir
+        } else if (mode == 'run') {
+            def plan = providers.gradleProperty('relationTrialPlan').orNull
+            def sha = providers.gradleProperty('relationTrialPlanSha').orNull
+            def consent = providers.gradleProperty('relationTrialConsent').orNull
+            def output = providers.gradleProperty('relationTrialOutput').orNull
+            if (providers.gradleProperty('relationTrialTextEgressApproved').orNull != 'true'
+                    || !plan || !sha || !consent || !output)
+                throw new GradleException('Paid run requires fresh text-egress approval, frozen plan SHA, exact consent and new private output')
+            args 'run', plan, sha, consent, output
+        } else if (mode == 'audit') {
+            def plan = providers.gradleProperty('relationTrialPlan').orNull
+            def results = providers.gradleProperty('relationTrialResults').orNull
+            def auditOutput = providers.gradleProperty('relationTrialAuditOutput').orNull
+            if (!plan || !results || !auditOutput)
+                throw new GradleException('Read-only audit requires a frozen plan, saved results, and a new private audit output')
+            args 'audit', plan, results, auditOutput
+        } else {
+            throw new GradleException('Set relationTrialMode=prepare, run, or audit')
+        }
+    }
+}
+
+// Fixed verification-only comparison; prepare is free, run requires a fresh USD0.50/text approval.
+// New default-path follow-up is deliberately prepare-only, without another live-mode flag.
+tasks.register('prepareDefaultVerificationPlan', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.DefaultVerificationPlan'
+    doFirst {
+        args providers.gradleProperty('defaultSource').get(), providers.gradleProperty('defaultOutput').get()
+    }
+}
+
+// Offline preparation of the fixed before/after issue-scope comparison; no provider calls.
+tasks.register('sourceFirstJudgmentTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SourceFirstJudgmentTrial'
+    doFirst {
+        def mode = providers.gradleProperty('sourceJudgmentMode').get()
+        def input = providers.gradleProperty('sourceJudgmentInput').get()
+        def output = providers.gradleProperty('sourceJudgmentOutput').get()
+        if (mode == 'prepare') { args mode, input, output }
+        else if (mode == 'run') {
+            if (providers.gradleProperty('sourceJudgmentApproved').orNull != 'true') throw new GradleException('New USD0.50/text approval required')
+            args mode, input, providers.gradleProperty('sourceJudgmentSha').get(), providers.gradleProperty('sourceJudgmentConsent').get(), output
+        } else if (mode == 'audit') { args mode, input, providers.gradleProperty('sourceJudgmentResults').get(), output }
+        else { throw new GradleException('prepare/run/audit required') }
+    }
+}
+
+tasks.register('prepareSourceFirstBoundary', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SourceFirstReviewBoundary'
+    doFirst { args providers.gradleProperty('sourceFirstResults').get(), providers.gradleProperty('sourceFirstOutput').get() }
+}
+
+tasks.register('finalReasonPremiseTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.FinalReasonPremiseTrial'
+    doFirst {
+        def mode = providers.gradleProperty('premiseTrialMode').get()
+        def input = providers.gradleProperty('premiseTrialPlan').get()
+        def second = providers.gradleProperty('premiseTrialSecond').get()
+        def output = providers.gradleProperty('premiseTrialOutput').get()
+        if (mode == 'run') {
+            if (providers.gradleProperty('premiseTrialLiveApproved').orNull != 'true')
+                throw new GradleException('New exact-plan USD0.50/text approval required')
+            args mode, input, second, providers.gradleProperty('premiseTrialConsent').get(), output
+        } else if (mode == 'audit') { args mode, input, second, output }
+        else { throw new GradleException('premiseTrialMode must be run or audit') }
+    }
+}
+
+tasks.register('prepareFinalReasonPremiseTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.PrepareFinalReasonPremiseTrial'
+    doFirst { args providers.gradleProperty('premiseBundle').get(), providers.gradleProperty('premiseTrialOutput').get() }
+}
+
+tasks.register('prepareFinalReasonPremiseAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.FinalReasonPremiseAudit'
+    doFirst { args providers.gradleProperty('premisePlan').get(), providers.gradleProperty('premiseResults').get(),
+            providers.gradleProperty('premiseOutput').get() }
+}
+
+tasks.register('prepareIssueScopeComparison', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.IssueScopeComparisonPlan'
+    doFirst { args providers.gradleProperty('scopeSource').get(), providers.gradleProperty('scopeOutput').get() }
+}
+
+// Guarded paired trials: fixed source reading OR fixed system guidance, never both together.
+tasks.register('relationGuidedVerificationTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RelationGuidedVerificationTrial'
+    doFirst {
+        def mode = providers.gradleProperty('guidedMode').get()
+        def input = providers.gradleProperty('guidedInput').get()
+        def second = providers.gradleProperty('guidedSecond').get()
+        def output = providers.gradleProperty('guidedOutput').get()
+        if (mode == 'run') {
+            if (providers.gradleProperty('guidedLiveApproved').orNull != 'true')
+                throw new GradleException('New exact-plan cost/text approval required')
+            args mode, input, second, providers.gradleProperty('guidedConsent').get(), output
+        } else if (mode in ['prepare', 'audit']) {
+            args mode, input, second, output
+        } else {
+            throw new GradleException('Set guidedMode=prepare, run, or audit')
+        }
+    }
+}
+
+// Only the newly approved, SHA-pinned default-path comparison; no production feature flag.
+tasks.register('prepareCurrentRequestCounterevidencePlan', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentRequestCounterevidencePlan'
+    doFirst {
+        args(providers.gradleProperty('counterBaseline').get(), providers.gradleProperty('counterBundle').get(),
+                providers.gradleProperty('counterOutput').get())
+    }
+}
+
+tasks.register('runCurrentRequestCounterevidenceTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentRequestCounterevidenceTrial'
+    doFirst {
+        if (providers.gradleProperty('counterLiveApproved').orNull != 'true')
+            throw new GradleException('Fresh counterLiveApproved and exact-plan cost/text consent required')
+        args(['counterPlan','counterBaseline','counterBundle','counterPlanSha','counterConsent','counterOutput'].collect {
+            providers.gradleProperty(it).get()
+        })
+    }
+}
+
+tasks.register('runDefaultVerificationTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.DefaultVerificationTrial'
+    doFirst {
+        if (providers.gradleProperty('defaultLiveApproved').orNull != 'true')
+            throw new GradleException('Fresh defaultLiveApproved and exact-plan cost/text consent required')
+        args(['defaultPlan','defaultSource','defaultPlanSha','defaultConsent','defaultOutput'].collect {
+            providers.gradleProperty(it).get()
+        })
+    }
+}
+
+tasks.register('utteranceDirectionTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.UtteranceDirectionTrial'
+    doFirst {
+        def mode = providers.gradleProperty('directionMode').get()
+        def input = providers.gradleProperty('directionInput').get()
+        def second = providers.gradleProperty('directionSecond').get()
+        def output = providers.gradleProperty('directionOutput').get()
+        args mode.startsWith('prepare') ? [mode, input, second, output] :
+                [mode, input, second, providers.gradleProperty('directionConsent').get(), output]
+    }
+}
+
+// Offline plan generation only: no API key, consent or provider execution path.
+tasks.register('verificationFactorialPlan', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.VerificationFactorialPlan'
+    doFirst {
+        def names = ['factorialSource', 'factorialReview', 'factorialMappings', 'factorialOutput']
+        args(names.collect { providers.gradleProperty(it).get() })
+    }
+}
+
+// Separate paid entry point. A fresh USD1/text approval is mandatory; prepare remains offline.
+tasks.register('verificationFactorialTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.VerificationFactorialTrial'
+    doFirst {
+        def names = ['factorialPlan', 'factorialSha', 'factorialConsent', 'factorialSource',
+                     'factorialReview', 'factorialMappings', 'factorialOutput']
+        args(names.collect { providers.gradleProperty(it).get() })
+    }
+}
+
+// Synthetic retrieval probes; oracle manual keys are controls, never model predictions.
+tasks.register('auditRetrievalContrasts', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextRetrievalContrastAudit'
+    doFirst {
+        def probes = providers.gradleProperty('probePlan').orNull
+        def base = providers.gradleProperty('baselineRuntime').orNull
+        def preview = providers.gradleProperty('previewRuntime').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        if (!probes || !base || !preview || !output) throw new GradleException('Set probePlan, baselineRuntime, previewRuntime, new private auditOutput')
+        args probes, base, preview, output
+    }
+}
+
+// Local role-search ablation on frozen candidates; no provider or manual hints.
+tasks.register('auditContextRelations', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextRelationPreviewAudit'
+    doFirst {
+        def results = providers.gradleProperty('trialResults').orNull
+        def base = providers.gradleProperty('baselineRuntime').orNull
+        def preview = providers.gradleProperty('previewRuntime').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        if (!results || !base || !preview || !output) throw new GradleException('Set trialResults, baselineRuntime, previewRuntime, new private auditOutput')
+        args results, base, preview, output
+    }
+}
+
+// Local retrieval only: manual hints are an audit control, not model predictions.
+tasks.register('auditContextUnitRetrieval', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextUnitPreviewAudit'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def base = providers.gradleProperty('baselineRuntime').orNull
+        def preview = providers.gradleProperty('previewRuntime').orNull
+        def output = providers.gradleProperty('auditOutput').orNull
+        def db = providers.gradleProperty('sourceDb').orNull
+        if (!plan || !base || !preview || !output || !db) throw new GradleException('Set trialPlan, baselineRuntime, previewRuntime, auditOutput, sourceDb')
+        args plan, base, preview, output, db
+    }
+}
+
+// Offline policy pairing only: no paid runner or automatic Spring promotion.
+tasks.register('prepareContextJudgmentComparison', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.PrepareContextJudgmentComparison'
+    doFirst {
+        def trace = providers.gradleProperty('traceInput').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!trace || !output) throw new GradleException('Set traceInput and trialOutput private paths')
+        args trace, output
+    }
+}
+
+// Reference-only ablation: offline preparation and separately authorized paid execution.
+tasks.register('prepareReferenceTrial', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReferenceOnlyTrial'
+    doFirst {
+        def output = providers.gradleProperty('trialOutput').orNull
+        if (!output) throw new GradleException('New private trialOutput required')
+        args 'prepare', '../datasets/controversy/legacy/runtime-history/aa8e90044981fe403aa4ddce1c04102794ac54b4d828dc7d93a3e20e8aeaccbc.json',
+                '../datasets/controversy/guidelines/runtime.json', '../datasets/controversy/experiments/text-boundary-37-20261014/results.json', output
+    }
+}
+tasks.register('referenceOnlyTrial', JavaExec) {
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReferenceOnlyTrial'
+    doFirst {
+        def plan = providers.gradleProperty('trialPlan').orNull
+        def output = providers.gradleProperty('trialOutput').orNull
+        def budget = providers.gradleProperty('trialBudget').orNull
+        if (!plan || !output || !budget || providers.gradleProperty('trialLiveApproved').orNull != 'true')
+            throw new GradleException('Explicit trialLiveApproved, trialPlan, trialOutput, trialBudget required')
+        args 'run', plan, output, budget
+    }
+}
+
+// Saved final-card evidence replay only; no provider calls or database writes.
+tasks.register('graphicFusionReportReplay', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.fusion.GraphicFusionReportReplay'
+    doFirst {
+        def reports = providers.gradleProperty('graphicFusionReports').orNull
+        if (!reports) throw new GradleException('Set graphicFusionReports to comma-separated saved report files')
+        args reports.split(',').toList()
+    }
+}
+
+// Explicit new approval and frozen-plan guard; audit mode makes no provider calls.
+tasks.register('contextContrastTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextContrastTrial'
+    doFirst {
+        def input = providers.gradleProperty('contrastTrialInput').orNull
+        def output = providers.gradleProperty('contrastTrialOutput').orNull
+        def consent = providers.gradleProperty('contrastTrialConsent').orNull
+        if (providers.gradleProperty('contrastTrialMode').orNull == 'audit') {
+            def results = providers.gradleProperty('contrastTrialResults').orNull
+            if (!input || !output || !results) throw new GradleException('Set input/results/output for offline audit')
+            args 'audit', input, results, output
+            return
+        }
+        if (!input || !output || !consent) throw new GradleException('Set contrastTrialInput, contrastTrialOutput, contrastTrialConsent')
+        args input, consent, output
+    }
+}
+
+// Preparation only; no provider calls.
+tasks.register('contextContrastPlan', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ContextContrastPlan'
+    doFirst {
+        def output = providers.gradleProperty('contrastPlanOutput').orNull
+        if (!output) throw new GradleException('Set contrastPlanOutput to a new private plan file')
+        args output
+    }
+}
+
+// Saved-response audit with the production evidence validator, without paid calls.
+tasks.register('reviewGuidelineReplay', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReviewGuidelineReplay'
+    doFirst {
+        def input = providers.gradleProperty('replayInput').orNull
+        def report = providers.gradleProperty('replayReport').orNull
+        def archive = providers.gradleProperty('guidelineArchive').orNull
+        if (!input || !report || !archive) throw new GradleException('Set replayInput, replayReport and guidelineArchive local paths')
+        args input, report, archive
+    }
+}
+
+// Local reference routing/input-size audit; no Spring/media/provider calls.
+tasks.register('mechanismShadowAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.MechanismShadowAudit'
+    doFirst {
+        def input = providers.gradleProperty('mechanismShadowInput').orNull
+        if (!input) throw new GradleException('Set mechanismShadowInput to a saved transcript response')
+        args input
+    }
+}
+
+// Offline preparation with frozen references. Does not send the generated requests.
+tasks.register('mechanismBridgeAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.MechanismBridgeAudit'
+    doFirst {
+        def input = providers.gradleProperty('mechanismBridgeInput').orNull
+        def runtime = providers.gradleProperty('mechanismBridgeRuntime').orNull
+        if (!input || !runtime) throw new GradleException('Set mechanismBridgeInput and mechanismBridgeRuntime')
+        args input, runtime
+    }
+}
+
+// Freeze a paired rule-union experiment; preparation cannot call a provider.
+tasks.register('ruleUnionTrialPlan', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RuleUnionTrialPlan'
+    doFirst {
+        def names = ['ruleUnionTranscript', 'ruleUnionNormal', 'ruleUnionRuntime', 'ruleUnionOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', '))
+        args values
+    }
+}
+
+tasks.register('ruleUnionTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RuleUnionTrial'
+    doFirst {
+        def names = ['ruleUnionPlan', 'ruleUnionSha', 'ruleUnionConsent', 'ruleUnionOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', '))
+        args values
+    }
+}
+
+tasks.register('ruleUnionSavedReplay', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.RuleUnionSavedReplay'
+    doFirst {
+        def names = ['ruleUnionPlan', 'ruleUnionSavedResults', 'ruleUnionOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', '))
+        args values
+    }
+}
+
+// Offline intake gate: production local selector only, never a provider call.
+tasks.register('casebookIntakeAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookIntakeAudit'
+    doFirst {
+        def query = providers.gradleProperty('intakeQuery').orNull
+        def runtime = providers.gradleProperty('intakeRuntime').orNull
+        if (!query || !runtime) throw new GradleException('Set intakeQuery and intakeRuntime local paths')
+        args query, runtime
+    }
+}
+
+// Before/after production-selector audit over the fixed, user-approved development suite.
+tasks.register('casebookImpactAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookImpactAudit'
+    doFirst {
+        def request = providers.gradleProperty('impactRequest').orNull
+        def baseline = providers.gradleProperty('impactBaseline').orNull
+        def candidate = providers.gradleProperty('impactCandidate').orNull
+        if (!request || !baseline || !candidate)
+            throw new GradleException('Set impactRequest, impactBaseline and impactCandidate local paths')
+        args request, baseline, candidate
+    }
+}
+
+// Offline incident-addition impact replay through the same production selector.
+tasks.register('incidentSelectorImpactAudit', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.IncidentSelectorImpactAudit'
+    doFirst {
+        def request = providers.gradleProperty('incidentImpactRequest').orNull
+        def baseline = providers.gradleProperty('incidentImpactBaseline').orNull
+        def candidate = providers.gradleProperty('incidentImpactCandidate').orNull
+        if (!request || !baseline || !candidate)
+            throw new GradleException('Set incidentImpactRequest, incidentImpactBaseline and incidentImpactCandidate local paths')
+        args request, baseline, candidate
+    }
+}
+
+// Opt-in stage diagnosis. Preparation is offline; run requires fresh plan-specific consent.
+tasks.register('confrontationStageTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ConfrontationStageTrial'
+    doFirst {
+        def values = providers.gradleProperty('stageTrialArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run stageTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('constraintBaselineTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ConstraintBaselineTrial'
+    doFirst {
+        def values = providers.gradleProperty('constraintTrialArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run constraintTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('syntheticReferenceComparison', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SyntheticReferenceComparison'
+    doFirst {
+        def values = providers.gradleProperty('syntheticReferenceArgs').orNull
+        if (!values) throw new GradleException('Explicit syntheticReferenceArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('syntheticAutoReferenceTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SyntheticAutoReferenceTrial'
+    doFirst {
+        def values = providers.gradleProperty('syntheticAutoArgs').orNull
+        if (!values) throw new GradleException('Explicit syntheticAutoArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('reportedContextModelComparison', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ReportedContextModelComparison'
+    doFirst {
+        def values = providers.gradleProperty('reportedContextArgs').orNull
+        if (!values) throw new GradleException('Explicit reportedContextArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('fixedBoundaryBaselineTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.FixedBoundaryBaselineTrial'
+    doFirst {
+        def values = providers.gradleProperty('fixedBoundaryArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run fixedBoundaryArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('syntheticReferenceRegression', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SyntheticReferenceRegression'
+    doFirst {
+        def values = providers.gradleProperty('syntheticRegressionArgs').orNull
+        if (!values) throw new GradleException('Explicit syntheticRegressionArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// Fresh opt-in stored-text verification; never called by bootRun or test.
+tasks.register('currentContextReferenceTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentContextReferenceTrial'
+    doFirst {
+        def values = providers.gradleProperty('currentContextArgs').orNull
+        if (!values) throw new GradleException('Explicit currentContextArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+tasks.register('currentStoredTextPipelineTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CurrentStoredTextPipelineTrial'
+    doFirst {
+        def values = providers.gradleProperty('storedPipelineArgs').orNull
+        if (!values) throw new GradleException('Explicit storedPipelineArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// One-use, text-only known-case smoke; never called by bootRun or test.
+tasks.register('socialDefectCurrentModelTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.SocialDefectCurrentModelTrial'
+    doFirst {
+        def values = providers.gradleProperty('socialDefectTrialArgs').orNull
+        if (!values) throw new GradleException('Explicit socialDefectTrialArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// One-use, text-only runtime-unlisted casebook holdout; never called by bootRun or test.
+tasks.register('casebookHoldoutCurrentPipelineTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookHoldoutCurrentPipelineTrial'
+    doFirst {
+        def values = providers.gradleProperty('casebookHoldoutArgs').orNull
+        if (!values) throw new GradleException('Explicit prepare/run casebookHoldoutArgs required')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// Offline request-capture gate for the casebook-reference-isolation trial; never contacts a provider.
+tasks.register('casebookReferenceIsolationPreflight', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookReferenceIsolationPreflight'
+    doFirst {
+        def output = providers.gradleProperty('referenceIsolationOutput').orNull
+        if (!output) throw new GradleException('Set referenceIsolationOutput to a new private experiments directory')
+        args output
+    }
+}
+
+// Bounded paired text-only model trial for the approved D05 casebook addition.
+tasks.register('casebookAssetAdditionModelTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.D05CasebookAdditionModelTrial'
+    doFirst {
+        def values = providers.gradleProperty('casebookAssetAdditionArgs').orNull
+        if (!values) throw new GradleException('Set casebookAssetAdditionArgs: prepare NEW_DIRECTORY OR run PLAN|PLAN_SHA|MANIFEST|MANIFEST_SHA|NEW_OUTPUT_DIRECTORY')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// Six-slot, text-only cross-case probe for a draft casebook addition; not part of runtime analysis.
+tasks.register('crossCasebookDevelopmentProbeTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CrossCasebookDevelopmentProbeTrial'
+    doFirst {
+        def values = providers.gradleProperty('crossCasebookDevelopmentProbeArgs').orNull
+        if (!values) throw new GradleException('Set crossCasebookDevelopmentProbeArgs: prepare NEW_DIRECTORY OR run PLAN|PLAN_SHA|MANIFEST|MANIFEST_SHA|NEW_OUTPUT_DIRECTORY')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// Freshly approved, bounded D05 reference-isolation model comparison; never called by bootRun or test.
+tasks.register('casebookReferenceIsolationModelTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.CasebookReferenceIsolationModelTrial'
+    doFirst {
+        def values = providers.gradleProperty('referenceIsolationModelArgs').orNull
+        if (!values) throw new GradleException('Set referenceIsolationModelArgs: prepare NEW-directory OR run frozen plan/manifest hashes and new output directory')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// Opt-in six-request reference comparison; never called by bootRun or test.
+tasks.register('developmentBoundaryReferenceTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.DevelopmentBoundaryReferenceTrial'
+    doFirst {
+        def values = providers.gradleProperty('boundaryArgs').orNull
+        if (!values) throw new GradleException('Set boundaryArgs: pipe-delimited explicit prepare/run paths')
+        args values.split('\\|', -1).toList()
+    }
+}
+
+// Opt-in eight-request text pilot; never called by bootRun or test.
+tasks.register('responsiveRepetitionTrial', JavaExec) {
+    dependsOn experimentClasses
+    classpath = sourceSets.experiment.runtimeClasspath
+    mainClass = 'com.example.oops.analyzer.ResponsiveRepetitionTrial'
+    doFirst {
+        def names = ['repetitionMode', 'repetitionInput', 'repetitionSecond', 'repetitionOutput']
+        def values = names.collect { providers.gradleProperty(it).orNull }
+        if (values.any { !it }) throw new GradleException('Set ' + names.join(', '))
+        args values
+    }
+}

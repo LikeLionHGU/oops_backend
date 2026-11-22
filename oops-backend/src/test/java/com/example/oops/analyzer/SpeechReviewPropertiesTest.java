@@ -56,7 +56,6 @@ class SpeechReviewPropertiesTest {
                         () -> org.mockito.Mockito.mock(com.example.oops.client.OpenAiClient.class))
                 .withBean(VisualContextReviewer.class, () -> org.mockito.Mockito.mock(VisualContextReviewer.class))
                 .withBean(ReviewGuidelineLibrary.class, () -> org.mockito.Mockito.mock(ReviewGuidelineLibrary.class))
-                .withBean(ContextMechanismRouter.class, () -> org.mockito.Mockito.mock(ContextMechanismRouter.class))
                 .withBean(com.example.oops.service.ReviewRequestTraceStore.class,
                         () -> org.mockito.Mockito.mock(com.example.oops.service.ReviewRequestTraceStore.class))
                 .withBean(SpeechReviewAnalyzer.class)
@@ -74,8 +73,6 @@ class SpeechReviewPropertiesTest {
                             .isEqualTo(SourceUnderstandingContract.Version.config("relations-v3"));
                     assertThat(org.springframework.test.util.ReflectionTestUtils.getField(analyzer, "guidelineLibrary"))
                             .isSameAs(context.getBean(ReviewGuidelineLibrary.class));
-                    assertThat(org.springframework.test.util.ReflectionTestUtils.getField(analyzer, "mechanismRouter"))
-                            .isSameAs(context.getBean(ContextMechanismRouter.class));
                     assertThat(org.springframework.test.util.ReflectionTestUtils.getField(analyzer, "requestTraces"))
                             .isSameAs(context.getBean(com.example.oops.service.ReviewRequestTraceStore.class));
                 });

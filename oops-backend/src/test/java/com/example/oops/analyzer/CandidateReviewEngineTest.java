@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-class CandidateReviewEngineTest {
+class CandidateReviewEngineTest extends CandidateReviewFixture {
     @Test void alreadyCancelledContextMakesNoModelRequests() {
         var c = new AnalysisContext(video, ContentGenre.GENERAL,
                 List.of(new TranscriptSegment(video, 0, 1000, "정상 대화")), List.of(),
@@ -162,43 +162,6 @@ class CandidateReviewEngineTest {
         var code = r.diagnostics().candidatePipeline().candidates().get(0).failureCode();
         assertThat(code).startsWith("DECISION_"); // UNKNOWN_EVIDENCE_ID / EVIDENCE_OUTSIDE_WINDOW family
         assertThat(r.status()).isEqualTo(AnalyzerStatus.PARTIAL);
-    }
-    final OpenAiClient client = mock(OpenAiClient.class);
-    final Video video = Video.builder().filename("generic.mp4").build();
-    AnalysisContext context(String... lines) {
-        List<TranscriptSegment> segments = new ArrayList<>();
-        for (int i = 0; i < lines.length; i++) segments.add(new TranscriptSegment(video, i * 2000L, i * 2000L + 1500, lines[i]));
-        return new AnalysisContext(video, ContentGenre.GENERAL, segments,
-                List.of(new ScreenText(video, 0, 2000, "화면에만 있는 글자", .9, null)));
-    }
-    Proposal proposal(String anchor, String quote) {
-        return new Proposal(anchor, "TARGET_TREATMENT", "그 집의 이용자를 음식 선택 때문에 열등한 대상으로 묘사할 가능성을 확인합니다.",
-                List.of(new Quote(anchor, quote)));
-    }
-    void discovery(List<String> ids, Proposal... proposals) {
-        when(client.completeAsJson(anyString(), anyString(), eq(Discovery.class)))
-                .thenReturn(Optional.of(new Discovery(ids, List.of(proposals), List.of(), false)));
-    }
-    LlmDecision assessment(String anchor, String decision, String quote) {
-        boolean review = decision.equals("REVIEW_REQUIRED");
-        return new LlmDecision(anchor, decision, quote, "음식 평가를 넘어 그 집의 선택과 이용자를 낮춰 묘사하는 연결을 원문에서 확인합니다.",
-                review ? "MOCKERY" : null, review ? "그 집" : null, review ? .6 : null,
-                null, null, decision.equals("UNCERTAIN") ? List.of("인용 주체를 식별하는 추가 문맥") : List.of(),
-                review ? List.of(new LlmEvidence(anchor, quote, "PRIMARY"), new LlmEvidence(anchor, "그 집", "TARGET"))
-                        : List.of(new LlmEvidence(anchor, quote, "PRIMARY")),
-                review ? "BUSINESS" : null, review ? "EXPLICIT" : null,
-                review ? "원문이 그 집을 평가 대상으로 지칭하며 이용 경험과 연결합니다." : null,
-                review ? "단순한 음식 취향 설명으로도 읽히지만 이용자를 낮추는 별도 표현은 설명하지 못합니다." : null);
-    }
-    void verification(Verification... items) {
-        when(client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
-                .thenReturn(Optional.of(new VerificationResult(List.of(items))));
-    }
-    LlmDecision linkedPass(String anchor, String quote, String contextId, String contextQuote) {
-        return new LlmDecision(anchor, "PASS", quote, "전체 연결은 선택지 설명이며 타인의 생활을 낮추는 평가가 없습니다.",
-                null, null, null, null, null, List.of(),
-                List.of(new LlmEvidence(anchor, quote, "PRIMARY"), new LlmEvidence(contextId, contextQuote, "CONTEXT")),
-                null, null, null, "선택지를 낮춘다는 가설은 가능하지만 제공된 연결에는 낮춤의 실제 비교·평가가 없습니다.");
     }
     @Test void noCandidatesMeansExploredNotPassAndMakesNoVerificationCalls() {
         discovery(List.of("stt-index-0"));
@@ -552,11 +515,10 @@ class CandidateReviewEngineTest {
     }
 
     private String discoverySystem(RunServices services) {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"));
         var options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
-        var bound = new RunServices(services.visual(), services.guidelines(), services.requestTrace(),
-                services.router(), services.discoveryReferences());
+        var bound = new RunServices(services.visual(), services.guidelines(), services.requestTrace(), services.discoveryReferences());
         var result = runExperimental(f.client, f.context("그 집은 조용하다"), bound, options,
                 new ExperimentalBatch(List.of("stt-index-0"), List.of()));
         var systems = ArgumentCaptor.forClass(String.class);
@@ -568,7 +530,7 @@ class CandidateReviewEngineTest {
 
     @Test void discoveryReferencesReplaceLexicalSelectionInDiscoveryOnly() {
         var lib = new ContextExampleSelectionTest().library(new ContextExampleSelectionTest().archive(4), 3, 3000, "");
-        String system = discoverySystem(new RunServices(null, lib, null, null, raw -> List.of("source-1")));
+        String system = discoverySystem(new RunServices(null, lib, null, raw -> List.of("source-1")));
         assertThat(system).contains("referenceContexts", "생활조건을 열등하게 비교");
         var discovery = lastSelections.stream().filter(t -> t.requestKey().equals("discovery-1")).findFirst().orElseThrow();
         assertThat(discovery.retrievalMethod()).isEqualTo("FIXED_PRECOMPUTED_SELECTION");
@@ -577,21 +539,21 @@ class CandidateReviewEngineTest {
 
     @Test void nullDiscoveryReferencesKeepTheExistingPath() {
         var f = new ContextExampleSelectionTest();
-        String lexical = discoverySystem(new RunServices(null, f.library(f.archive(4), 3, 3000, ""), null, null));
-        String nulled = discoverySystem(new RunServices(null, f.library(f.archive(4), 3, 3000, ""), null, null, null));
+        String lexical = discoverySystem(new RunServices(null, f.library(f.archive(4), 3, 3000, ""), null));
+        String nulled = discoverySystem(new RunServices(null, f.library(f.archive(4), 3, 3000, ""), null, null));
         assertThat(nulled).isEqualTo(lexical);
         assertThat(lastSelections).noneMatch(t -> t.retrievalMethod().equals("FIXED_PRECOMPUTED_SELECTION"));
     }
 
     @Test void fixedDiscoveryReferencesTravelToVerificationWithoutKeywordReselection() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")));
         var lib = new ContextExampleSelectionTest().library(new ContextRelationRetrievalTest().archive(), 3, 3000, "");
         String fixed = lib.selectFixed(com.example.oops.domain.TimelineEventType.SPEECH, "x", List.of("source-1")).prompt();
         var options = new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false);
         var result = runExperimental(f.client, f.context("그 집은 조용하다"),
-                new RunServices(null, lib, null, null, raw -> List.of("source-1")), options,
+                new RunServices(null, lib, null, raw -> List.of("source-1")), options,
                 new ExperimentalBatch(List.of("stt-index-0"), List.of()));
         var systems = ArgumentCaptor.forClass(String.class);
         verify(f.client, times(2)).completeAsJson(systems.capture(), anyString(), any());

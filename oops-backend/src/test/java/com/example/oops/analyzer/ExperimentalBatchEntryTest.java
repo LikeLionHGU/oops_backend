@@ -12,7 +12,7 @@ import static org.mockito.Mockito.*;
 /** Experimental per-target batches: explicit PRIMARY/CONTEXT split, no page re-planning. Not accuracy. */
 class ExperimentalBatchEntryTest {
     private static final long EIGHT_MINUTES_MS = 8 * 60_000L;
-    private final CandidateReviewEngineTest f = new CandidateReviewEngineTest();
+    private final CandidateReviewFixture f = new CandidateReviewFixture();
 
     private AnalysisContext context(long[] starts, String... lines) {
         List<TranscriptSegment> segments = new ArrayList<>();
@@ -26,7 +26,7 @@ class ExperimentalBatchEntryTest {
     }
 
     private TextReviewEngine.Result run(AnalysisContext c, ExperimentalBatch batch) {
-        return runExperimental(f.client, c, new RunServices(null, null, null, null),
+        return runExperimental(f.client, c, new RunServices(null, null, null),
                 new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false), batch);
     }
 
@@ -154,11 +154,11 @@ class ExperimentalBatchEntryTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> run(c, new ExperimentalBatch(List.of("stt-index-3"), List.of("missing"))))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> runExperimental(f.client, c, new RunServices(mock(VisualContextReviewer.class), null, null, null),
+        assertThatThrownBy(() -> runExperimental(f.client, c, new RunServices(mock(VisualContextReviewer.class), null, null),
                 new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), false),
                 new ExperimentalBatch(List.of("stt-index-3"), List.of())))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> runExperimental(f.client, c, new RunServices(null, null, null, null),
+        assertThatThrownBy(() -> runExperimental(f.client, c, new RunServices(null, null, null),
                 new RunOptions(24, 8, false, new VerificationFeatures(false, false, false), true),
                 new ExperimentalBatch(List.of("stt-index-3"), List.of())))
                 .isInstanceOf(IllegalArgumentException.class);

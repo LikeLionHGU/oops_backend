@@ -42,7 +42,7 @@ class BdHypothesisTrialTest {
     }
     @Test void missingOrDuplicateGroupMemberCannotBecomeAcceptedPass() {
         var task=new BdHypothesisTrial.Task("P-D-development-excerpt",1,1,"WITH_HYPOTHESIS","system",input(2));
-        var d=new CandidateReviewEngineTest().assessment("stt-index-0","PASS","원문");
+        var d=new CandidateReviewFixture().assessment("stt-index-0","PASS","원문");
         var one=new CandidateReviewEngine.Verification("candidate-1",d); var two=new CandidateReviewEngine.Verification("candidate-2",d);
         for(var bad:List.of(new CandidateReviewEngine.VerificationResult(List.of(one)),new CandidateReviewEngine.VerificationResult(List.of(one,one))))
             assertThat(BdHypothesisTrial.validate(task,bad)).allSatisfy(r->{assertThat(r.get("accepted")).isEqualTo(false); assertThat(r.get("failureCode")).isEqualTo("TRIAL_RESPONSE_SHAPE");});

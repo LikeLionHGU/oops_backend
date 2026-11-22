@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Synthetic assembly fixtures only. Never invokes a provider. */
 class BanterPolicyTrialTest {
     private List<ContextPolicyTrial.Task> prepared() {
-        var context = new CandidateReviewEngineTest().context("행동을 설명합니다", "그 행동을 비판합니다");
+        var context = new CandidateReviewFixture().context("행동을 설명합니다", "그 행동을 비판합니다");
         var old = BanterPolicyTrial.REAL_IDS.stream().map(id -> ContextPolicyTrial.capture(
                 new ContextPolicyTrial.Spec(id, 0, 1, "TARGET_TREATMENT", List.of(0, 1), "TEST_ONLY", "PASS"),
                 context, null)).toList();

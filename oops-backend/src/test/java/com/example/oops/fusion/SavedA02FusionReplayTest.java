@@ -9,6 +9,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Reconstructs fusion inputs from stored observations; no provider, DB or publication. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class SavedA02FusionReplayTest {
     @Test void sameGraphicEvidenceFromDifferentAxesReachesFusion() throws Exception {
         Path root=Path.of("../datasets/controversy"), input=root.resolve("evaluation/active-context-regression-20261018/inputs.json"),

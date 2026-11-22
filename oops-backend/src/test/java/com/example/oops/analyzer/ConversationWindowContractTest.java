@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 class ConversationWindowContractTest {
     @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void expressionVerificationRetainsAdvertisedLongEndingWithoutNewRaw() throws Exception {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var lines = IntStream.range(0, 19).mapToObj(i -> new TranscriptSegment(f.video, i * 5500L,
                 i * 5500L + 5500, i == 18 ? "뒤에서 앞의 무용담을 받아치는 반응" : "회고 발언 " + i)).toList();
         var p = new Proposal("stt-index-5", "EXPRESSION_CONTENT", "행동 소개 방식 검토",

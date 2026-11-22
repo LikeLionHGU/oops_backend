@@ -10,6 +10,7 @@ import static com.example.oops.analyzer.ReviewGuidelineLibrary.JSON;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Local-only selection probe; does not replay a historical LLM request. */
+@org.junit.jupiter.api.Tag("dataset-backed")
 class Video142ReferenceSelectionTest {
     @Test void reportsCurrentReferencesForUserReviewedWindow() throws Exception {
         Path root=Path.of("../datasets/controversy"),record=root.resolve("research/video-142-human-review-20261102.json"),runtime=root.resolve("guidelines/runtime.json");

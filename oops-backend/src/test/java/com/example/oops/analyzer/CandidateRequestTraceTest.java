@@ -11,7 +11,7 @@ import static org.mockito.ArgumentMatchers.*;
 
 class CandidateRequestTraceTest {
     @Test void retainsActualGroupedCandidatesWithoutAddingCallsOrChangingFindings() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0", "stt-index-1"), f.proposal("stt-index-0", "그 집"), f.proposal("stt-index-1", "그 집"));
         f.verification(new Verification("candidate-1", f.assessment("stt-index-0", "PASS", "그 집")),
                 new Verification("candidate-2", f.assessment("stt-index-1", "PASS", "그 집")));
@@ -19,7 +19,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(1L)) {
-            var result = CandidateReviewEngine.run(f.client, f.context("그 집 메뉴", "그 집 선택지"), new CandidateReviewEngine.RunServices(null, null, trace, null),
+            var result = CandidateReviewEngine.run(f.client, f.context("그 집 메뉴", "그 집 선택지"), new CandidateReviewEngine.RunServices(null, null, trace),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
             assertThat(result.findings()).isEmpty();
             assertThat(result.diagnostics().candidatePipeline().verificationCalls()).isOne();
@@ -34,7 +34,7 @@ class CandidateRequestTraceTest {
         verify(f.client, times(1)).completeAsJson(eq(entry.system()), eq(entry.input()), eq(VerificationResult.class));
     }
     @Test void tracesDiscoveryRepairAsItsOwnStage() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var empty = new Proposal("stt-index-0", "TARGET_TREATMENT", "후보 근거를 복구해야 하는 가설입니다.", List.of());
         when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class)))
                 .thenReturn(java.util.Optional.of(new Discovery(List.of("stt-index-0"), List.of(empty), List.of(), false)));
@@ -44,7 +44,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(2L)) {
-            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, trace, null),
+            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, trace),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         }
         assertThat(store.find(2L).orElseThrow().requests()).extracting(ReviewRequestTraceStore.Entry::stage)
@@ -52,7 +52,7 @@ class CandidateRequestTraceTest {
     }
 
     @Test void recordsDiscoveryRepairRequestWhenProviderThrowsBeforeReturning() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var empty = new Proposal("stt-index-0", "TARGET_TREATMENT", "후보 근거 복구가 필요한 가설입니다.", List.of());
         when(f.client.completeAsJson(anyString(), anyString(), eq(Discovery.class)))
                 .thenReturn(java.util.Optional.of(new Discovery(List.of("stt-index-0"), List.of(empty), List.of(), false)));
@@ -62,7 +62,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(3L)) {
-            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, trace, null),
+            CandidateReviewEngine.run(f.client, f.context("그 집 음식 이야기", "메뉴 설명"), new CandidateReviewEngine.RunServices(null, null, trace),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         }
         var repair = store.find(3L).orElseThrow().requests().stream()
@@ -73,7 +73,7 @@ class CandidateRequestTraceTest {
     }
 
     @Test void recordsVerificationRepairRequestWhenProviderThrowsBeforeReturning() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var linked = new Proposal("stt-index-0", "TARGET_TREATMENT", "연결된 검토의 정상 해석 문맥을 요구합니다.",
                 List.of(new Quote("stt-index-0", "그 집 메뉴 평가"),
                         new Quote("stt-index-1", "대화의 후속 문맥")));
@@ -87,7 +87,7 @@ class CandidateRequestTraceTest {
                 .withProperty("oops.analysis.review-request-trace-token", "x".repeat(32)); env.setActiveProfiles("local");
         var store = new ReviewRequestTraceStore(true, env);
         try (var trace = store.begin(4L)) {
-            CandidateReviewEngine.run(f.client, f.context("그 집 메뉴 평가", "대화의 후속 문맥"), new CandidateReviewEngine.RunServices(null, null, trace, null),
+            CandidateReviewEngine.run(f.client, f.context("그 집 메뉴 평가", "대화의 후속 문맥"), new CandidateReviewEngine.RunServices(null, null, trace),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         }
         var repair = store.find(4L).orElseThrow().requests().stream()

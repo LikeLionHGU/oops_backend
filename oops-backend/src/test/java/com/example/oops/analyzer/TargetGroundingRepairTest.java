@@ -19,7 +19,7 @@ class TargetGroundingRepairTest {
     }
 
     @Test void contextualQuoteTaggedOnlyAsContextIsRejectedUntilModelReturnsTargetRole() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         var input = f.context("그 집 이용자는 수준이 낮아");
         var p = f.proposal("stt-index-0", "그 집");
         var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
@@ -47,7 +47,7 @@ class TargetGroundingRepairTest {
 
     @Test void mismatchedTargetRelationCanReassessToPassOrValidReviewWithoutAutomaticRelabeling() {
         for (String decision : List.of("PASS", "REVIEW_REQUIRED")) {
-            var f = new CandidateReviewEngineTest();
+            var f = new CandidateReviewFixture();
             f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
             var goodReview = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
             var bad = new LlmDecision(goodReview.segmentId(), goodReview.decision(), goodReview.evidenceText(),
@@ -73,7 +73,7 @@ class TargetGroundingRepairTest {
         }
     }
     @Test void missingProposalAnchorIsDiagnosedWithoutInventingLocationOrCrashing() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), new Proposal(null, "TARGET_TREATMENT", "문맥 검토 가설",
                 List.of(new Quote("stt-index-0", "그 집"))));
         var r = CandidateRuns.run(f.client, f.context("그 집 메뉴 이야기"), 24);
@@ -91,7 +91,7 @@ class TargetGroundingRepairTest {
                 d.targetType(), d.targetRelation(), d.targetReason(), d.alternativeInterpretation(), d.targetMention());
     }
     @Test void targetFailureCanRecoverToPassWithoutCopyingOldAssessment() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
                 .thenReturn(Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
@@ -114,7 +114,7 @@ class TargetGroundingRepairTest {
     }
     @Test void validTargetRecoveryCanPublishButRepeatedFailureNeverDoes() {
         for (boolean recover : List.of(true, false)) {
-            var f = new CandidateReviewEngineTest();
+            var f = new CandidateReviewFixture();
             f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
             var good = f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집");
             var bad = missingTargetEvidence(good);
@@ -132,7 +132,7 @@ class TargetGroundingRepairTest {
         // Quotes are server-filled, so the model cannot fabricate a raw quote. The remaining guard is
         // that a target-grounded REVIEW still needs an actual TARGET-role evidence line; a repair that
         // still omits it stays rejected rather than publishing.
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0"), f.proposal("stt-index-0", "그 집"));
         var bad = missingTargetEvidence(f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집"));
         when(f.client.completeAsJson(anyString(), anyString(), eq(VerificationResult.class)))
@@ -144,7 +144,7 @@ class TargetGroundingRepairTest {
                 .extracting(CandidateReviewDiagnostics.RepairTrace::finalFailureCode).isEqualTo("TARGET_EVIDENCE_REQUIRED");
     }
     @Test void invalidLateProposalKeepsLocationAndIdFailureRatherThanDisappearing() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         // Quotes are server-filled now; the invalid case is an evidence id not present in the batch.
         f.discovery(List.of("stt-index-0", "stt-index-1"),
                 new Proposal("stt-index-1", "TARGET_TREATMENT", "허용되지 않은 ID를 든 가설",
@@ -159,7 +159,7 @@ class TargetGroundingRepairTest {
         verify(f.client, never()).completeAsJson(anyString(), anyString(), eq(VerificationResult.class));
     }
     @Test void normalReviewAndSalesConditionsDoNotCreateRuleBasedCandidates() {
-        var f = new CandidateReviewEngineTest();
+        var f = new CandidateReviewFixture();
         f.discovery(List.of("stt-index-0", "stt-index-1", "stt-index-2"));
         var r = CandidateRuns.run(f.client, f.context("음식이 별로고 돈이 아까웠다", "메뉴에 특색이 없다", "오늘은 정해진 메뉴만 판매합니다"), 24);
         assertThat(r.findings()).isEmpty();
@@ -185,7 +185,7 @@ class TargetGroundingRepairTest {
                             repair ? good : missingTargetEvidence(f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집")),
                             List.of(new VisualContextReviewer.Observation("scene-0", "상점이 보인다")), "원문과 제공한 화면을 대조한다"));
                 });
-        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null),
+        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         assertThat(r.findings()).isEmpty();
         assertThat(r.diagnostics().candidatePipeline().repairCalls()).isEqualTo(2);
@@ -211,7 +211,7 @@ class TargetGroundingRepairTest {
         when(f.client.completeWithImagesAsJson(anyString(), anyString(), anyList(), eq(VisualContextReviewer.Response.class)))
                 .thenReturn(Optional.of(new VisualContextReviewer.Response("candidate-3", bad,
                         List.of(new VisualContextReviewer.Observation("scene-0", "상점이 보인다")), "실제 화면과 발언 대조")));
-        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null, null),
+        var r = CandidateReviewEngine.run(f.client, v.context(), new CandidateReviewEngine.RunServices(v.reviewer, null, null),
                 new CandidateReviewEngine.RunOptions(24, 8, false, new CandidateReviewEngine.VerificationFeatures(false,false,false), false));
         var d = r.diagnostics().candidatePipeline();
         assertThat(r.findings()).isEmpty();

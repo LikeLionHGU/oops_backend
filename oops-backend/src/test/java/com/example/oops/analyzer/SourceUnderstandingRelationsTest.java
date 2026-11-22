@@ -11,7 +11,7 @@ import static org.mockito.Mockito.*;
 
 /** Authored contract fixtures, not new human-approved speech-act gold or model accuracy evidence. */
 class SourceUnderstandingRelationsTest {
-    final CandidateReviewEngineTest f=new CandidateReviewEngineTest();
+    final CandidateReviewFixture f=new CandidateReviewFixture();
     final String before="stt-index-0",anchor="stt-index-1";
     final AnalysisContext context=f.context("그 말은 무슨 뜻인가요?","그 표현의 뜻을 설명합니다.");
     Candidate candidate() { return new Candidate("c",new Proposal(anchor,"TARGET_TREATMENT","원문 연결을 검토합니다.",
@@ -155,7 +155,7 @@ class SourceUnderstandingRelationsTest {
     @Test void missingV2RelationsRemainPartialWithoutFallbackAndWithoutNewRepairCall() {
         f.discovery(List.of(before,anchor),candidate().proposal());
         f.verification(new Verification("candidate-1",f.assessment(anchor,"PASS","그 표현의 뜻을 설명합니다."),null,new SourceUnderstanding(reading().acts())));
-        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true,RELATIONS_V2), false));
         assertThat(result.status().name()).isEqualTo("PARTIAL");assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().candidatePipeline().repairCalls()).isZero();
@@ -171,7 +171,7 @@ class SourceUnderstandingRelationsTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",inputs.size()==1
                     ?new CandidateReferenceRepairTest().badId(good):good,null,inputs.size()==1?reading():new SourceUnderstanding(reading().acts())))));
         });
-        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null, null),
+        var result=CandidateReviewEngine.run(f.client, context, new CandidateReviewEngine.RunServices(null, null, null),
                 new CandidateReviewEngine.RunOptions(24, 0, false, new VerificationFeatures(false,false,true,RELATIONS_V2), false));
         assertThat(inputs).hasSize(2);assertThat(inputs.get(0).path("raw")).isEqualTo(inputs.get(1).path("raw"));
         assertThat(inputs.get(0).path("candidates")).isEqualTo(inputs.get(1).path("candidates"));

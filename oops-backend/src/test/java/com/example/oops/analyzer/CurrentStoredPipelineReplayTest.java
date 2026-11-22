@@ -36,7 +36,7 @@ class CurrentStoredPipelineReplayTest {
             var request=plan.source().requests().stream().filter(r->r.caseId().equals(id)).findFirst().orElseThrow();
             var review=CandidateHypothesisTrial.raw(JSON.readTree(request.input()));
             var context=new AnalysisContext(Video.builder().filename("stored-context-"+id).build(),ContentGenre.GENERAL,List.of(),List.of(),review);
-            var library=new ReviewGuidelineLibrary(MechanismRoutingTrial.resources(plan.runtime()),true,"classpath:frozen.json",6000,3,3000,"",true);library.load();
+            var library=new ReviewGuidelineLibrary(TrialSupport.resources(plan.runtime()),true,"classpath:frozen.json",6000,3,3000,"",true);library.load();
             var client=mock(OpenAiClient.class);var index=new AtomicInteger();
             when(client.completeAsJson(anyString(),anyString(),any(Class.class))).thenAnswer(call->{
                 int i=index.getAndIncrement();assertThat(i).isLessThan(row.get("calls").size());
@@ -45,7 +45,7 @@ class CurrentStoredPipelineReplayTest {
                 assertThat(JSON.readTree((String)call.getArgument(1))).isEqualTo(recorded.get("input"));
                 return Optional.of(JSON.treeToValue(recorded.get("output"),(Class<?>)call.getArgument(2)));
             });
-            var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,library,null,null),
+            var result=CandidateReviewEngine.run(client,context,new CandidateReviewEngine.RunServices(null,library,null),
                     new CandidateReviewEngine.RunOptions(24,0,false,new CandidateReviewEngine.VerificationFeatures(false,false,false),false));
             assertThat(index.get()).isEqualTo(row.get("calls").size());
             // Historical PARTIAL included bounded-context caveats. Replay the exact same

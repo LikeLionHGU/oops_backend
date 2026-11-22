@@ -77,7 +77,7 @@ class VerificationFactorialPlanTest {
         var r=p.requests().get(0);var c=JSON.readTree(r.input()).path("candidates").get(0);
         String anchor=c.path("anchorId").asText();var raw=CandidateHypothesisTrial.raw(JSON.readTree(r.input()));
         String text=raw.segments().stream().filter(s -> s.id().equals(anchor)).findFirst().orElseThrow().text();
-        var d=new CandidateReviewEngineTest().assessment(anchor,"REVIEW_REQUIRED",text);
+        var d=new CandidateReviewFixture().assessment(anchor,"REVIEW_REQUIRED",text);
         var response=new CandidateReviewEngine.VerificationResult(List.of(new CandidateReviewEngine.Verification(c.path("candidateId").asText(),d)));
         for(var arm:List.of(Arm.CONTRACT_ONLY,Arm.BOTH)) {
             var selected=p.requests().stream().filter(x -> x.caseId().equals(r.caseId()) && x.arm()==arm).findFirst().orElseThrow();
