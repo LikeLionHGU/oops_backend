@@ -2,13 +2,13 @@
 
 ## 2026-11-06 실험 A 맥락 선택 경로 — 운영 미연결
 
-P0 맥락 선택 실험(A0-T~A6-H-T)을 위한 별도 진입점을 추가했다. 운영 분석의 판정 정책, 프롬프트, 읽기 페이지, 기본 설정은 바꾸지 않았다. 실험 경로는 Spring 서비스에 연결하지 않았고 opt-in CLI(`ContextExperimentTrial`, test 소스)로만 실행한다. 설계·계약·집계 규칙은 [P0 맥락 선택 실험 프로토콜](../experiments/P0-맥락선택-실험-프로토콜.md)을 따른다.
+P0 맥락 선택 실험(A0-T~A6-H-T)을 위한 별도 진입점을 추가했다. 운영 분석의 판정 정책, 프롬프트, 읽기 페이지, 기본 설정은 바꾸지 않았다. 실험 경로는 Spring 서비스에 연결하지 않았고 opt-in CLI(`ContextExperimentTrial`, 2026-11-22부터 `src/experiment/java`)로만 실행한다. 설계·계약·집계 규칙은 [P0 맥락 선택 실험 프로토콜](../experiments/P0-맥락선택-실험-프로토콜.md)을 따른다.
 
 - 진입점: `CandidateReviewEngine.runExperimental`이 판단 대상(JUDGED)과 맥락 전용(CONTEXT_ONLY) 구간을 명시한 묶음 하나로 탐색·검증·복구 전체를 실행한다. 이때만 5초 공백 분리와 페이지 재계획을 적용하지 않는다. 운영 `run()`은 기존 `DialogueReadingPage` 경로를 그대로 쓴다.
 - 요청: 실험 묶음에만 `ExperimentalBatchRendering`(`experimental-batch-v1`)의 역할 표시·생략 표시·계약 문구가 붙고 실행 개정 문자열에 `+experimental-batch-v1`이 더해진다. 운영 요청은 rendering이 null이며 바이트가 이전과 같다(회귀 테스트로 확인).
 - 진단: `DISCOVERY_CONTEXT_ID_VIOLATION`, `PROPOSAL_ANCHOR_CONTEXT_ONLY` 코드와 `repairUsage`는 실험 묶음에서만 나온다. 운영 trace 코드와 진단 JSON은 변하지 않는다.
-- 요청 기록: `ReviewRequestTraceStore.experimentalSession()`은 요청·바이트 제한이 없고 메모리 debug store에 공개하지 않는다. 운영 session 제한(128요청, 256KB, 1시간 보관)은 그대로다.
-- 의존성: `jtokkit 1.1.0`(o200k_base)은 실험 예산 B 계산에만 쓴다. BGE-M3·bge-reranker-v2-m3는 Java에서 실행하지 않고 `tools/embed_segments.py`·`tools/rerank_segments.py`가 만든 고정 파일만 읽는다.
+- 요청 기록: 2026-11-22 자원 관리 보완으로 `ReviewRequestTraceStore.experimentalSession()`도 최대 1,024요청·8MiB로 제한하며 누락 수를 기록한다. 누락된 실행은 집계에서 거절한다. 실험 세션은 메모리 debug store에 공개하지 않는다. 운영 제한(128요청, 256KiB, 1시간 보관)은 그대로다.
+- 의존성: `jtokkit 1.1.0`(o200k_base)은 실험 예산 B 계산에만 쓰며 배포 JAR에 포함하지 않는다. BGE-M3·bge-reranker-v2-m3는 Java에서 실행하지 않고 `tools/embed_segments.py`·`tools/rerank_segments.py`가 만든 고정 파일만 읽는다.
 - 격리: 실험 실행기는 사례집·시각 단계·라우터를 항상 null로 두고 기준 라이브러리(경로 A)만 받는다.
 
 검증은 mock 모델과 합성 입력으로만 했다. 전체 Java 1,406건 중 1,405건 통과, 과거 고정 요청 재생 1건 스킵, 실패·오류 0. 실제 OpenAI 실행, 실제 전사문 벡터 생성, 개발셋 결과는 아직 없으므로 맥락 선택 방식의 탐지 효과는 미측정이다.
