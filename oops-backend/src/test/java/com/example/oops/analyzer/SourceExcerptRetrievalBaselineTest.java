@@ -29,6 +29,7 @@ class SourceExcerptRetrievalBaselineTest {
             "source-provenance/" + SOURCE_ID + ".json";
 
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test
     void replaysHashPinnedSourceProjectionAndObservedSelectorResults() throws Exception {
         String runtimePath = System.getenv("OOPS_CASEBOOK_AUDIT_RUNTIME");

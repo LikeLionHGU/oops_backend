@@ -8,8 +8,9 @@ import tools.jackson.databind.node.ObjectNode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Tag("dataset-backed")
 class CrossCasebookDevelopmentProbeTrialTest {
+    @Tag("dataset-backed")
+    @Tag("historical-dataset")
     @Test void freezesThreeLabelFreeCasesAndExactApprovedBoundsWithoutProviderCalls() throws Exception {
         var plan = CrossCasebookDevelopmentProbeTrial.prepare();
         var manifest = CrossCasebookDevelopmentProbeTrial.manifest(plan);
@@ -35,6 +36,7 @@ class CrossCasebookDevelopmentProbeTrialTest {
                 "src/experiment/java/com/example/oops/analyzer/DefaultVerificationTrial.java");
     }
 
+    @Tag("dataset-backed")
     @Test void changedMaterializedTextCannotPassTheFrozenSourceSelector() throws Exception {
         byte[] selectors = java.nio.file.Files.readAllBytes(CrossCasebookDevelopmentProbeTrial.SELECTORS);
         var inputs = (ObjectNode) com.example.oops.analyzer.ReviewGuidelineLibrary.JSON.readTree(
@@ -46,6 +48,7 @@ class CrossCasebookDevelopmentProbeTrialTest {
                 .hasMessageContaining("Materialized text/time does not match");
     }
 
+    @Tag("dataset-backed")
     @Test void duplicateSelectorIdsCannotLeaveAnotherFrozenCaseUnvalidated() throws Exception {
         var selectors = (ObjectNode) com.example.oops.analyzer.ReviewGuidelineLibrary.JSON.readTree(
                 java.nio.file.Files.readAllBytes(CrossCasebookDevelopmentProbeTrial.SELECTORS));
@@ -89,17 +92,25 @@ class CrossCasebookDevelopmentProbeTrialTest {
     }
 
     @Test void anyImplementationOrSourceHashDriftInvalidatesTheFrozenPlan() throws Exception {
-        var plan = CrossCasebookDevelopmentProbeTrial.prepare();
-        var changedHashes = new java.util.TreeMap<>(plan.implementationHashes());
-        changedHashes.put("src/main/java/com/example/oops/analyzer/CandidateReviewEngine.java", "changed");
-        var drifted = new CrossCasebookDevelopmentProbeTrial.Plan(plan.schemaVersion(), plan.scope(),
-                plan.consentToken(), plan.model(), plan.reasoningEffort(), plan.analyses(), plan.maxHttpAttempts(),
-                plan.maxHttpPerAnalysis(), plan.maxRequestBodyBytes(), plan.maxOutputTokens(), plan.spacingMs(),
-                plan.capUsd(), plan.worstCaseReservedUsd(), plan.sourceHashes(), changedHashes,
-                plan.arms(), plan.cases());
-        assertThatThrownBy(() -> CrossCasebookDevelopmentProbeTrial.assertSameFrozenPlan(plan, drifted))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("drift");
+        // Equality is a safety contract, not a replay of an approved private run.
+        // Do not call prepare(): runtime drift must not prevent this guard from being tested.
+        var plan = new CrossCasebookDevelopmentProbeTrial.Plan("synthetic-plan", "offline-guard",
+                "not-approved", "synthetic-model", "none", 1, 1, 1, 100, 10, 0, .01, .01,
+                java.util.Map.of("transcript:synthetic", "a".repeat(64)),
+                java.util.Map.of("synthetic/Engine.java", "b".repeat(64)),
+                java.util.List.of(), java.util.List.of());
+        var json = ReviewGuidelineLibrary.JSON;
+        var copy = json.readValue(json.writeValueAsBytes(plan), CrossCasebookDevelopmentProbeTrial.Plan.class);
+        CrossCasebookDevelopmentProbeTrial.assertSameFrozenPlan(plan, copy);
+        for (String field : java.util.List.of("sourceHashes", "implementationHashes")) {
+            var changed = (ObjectNode) json.valueToTree(plan);
+            var hashes = (ObjectNode) changed.path(field);
+            String key = hashes.propertyNames().iterator().next();
+            hashes.put(key, "c".repeat(64));
+            var drifted = json.treeToValue(changed, CrossCasebookDevelopmentProbeTrial.Plan.class);
+            assertThatThrownBy(() -> CrossCasebookDevelopmentProbeTrial.assertSameFrozenPlan(plan, drifted))
+                    .as(field).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("drift");
+        }
     }
 
     @Test void requestGuardRejectsEndpointMediaLabelsLimitsAndDuplicateRetries() throws Exception {

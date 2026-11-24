@@ -24,6 +24,7 @@ class GuidelineBoundaryWiringTest {
         assertThat(library.trace(TimelineEventType.SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
         return library;
     }
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void splitBoundaryIsSelectedAndFrozenIntoActualCandidateRequestWithoutProvider() throws Exception {
         // This is a historical v4 boundary ablation, not a test of whichever runtime is active.
         // Promotion to v7 must not silently skip the preserved v4 regression.

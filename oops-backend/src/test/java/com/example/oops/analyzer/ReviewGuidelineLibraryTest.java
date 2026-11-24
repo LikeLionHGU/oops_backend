@@ -184,6 +184,12 @@ class ReviewGuidelineLibraryTest {
         var expired = library(with("refreshOrDeleteBy", OffsetDateTime.now().minusDays(1).toString()));
         assertThat(expired.trace(SPEECH).state()).isEqualTo("EXPIRED");
         assertThat(expired.unavailableNotice(SPEECH)).hasValueSatisfying(n -> assertThat(n).contains("EXPIRED"));
+        var raw = new ContextExampleSelectionTest().query("대상과 낮추는 평가의 연결");
+        var selection = expired.select(SPEECH, raw, "expired-contract");
+        assertThat(selection.trace().state()).isEqualTo("EXPIRED");
+        assertThat(selection.trace().exampleIds()).isEmpty();
+        assertThat(selection.prompt()).isEmpty();
+        assertThat(expired.examples(SPEECH)).isEmpty();
         for (var a : List.of(with("humanValidated", true), with("schemaVersion", "wrong"), with("sourceCases", List.of()))) {
             assertThat(library(a).prompt(SPEECH)).isEmpty();
         }

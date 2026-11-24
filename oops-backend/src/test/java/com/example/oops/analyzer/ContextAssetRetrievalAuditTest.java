@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /** Actual selector only, not candidate discovery or model judgment. No network calls. */
 @org.junit.jupiter.api.Tag("dataset-backed")
 class ContextAssetRetrievalAuditTest {
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void auditFrozenDevelopmentQueriesAgainstActiveAndContextOnlyPreview() throws Exception {
         Path root = Path.of("../datasets/controversy");
         String configured = System.getenv("CONTEXT_ASSET_PREVIEW_DIR");

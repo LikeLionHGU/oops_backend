@@ -69,19 +69,29 @@ tasks.named('test') {
     }
 }
 
-// Private ignored datasets remain local; opt into their audits separately when available.
-tasks.register('datasetTest', Test) {
-    group = 'verification'
-    description = 'Runs tests tagged dataset-backed; requires the private ../datasets/controversy tree.'
-    dependsOn testClasses
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform {
-        includeTags 'dataset-backed'
-    }
-    doFirst {
-        if (!file('../datasets/controversy').isDirectory()) {
-            throw new GradleException('datasetTest requires the private ../datasets/controversy directory')
+// datasetTest keeps its original ALL-private-tests scope; historical failures stay visible.
+// These offline tasks never renew snapshots, change approvals, or call a provider.
+[
+    datasetTest: 'All private-data contracts AND historical replays (may fail on snapshot drift/expiry).',
+    currentDatasetTest: 'Current contracts using private data; excludes frozen historical replays.',
+    historicalDatasetTest: 'Frozen historical replays; reports unmet prerequisites as failures/skips, not passes.'
+].each { taskName, taskDescription ->
+    tasks.register(taskName, Test) {
+        group = 'verification'
+        description = taskDescription
+        dependsOn testClasses
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform {
+            includeTags(taskName == 'historicalDatasetTest'
+                    ? 'dataset-backed & historical-dataset' : 'dataset-backed')
+            if (taskName == 'currentDatasetTest') excludeTags 'historical-dataset'
+        }
+        doFirst {
+            if (!file('../datasets/controversy').isDirectory()) {
+                throw new GradleException(taskName + ' requires the private ../datasets/controversy directory')
+            }
+            logger.lifecycle(taskName + ': ' + taskDescription + ' No provider calls.')
         }
     }
 }

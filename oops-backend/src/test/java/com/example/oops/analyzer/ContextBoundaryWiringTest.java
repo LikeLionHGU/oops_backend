@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @org.junit.jupiter.api.Tag("dataset-backed")
+@org.junit.jupiter.api.Tag("historical-dataset")
 class ContextBoundaryWiringTest {
     @Test void productionSelectionSupplementsFrozenMissingBoundariesAndReportsTheChange() throws Exception {
         var root=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified");
@@ -16,6 +17,9 @@ class ContextBoundaryWiringTest {
         var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,root.resolve("preview-runtime.json").toAbsolutePath().toUri().toString(),6000,3,3000,"",true);
         var baseline=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,root.resolve("preview-runtime.json").toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
         library.load();baseline.load();
+        assertThat(library.trace(SPEECH).state()).as("Historical preview must be usable before comparing selections")
+                .isEqualTo("READY_WORKING_REFERENCE");
+        assertThat(baseline.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
         int changes=0;
         for(var q:ReviewGuidelineLibrary.JSON.readTree(Files.readAllBytes(root.resolve("queries.json")))) {
             var raw=new ArrayList<ReviewInput.Segment>();
@@ -80,6 +84,8 @@ class ContextBoundaryWiringTest {
         assumeTrue(Files.exists(root.resolve("preview-runtime.json")));
         var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,root.resolve("preview-runtime.json").toAbsolutePath().toUri().toString(),6000,3,3000,"speech-act-development-boundaries",true);
         library.load();
+        assertThat(library.trace(SPEECH).state()).as("Historical preview must be usable before testing exclusions")
+                .isEqualTo("READY_WORKING_REFERENCE");
         for(var q:ReviewGuidelineLibrary.JSON.readTree(Files.readAllBytes(root.resolve("queries.json")))) {
             var raw=new ArrayList<ReviewInput.Segment>();
             for(var s:q.get("raw")) raw.add(new ReviewInput.Segment(s.path("id").asText(),SPEECH,s.path("startMs").asLong(),s.path("endMs").asLong(),s.path("text").asText(),null));

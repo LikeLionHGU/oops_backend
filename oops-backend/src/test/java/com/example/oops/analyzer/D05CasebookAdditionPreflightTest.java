@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Offline paired request capture for adding one reviewed context case. */
 @Tag("dataset-backed")
+@Tag("historical-dataset")
 class D05CasebookAdditionPreflightTest {
     private static final Path DATASET = Path.of("../datasets/controversy");
     private static final Path BASELINE = DATASET.resolve("guidelines/runtime.json");

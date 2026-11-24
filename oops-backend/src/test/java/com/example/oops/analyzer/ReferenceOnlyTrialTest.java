@@ -27,6 +27,7 @@ class ReferenceOnlyTrialTest {
         assertThatThrownBy(()->ReferenceOnlyTrial.validatePairs(work)).isInstanceOf(IllegalArgumentException.class);
     }
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void privatePlanReproducesSavedSystemsAndPreservesDGroupsWhenAvailable() throws Exception {
         Path root=Path.of("../datasets/controversy");
         Path source=root.resolve("experiments/text-boundary-37-20261014/results.json");

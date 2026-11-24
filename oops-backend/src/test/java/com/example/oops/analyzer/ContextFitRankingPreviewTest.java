@@ -76,6 +76,7 @@ class ContextFitRankingPreviewTest {
                 .selected()).containsExactly(boundary);
     }
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void compareSameFrozenPoolWithOriginalBudgetWithoutProviderCalls() throws Exception {
         Path root=Path.of("../datasets/controversy"), preview=root.resolve("experiments/speech-act-mechanism-20261023-verified");
         assumeTrue(Files.exists(preview.resolve("preview-runtime.json")));
@@ -88,6 +89,8 @@ class ContextFitRankingPreviewTest {
         for(var r:archive.get("guidelines")) rules.add(json.treeToValue(r,ReviewGuidelineLibrary.Rule.class));
         var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,preview.resolve("preview-runtime.json").toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
         library.load();
+        assertThat(library.trace(SPEECH).state()).as("Historical preview must be usable before comparing payload budgets")
+                .isEqualTo("READY_WORKING_REFERENCE");
         var selector=new ContextExampleSelector(examples,rules,StructuredContextSearch.load());
         var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
         var rows=new ArrayList<Map<String,Object>>();
@@ -113,6 +116,7 @@ class ContextFitRankingPreviewTest {
     }
     static int exampleSize(List<ReviewGuidelineLibrary.ContextExample> items) { return size(items.stream().map(e->new ReviewGuidelineLibrary.SelectedExample(e.mechanismIds(),e.context())).toList()); }
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void diagnoseFrozenQueriesAndCompareTopicFocusedSearchMetadata(
             @org.junit.jupiter.api.io.TempDir Path temporary) throws Exception {
         var root=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified");
@@ -151,6 +155,8 @@ class ContextFitRankingPreviewTest {
             var patterns=rules.stream().filter(r->r.channels().contains("SPEECH")).map(r->Map.of("id",r.id(),"axis",r.axis(),"condition",r.condition(),"normalContrast",r.normalContrast(),"requiredEvidence",r.requiredEvidence(),"missingContext",r.missingContext())).toList();
             var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,variant.toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
             library.load();
+            assertThat(library.trace(SPEECH).state()).as("Historical preview must be usable before comparing retrieval stages")
+                    .isEqualTo("READY_WORKING_REFERENCE");
             for(var q:queries) {
                 var input=new ArrayList<ReviewInput.Segment>();
                 for(var s:q.get("raw")) input.add(new ReviewInput.Segment(s.get("id").asText(),SPEECH,s.get("startMs").asLong(),s.get("endMs").asLong(),s.get("text").asText(),null));
@@ -178,6 +184,7 @@ class ContextFitRankingPreviewTest {
         }
     }
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void auditOtherTopicsWithRealRetrievalAssetsWithoutAssigningVerdicts() throws Exception {
         var path=Path.of("../datasets/controversy/experiments/speech-act-mechanism-20261023-verified/preview-runtime.json");
         assumeTrue(Files.exists(path));
@@ -189,6 +196,8 @@ class ContextFitRankingPreviewTest {
         var selector=new ContextExampleSelector(examples,rules,StructuredContextSearch.load());
         var library=new ReviewGuidelineLibrary(new DefaultResourceLoader(),true,path.toAbsolutePath().toUri().toString(),6000,3,3000,"",true,false);
         library.load();
+        assertThat(library.trace(SPEECH).state()).as("Empty selections from an expired archive are not a passing regression")
+                .isEqualTo("READY_WORKING_REFERENCE");
         var queries=List.of(
                 "학원 선생님이 낮은 반 학생에게 했던 모욕을 인용합니다. 그 말을 듣고 충격받았어요.",
                 "지역에 음식점이 없어서 집에서 만들어 먹었어요. 이 메뉴의 뜻을 설명합니다.",

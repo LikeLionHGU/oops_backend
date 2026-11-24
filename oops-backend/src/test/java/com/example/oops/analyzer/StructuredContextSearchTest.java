@@ -80,6 +80,57 @@ class StructuredContextSearchTest {
         var l = library(JSON.writeValueAsString(a), true, 3, 3000, "");
         assertThat(l.select(SPEECH, raw("공공시설이 없는 생활조건"), "q").trace().structuredSearch()).isNull();
     }
+    @Test void currentBoundarySupplementPreservesLeadingReferenceAndPayloadBudget() {
+        String text = boundaryArchive();
+        var input = raw("오늘 팬티는 무슨 색깔? 줄임말 뜻을 설명합니다");
+        var baseline = new ReviewGuidelineLibrary(TrialSupport.resources(text), true, "classpath:frozen.json",
+                6000, 2, 3000, "", true, false);
+        baseline.load();
+        assertThat(baseline.trace(SPEECH).state()).isEqualTo("READY_WORKING_REFERENCE");
+        var before = baseline.select(SPEECH, input, "baseline");
+        var after = library(text, true, 2, 3000, "").select(SPEECH, input, "supplemented");
+        assertThat(before.trace().exampleIds()).containsExactly("lead", "tail");
+        assertThat(after.trace().exampleIds()).containsExactly("lead", "boundary");
+        assertThat(after.trace().boundarySupplement().state()).isEqualTo("BOUNDARY_SUPPLEMENTED");
+        assertThat(after.trace().boundarySupplement().removedId()).isEqualTo("tail");
+        assertThat(after.trace().payloadCodePoints()).isLessThanOrEqualTo(6000);
+        // A one-slot limit preserves the lead rather than forcing a boundary reference.
+        assertThat(library(text, true, 1, 3000, "").select(SPEECH, input, "single").trace().exampleIds())
+                .containsExactly("lead");
+        assertThat(library(text, true, 2, 256, "").select(SPEECH, input, "budget").trace().exampleIds())
+                .isEmpty();
+    }
+    @Test void currentBoundarySupplementCannotRestoreAnExcludedFamily() {
+        var selection = library(boundaryArchive(), true, 2, 3000, "boundary-family")
+                .select(SPEECH, raw("오늘 팬티는 무슨 색깔? 줄임말 뜻을 설명합니다"), "excluded");
+        assertThat(selection.trace().state()).isEqualTo("READY_WORKING_REFERENCE");
+        assertThat(selection.trace().exampleIds()).containsExactly("lead", "tail");
+        assertThat(selection.trace().boundarySupplement()).isNotNull();
+        assertThat(selection.trace().boundarySupplement().addedId()).isNull();
+    }
+    /** Authored wiring fixture, not a private incident, approved label, or model-quality benchmark. */
+    private String boundaryArchive() {
+        var sources = new ArrayList<SourceCase>();
+        var examples = new ArrayList<ContextExample>();
+        for (String id : List.of("lead", "tail", "boundary")) {
+            String searchText = id.equals("boundary") ? "성적 사생활 속옷 질문. 뜻 설명과 직접 요청을 구별"
+                    : "성적 사생활 속옷 질문. 오늘 팬티는 무슨 색깔? 줄임말 뜻을 설명합니다";
+            sources.add(new SourceCase(id, id + "-family", "UNREVIEWED_DRAFT"));
+            examples.add(new ContextExample(id, id + "-family", List.of("sexual-objectification"), List.of("SPEECH"),
+                    new Comparison("REPORTED_CONTEXT_ONLY_NOT_VIDEO_TRANSCRIPT", List.of("합성 배선 확인용 맥락".repeat(25)),
+                            List.of(), List.of("실제 사건과 무관"), List.of(), List.of()),
+                    new RetrievalView("context-unit-retrieval-1", "AUTHORED_ROUTING_NOT_SOURCE_EVIDENCE",
+                            searchText, retrievalHash(searchText)), List.of(),
+                    new ContextRelationRetrieval.Profile("authored-relation-search-1", "AUTHORED_RETRIEVAL_NOT_SOURCE_EVIDENCE",
+                            "a".repeat(64), List.of("synthetic"), "상황", "", "평가", "연결")));
+        }
+        var rule = new Rule("sexual-objectification", "TARGET_TREATMENT", List.of("SPEECH"),
+                "구체적 상황 확인", "뜻풀이와 요청 구분", "현재 원문 확인", "정보 부족은 명시",
+                sources.stream().map(SourceCase::caseId).toList());
+        return JSON.writeValueAsString(new Archive("review-guidelines-7", "synthetic-boundary-wiring",
+                "WORKING_REFERENCE_NOT_VALIDATED", false, "REFERENCE_ONLY_CURRENT_INPUT_EVIDENCE_REQUIRED",
+                "a".repeat(64), null, sources, List.of(rule), "b".repeat(64), examples));
+    }
     @org.junit.jupiter.api.Tag("dataset-backed")
     @Test void privateV7SelectionUsesProductionBudgetsAndCanRollBackExactly() throws Exception {
         Path runtime = Path.of("../datasets/controversy/guidelines/runtime.json");

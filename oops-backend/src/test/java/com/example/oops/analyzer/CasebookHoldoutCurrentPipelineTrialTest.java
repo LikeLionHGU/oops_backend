@@ -163,6 +163,7 @@ class CasebookHoldoutCurrentPipelineTrialTest {
     }
 
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void loadsOnlyTheThreeUserReviewedExcerptWindows() throws Exception {
         var plan = CasebookHoldoutCurrentPipelineTrial.prepare();
         assertThat(plan.cases()).extracting(CasebookHoldoutCurrentPipelineTrial.CaseInput::caseId)
@@ -175,6 +176,7 @@ class CasebookHoldoutCurrentPipelineTrialTest {
     }
 
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void offlinePreflightPinsCurrentRuntimeRetrievalAndMakesNoProviderCalls() throws Exception {
         var manifest = CasebookHoldoutCurrentPipelineTrial.preflight(CasebookHoldoutCurrentPipelineTrial.prepare());
         assertThat(manifest.path("providerCalls").asInt()).isZero();

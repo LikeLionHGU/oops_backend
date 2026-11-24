@@ -15,6 +15,7 @@ class SocialDefectCurrentModelTrialTest {
     static final String PLAN_SHA = "e6ec4e09cbdbc0abbc124e05faf1d3f11c458d4853b846fe2b05482595c6ac22";
 
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void frozenPlanLoadsExactApprovedPositiveAndNormalInputsOffline() throws Exception {
         var cases = SocialDefectCurrentModelTrial.loadCases(Path.of(PLAN));
         assertThat(cases).hasSize(2);
@@ -31,6 +32,7 @@ class SocialDefectCurrentModelTrialTest {
     }
 
     @org.junit.jupiter.api.Tag("dataset-backed")
+    @org.junit.jupiter.api.Tag("historical-dataset")
     @Test void preflightLocksRuntimeRetrievalInputsAndNoProviderCalls() throws Exception {
         var manifest = SocialDefectCurrentModelTrial.preflight(Path.of(PLAN), PLAN_SHA);
         assertThat(manifest.path("providerCalls").asInt()).isZero();
