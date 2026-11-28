@@ -14,7 +14,7 @@ import static org.mockito.Mockito.*;
 class ContextualReviewTest {
     private final OpenAiClient client = mock(OpenAiClient.class);
     private final Video video = Video.builder().filename("offline.mp4").build();
-    private final SpeechReviewAnalyzer analyzer = new SpeechReviewAnalyzer(client, false); // segment-scope regression
+    private final SegmentReviewFixture analyzer = new SegmentReviewFixture(client); // segment-scope regression
     private AnalysisContext context(String... lines) {
         List<TranscriptSegment> transcript = new ArrayList<>();
         for (int i = 0; i < lines.length; i++) transcript.add(new TranscriptSegment(video, i * 2_000, i * 2_000 + 1_000, lines[i]));

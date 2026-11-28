@@ -171,7 +171,7 @@ class FinalReviewBasisContractTest {
     @Test void analyzerOptInActuallyReachesNewEngineContract() {
         f.discovery(List.of(id),proposal("TARGET_TREATMENT"));
         f.verification(new Verification("candidate-1",expression("SEXUAL"),basis("EXPRESSION_CONTENT")));
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);analyzer.setFinalReviewBasisEnabled(true);
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24);analyzer.setFinalReviewBasisEnabled(true);
         var ctx=f.context(text);assertThat(analyzer.analyze(ctx)).hasSize(1);
         assertThat(analyzer.consumeReviewResult(ctx).orElseThrow().diagnostics().candidatePipeline().revision()).contains(FinalReviewBasisContract.VERSION);
     }
@@ -203,7 +203,7 @@ class FinalReviewBasisContractTest {
                     .contains("final-review-basis-enabled: ${FINAL_REVIEW_BASIS_ENABLED:false}");
         }
         f.discovery(List.of(id),proposal("TARGET_TREATMENT"));f.verification(new Verification("candidate-1",f.assessment(id,"PASS",text)));
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);assertThat(analyzer.analyze(f.context(text))).isEmpty();
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24);assertThat(analyzer.analyze(f.context(text))).isEmpty();
         var input=ArgumentCaptor.forClass(String.class);verify(f.client).completeAsJson(anyString(),input.capture(),eq(VerificationResult.class));
         assertThat(input.getValue()).doesNotContain("verificationContract");
     }

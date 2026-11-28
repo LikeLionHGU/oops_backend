@@ -17,12 +17,8 @@ class PromptSnapshotTest {
         return (String) field.get(null);
     }
 
-    @Test void allNineDocumentedSystemsMatchActualCompositionIncludingClientInstruction() throws Exception {
-        String speech = constant(SpeechReviewAnalyzer.class, "SYSTEM_PROMPT")
-                + "\n" + ContextualComparisonPolicy.PROMPT;
+    @Test void activeDocumentedSystemsMatchActualCompositionIncludingClientInstruction() throws Exception {
         List<String> systems = List.of(
-                speech + "\n" + TextReviewEngine.CONTRACT,
-                speech + "\n" + TextReviewEngine.dialogueEvidenceContract() + "\n" + TextReviewEngine.DIALOGUE_CONTRACT,
                 constant(ScreenTextReviewAnalyzer.class, "SYSTEM_PROMPT") + "\n" + TextReviewEngine.CONTRACT,
                 constant(ContextValidator.class, "SYSTEM_PROMPT"),
                 constant(EntityCheckAnalyzer.class, "EXTRACT_PROMPT"),

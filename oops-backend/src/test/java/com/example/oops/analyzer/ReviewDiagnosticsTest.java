@@ -11,7 +11,7 @@ import static org.mockito.Mockito.*;
 
 class ReviewDiagnosticsTest {
     private final OpenAiClient client = mock(OpenAiClient.class);
-    private final SpeechReviewAnalyzer analyzer = new SpeechReviewAnalyzer(client, false); // segment diagnostics
+    private final SegmentReviewFixture analyzer = new SegmentReviewFixture(client); // segment diagnostics
     private final Video video = Video.builder().filename("offline.mp4").build();
     private AnalysisContext context() {
         return new AnalysisContext(video, ContentGenre.GENERAL,

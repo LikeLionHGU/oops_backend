@@ -31,7 +31,7 @@ class EvidenceCountDiagnosticsTest {
                 c.reviewInput().segments().stream().filter(s -> s.type() == com.example.oops.domain.TimelineEventType.SPEECH).toList(), false, false);
         assertThat(validate(candidate, assessment, c.reviewInput(), 0).failureCode()).isNull();
         assertThat(validate(candidate, assessment, c.reviewInput(), 8).failureCode()).isEqualTo("ASSESSMENT_SHAPE");
-        var analyzer = new SpeechReviewAnalyzer(f.client, true, true, 24);
+        var analyzer = new SpeechReviewAnalyzer(f.client, 24);
         assertThat(analyzer.analyze(c)).hasSize(1);
         var pipeline = analyzer.consumeReviewResult(c).orElseThrow().diagnostics().candidatePipeline();
         assertThat(pipeline.repairCalls()).isZero();

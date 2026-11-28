@@ -199,11 +199,11 @@ class SourceRelationsTest {
         var legacy=new CandidateReviewFixture();
         legacy.discovery(List.of(IDS.get(0)),legacy.proposal(IDS.get(0),"그 집"));
         legacy.verification(new Verification("candidate-1",legacy.assessment(IDS.get(0),"PASS","그 집")));
-        var defaultAnalyzer=new SpeechReviewAnalyzer(legacy.client,true,true,24);
+        var defaultAnalyzer=new SpeechReviewAnalyzer(legacy.client, 24);
         var legacyContext=legacy.context("그 집은 조용하다"); defaultAnalyzer.analyze(legacyContext);
         assertThat(defaultAnalyzer.consumeReviewResult(legacyContext).orElseThrow().diagnostics().candidatePipeline().revision()).isEqualTo(REVISION);
         f.discovery(IDS,proposal(roles())); f.verification(new Verification("candidate-1",pass()));
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24); analyzer.setSourceRelationsEnabled(true);
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24); analyzer.setSourceRelationsEnabled(true);
         analyzer.analyze(context);
         assertThat(analyzer.consumeReviewResult(context).orElseThrow().diagnostics().candidatePipeline().revision()).isEqualTo(RELATION_REVISION);
     }

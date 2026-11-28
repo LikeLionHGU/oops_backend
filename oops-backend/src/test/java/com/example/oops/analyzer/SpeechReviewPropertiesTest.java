@@ -20,14 +20,13 @@ class SpeechReviewPropertiesTest {
         runner.run(context -> {
             assertThat(context).hasNotFailed();
             var p = context.getBean(SpeechReviewProperties.class);
-            assertThat(p).isEqualTo(new SpeechReviewProperties(true, true, 24, 0,
+            assertThat(p).isEqualTo(new SpeechReviewProperties(true, 24, 0,
                     false, false, false, false, "acts-v1", false));
         });
     }
 
     @Test void existingKeysBindWithoutRenaming() {
-        runner.withPropertyValues("oops.analysis.dialogue-review-enabled=false",
-                "oops.analysis.candidate-review-enabled=false",
+        runner.withPropertyValues("oops.analysis.candidate-review-enabled=true",
                 "oops.analysis.candidate-review-max-candidates=12",
                 "oops.analysis.candidate-review-evidence-limit=3",
                 "oops.analysis.candidate-source-relations-enabled=true",
@@ -38,7 +37,7 @@ class SpeechReviewPropertiesTest {
                 "oops.analysis.rule-candidate-union-enabled=true").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context.getBean(SpeechReviewProperties.class)).isEqualTo(
-                    new SpeechReviewProperties(false, false, 12, 3, true, true, true,
+                    new SpeechReviewProperties(true, 12, 3, true, true, true,
                             true, "relations-v3", true));
         });
     }
@@ -49,6 +48,15 @@ class SpeechReviewPropertiesTest {
             runner.withPropertyValues("oops.analysis." + property)
                     .run(context -> assertThat(context).hasFailed());
         }
+    }
+
+    @Test void retiredSpeechModeFailsAtStartupInsteadOfSilentlySwitchingAlgorithms() {
+        runner.withPropertyValues("oops.analysis.candidate-review-enabled=false")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasRootCauseMessage(
+                            "candidate-review-enabled=false is no longer supported; legacy speech review was removed");
+                });
     }
 
     @Test void springUsesOnlyTypedConstructorAndPreservesEverySetting() {

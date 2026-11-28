@@ -117,7 +117,7 @@ class AnalysisPipelineReviewTest {
     @CsvSource({"SUCCESS,false", "PARTIAL,false", "PARTIAL,true", "FAILED,true"})
     void propagatesValidatedCoverageAndDrainsIntermediateResults(AnalyzerStatus expected, boolean simulateApiFailure) {
         var client = mock(OpenAiClient.class);
-        var analyzer = new SpeechReviewAnalyzer(client, false); // segment-scope coverage propagation
+        var analyzer = new SegmentReviewFixture(client); // segment-scope coverage propagation
         var transcripts = mock(TranscriptService.class);
         var screens = mock(ScreenTextService.class);
         var fusion = mock(FindingFusionService.class);

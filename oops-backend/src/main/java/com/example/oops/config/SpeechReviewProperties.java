@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /** Existing analysis keys; only speech-review wiring is owned here. */
 @ConfigurationProperties(prefix = "oops.analysis")
 public record SpeechReviewProperties(
-        @DefaultValue("true") boolean dialogueReviewEnabled,
+        // Migration guard only: false must fail instead of silently changing an old deployment's algorithm.
         @DefaultValue("true") boolean candidateReviewEnabled,
         @DefaultValue("24") int candidateReviewMaxCandidates,
         @DefaultValue("0") int candidateReviewEvidenceLimit,
@@ -17,6 +17,8 @@ public record SpeechReviewProperties(
         @DefaultValue("acts-v1") String sourceUnderstandingContract,
         @DefaultValue("false") boolean ruleCandidateUnionEnabled) {
     public SpeechReviewProperties {
+        if (!candidateReviewEnabled)
+            throw new IllegalArgumentException("candidate-review-enabled=false is no longer supported; legacy speech review was removed");
         if (candidateReviewMaxCandidates < 1 || candidateReviewMaxCandidates > 200)
             throw new IllegalArgumentException("Candidate budget must be 1..200");
         if (candidateReviewEvidenceLimit < 0)

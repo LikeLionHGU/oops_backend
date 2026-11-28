@@ -50,7 +50,7 @@ class SegmentContractPromptTest {
         var client = mock(OpenAiClient.class);
         when(client.completeAsJson(anyString(), anyString(), eq(TextReviewEngine.LlmResult.class)))
                 .thenReturn(Optional.of(response));
-        var analyzer = new SpeechReviewAnalyzer(client, false);
+        var analyzer = new SegmentReviewFixture(client);
         assertThat(analyzer.analyze(context)).isEmpty();
         var result = analyzer.consumeReviewResult(context).orElseThrow();
         assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);

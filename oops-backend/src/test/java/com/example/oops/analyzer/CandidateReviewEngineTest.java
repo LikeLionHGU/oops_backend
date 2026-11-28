@@ -174,12 +174,15 @@ class CandidateReviewEngineTest extends CandidateReviewFixture {
     }
     @Test void productionPathUsesNewStrategyWithoutLegacyDialogueCalls() {
         discovery(List.of("stt-index-0"));
-        var analyzer = new SpeechReviewAnalyzer(client, true, true, 24);
+        var analyzer = new SpeechReviewAnalyzer(client);
         var c = context("보통 대화");
         assertThat(analyzer.analyze(c)).isEmpty();
         var r = analyzer.consumeReviewResult(c).orElseThrow();
         assertThat(r.diagnostics().candidatePipeline().revision()).isEqualTo(REVISION);
         assertThat(r.diagnostics().dialogue()).isNull();
+        assertThat(analyzer.consumeReviewResult(c)).isEmpty();
+        assertThat(analyzer.consumeCoverageNotice(c)).isEmpty();
+        assertThat(analyzer.consumeContextLimitNotice(c)).isEmpty();
         verify(client, never()).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
     }
     @Test void reviewRequiresSeparateVerificationAndRetainsEvidenceTimeAndScorePolicy() {

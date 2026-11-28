@@ -39,7 +39,7 @@ class RuntimeCandidateUnionTest {
             });
         }
         TextReviewEngine.Result run(AnalysisContext context,Boolean enabled,int budget,ReviewGuidelineLibrary library) {
-            var analyzer=new SpeechReviewAnalyzer(client,true,true,budget);
+            var analyzer=new SpeechReviewAnalyzer(client, budget);
             if(enabled!=null) analyzer.setRuleUnionEnabled(enabled);
             if(library!=null) analyzer.setGuidelineLibrary(library);
             analyzer.analyze(context);return analyzer.consumeReviewResult(context).orElseThrow();
@@ -165,12 +165,10 @@ class RuntimeCandidateUnionTest {
         assertEquals(ReviewDiagnostics.State.CONFLICT,result.diagnostics().segments().get(0).state());
         assertEquals(AnalyzerStatus.PARTIAL,result.status());assertTrue(result.notice().contains("합의 판정이 아닙니다"));
     }
-    @Test void unsupportedExperimentsAndLegacyModeFailBeforeCalls() {
+    @Test void unsupportedExperimentsFailBeforeCalls() {
         var client=mock(OpenAiClient.class);var c=context("피부를 찢는");
-        var analyzer=new SpeechReviewAnalyzer(client,true,true,24);analyzer.setRuleUnionEnabled(true);analyzer.setFinalReviewBasisEnabled(true);
+        var analyzer=new SpeechReviewAnalyzer(client, 24);analyzer.setRuleUnionEnabled(true);analyzer.setFinalReviewBasisEnabled(true);
         assertThrows(IllegalArgumentException.class,()->analyzer.analyze(c));verifyNoInteractions(client);
-        var legacy=new SpeechReviewAnalyzer(client,true,false,24);legacy.setRuleUnionEnabled(true);
-        assertThrows(IllegalStateException.class,()->legacy.analyze(c));verifyNoInteractions(client);
     }
     @Test void discoveryFailureIsNotHiddenBySuccessfulRuleVerification() {
         var h=new Harness(false,t -> answer(t,true));

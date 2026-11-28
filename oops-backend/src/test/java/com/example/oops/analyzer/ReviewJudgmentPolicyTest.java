@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Offline instruction contracts; does not assert that a real LLM follows the policy. */
 class ReviewJudgmentPolicyTest {
-    @Test void victimQuotationBoundaryReachesBothCandidateStagesAndLegacyPolicy() {
+    @Test void victimQuotationBoundaryReachesBothCandidateStagesAndScreenPolicy() {
         for (String prompt : new String[]{CandidateReviewEngine.DISCOVERY_PROMPT,
                 CandidateReviewEngine.VERIFICATION_PROMPT, ReviewJudgmentPolicy.PROMPT}) {
             assertThat(prompt).contains("피해 경험 회고·비판적 전달",
@@ -35,13 +35,10 @@ class ReviewJudgmentPolicyTest {
         return (String) field.get(null);
     }
 
-    @Test void speechAndScreenTextShareJudgmentBeforeOutputContracts() throws Exception {
-        for (var type : new Class<?>[]{SpeechReviewAnalyzer.class, ScreenTextReviewAnalyzer.class}) {
-            String prompt = system(type);
-            assertThat(prompt).startsWith(ReviewJudgmentPolicy.PROMPT)
-                    .contains("표현이 단정적이거나 이유 설명이 짧다는 것만으로 폄하가 되지는 않는다")
-                    .doesNotContain("반대로 단정적 무가치 평가", "단정적 무가치 평가·폄하가 원문에 있으면");
-        }
+    @Test void screenTextUsesSharedJudgmentBeforeOutputContract() throws Exception {
+        assertThat(system(ScreenTextReviewAnalyzer.class)).startsWith(ReviewJudgmentPolicy.PROMPT)
+                .contains("표현이 단정적이거나 이유 설명이 짧다는 것만으로 폄하가 되지는 않는다")
+                .doesNotContain("반대로 단정적 무가치 평가", "단정적 무가치 평가·폄하가 원문에 있으면");
     }
 
     @Test void judgmentIsOrderedAndHasNoJsonOrRequestScopeInstructions() {

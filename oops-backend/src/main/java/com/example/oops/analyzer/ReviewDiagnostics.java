@@ -30,9 +30,6 @@ public record ReviewDiagnostics(String evaluatorId, AnalyzerStatus status, int t
                              Map<Failure, Integer> failureCounts, List<SegmentTrace> segments) {
         this(evaluatorId, status, totalSegments, truncated, failureCounts, segments, null);
     }
-    ReviewDiagnostics withDialogue(DialogueReview.Diagnostics dialogue) {
-        return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, candidatePipeline, contextSelections,candidateUnion);
-    }
     ReviewDiagnostics withCandidatePipeline(CandidateReviewDiagnostics pipeline) {
         return new ReviewDiagnostics(evaluatorId, status, totalSegments, truncated, failureCounts, segments, dialogue, pipeline, contextSelections,candidateUnion);
     }

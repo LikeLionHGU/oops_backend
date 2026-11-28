@@ -146,7 +146,7 @@ class SourceUnderstandingContractTest {
 
     @Test void analyzerOptInActuallyReachesObservableContract() {
         discover();f.verification(new Verification("candidate-1",f.assessment(id,"REVIEW_REQUIRED",text),null,reading("EVALUATION")));
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);analyzer.setSourceUnderstandingEnabled(true);
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24);analyzer.setSourceUnderstandingEnabled(true);
         assertThat(analyzer.analyze(context)).hasSize(1);
         assertThat(analyzer.consumeReviewResult(context).orElseThrow().diagnostics().candidatePipeline().evidenceCounts().get(0)
                 .sourceUnderstanding().provided()).isTrue();

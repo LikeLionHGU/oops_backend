@@ -103,7 +103,7 @@ class SourceUnderstandingCompactTest {
         f.discovery(List.of(id),f.proposal(id,"그 집"));
         var r=new SourceUnderstanding(null,List.of(new SourceUnderstanding.RelationReading(id,"EVALUATION","NONE",null,"PERSON_OR_BODY",List.of(id),"NOT_APPLICABLE",List.of())));
         f.verification(new Verification("candidate-1",f.assessment(id,"REVIEW_REQUIRED","그 집"),null,r));
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);analyzer.setSourceUnderstandingEnabled(true);analyzer.setSourceUnderstandingVersion("relations-v3");
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24);analyzer.setSourceUnderstandingEnabled(true);analyzer.setSourceUnderstandingVersion("relations-v3");
         assertThat(analyzer.analyze(c)).hasSize(1);
         var diagnostics=analyzer.consumeReviewResult(c).orElseThrow().diagnostics().candidatePipeline();
         assertThat(diagnostics.revision()).contains(SourceUnderstandingCompact.VERSION);
@@ -116,7 +116,7 @@ class SourceUnderstandingCompactTest {
     @Test void versionSelectionAloneKeepsOffPayloadAndLegacyBehavior() {
         f.discovery(List.of(old.before),f.proposal(old.before,"그 집"));
         f.verification(new Verification("candidate-1",f.assessment(old.before,"PASS","그 집")));
-        var c=f.context("그 집은 조용하다");var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);analyzer.setSourceUnderstandingVersion("relations-v3");
+        var c=f.context("그 집은 조용하다");var analyzer=new SpeechReviewAnalyzer(f.client, 24);analyzer.setSourceUnderstandingVersion("relations-v3");
         assertThat(analyzer.analyze(c)).isEmpty();
         assertThat(analyzer.consumeReviewResult(c).orElseThrow().diagnostics().candidatePipeline().revision()).isEqualTo(REVISION);
         var system=org.mockito.ArgumentCaptor.forClass(String.class);

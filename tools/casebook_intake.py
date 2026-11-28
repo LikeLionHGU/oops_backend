@@ -50,7 +50,7 @@ def implementation_hashes():
     names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
               ("ReviewGuidelineLibrary", "ContextExampleSelector", "ContextRelationRetrieval", "ContextBoundarySupplement",
                "ContextReferenceBalance", "StructuredContextSearch", "ReviewJudgmentPolicy", "CandidateReviewPrompts",
-               "ContextualComparisonPolicy", "SourceRelationPrompts", "CandidateReviewEngine", "TextReviewEngine")]
+               "SourceRelationPrompts", "CandidateReviewEngine", "TextReviewEngine")]
     names += ["oops-backend/src/main/java/com/example/oops/analyzer/" + name + ".java" for name in
               ("AnalysisContext",)]
     names += ["oops-backend/src/main/java/com/example/oops/domain/AnalysisCoverage.java",

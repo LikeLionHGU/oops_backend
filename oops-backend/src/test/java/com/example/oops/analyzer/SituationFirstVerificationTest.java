@@ -91,7 +91,7 @@ class SituationFirstVerificationTest {
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",
                     f.assessment("stt-index-0", "REVIEW_REQUIRED", "그 집")))));
         });
-        var analyzer = new SpeechReviewAnalyzer(f.client, true, true, 24);
+        var analyzer = new SpeechReviewAnalyzer(f.client, 24);
         analyzer.setSituationFirstEnabled(true);
         var context = f.context("그 집 이용자는 수준이 낮아");
         assertThat(analyzer.analyze(context)).hasSize(1);

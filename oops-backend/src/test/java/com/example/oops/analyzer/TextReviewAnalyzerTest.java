@@ -18,7 +18,7 @@ class TextReviewAnalyzerTest {
     private final Video video = Video.builder().filename("offline.mp4").build();
 
     private ContentAnalyzer analyzer(TimelineEventType type) {
-        return type == TimelineEventType.SPEECH ? new SpeechReviewAnalyzer(client, false) : new ScreenTextReviewAnalyzer(client);
+        return type == TimelineEventType.SPEECH ? new SegmentReviewFixture(client) : new ScreenTextReviewAnalyzer(client);
     }
 
     private AnalysisContext context(TimelineEventType type) {

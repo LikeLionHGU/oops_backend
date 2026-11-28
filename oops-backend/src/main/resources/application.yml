@@ -142,7 +142,6 @@ oops:
     guidelines-example-max-code-points: 3000 # 예시만의 상한. 잘라내지 않고 예시 전체를 제외.
     structured-context-search-enabled: ${STRUCTURED_CONTEXT_SEARCH_ENABLED:true} # v7 로컬 개념 검색 보완. 판정·외부 호출 없음, false로 이전 문자 검색 재현.
     guidelines-excluded-families: ${REVIEW_GUIDELINES_EXCLUDED_FAMILIES:} # 독립 평가 시 사건 family를 제외. 공통 기준은 유지.
-    candidate-review-enabled: true # 발언: 압축 기준 후보 탐색 → 후보만 근거 검증. false는 기존 구간/대화 검토.
     rule-candidate-union-enabled: ${RULE_CANDIDATE_UNION_ENABLED:false} # 실험: 규칙+AI 후보 합집합. 기본 OFF, 활성화 시 검증 호출/결과가 달라질 수 있음.
     candidate-source-relations-enabled: ${CANDIDATE_SOURCE_RELATIONS_ENABLED:false} # 실험 38: 결론형 가설 대신 원문 역할 ID 전달. 모델 비교 전 기본 OFF.
     final-review-basis-enabled: ${FINAL_REVIEW_BASIS_ENABLED:false} # 텍스트 검증 최종 근거 분리. 실호출 효과 검증 전 기본 OFF.
@@ -153,7 +152,6 @@ oops:
     candidate-review-evidence-limit: ${CANDIDATE_REVIEW_EVIDENCE_LIMIT:0} # 0: 검증 응답의 고정 인용 개수 상한 해제. 원문/역할/중복 검증은 유지.
     visual-context-enabled: ${VISUAL_CONTEXT_ENABLED:true} # 선택적 장면 검증. 포즈/음성/전체 영상 분석은 아님.
     visual-context-max-candidates: 3 # 설정 가능한 것은 후보 수. 후보당 프레임 샘플·응답 observation은 각각 코드 고정 상한 3.
-    dialogue-review-enabled: true # 기존 방식에서만 적용. candidate-review-enabled=true이면 추가 대화 호출 없음.
     review-diagnostics-enabled: false # 공개 서버에서는 활성화하지 않는다.
     review-request-trace-enabled: false # 민감 원문 포함: 로컬에서만 명시적으로 활성화
     review-request-trace-token: ${REVIEW_TRACE_TOKEN:}

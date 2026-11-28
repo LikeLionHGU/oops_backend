@@ -36,7 +36,6 @@ class EvidenceContractPromptTest {
         }
         assertThat(TextReviewEngine.CONTRACT).contains(TextReviewEngine.EVIDENCE_CONTRACT)
                 .doesNotContain("\"score\":0.4");
-        assertThat(TextReviewEngine.dialogueEvidenceContract()).isEqualTo(prompt);
     }
 
     private TextReviewEngine.Result run(String decision, String category, String target,
@@ -55,7 +54,7 @@ class EvidenceContractPromptTest {
         var client = mock(OpenAiClient.class);
         when(client.completeAsJson(anyString(), anyString(), eq(TextReviewEngine.LlmResult.class)))
                 .thenReturn(Optional.of(new TextReviewEngine.LlmResult(List.of(item))));
-        var analyzer = new SpeechReviewAnalyzer(client, false);
+        var analyzer = new SegmentReviewFixture(client);
         analyzer.analyze(context);
         return analyzer.consumeReviewResult(context).orElseThrow();
     }

@@ -39,23 +39,19 @@ class GraphicMetaphorReviewTest {
         return List.of(new LlmEvidence("stt-index-1", text[1], "PRIMARY"),
                 new LlmEvidence("stt-index-0", text[0], "CONTEXT"));
     }
-    private DialogueReview.LlmDecision unit(AnalysisContext c, String relation, LlmDecision assessment) {
-        var u = DialogueReview.plan(TextReviewBatchPlanner.plan(c.reviewInput(), TimelineEventType.SPEECH, 3).get(0)).units().get(0);
-        return new DialogueReview.LlmDecision(u.unitId(), relation, assessment);
-    }
-    private Result run(AnalysisContext c, boolean dialogue) {
-        var analyzer = new SpeechReviewAnalyzer(client, dialogue);
+    private Result run(AnalysisContext c) {
+        var analyzer = new SegmentReviewFixture(client);
         analyzer.analyze(c);
         return analyzer.consumeReviewResult(c).orElseThrow();
     }
-    private void response(List<LlmDecision> segments, List<DialogueReview.LlmDecision> units) {
+    private void response(List<LlmDecision> segments) {
         when(client.completeAsJson(anyString(), anyString(), eq(LlmResult.class)))
-                .thenReturn(Optional.of(new LlmResult(segments, units)));
+                .thenReturn(Optional.of(new LlmResult(segments)));
     }
 
     @Test void segmentExpressionCanPublishWithoutInventingAnAttackedPersonOrActualViolence() {
-        response(List.of(pass(0, text[0]), graphic("stt-index-1", text[1], ALTERNATIVE, evidence())), null);
-        var result = run(context(text), false);
+        response(List.of(pass(0, text[0]), graphic("stt-index-1", text[1], ALTERNATIVE, evidence())));
+        var result = run(context(text));
         assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
         assertThat(result.findings()).hasSize(1);
         var f = result.findings().get(0);
@@ -65,29 +61,14 @@ class GraphicMetaphorReviewTest {
         assertThat(f.getScore()).isEqualTo(0.59);
         assertThat(f.getSeverity()).isEqualTo(Severity.MEDIUM);
         assertThat(f.getReason()).contains(text[0], ALTERNATIVE);
-        verify(client).completeAsJson(argThat(s -> s.contains("GRAPHIC_METAPHOR") && s.contains("관용 표현")), anyString(), eq(LlmResult.class));
-    }
-
-    @Test void expressionUnitPublishesWithAnIndependentCallAndStandalonePassesRemainSeparate() {
-        var c = context(text);
-        response(List.of(pass(0, text[0]), pass(1, text[1])), List.of(unit(c, "CONNECTED_EXPRESSION",
-                graphic("stt-index-1", text[1], ALTERNATIVE, evidence()))));
-        var result = run(c, true);
-        assertThat(result.findings()).hasSize(1);
-        assertThat(result.diagnostics().segments()).allSatisfy(s -> assertThat(s.state()).isEqualTo(ReviewDiagnostics.State.PASS));
-        var trace = result.diagnostics().dialogue().units().get(0);
-        assertThat(trace.state()).isEqualTo(ReviewDiagnostics.State.REVIEW_REQUIRED);
-        assertThat(trace.relation()).isEqualTo("CONNECTED_EXPRESSION");
-        assertThat(trace.target()).isNull();
-        assertThat(trace.evidence()).hasSize(2);
-        verify(client, times(2)).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
+        verify(client).completeAsJson(argThat(s -> s.contains(TextReviewEngine.EVIDENCE_CONTRACT)), anyString(), eq(LlmResult.class));
     }
 
     @ParameterizedTest @ValueSource(strings = {"", "정상입니다", "NULL"})
     void graphicCandidateNeedsUsefulAlternativeInterpretation(String alternative) {
         response(List.of(pass(0, text[0]), graphic("stt-index-1", text[1],
-                "NULL".equals(alternative) ? null : alternative, evidence())), null);
-        var result = run(context(text), false);
+                "NULL".equals(alternative) ? null : alternative, evidence())));
+        var result = run(context(text));
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().failureCounts()).containsKey(ReviewDiagnostics.Failure.MISSING_ALTERNATIVE_INTERPRETATION);
         assertThat(result.unassessedSegmentIds()).contains("stt-index-1");
@@ -95,20 +76,11 @@ class GraphicMetaphorReviewTest {
 
     @Test void unquotedInventedBodyImageIsStillRejected() {
         response(List.of(pass(0, text[0]), graphic("stt-index-1", "원문에 없는 훼손 표현", ALTERNATIVE,
-                List.of(new LlmEvidence("stt-index-1", "원문에 없는 훼손 표현", "PRIMARY")))), null);
-        var result = run(context(text), false);
+                List.of(new LlmEvidence("stt-index-1", "원문에 없는 훼손 표현", "PRIMARY")))));
+        var result = run(context(text));
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().failureCounts()).containsKey(ReviewDiagnostics.Failure.QUOTE_NOT_IN_RAW);
         assertThat(result.diagnostics().toString()).doesNotContain("원문에 없는 훼손 표현");
-    }
-
-    @Test void unitExpressionAlsoNeedsUsefulAlternativeInterpretation() {
-        var c = context(text);
-        response(List.of(pass(0, text[0]), pass(1, text[1])), List.of(unit(c, "CONNECTED_EXPRESSION",
-                graphic("stt-index-1", text[1], null, evidence()))));
-        var result = run(c, true);
-        assertThat(result.findings()).isEmpty();
-        assertThat(result.diagnostics().dialogue().units().get(0).failure()).isEqualTo("MISSING_ALTERNATIVE_INTERPRETATION");
     }
 
     @Test void optionalTargetOnGraphicCandidateStillNeedsTargetEvidence() {
@@ -116,8 +88,8 @@ class GraphicMetaphorReviewTest {
                 "모델이 특정 대상을 주장하더라도 그 대상의 원문 연결을 별도로 검증해야 합니다.",
                 "GRAPHIC_METAPHOR", "이 음식", 0.6, null, null, List.of(), evidence(),
                 "PRODUCT", "CONTEXTUAL", "앞선 음식 지시어를 표현 대상으로 연결한다고 반환했습니다.", ALTERNATIVE);
-        response(List.of(pass(0, text[0]), risk), null);
-        var result = run(context(text), false);
+        response(List.of(pass(0, text[0]), risk));
+        var result = run(context(text));
         assertThat(result.findings()).isEmpty();
         assertThat(result.diagnostics().failureCounts()).containsKey(ReviewDiagnostics.Failure.MISSING_TARGET_EVIDENCE);
     }
@@ -128,77 +100,12 @@ class GraphicMetaphorReviewTest {
                 "실제 사람에게 가할 폭력을 명시적으로 위협하는 발언이라고 모델이 반환했습니다.",
                 "VIOLENCE", null, 0.8, null, null, List.of(),
                 List.of(new LlmEvidence("stt-index-0", line, "PRIMARY")), null, null, null, null);
-        response(List.of(risk), null);
-        assertThat(run(context(line), false).findings()).singleElement().satisfies(f -> {
+        response(List.of(risk));
+        assertThat(run(context(line)).findings()).singleElement().satisfies(f -> {
             assertThat(f.getCategory()).isEqualTo(RiskCategory.VIOLENCE);
             assertThat(f.getScore()).isEqualTo(0.8);
             assertThat(f.getSeverity()).isEqualTo(Severity.HIGH);
         });
-    }
-
-    @ParameterizedTest @ValueSource(strings = {"SAME_TARGET_CONNECTED", "NO_CONNECTED_EVALUATION"})
-    void expressionExceptionCannotBypassOtherRelationContracts(String relation) {
-        var c = context(text);
-        response(List.of(pass(0, text[0]), pass(1, text[1])), List.of(unit(c, relation,
-                graphic("stt-index-1", text[1], ALTERNATIVE, evidence()))));
-        var result = run(c, true);
-        assertThat(result.findings()).isEmpty();
-        assertThat(result.diagnostics().dialogue().invalidAttempts()).isEqualTo(1);
-        var shape = result.diagnostics().dialogue().units().get(0).rejectedShape();
-        assertThat(shape.decision()).isEqualTo("REVIEW_REQUIRED");
-        assertThat(shape.relation()).isEqualTo(relation);
-        assertThat(shape.category()).isEqualTo("GRAPHIC_METAPHOR");
-        assertThat(shape.targetPresent()).isFalse();
-    }
-
-    @ParameterizedTest @ValueSource(strings = {"BELITTLEMENT", "STRONG_NEGATIVE_REVIEW"})
-    void expressionRelationCannotPublishAnotherCategoryWithoutItsTargetContract(String category) {
-        var c = context(text);
-        var risk = new LlmDecision("stt-index-1", "REVIEW_REQUIRED", text[1],
-                "원문에서 음식 자체를 강하게 평가하는 대목이라고 모델이 반환했습니다.", category, "이 음식", 0.6,
-                null, null, List.of(), List.of(evidence().get(0),
-                        new LlmEvidence("stt-index-0", "이 음식", "TARGET")),
-                "PRODUCT", "CONTEXTUAL", "앞선 발언의 음식 지시어를 뒤의 평가 대상으로 연결합니다.", ALTERNATIVE);
-        response(List.of(pass(0, text[0]), pass(1, text[1])), List.of(unit(c, "CONNECTED_EXPRESSION", risk)));
-        var result = run(c, true);
-        assertThat(result.findings()).isEmpty();
-        assertThat(result.diagnostics().dialogue().units().get(0).failure()).isEqualTo("UNIT_EXPRESSION_CATEGORY_REQUIRED");
-    }
-
-    @ParameterizedTest @ValueSource(strings = {"MISSING", "NULL_ITEM", "OUTSIDE", "ONE_SEGMENT"})
-    void linkageFailuresHaveSafeSpecificCodesWithoutRetainingRejectedPayload(String invalid) {
-        var c = context(text);
-        List<LlmEvidence> spans = switch (invalid) {
-            case "MISSING" -> null;
-            case "NULL_ITEM" -> Arrays.asList(evidence().get(0), null);
-            case "OUTSIDE" -> List.of(evidence().get(0), new LlmEvidence("secret-unknown-id", "secret rejected text", "CONTEXT"));
-            default -> List.of(evidence().get(0));
-        };
-        response(List.of(pass(0, text[0]), pass(1, text[1])), List.of(unit(c, "CONNECTED_EXPRESSION",
-                graphic("stt-index-1", text[1], ALTERNATIVE, spans))));
-        var result = run(c, true);
-        String expected = switch (invalid) {
-            case "MISSING" -> "UNIT_MISSING_EVIDENCE";
-            case "NULL_ITEM" -> "UNIT_INVALID_EVIDENCE";
-            case "OUTSIDE" -> "UNIT_EVIDENCE_OUTSIDE_WINDOW";
-            default -> "UNIT_DISTINCT_EVIDENCE_REQUIRED";
-        };
-        assertThat(result.findings()).isEmpty();
-        assertThat(result.diagnostics().dialogue().units().get(0).failure()).isEqualTo(expected);
-        assertThat(result.diagnostics().dialogue().units().get(0).rejectedShape().outsideEvidenceCount())
-                .isEqualTo("OUTSIDE".equals(invalid) ? 1 : 0);
-        assertThat(result.diagnostics().toString()).doesNotContain("secret-unknown-id", "secret rejected text");
-        verify(client, times(2)).completeAsJson(anyString(), anyString(), eq(LlmResult.class));
-    }
-
-    @Test void rejectedUnknownRelationIsRedactedRatherThanStoredAsFreeText() {
-        var c = context(text);
-        response(List.of(pass(0, text[0]), pass(1, text[1])), List.of(unit(c, "secret-untrusted-relation",
-                graphic("stt-index-1", text[1], ALTERNATIVE, evidence()))));
-        var result = run(c, true);
-        assertThat(result.findings()).isEmpty();
-        assertThat(result.diagnostics().dialogue().units().get(0).rejectedShape().relation()).isEqualTo("INVALID");
-        assertThat(result.diagnostics().toString()).doesNotContain("secret-untrusted-relation");
     }
 
     @ParameterizedTest @ValueSource(strings = {
@@ -216,8 +123,8 @@ class GraphicMetaphorReviewTest {
                 null, null, null, null, null, List.of(), List.of(
                         new LlmEvidence("stt-index-1", lines[1], "PRIMARY"),
                         new LlmEvidence("stt-index-0", lines[0], "CONTEXT")), null, null, null, null);
-        response(List.of(pass(0, lines[0]), pass(1, lines[1])), List.of(unit(c, "CONNECTED_EXPRESSION", assessment)));
-        var result = run(c, true);
+        response(List.of(pass(0, lines[0]), assessment));
+        var result = run(c);
         assertThat(result.findings()).isEmpty();
         assertThat(result.status()).isEqualTo(AnalyzerStatus.SUCCESS);
     }
@@ -227,7 +134,7 @@ class GraphicMetaphorReviewTest {
         caption.classify(ScreenTextRole.EDITORIAL, "테스트용 편집 자막");
         var c = new AnalysisContext(video, ContentGenre.GENERAL, List.of(), List.of(caption));
         response(List.of(graphic("ocr-index-0", text[1], ALTERNATIVE,
-                List.of(new LlmEvidence("ocr-index-0", text[1], "PRIMARY")))), null);
+                List.of(new LlmEvidence("ocr-index-0", text[1], "PRIMARY")))));
         var analyzer = new ScreenTextReviewAnalyzer(client);
         assertThat(analyzer.analyze(c)).singleElement().satisfies(f -> {
             assertThat(f.getCategory()).isEqualTo(RiskCategory.GRAPHIC_METAPHOR);
@@ -239,8 +146,8 @@ class GraphicMetaphorReviewTest {
 
     @Test void graphicMetaphorIsNotMergedIntoAnActualViolenceCandidateEvenWithSameRawText() {
         var c = context(text);
-        response(List.of(pass(0, text[0]), graphic("stt-index-1", text[1], ALTERNATIVE, evidence())), null);
-        var graphic = run(c, false).findings().get(0);
+        response(List.of(pass(0, text[0]), graphic("stt-index-1", text[1], ALTERNATIVE, evidence())));
+        var graphic = run(c).findings().get(0);
         var violence = RiskFinding.builder().video(video).eventType(TimelineEventType.SPEECH)
                 .category(RiskCategory.VIOLENCE).source(EvidenceSource.SUBTITLE).score(0.8)
                 .startMs(2000).endMs(3000).text(text[1]).reason("별도 실제 폭력 근거를 가정한 병합 계약 테스트입니다.").build();

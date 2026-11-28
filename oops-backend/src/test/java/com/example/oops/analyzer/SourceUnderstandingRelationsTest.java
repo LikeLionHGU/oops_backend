@@ -131,7 +131,7 @@ class SourceUnderstandingRelationsTest {
             assertThat((String)call.getArgument(0)).contains("MEANING_ANSWER");
             return Optional.of(new VerificationResult(List.of(new Verification("candidate-1",f.assessment(before,"REVIEW_REQUIRED","그 집"),null,r))));
         });
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);analyzer.setSourceUnderstandingEnabled(true);analyzer.setSourceUnderstandingVersion("relations-v2");
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24);analyzer.setSourceUnderstandingEnabled(true);analyzer.setSourceUnderstandingVersion("relations-v2");
         assertThat(analyzer.analyze(c)).hasSize(1);
         var diagnostics=analyzer.consumeReviewResult(c).orElseThrow().diagnostics().candidatePipeline();
         assertThat(diagnostics.revision()).contains(SourceUnderstandingRelations.VERSION);
@@ -142,7 +142,7 @@ class SourceUnderstandingRelationsTest {
     @Test void selectingV2DoesNotEnableTheFeatureOrChangeOffPayloads() {
         f.discovery(List.of(before),f.proposal(before,"그 집"));
         f.verification(new Verification("candidate-1",f.assessment(before,"PASS","그 집")));
-        var analyzer=new SpeechReviewAnalyzer(f.client,true,true,24);analyzer.setSourceUnderstandingVersion("relations-v2");
+        var analyzer=new SpeechReviewAnalyzer(f.client, 24);analyzer.setSourceUnderstandingVersion("relations-v2");
         var c=f.context("그 집은 조용하다");assertThat(analyzer.analyze(c)).isEmpty();
         var diagnostics=analyzer.consumeReviewResult(c).orElseThrow().diagnostics().candidatePipeline();
         assertThat(diagnostics.revision()).isEqualTo(REVISION);

@@ -13,9 +13,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /** Simulated contract responses; does not demonstrate real-model recall or false-positive rate. */
-class DialogueReviewTest {
+class SegmentWindowReviewTest {
     private final OpenAiClient client = mock(OpenAiClient.class);
-    private final SpeechReviewAnalyzer analyzer = new SpeechReviewAnalyzer(client, false); // previous window-only contract
+    private final SegmentReviewFixture analyzer = new SegmentReviewFixture(client); // shared segment window contract
     private final Video video = Video.builder().filename("dialogue.mp4").build();
     private AnalysisContext context() {
         return new AnalysisContext(video, ContentGenre.GENERAL, IntStream.range(0, 13).mapToObj(i ->
@@ -51,8 +51,7 @@ class DialogueReviewTest {
         var result = analyzer.consumeReviewResult(context).orElseThrow();
         assertThat(result.unassessedSegmentIds()).isEmpty();
         assertThat(result.diagnostics().failureCounts()).isEmpty();
-        verify(client).completeAsJson(argThat(s -> s.contains("제공된 발언을 시간순으로 읽고 대상·상황·평가의 연결을 확인한다")
-                && s.contains("대상 식별 근거, 상황 설명, 문제 표현을 구분한다")),
+        verify(client).completeAsJson(argThat(s -> s.contains(TextReviewEngine.CONTRACT)),
                 argThat(s -> s.contains("dialogueUnits") && s.contains("TRAILING")), eq(LlmResult.class));
     }
     @Test void cannotCombineOppositeViewsIntoAnOverlongEvidenceChain() {
