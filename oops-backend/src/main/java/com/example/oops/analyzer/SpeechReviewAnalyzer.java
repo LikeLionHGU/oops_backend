@@ -82,6 +82,8 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
         setRuleUnionEnabled(settings.ruleCandidateUnionEnabled());
         setGuidelineLibrary(guidelineLibrary);
         setRequestTraces(requestTraces);
+        // Reject incompatible deployed flags at startup using the engine's single contract.
+        runOptions();
     }
 
     @Override
@@ -111,14 +113,18 @@ public class SpeechReviewAnalyzer implements ContentAnalyzer {
     }
 
     private TextReviewEngine.Result runCandidates(AnalysisContext context) {
+        var options = runOptions();
         try (var trace = requestTraces == null ? null : requestTraces.begin(context.video().getId())) {
             var services = new CandidateReviewEngine.RunServices(visualReviewer, guidelineLibrary, trace);
-            var features = new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,
-                    situationFirstEnabled, sourceUnderstandingEnabled, sourceUnderstandingVersion);
-            var options = new CandidateReviewEngine.RunOptions(maxCandidates, evidenceLimit,
-                    sourceRelationsEnabled, features, ruleUnionEnabled);
             return CandidateReviewEngine.run(openAiClient, context, services, options);
         }
+    }
+
+    private CandidateReviewEngine.RunOptions runOptions() {
+        var features = new CandidateReviewEngine.VerificationFeatures(finalReviewBasisEnabled,
+                situationFirstEnabled, sourceUnderstandingEnabled, sourceUnderstandingVersion);
+        return new CandidateReviewEngine.RunOptions(maxCandidates, evidenceLimit,
+                sourceRelationsEnabled, features, ruleUnionEnabled);
     }
 
     @Override

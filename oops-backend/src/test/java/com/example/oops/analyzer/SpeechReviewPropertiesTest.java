@@ -2,6 +2,8 @@ package com.example.oops.analyzer;
 
 import com.example.oops.config.SpeechReviewProperties;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -83,6 +85,65 @@ class SpeechReviewPropertiesTest {
                             .isSameAs(context.getBean(ReviewGuidelineLibrary.class));
                     assertThat(org.springframework.test.util.ReflectionTestUtils.getField(analyzer, "requestTraces"))
                             .isSameAs(context.getBean(com.example.oops.service.ReviewRequestTraceStore.class));
+                });
+    }
+
+    static java.util.stream.IntStream featureMasks() {
+        return java.util.stream.IntStream.range(0, 32);
+    }
+
+    @Test void incompatibleTestOverridesFailBeforeOpeningTraceOrCallingServices() {
+        var client = org.mockito.Mockito.mock(com.example.oops.client.OpenAiClient.class);
+        var traces = org.mockito.Mockito.mock(com.example.oops.service.ReviewRequestTraceStore.class);
+        var context = org.mockito.Mockito.mock(AnalysisContext.class);
+        var analyzer = new SpeechReviewAnalyzer(client);
+        analyzer.setRequestTraces(traces);
+        analyzer.setRuleUnionEnabled(true);
+        analyzer.setSourceUnderstandingEnabled(true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> analyzer.analyze(context))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Rule union currently requires the baseline verification contract");
+        org.mockito.Mockito.verifyNoInteractions(client, traces, context);
+    }
+
+    /** Configuration compatibility, not model quality: all five independent flag combinations. */
+    @ParameterizedTest(name = "experiment flag mask {0}")
+    @MethodSource("featureMasks")
+    void unsupportedFeatureCombinationsFailBeforeAcceptingAnalysisJobs(int mask) {
+        var client = org.mockito.Mockito.mock(com.example.oops.client.OpenAiClient.class);
+        var visual = org.mockito.Mockito.mock(VisualContextReviewer.class);
+        var library = org.mockito.Mockito.mock(ReviewGuidelineLibrary.class);
+        var traces = org.mockito.Mockito.mock(com.example.oops.service.ReviewRequestTraceStore.class);
+        boolean union = (mask & 16) != 0;
+        boolean otherFeatures = (mask & 15) != 0;
+        runner.withBean(com.example.oops.client.OpenAiClient.class, () -> client)
+                .withBean(VisualContextReviewer.class, () -> visual)
+                .withBean(ReviewGuidelineLibrary.class, () -> library)
+                .withBean(com.example.oops.service.ReviewRequestTraceStore.class, () -> traces)
+                .withBean(SpeechReviewAnalyzer.class)
+                .withPropertyValues("oops.analysis.candidate-source-relations-enabled=" + ((mask & 1) != 0),
+                        "oops.analysis.final-review-basis-enabled=" + ((mask & 2) != 0),
+                        "oops.analysis.situation-first-verification-enabled=" + ((mask & 4) != 0),
+                        "oops.analysis.source-understanding-enabled=" + ((mask & 8) != 0),
+                        "oops.analysis.rule-candidate-union-enabled=" + union)
+                .run(context -> {
+                    if (union && otherFeatures) {
+                        assertThat(context).hasFailed();
+                        assertThat(context.getStartupFailure()).hasRootCauseMessage(
+                                "Rule union currently requires the baseline verification contract");
+                    } else {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(SpeechReviewAnalyzer.class)).isNotNull();
+                    }
+                    // Spring invokes the mocked @PostConstruct hook; no analysis/API call is allowed.
+                    assertThat(org.mockito.Mockito.mockingDetails(client).getInvocations())
+                            .allSatisfy(invocation -> assertThat(invocation.getMethod().getName())
+                                    .isEqualTo("logAccount"));
+                    assertThat(org.mockito.Mockito.mockingDetails(library).getInvocations())
+                            .allSatisfy(invocation -> assertThat(invocation.getMethod().getName())
+                                    .isEqualTo("load"));
+                    org.mockito.Mockito.verifyNoInteractions(visual, traces);
                 });
     }
 }
