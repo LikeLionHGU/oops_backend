@@ -1,5 +1,11 @@
 # OoPs?! AI 분석 로직
 
+## 2026-11-28 기본 OFF 기능 설정 검사
+
+기본 후보 탐색→검증, 사례 검색, OCR·선택 프레임 경로는 그대로다. 기본 OFF 실험 다섯 개는 설정을 켜면 실행되므로 아직 삭제하지 않았다. `rule-candidate-union-enabled=true`는 `candidate-source-relations-enabled`, `final-review-basis-enabled`, `situation-first-verification-enabled`, `source-understanding-enabled` 중 하나라도 true이면 기존 엔진 계약상 지원하지 않는다. 이제 분석 요청을 받은 뒤가 아니라 **Spring 시작 시** 같은 계약으로 거부한다. 유효 설정의 모델 요청은 바뀌지 않는다.
+
+`source-understanding`은 자체적으로 상황 우선 지침을 포함한다. `final-basis`, `situation-first`, 이해 기록 v1/v2/v3는 과거 실제 비교를 했지만 기본 채택하지 않은 기능이다. 아래 날짜별 ‘실호출 미검증/비교 전’은 당시 구현 이력이다. 현재 분류·근거·다음 이관 완료 기준은 [단계별 리뷰](../reviews/분석-파이프라인-단계별-리뷰.md#기본-off-기능-수명-분류시작-검사--2026-11-28)를 우선한다. 이번에는 프롬프트·사례집·플래그 기본값을 변경하지 않았다.
+
 ## 2026-11-27 구형 발언 실행 경로 제거
 
 발언은 `SpeechReviewAnalyzer → CandidateReviewEngine`의 후보 탐색·검증만 사용한다. 구형 발언 전수 구간 검토, 별도 대화 묶음 호출 및 전용 프롬프트는 제거했다. OCR의 `TextReviewEngine` 구간 검토와 공통 원문·근거 검증은 유지했다. 후보 판단 지침, 검색·선택 로직, 런타임 사례집과 승인 대조는 변경하지 않았다.
