@@ -1,5 +1,16 @@
 # OoPs?! AI 분석 로직
 
+## 2026-11-27 구형 발언 실행 경로 제거
+
+발언은 `SpeechReviewAnalyzer → CandidateReviewEngine`의 후보 탐색·검증만 사용한다. 구형 발언 전수 구간 검토, 별도 대화 묶음 호출 및 전용 프롬프트는 제거했다. OCR의 `TextReviewEngine` 구간 검토와 공통 원문·근거 검증은 유지했다. 후보 판단 지침, 검색·선택 로직, 런타임 사례집과 승인 대조는 변경하지 않았다.
+
+- `candidate-review-enabled=false`는 지원 종료를 알리는 시작 오류다. 배포 설정에 남아 있다면 제거해야 한다. 기본 true는 호환 검사용이며 더 이상 경로 선택 기능이 아니다.
+- `dialogue-review-enabled`는 제거된 옵션이다. 운영에서 별도 대화 호출은 없다.
+- `ReviewDiagnostics.dialogue`와 `DialogueReview`의 레코드는 과거 결과 읽기 전용으로 유지한다. `LlmResult.unitEvaluations`도 읽을 수 있지만 현재 실행에서 카드로 발행하지 않는다.
+- `TextReviewEngine`의 빈 `dialogueReviewUnits`/`requiredUnitIds`와 공용 구간 계약 문구는 OCR 요청 변경을 피하려고 보존했다. `ReviewUnit.dialoguePlan`의 읽기 창은 독립 대화 호출과 다르며 OCR·근거 검증에서 계속 사용한다.
+
+아래 날짜별 설명 중 구형 경로와 `ContextualComparisonPolicy` 사용은 과거 구현 이력이다. 검증 범위·남은 실험 분기는 [단계별 리뷰](../reviews/분석-파이프라인-단계별-리뷰.md)를 따른다.
+
 ## 2026-11-06 실험 A 맥락 선택 경로 — 운영 미연결
 
 P0 맥락 선택 실험(A0-T~A6-H-T)을 위한 별도 진입점을 추가했다. 운영 분석의 판정 정책, 프롬프트, 읽기 페이지, 기본 설정은 바꾸지 않았다. 실험 경로는 Spring 서비스에 연결하지 않았고 opt-in CLI(`ContextExperimentTrial`, 2026-11-22부터 `src/experiment/java`)로만 실행한다. 설계·계약·집계 규칙은 [P0 맥락 선택 실험 프로토콜](../experiments/P0-맥락선택-실험-프로토콜.md)을 따른다.
@@ -312,7 +323,7 @@ JSON 파싱 성공과 애플리케이션 계약 통과를 구분했다. 현재 J
 
 기본 실행은 개정 37 그대로다. 비교용 `CANDIDATE_SOURCE_RELATIONS_ENABLED=true`를 명시한 경우에만
 텍스트 후보 탐색/검증이 개정 `2026-10-15-source-relations-experiment-38`로 동작한다.
-`candidate-review-enabled=false`인 구형 분석 경로에는 이 설정을 적용하지 않는다.
+당시에는 `candidate-review-enabled=false`인 구형 분석 경로에 이 설정을 적용하지 않았다. 그 구형 경로는 2026-11-27 제거됐다.
 서버 재시작·운영 전환·유료 모델 시험은 이번 작업에서 하지 않았다.
 
 변경 전은 원문 → 결론형 reason/강조 근거 → hypothesisNotEvidence 전달 → 독립 검증이다.
